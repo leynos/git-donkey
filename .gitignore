@@ -204,3 +204,4 @@ target/
 **/mutants.out*/
 
 .crush/
+*.swp

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import dataclasses
 import difflib
-import getpass
 import os
 import re
 import shutil
@@ -12,6 +11,7 @@ import sys
 import typing as typ
 from pathlib import Path
 
+import github3
 from cyclopts import App
 from git import Git, GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
 from plumbum import local
@@ -183,6 +183,34 @@ def _ensure_local_tracking_branch(
             1,
         )
     repo.git.branch("--track", branch, f"{remote}/{branch}")
+
+
+def _ensure_upstream_for_branch(
+    repo: Repo,
+    *,
+    branch: str,
+    remote: str,
+    prefix: str,
+) -> None:
+    try:
+        local_branch = repo.heads[branch]
+    except IndexError:
+        return
+
+    desired = f"{remote}/{branch}"
+    tracking = local_branch.tracking_branch()
+    if tracking is not None and str(tracking) == desired:
+        return
+    if not _remote_branch_exists(repo, remote, branch):
+        return
+    try:
+        repo.git.branch("--set-upstream-to", desired, branch)
+    except GitCommandError as exc:
+        _die(
+            prefix,
+            f"could not set upstream for '{branch}' to {desired}: {exc}",
+            1,
+        )
 
 
 def _ahead_behind(repo: Repo, left: str, right: str) -> tuple[int, int]:
@@ -368,6 +396,12 @@ def _create_worktree(
 
     if _local_branch_exists(context.repo_home, branch_name):
         _eprint(f"Creating worktree for existing local branch '{branch_name}'")
+        _ensure_upstream_for_branch(
+            context.repo_home,
+            branch=branch_name,
+            remote=context.remote,
+            prefix=prefix,
+        )
         try:
             context.repo_home.git.worktree("add", str(target_path), branch_name)
         except GitCommandError as exc:
@@ -587,11 +621,32 @@ def _require_command(name: str, prefix: str) -> None:
         _die(prefix, f"required command not found: {name}", 1)
 
 
-def _resolve_owner() -> str:
-    return os.environ.get("USER") or getpass.getuser()
+def _github_token() -> str:
+    token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
+    if token:
+        return token
+    _die(
+        _GIT_FAFO_PREFIX,
+        "missing GitHub token; set GITHUB_TOKEN or GH_TOKEN",
+        1,
+    )
 
 
-def _run_fafo_commands(*, owner: str, repo_name: str, language: str) -> None:
+def _create_remote_repository(*, token: str, repo_name: str) -> str:
+    github = github3.login(token=token)
+    if github is None:
+        _die(_GIT_FAFO_PREFIX, "GitHub authentication failed", 1)
+
+    user = github.me()
+    if user is None or not getattr(user, "login", None):
+        _die(_GIT_FAFO_PREFIX, "could not determine GitHub username", 1)
+
+    github.create_repository(repo_name, private=False)
+    return str(user.login)
+
+
+def _run_fafo_commands(*, token: str, repo_name: str, language: str) -> None:
+    owner = _create_remote_repository(token=token, repo_name=repo_name)
     template = f"git@github.com:{owner}/agent-template-{language}"
     repo_path = Path(repo_name)
 
@@ -602,10 +657,8 @@ def _run_fafo_commands(*, owner: str, repo_name: str, language: str) -> None:
             env_overrides["STUB_LOG"] = stub_log
         with local.env(**env_overrides):
             copier = local["copier"]
-            gh = local["gh"]
             git = local["git"]
             copier["copy", template, repo_name]()
-            gh["repo", "create", f"{owner}/{repo_name}", "--public"]()
             with local.cwd(repo_path):
                 git["init"]()
                 git["remote", "add", "origin", f"git@github.com:{owner}/{repo_name}"]()
@@ -635,7 +688,6 @@ def run_git_fafo(repo_name: str, language: str) -> int:
 
     """
     _require_command("git", _GIT_FAFO_PREFIX)
-    _require_command("gh", _GIT_FAFO_PREFIX)
     _require_command("copier", _GIT_FAFO_PREFIX)
 
     repo_name = validate_slug(repo_name, label="repo name", prefix=_GIT_FAFO_PREFIX)
@@ -645,8 +697,8 @@ def run_git_fafo(repo_name: str, language: str) -> int:
         _eprint("You did that one already!")
         return 1
 
-    owner = _resolve_owner()
-    _run_fafo_commands(owner=owner, repo_name=repo_name, language=language)
+    token = _github_token()
+    _run_fafo_commands(token=token, repo_name=repo_name, language=language)
     return 0
 
 

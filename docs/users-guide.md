@@ -61,8 +61,11 @@ git fafo demo-repo python
 Requirements:
 
 - `git`
-- `gh` (GitHub CLI) authenticated for repository creation
 - `copier`
+- `GITHUB_TOKEN` or `GH_TOKEN` with repository creation permissions
+
+Repository creation is handled via the github3.py API, so the token must have
+`repo` scope for private repositories or standard access for public ones.
 
 `git fafo` expects template repositories named `agent-template-<language>`
 under the current GitHub account.

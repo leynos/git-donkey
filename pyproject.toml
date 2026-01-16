@@ -8,6 +8,7 @@ license = { text = "ISC" }
 dependencies = [
     "GitPython>=3.1.45",
     "cyclopts>=2.9",
+    "github3.py>=4.0.1",
     "plumbum>=1.8",
 ]
 
