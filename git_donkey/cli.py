@@ -26,6 +26,7 @@ _GIT_DONKEY_PREFIX = "git-donkey"
 _GIT_DONKEY_EMOJI = "💀"
 _GIT_TRACK_PREFIX = "git-track"
 _GIT_FAFO_PREFIX = "git-fafo"
+_GIT_CONFLICT_EMOJI = "⚔️"
 _SLUG_PATTERN = re.compile(r"^[a-zA-Z0-9_.-]+$")
 _GITHUB_TOKEN_SCOPES = ["user", "repo"]
 _GITHUB_DEVICE_CODE_URL = "https://github.com/login/device/code"
@@ -74,6 +75,10 @@ def _die(
     else:
         _eprint(f"{prefix}: {msg}")
     raise SystemExit(code)
+
+
+def _die_conflict(prefix: str, msg: str, code: int = 2) -> typ.NoReturn:
+    _die(prefix, msg, code, emoji=_GIT_CONFLICT_EMOJI)
 
 
 def _find_repo(prefix: str) -> Repo:
@@ -401,14 +406,14 @@ def _create_worktree(
     prefix = _GIT_DONKEY_PREFIX
     existing_worktree = context.branch_to_worktree.get(branch_name)
     if existing_worktree is not None:
-        _die(
+        _die_conflict(
             prefix,
             f"branch '{branch_name}' is already checked out at: {existing_worktree}",
             1,
         )
 
     if target_path.exists():
-        _die(prefix, f"target path already exists: {target_path}", 1)
+        _die_conflict(prefix, f"target path already exists: {target_path}", 1)
 
     if _local_branch_exists(context.repo_home, branch_name):
         _eprint(f"Creating worktree for existing local branch '{branch_name}'")
@@ -732,7 +737,7 @@ def _create_remote_repository(*, token: str, repo_name: str) -> str:
         github.create_repository(repo_name, private=False)
     except github3_exceptions.UnprocessableEntity as exc:
         if _is_repo_already_exists_error(exc):
-            _die(
+            _die_conflict(
                 _GIT_FAFO_PREFIX,
                 f"GitHub repository '{user.login}/{repo_name}' already exists. "
                 "Pick a new name or delete the existing repository before "
