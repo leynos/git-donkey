@@ -18,6 +18,7 @@ import github3
 import loctocat
 from cyclopts import App
 from git import Git, GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
+from github3 import exceptions as github3_exceptions
 from plumbum import local
 from plumbum.commands.processes import ProcessExecutionError
 
@@ -727,8 +728,42 @@ def _create_remote_repository(*, token: str, repo_name: str) -> str:
     if user is None or not getattr(user, "login", None):
         _die(_GIT_FAFO_PREFIX, "could not determine GitHub username", 1)
 
-    github.create_repository(repo_name, private=False)
+    try:
+        github.create_repository(repo_name, private=False)
+    except github3_exceptions.UnprocessableEntity as exc:
+        if _is_repo_already_exists_error(exc):
+            _die(
+                _GIT_FAFO_PREFIX,
+                f"GitHub repository '{user.login}/{repo_name}' already exists. "
+                "Pick a new name or delete the existing repository before "
+                "running git-fafo again.",
+                1,
+            )
+        _die(
+            _GIT_FAFO_PREFIX,
+            f"GitHub repository creation failed: {exc}",
+            1,
+        )
     return str(user.login)
+
+
+def _is_repo_already_exists_error(
+    error: github3_exceptions.GitHubError,
+) -> bool:
+    message = str(getattr(error, "message", "") or "").lower()
+    if "already exists" in message:
+        return True
+
+    for detail in getattr(error, "errors", []):
+        if isinstance(detail, dict):
+            detail_message = str(detail.get("message", "")).lower()
+            detail_code = str(detail.get("code", "")).lower()
+            if "already exists" in detail_message or detail_code == "already_exists":
+                return True
+        elif "already exists" in str(detail).lower():
+            return True
+
+    return False
 
 
 def _run_copier_interactive(*, template: str, repo_name: str) -> None:

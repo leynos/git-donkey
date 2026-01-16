@@ -6,6 +6,7 @@ import dataclasses
 import typing as typ
 
 import pytest
+from github3 import exceptions as github3_exceptions
 
 from git_donkey import cli
 
@@ -182,3 +183,56 @@ def test_create_remote_repository_uses_github3_login(
     assert created["token"] == auth_value
     assert created["name"] == "demo"
     assert created["private"] is False
+
+
+def test_create_remote_repository_reports_existing_repo(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Provide a friendly message when the repository already exists."""
+
+    @dataclasses.dataclass
+    class _StubResponse:
+        status_code: int = 422
+
+        @staticmethod
+        def json() -> dict[str, object]:
+            return {
+                "message": "Repository creation failed.",
+                "errors": [
+                    {
+                        "resource": "Repository",
+                        "field": "name",
+                        "code": "custom",
+                        "message": "name already exists on this account",
+                    }
+                ],
+            }
+
+    @dataclasses.dataclass
+    class _StubUser:
+        login: str
+
+    @dataclasses.dataclass
+    class _StubGitHub:
+        login: str
+
+        def me(self) -> _StubUser:
+            return _StubUser(self.login)
+
+        @staticmethod
+        def create_repository(name: str, *, private: bool = False) -> None:
+            raise github3_exceptions.UnprocessableEntity(_StubResponse())
+
+    def _fake_login(*, token: str) -> _StubGitHub:
+        return _StubGitHub("octocat")
+
+    monkeypatch.setattr(cli.github3, "login", _fake_login)
+
+    auth_value = "example-value"
+    with pytest.raises(SystemExit) as excinfo:
+        cli._create_remote_repository(token=auth_value, repo_name="demo-repo")
+
+    assert excinfo.value.code == 1
+    err = capsys.readouterr().err
+    assert "already exists" in err.lower()
