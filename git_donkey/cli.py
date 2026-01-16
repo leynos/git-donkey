@@ -32,6 +32,7 @@ _GITHUB_TOKEN_SCOPES = ["user", "repo"]
 _GITHUB_DEVICE_CODE_URL = "https://github.com/login/device/code"
 _GITHUB_DEVICE_ACCESS_URL = "https://github.com/login/oauth/access_token"
 _GIT_DONKEY_CLIENT_ID_ENV = "GIT_DONKEY_GITHUB_CLIENT_ID"
+_DEFAULT_GITHUB_CLIENT_ID = "Ov23liD2cKOAh7xmpXKR"
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -683,14 +684,7 @@ def _ensure_interactive() -> None:
 
 def _device_flow_token(credentials_path: Path) -> str:
     _ensure_interactive()
-    client_id = os.environ.get(_GIT_DONKEY_CLIENT_ID_ENV)
-    if not client_id:
-        _die(
-            _GIT_FAFO_PREFIX,
-            f"missing client id; set {_GIT_DONKEY_CLIENT_ID_ENV}",
-            1,
-        )
-    client_id = typ.cast("str", client_id)
+    client_id = os.environ.get(_GIT_DONKEY_CLIENT_ID_ENV) or _DEFAULT_GITHUB_CLIENT_ID
 
     authenticator = loctocat.Authenticator(
         client_id=client_id,

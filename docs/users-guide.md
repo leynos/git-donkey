@@ -66,10 +66,11 @@ Requirements:
 
 Repository creation is handled via the github3.py API, so the token must have
 `repo` scope for private repositories or standard access for public ones. If no
-token is available, `git fafo` starts an OAuth device flow using loctocat. Set
-`GIT_DONKEY_GITHUB_CLIENT_ID` to the GitHub OAuth app client ID, then follow
-the prompt to enter the code at `https://github.com/login/device`. The access
-token is stored at `~/.config/git-donkey/github-token`. Override the path with
+token is available, `git fafo` starts an OAuth device flow using loctocat and a
+default OAuth client ID. Override the client ID by setting
+`GIT_DONKEY_GITHUB_CLIENT_ID`, then follow the prompt to enter the code at
+`https://github.com/login/device`. The access token is stored at
+`~/.config/git-donkey/github-token`. Override the path with
 `GIT_DONKEY_CREDENTIALS_FILE`.
 
 `git fafo` expects template repositories named `agent-template-<language>`

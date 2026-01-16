@@ -68,15 +68,67 @@ def test_github_token_requires_interactive_prompt(
     assert excinfo.value.code == 1
 
 
-def test_github_token_requires_client_id(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Require a device flow client ID when prompting interactively."""
+def test_github_token_uses_default_client_id(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Use the built-in client ID when none is provided."""
+    token_path = tmp_path / "token.txt"
+    monkeypatch.setenv("GIT_DONKEY_CREDENTIALS_FILE", str(token_path))
     monkeypatch.setattr(cli.sys.stdin, "isatty", lambda: True)
     monkeypatch.setattr(cli.sys.stdout, "isatty", lambda: True)
 
-    with pytest.raises(SystemExit) as excinfo:
-        cli._github_token()
+    created: dict[str, object] = {}
 
-    assert excinfo.value.code == 1
+    @dataclasses.dataclass
+    class _StubAuthInfo:
+        device_code: str
+        user_code: str
+        verification_uri: str
+        expires_in: int
+        interval: int
+
+    @dataclasses.dataclass
+    class _StubAuthenticator:
+        client_id: str
+        auth_url: str
+        token_url: str
+        scopes: list[str]
+        created: dict[str, object]
+
+        def ping(self) -> _StubAuthInfo:
+            self.created["pinged"] = True
+            return _StubAuthInfo(
+                device_code="device",
+                user_code="USER-CODE",
+                verification_uri="https://example.com/device",
+                expires_in=900,
+                interval=5,
+            )
+
+        def poll(self) -> str:
+            self.created["polled"] = True
+            return "default-token"
+
+    def _fake_authenticator(
+        *,
+        client_id: str,
+        auth_url: str,
+        token_url: str,
+        scopes: list[str],
+    ) -> _StubAuthenticator:
+        created["client_id"] = client_id
+        created["auth_url"] = auth_url
+        created["token_url"] = token_url
+        created["scopes"] = scopes
+        return _StubAuthenticator(client_id, auth_url, token_url, scopes, created)
+
+    monkeypatch.setattr(cli.loctocat, "Authenticator", _fake_authenticator)
+
+    token = cli._github_token()
+
+    assert token == "default-token"  # noqa: S105
+    assert created["client_id"] == cli._DEFAULT_GITHUB_CLIENT_ID
 
 
 def test_github_token_authorizes_and_persists(
