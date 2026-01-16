@@ -1,3 +1,5 @@
+"""Pure Python fallback helpers for git-donkey."""
+
 from __future__ import annotations
 
 

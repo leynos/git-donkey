@@ -5,7 +5,16 @@ description = "git-donkey package"
 readme = "README.md"
 requires-python = ">=3.13"
 license = { text = "ISC" }
-dependencies = []
+dependencies = [
+    "GitPython>=3.1.45",
+    "cyclopts>=2.9",
+    "plumbum>=1.8",
+]
+
+[project.scripts]
+git-donkey = "git_donkey.cli:git_donkey"
+git-track = "git_donkey.cli:git_track"
+git-fafo = "git_donkey.cli:git_fafo"
 
 [dependency-groups]
 dev = [
@@ -127,4 +136,3 @@ package = true
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
-
