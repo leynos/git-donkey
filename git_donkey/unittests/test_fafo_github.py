@@ -14,10 +14,17 @@ if typ.TYPE_CHECKING:
 
 
 @pytest.fixture(autouse=True)
-def _clear_token_env(monkeypatch: pytest.MonkeyPatch) -> None:
+def _clear_token_env(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.delenv("GITHUB_TOKEN", raising=False)
     monkeypatch.delenv("GH_TOKEN", raising=False)
     monkeypatch.delenv(cli._GIT_DONKEY_CLIENT_ID_ENV, raising=False)
+    monkeypatch.setenv(
+        "GIT_DONKEY_CREDENTIALS_FILE",
+        str(tmp_path / "missing-token"),
+    )
 
 
 def test_github_token_prefers_github_token(monkeypatch: pytest.MonkeyPatch) -> None:

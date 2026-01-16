@@ -5,9 +5,11 @@ from __future__ import annotations
 import contextlib
 import dataclasses
 import difflib
+import io
 import os
 import re
 import shutil
+import subprocess  # noqa: S404
 import sys
 import typing as typ
 from pathlib import Path
@@ -48,6 +50,13 @@ class _DonkeyContext:
 
 def _eprint(*args: object) -> None:
     print(*args, file=sys.stderr)
+
+
+def _stream_or_none(stream: typ.TextIO) -> typ.TextIO | None:
+    with contextlib.suppress(AttributeError, io.UnsupportedOperation, ValueError):
+        stream.fileno()
+        return stream
+    return None
 
 
 def _die(
@@ -722,27 +731,48 @@ def _create_remote_repository(*, token: str, repo_name: str) -> str:
     return str(user.login)
 
 
+def _run_copier_interactive(*, template: str, repo_name: str) -> None:
+    env = os.environ.copy()
+    copier_path = shutil.which("copier", path=env.get("PATH")) or "copier"
+    cmd = [copier_path, "copy", template, repo_name]
+    stdin = _stream_or_none(sys.stdin)
+    stdout = _stream_or_none(sys.stdout)
+    stderr = _stream_or_none(sys.stderr)
+    try:
+        subprocess.run(  # noqa: S603
+            cmd,
+            check=True,
+            env=env,
+            stdin=stdin,
+            stdout=stdout,
+            stderr=stderr,
+        )
+    except subprocess.CalledProcessError as exc:
+        raise ProcessExecutionError(cmd, exc.returncode, "", "") from exc
+
+
 def _run_fafo_commands(*, token: str, repo_name: str, language: str) -> None:
     owner = _create_remote_repository(token=token, repo_name=repo_name)
     template = f"git@github.com:{owner}/agent-template-{language}"
     repo_path = Path(repo_name)
 
     try:
-        env_overrides = {"PATH": os.environ.get("PATH", "")}
+        env_overrides = {}
         stub_log = os.environ.get("STUB_LOG")
         if stub_log is not None:
             env_overrides["STUB_LOG"] = stub_log
+        env_overrides["PATH"] = os.environ.get("PATH", "")
         with local.env(**env_overrides):
-            copier = local["copier"]
             git = local["git"]
-            copier["copy", template, repo_name]()
+            _run_copier_interactive(template=template, repo_name=repo_name)
             with local.cwd(repo_path):
                 git["init"]()
                 git["remote", "add", "origin", f"git@github.com:{owner}/{repo_name}"]()
                 git["branch", "-m", "main"]()
                 git["commit", "-m", "Initial commit", "--allow-empty"]()
                 git["add", "."]()
-                git["commit", "-a", "-m", "Add repo skeleton"]()
+                if git["status", "--porcelain"]().strip():
+                    git["commit", "-m", "Add repo skeleton"]()
                 git["push", "--set-upstream", "origin", "main"]()
     except ProcessExecutionError as exc:
         _die(_GIT_FAFO_PREFIX, f"command failed: {exc}", 1)
