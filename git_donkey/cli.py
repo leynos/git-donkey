@@ -5,7 +5,6 @@ from __future__ import annotations
 import contextlib
 import dataclasses
 import difflib
-import getpass
 import os
 import re
 import shutil
@@ -14,6 +13,7 @@ import typing as typ
 from pathlib import Path
 
 import github3
+import loctocat
 from cyclopts import App
 from git import Git, GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
 from plumbum import local
@@ -25,8 +25,9 @@ _GIT_TRACK_PREFIX = "git-track"
 _GIT_FAFO_PREFIX = "git-fafo"
 _SLUG_PATTERN = re.compile(r"^[a-zA-Z0-9_.-]+$")
 _GITHUB_TOKEN_SCOPES = ["user", "repo"]
-_GITHUB_AUTH_NOTE = "git-donkey git-fafo"
-_GITHUB_AUTH_NOTE_URL = "https://github.com"
+_GITHUB_DEVICE_CODE_URL = "https://github.com/login/device/code"
+_GITHUB_DEVICE_ACCESS_URL = "https://github.com/login/oauth/access_token"
+_GIT_DONKEY_CLIENT_ID_ENV = "GIT_DONKEY_GITHUB_CLIENT_ID"
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -43,11 +44,6 @@ class _DonkeyContext:
     remote: str
     branch_to_worktree: dict[str, Path]
     worktrees_root: Path
-
-
-class _Authorization(typ.Protocol):
-    token: str
-    id: int
 
 
 def _eprint(*args: object) -> None:
@@ -649,9 +645,12 @@ def _read_token_from_file(path: Path) -> str | None:
     return token or None
 
 
-def _write_token_file(path: Path, token: str, auth_id: int) -> None:
+def _write_token_file(path: Path, token: str, auth_id: int | None) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(f"{token}\n{auth_id}\n")
+    payload = f"{token}\n"
+    if auth_id is not None:
+        payload += f"{auth_id}\n"
+    path.write_text(payload)
     with contextlib.suppress(OSError):
         path.chmod(0o600)
 
@@ -667,36 +666,34 @@ def _ensure_interactive() -> None:
     )
 
 
-def _prompt_for_credentials() -> tuple[str, str]:
-    default_user = getpass.getuser()
-    prompt = f"GitHub username [{default_user}]: "
-    user_input = input(prompt).strip()
-    username = user_input or default_user
-
-    password = ""
-    while not password:
-        password = getpass.getpass(f"Password for {username}: ")
-    return username, password
-
-
-def _request_token(credentials_path: Path) -> str:
+def _device_flow_token(credentials_path: Path) -> str:
     _ensure_interactive()
-    username, password = _prompt_for_credentials()
-    github = github3.login(username=username, password=password)
-    if github is None:
-        _die(_GIT_FAFO_PREFIX, "GitHub authentication failed", 1)
-    auth = github.authorize(
-        username,
-        password,
+    client_id = os.environ.get(_GIT_DONKEY_CLIENT_ID_ENV)
+    if not client_id:
+        _die(
+            _GIT_FAFO_PREFIX,
+            f"missing client id; set {_GIT_DONKEY_CLIENT_ID_ENV}",
+            1,
+        )
+    client_id = typ.cast("str", client_id)
+
+    authenticator = loctocat.Authenticator(
+        client_id=client_id,
+        auth_url=_GITHUB_DEVICE_CODE_URL,
+        token_url=_GITHUB_DEVICE_ACCESS_URL,
         scopes=_GITHUB_TOKEN_SCOPES,
-        note=_GITHUB_AUTH_NOTE,
-        note_url=_GITHUB_AUTH_NOTE_URL,
     )
-    if auth is None or not getattr(auth, "token", None):
-        _die(_GIT_FAFO_PREFIX, "failed to create GitHub authorization token", 1)
-    auth_data = typ.cast("_Authorization", auth)
-    _write_token_file(credentials_path, auth_data.token, int(auth_data.id))
-    return str(auth_data.token)
+    auth_info = authenticator.ping()
+    _eprint("Complete device authorisation to continue:")
+    _eprint(f"  URL: {auth_info.verification_uri}")
+    _eprint(f"  Code: {auth_info.user_code}")
+
+    token = authenticator.poll()
+    if not token:
+        _die(_GIT_FAFO_PREFIX, "failed to create GitHub device token", 1)
+
+    _write_token_file(credentials_path, token, None)
+    return token
 
 
 def _github_token() -> str:
@@ -709,7 +706,7 @@ def _github_token() -> str:
     if stored_token:
         return stored_token
 
-    return _request_token(credentials_path)
+    return _device_flow_token(credentials_path)
 
 
 def _create_remote_repository(*, token: str, repo_name: str) -> str:
