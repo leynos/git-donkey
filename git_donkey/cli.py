@@ -846,9 +846,10 @@ def run_git_fafo(repo_name: str, language: str) -> int:
 _donkey_app = App(
     name="git donkey",
     help=(
-        "Create a linked worktree at ../<repo>.worktrees/<branch>, branching from "
-        "main (default), a specified origin branch, or '.' meaning the branch "
-        "currently checked out in the CWD."
+        "Create a linked worktree at ../{repo}.worktrees/{branch}, branching from "
+        "main (default), a specified base branch, or '.' meaning the branch "
+        "currently checked out in the CWD. Uses the first remote and reuses "
+        "existing local/remote branches when present."
     ),
 )
 
@@ -874,7 +875,7 @@ _track_app = App(
     name="git track",
     help=(
         "Fetch from the first remote, then switch to an existing local branch "
-        "and update it, or create a new tracking branch from <remote>/<branch>."
+        "and update it, or create a new tracking branch from remote/branch."
     ),
 )
 
@@ -887,7 +888,14 @@ def _track_cli(branch: str) -> None:
 
 _fafo_app = App(
     name="git fafo",
-    help="Quickly scaffold and publish a new GitHub repository.",
+    help=(
+        "Scaffold and publish a new GitHub repository from agent-template-<language> "
+        "using copier and git. Uses GITHUB_TOKEN/GH_TOKEN when set; otherwise runs "
+        "device flow with default client ID Ov23liD2cKOAh7xmpXKR (override via "
+        "GIT_DONKEY_GITHUB_CLIENT_ID) and stores the token at "
+        "~/.config/git-donkey/github-token (override via "
+        "GIT_DONKEY_CREDENTIALS_FILE)."
+    ),
 )
 
 
