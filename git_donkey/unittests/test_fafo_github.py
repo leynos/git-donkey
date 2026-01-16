@@ -3,10 +3,20 @@
 from __future__ import annotations
 
 import dataclasses
+import typing as typ
 
 import pytest
 
 from git_donkey import cli
+
+if typ.TYPE_CHECKING:
+    from pathlib import Path
+
+
+@pytest.fixture(autouse=True)
+def _clear_token_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    monkeypatch.delenv("GH_TOKEN", raising=False)
 
 
 def test_github_token_prefers_github_token(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -19,21 +29,91 @@ def test_github_token_prefers_github_token(monkeypatch: pytest.MonkeyPatch) -> N
 
 def test_github_token_falls_back_to_gh_token(monkeypatch: pytest.MonkeyPatch) -> None:
     """Fallback to GH_TOKEN when GITHUB_TOKEN is missing."""
-    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
     monkeypatch.setenv("GH_TOKEN", "fallback")
 
     assert cli._github_token() == "fallback"
 
 
-def test_github_token_requires_token(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Raise a SystemExit when no token is available."""
-    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
-    monkeypatch.delenv("GH_TOKEN", raising=False)
+def test_github_token_reads_from_credentials_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Read token from the configured credentials file when present."""
+    token_path = tmp_path / "token.txt"
+    token_path.write_text("stored-token\n123\n")
+    monkeypatch.setenv("GIT_DONKEY_CREDENTIALS_FILE", str(token_path))
+
+    assert cli._github_token() == "stored-token"
+
+
+def test_github_token_requires_interactive_prompt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Raise a SystemExit when prompting is not possible."""
+    monkeypatch.setattr(cli.sys.stdin, "isatty", lambda: False)
+    monkeypatch.setattr(cli.sys.stdout, "isatty", lambda: False)
 
     with pytest.raises(SystemExit) as excinfo:
         cli._github_token()
 
     assert excinfo.value.code == 1
+
+
+def test_github_token_authorizes_and_persists(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Prompt, authorize, and persist a new token when none is available."""
+    token_path = tmp_path / "token.txt"
+    monkeypatch.setenv("GIT_DONKEY_CREDENTIALS_FILE", str(token_path))
+
+    monkeypatch.setattr(cli.sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr(cli.sys.stdout, "isatty", lambda: True)
+    monkeypatch.setattr(cli.getpass, "getuser", lambda: "example")
+    monkeypatch.setattr(cli.getpass, "getpass", lambda _prompt: "secret")
+    monkeypatch.setattr("builtins.input", lambda _prompt: "")
+
+    created: dict[str, object] = {}
+
+    @dataclasses.dataclass
+    class _StubAuth:
+        token: str
+        id: int
+
+    @dataclasses.dataclass
+    class _StubGitHub:
+        created: dict[str, object]
+
+        def authorize(
+            self,
+            user: str,
+            password: str,
+            *,
+            scopes: list[str],
+            note: str,
+            note_url: str,
+        ) -> _StubAuth:
+            self.created["user"] = user
+            self.created["password"] = password
+            self.created["scopes"] = scopes
+            self.created["note"] = note
+            self.created["note_url"] = note_url
+            expected = "created-token"
+            return _StubAuth(token=expected, id=123)
+
+    def _fake_login(*, username: str, password: str) -> _StubGitHub:
+        created["login_user"] = username
+        created["login_password"] = password
+        return _StubGitHub(created)
+
+    monkeypatch.setattr(cli.github3, "login", _fake_login)
+
+    token = cli._github_token()
+
+    assert token == "created-token"  # noqa: S105
+    assert created["user"] == "example"
+    assert created["scopes"] == ["user", "repo"]
+    assert token_path.read_text().splitlines() == ["created-token", "123"]
 
 
 def test_create_remote_repository_uses_github3_login(

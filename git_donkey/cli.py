@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import contextlib
 import dataclasses
 import difflib
+import getpass
 import os
 import re
 import shutil
@@ -22,6 +24,9 @@ _GIT_DONKEY_EMOJI = "💀"
 _GIT_TRACK_PREFIX = "git-track"
 _GIT_FAFO_PREFIX = "git-fafo"
 _SLUG_PATTERN = re.compile(r"^[a-zA-Z0-9_.-]+$")
+_GITHUB_TOKEN_SCOPES = ["user", "repo"]
+_GITHUB_AUTH_NOTE = "git-donkey git-fafo"
+_GITHUB_AUTH_NOTE_URL = "https://github.com"
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -38,6 +43,11 @@ class _DonkeyContext:
     remote: str
     branch_to_worktree: dict[str, Path]
     worktrees_root: Path
+
+
+class _Authorization(typ.Protocol):
+    token: str
+    id: int
 
 
 def _eprint(*args: object) -> None:
@@ -621,15 +631,85 @@ def _require_command(name: str, prefix: str) -> None:
         _die(prefix, f"required command not found: {name}", 1)
 
 
+def _credentials_path() -> Path:
+    configured = os.environ.get("GIT_DONKEY_CREDENTIALS_FILE")
+    if configured:
+        return Path(configured).expanduser()
+    return Path.home() / ".config" / "git-donkey" / "github-token"
+
+
+def _read_token_from_file(path: Path) -> str | None:
+    try:
+        lines = path.read_text().splitlines()
+    except FileNotFoundError:
+        return None
+    if not lines:
+        return None
+    token = lines[0].strip()
+    return token or None
+
+
+def _write_token_file(path: Path, token: str, auth_id: int) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(f"{token}\n{auth_id}\n")
+    with contextlib.suppress(OSError):
+        path.chmod(0o600)
+
+
+def _ensure_interactive() -> None:
+    if sys.stdin.isatty() and sys.stdout.isatty():
+        return
+    _die(
+        _GIT_FAFO_PREFIX,
+        "missing GitHub token and no interactive terminal available; set "
+        "GITHUB_TOKEN, GH_TOKEN, or GIT_DONKEY_CREDENTIALS_FILE",
+        1,
+    )
+
+
+def _prompt_for_credentials() -> tuple[str, str]:
+    default_user = getpass.getuser()
+    prompt = f"GitHub username [{default_user}]: "
+    user_input = input(prompt).strip()
+    username = user_input or default_user
+
+    password = ""
+    while not password:
+        password = getpass.getpass(f"Password for {username}: ")
+    return username, password
+
+
+def _request_token(credentials_path: Path) -> str:
+    _ensure_interactive()
+    username, password = _prompt_for_credentials()
+    github = github3.login(username=username, password=password)
+    if github is None:
+        _die(_GIT_FAFO_PREFIX, "GitHub authentication failed", 1)
+    auth = github.authorize(
+        username,
+        password,
+        scopes=_GITHUB_TOKEN_SCOPES,
+        note=_GITHUB_AUTH_NOTE,
+        note_url=_GITHUB_AUTH_NOTE_URL,
+    )
+    if auth is None or not getattr(auth, "token", None):
+        _die(_GIT_FAFO_PREFIX, "failed to create GitHub authorization token", 1)
+    auth_data = typ.cast("_Authorization", auth)
+    _write_token_file(credentials_path, auth_data.token, int(auth_data.id))
+    return str(auth_data.token)
+
+
 def _github_token() -> str:
     token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
     if token:
         return token
-    _die(
-        _GIT_FAFO_PREFIX,
-        "missing GitHub token; set GITHUB_TOKEN or GH_TOKEN",
-        1,
-    )
+
+    credentials_path = _credentials_path()
+    stored_token = _read_token_from_file(credentials_path)
+    if stored_token:
+        return stored_token
+
+    return _request_token(credentials_path)
 
 
 def _create_remote_repository(*, token: str, repo_name: str) -> str:
