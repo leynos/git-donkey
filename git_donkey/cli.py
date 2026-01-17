@@ -1,4 +1,18 @@
-"""Command-line interfaces for the git-donkey tools."""
+"""Command-line interfaces for the git-donkey tools.
+
+Provides CLI entrypoints for the git-donkey workflow tools.
+
+This module exposes three console scripts (git-donkey, git-track, git-fafo)
+registered in pyproject.toml. Each entrypoint maps to a workflow runner:
+git_donkey() -> donkey.run_git_donkey, git_track() -> track.run_git_track, and
+git_fafo() -> fafo.run_git_fafo.
+
+Run with::
+
+    git-donkey --help
+    git-track --help
+    git-fafo --help
+"""
 
 from __future__ import annotations
 
