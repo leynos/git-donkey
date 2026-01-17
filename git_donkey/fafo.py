@@ -193,11 +193,10 @@ def _initialise_and_push_git_repo(
         git["init"]()
         git["remote", "add", "origin", f"git@github.com:{owner}/{repo_name}"]()
         git["branch", "-m", "main"]()
+        git["commit", "-m", "Initial commit", "--allow-empty"]()
         git["add", "."]()
         if git["status", "--porcelain"]().strip():
             git["commit", "-m", "Add repo skeleton"]()
-        else:
-            git["commit", "-m", "Initial commit", "--allow-empty"]()
         git["push", "--set-upstream", "origin", "main"]()
 
 
