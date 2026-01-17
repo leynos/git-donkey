@@ -766,17 +766,17 @@ def _is_repo_already_exists_error(
 
 
 def _run_copier_interactive(*, template: str, repo_name: str) -> None:
-    env = os.environ.copy()
-    copier_path = shutil.which("copier", path=env.get("PATH")) or "copier"
+    copier_path = shutil.which("copier") or "copier"
     cmd = [copier_path, "copy", template, repo_name]
     stdin = _stream_or_none(sys.stdin)
     stdout = _stream_or_none(sys.stdout)
     stderr = _stream_or_none(sys.stderr)
     try:
+        # nosemgrep
+        # Args are slug-validated and shell=False.
         subprocess.run(  # noqa: S603
             cmd,
             check=True,
-            env=env,
             stdin=stdin,
             stdout=stdout,
             stderr=stderr,
