@@ -1,4 +1,29 @@
-"""git-fafo workflow helpers."""
+"""git-fafo workflow helpers.
+
+This module provides the git-fafo workflow, handling authentication, GitHub
+repository creation, template scaffolding, and initial Git setup for a new
+project.
+
+Key capabilities:
+
+- OAuth device flow and token-based authentication
+- GitHub repository creation via github3.py
+- Project scaffolding with copier templates
+- Git initialisation, commits, and upstream push
+
+Examples
+--------
+>>> from git_donkey import fafo
+>>> fafo.run_git_fafo("demo-repo", "python")
+0
+
+Notes
+-----
+Returns standard process exit codes (0 on success, non-zero on failure).
+Side effects include file and directory creation, GitHub API calls, and Git
+commands that initialise, commit, and push a repository.
+
+"""
 
 from __future__ import annotations
 
