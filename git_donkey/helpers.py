@@ -27,10 +27,12 @@ _SLUG_PATTERN = re.compile(r"^[a-zA-Z0-9_.-]+$")
 
 
 def _eprint(*args: object) -> None:
+    """Print to stderr."""
     print(*args, file=sys.stderr)
 
 
 def _stream_or_none(stream: typ.TextIO) -> typ.TextIO | None:
+    """Return the stream if it is usable, otherwise None."""
     with contextlib.suppress(AttributeError, io.UnsupportedOperation, ValueError):
         stream.fileno()
         return stream
@@ -44,6 +46,7 @@ def _die(
     *,
     emoji: str | None = None,
 ) -> typ.NoReturn:
+    """Exit with a formatted error message."""
     if emoji is None and prefix == _GIT_DONKEY_PREFIX:
         emoji = _GIT_DONKEY_EMOJI
     if emoji:
@@ -54,10 +57,12 @@ def _die(
 
 
 def _die_conflict(prefix: str, msg: str, code: int = 2) -> typ.NoReturn:
+    """Exit with a conflict error message."""
     _die(prefix, msg, code, emoji=_GIT_CONFLICT_EMOJI)
 
 
 def _find_repo(prefix: str) -> Repo:
+    """Return the repo rooted at the current working directory."""
     try:
         return Repo(Path.cwd(), search_parent_directories=True)
     except (InvalidGitRepositoryError, NoSuchPathError):
@@ -65,6 +70,7 @@ def _find_repo(prefix: str) -> Repo:
 
 
 def _get_checked_out_branch_name(repo: Repo, prefix: str) -> str:
+    """Return the checked out branch name or exit if detached."""
     if repo.head.is_detached:
         _die(
             prefix,
@@ -105,6 +111,7 @@ def _main_worktree_path_from_list(
     stanzas: list[dict[str, object]],
     prefix: str,
 ) -> Path:
+    """Return the main worktree path from parsed worktree stanzas."""
     if not stanzas or "worktree" not in stanzas[0]:
         _die(prefix, "could not parse `git worktree list --porcelain` output", 2)
 
@@ -120,6 +127,7 @@ def _main_worktree_path_from_list(
 
 
 def _branch_to_worktree_map(stanzas: list[dict[str, object]]) -> dict[str, Path]:
+    """Return a mapping of branch names to worktree paths."""
     out: dict[str, Path] = {}
     for stanza in stanzas:
         worktree = stanza.get("worktree")
@@ -134,6 +142,7 @@ def _branch_to_worktree_map(stanzas: list[dict[str, object]]) -> dict[str, Path]
 
 
 def _ref_exists(repo: Repo, ref: str) -> bool:
+    """Return True if a Git ref exists."""
     try:
         repo.git.show_ref("--verify", "--quiet", ref)
     except GitCommandError:
@@ -142,10 +151,12 @@ def _ref_exists(repo: Repo, ref: str) -> bool:
 
 
 def _local_branch_exists(repo: Repo, branch: str) -> bool:
+    """Return True if the local branch exists."""
     return _ref_exists(repo, f"refs/heads/{branch}")
 
 
 def _remote_branch_exists(repo: Repo, remote: str, branch: str) -> bool:
+    """Return True if the remote branch exists."""
     return _ref_exists(repo, f"refs/remotes/{remote}/{branch}")
 
 
@@ -155,6 +166,7 @@ def _ensure_local_tracking_branch(
     branch: str,
     prefix: str,
 ) -> None:
+    """Ensure a local tracking branch exists for the remote branch."""
     if _local_branch_exists(repo, branch):
         return
     if not _remote_branch_exists(repo, remote, branch):
@@ -168,6 +180,7 @@ def _ensure_local_tracking_branch(
 
 
 def _first_remote_name(repo: Repo, prefix: str) -> str:
+    """Return the first configured remote name."""
     try:
         return repo.remotes[0].name
     except IndexError:
@@ -175,6 +188,7 @@ def _first_remote_name(repo: Repo, prefix: str) -> str:
 
 
 def _fetch_remote(repo: Repo, remote: str, prefix: str) -> None:
+    """Fetch updates from the specified remote."""
     try:
         repo.remote(remote).fetch()
     except GitCommandError as exc:
@@ -182,13 +196,18 @@ def _fetch_remote(repo: Repo, remote: str, prefix: str) -> None:
 
 
 def _prompt_yes_no(question: str, *, default: bool = False) -> bool:
+    """Prompt for a yes/no response and return the chosen value."""
     if not (sys.stdin.isatty() and sys.stdout.isatty()):
         _eprint("Non-interactive stdin/stdout; skipping prompt (treating as 'no').")
         return False
 
     suffix = " [Y/n] " if default else " [y/N] "
     while True:
-        response = input(question + suffix).strip().lower()
+        try:
+            response = input(question + suffix).strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            _eprint("Prompt cancelled; treating as 'no'.")
+            return False
         if not response:
             return default
         if response in {"y", "yes"}:
@@ -225,5 +244,6 @@ def validate_slug(value: str, *, label: str, prefix: str) -> str:
 
 
 def _require_command(name: str, prefix: str) -> None:
+    """Exit if the named executable is not available."""
     if shutil.which(name) is None:
         _die(prefix, f"required command not found: {name}", 1)

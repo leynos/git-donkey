@@ -20,6 +20,7 @@ _GIT_TRACK_PREFIX = "git-track"
 
 
 def _suggest_remote_branches(repo: Repo, remote: str, branch: str) -> list[str]:
+    """Suggest similar remote branch names for a missing branch."""
     available = sorted({
         ref.remote_head for ref in repo.remote(remote).refs if ref.remote_head != "HEAD"
     })

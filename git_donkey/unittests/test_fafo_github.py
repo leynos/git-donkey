@@ -112,7 +112,7 @@ def test_github_token_falls_back_to_gh_token(monkeypatch: pytest.MonkeyPatch) ->
     """Fallback to GH_TOKEN when GITHUB_TOKEN is missing."""
     monkeypatch.setenv("GH_TOKEN", "fallback")
 
-    assert fafo._github_token() == "fallback"
+    assert fafo._github_token() == "fallback", "Expected GH_TOKEN fallback value."
 
 
 def test_github_token_reads_from_credentials_file(

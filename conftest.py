@@ -1,4 +1,17 @@
-"""Shared pytest fixtures for git-donkey tests."""
+"""Shared pytest fixtures for git-donkey tests.
+
+Provides reusable stub classes and fixtures that simplify GitHub API interactions
+in the test suite.
+
+Usage
+-----
+Use the shared stubs fixture in tests::
+
+    def test_example(github_stubs):
+        StubUser, StubGitHub = github_stubs
+        stub = StubGitHub(login="octo", created={})
+        assert stub.me().login == "octo"
+"""
 
 from __future__ import annotations
 
@@ -33,5 +46,12 @@ class StubGitHub:
 
 @pytest.fixture
 def github_stubs() -> tuple[type[StubUser], type[StubGitHub]]:
-    """Provide shared GitHub stub classes for tests."""
+    """Provide shared GitHub stub classes for tests.
+
+    Returns
+    -------
+    tuple[type[StubUser], type[StubGitHub]]
+        The stub user and GitHub classes for reuse in tests.
+
+    """
     return StubUser, StubGitHub
