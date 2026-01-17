@@ -61,21 +61,24 @@ def _base_branch_behind_count(
     base_branch: str,
     prefix: str,
 ) -> int:
+    if not helpers._remote_branch_exists(
+        context.repo_home, context.remote, base_branch
+    ):
+        if helpers._local_branch_exists(context.repo_home, base_branch):
+            return 0
+        helpers._die(
+            prefix,
+            f"base branch '{base_branch}' not found locally or on "
+            f"'{context.remote}/{base_branch}'",
+            1,
+        )
+
     helpers._ensure_local_tracking_branch(
         context.repo_home,
         context.remote,
         base_branch,
         prefix,
     )
-
-    if not helpers._remote_branch_exists(
-        context.repo_home, context.remote, base_branch
-    ):
-        helpers._die(
-            prefix,
-            f"remote counterpart '{context.remote}/{base_branch}' not found",
-            1,
-        )
 
     _ahead, behind = _ahead_behind(
         context.repo_home,
@@ -147,6 +150,106 @@ def _worktrees_root(home_dir: Path) -> Path:
     return (home_dir.parent / f"{home_dir.name}.worktrees").resolve()
 
 
+def _add_worktree_for_existing_local_branch(
+    context: _DonkeyContext,
+    *,
+    branch_name: str,
+    target_path: Path,
+) -> bool:
+    if not helpers._local_branch_exists(context.repo_home, branch_name):
+        return False
+
+    helpers._eprint(f"Creating worktree for existing local branch '{branch_name}'")
+    _ensure_upstream_for_branch(
+        context.repo_home,
+        branch=branch_name,
+        remote=context.remote,
+        prefix=_GIT_DONKEY_PREFIX,
+    )
+    try:
+        context.repo_home.git.worktree("add", str(target_path), branch_name)
+    except GitCommandError as exc:
+        helpers._die(_GIT_DONKEY_PREFIX, f"worktree add failed: {exc}", 1)
+    return True
+
+
+def _add_worktree_for_remote_branch(
+    context: _DonkeyContext,
+    *,
+    branch_name: str,
+    target_path: Path,
+) -> bool:
+    if not helpers._remote_branch_exists(
+        context.repo_home, context.remote, branch_name
+    ):
+        return False
+
+    helpers._eprint(
+        f"Branch '{branch_name}' exists on {context.remote}; creating a "
+        "local tracking branch"
+    )
+    try:
+        helpers._ensure_local_tracking_branch(
+            context.repo_home,
+            context.remote,
+            branch_name,
+            _GIT_DONKEY_PREFIX,
+        )
+        context.repo_home.git.worktree("add", str(target_path), branch_name)
+    except GitCommandError as exc:
+        helpers._die(_GIT_DONKEY_PREFIX, f"worktree add failed: {exc}", 1)
+    return True
+
+
+def _ensure_base_branch_available(
+    context: _DonkeyContext,
+    *,
+    base_branch: str,
+) -> None:
+    if helpers._remote_branch_exists(context.repo_home, context.remote, base_branch):
+        helpers._ensure_local_tracking_branch(
+            context.repo_home,
+            context.remote,
+            base_branch,
+            _GIT_DONKEY_PREFIX,
+        )
+        return
+
+    if not helpers._local_branch_exists(context.repo_home, base_branch):
+        helpers._die(
+            _GIT_DONKEY_PREFIX,
+            f"base branch '{base_branch}' not found locally or on "
+            f"'{context.remote}/{base_branch}'",
+            1,
+        )
+
+
+def _add_worktree_for_new_branch(
+    context: _DonkeyContext,
+    *,
+    branch_name: str,
+    base_branch: str,
+    target_path: Path,
+) -> None:
+    helpers._eprint(
+        f"Creating new branch '{branch_name}' from '{base_branch}' in a new worktree"
+    )
+    try:
+        _ensure_base_branch_available(
+            context,
+            base_branch=base_branch,
+        )
+        context.repo_home.git.worktree(
+            "add",
+            "-b",
+            branch_name,
+            str(target_path),
+            base_branch,
+        )
+    except GitCommandError as exc:
+        helpers._die(_GIT_DONKEY_PREFIX, f"worktree add failed: {exc}", 1)
+
+
 def _create_worktree(
     context: _DonkeyContext,
     *,
@@ -166,56 +269,26 @@ def _create_worktree(
     if target_path.exists():
         helpers._die_conflict(prefix, f"target path already exists: {target_path}", 1)
 
-    if helpers._local_branch_exists(context.repo_home, branch_name):
-        helpers._eprint(f"Creating worktree for existing local branch '{branch_name}'")
-        _ensure_upstream_for_branch(
-            context.repo_home,
-            branch=branch_name,
-            remote=context.remote,
-            prefix=prefix,
-        )
-        try:
-            context.repo_home.git.worktree("add", str(target_path), branch_name)
-        except GitCommandError as exc:
-            helpers._die(prefix, f"worktree add failed: {exc}", 1)
+    if _add_worktree_for_existing_local_branch(
+        context,
+        branch_name=branch_name,
+        target_path=target_path,
+    ):
         return
 
-    if helpers._remote_branch_exists(context.repo_home, context.remote, branch_name):
-        helpers._eprint(
-            f"Branch '{branch_name}' exists on {context.remote}; creating a "
-            "local tracking branch"
-        )
-        try:
-            helpers._ensure_local_tracking_branch(
-                context.repo_home,
-                context.remote,
-                branch_name,
-                prefix,
-            )
-            context.repo_home.git.worktree("add", str(target_path), branch_name)
-        except GitCommandError as exc:
-            helpers._die(prefix, f"worktree add failed: {exc}", 1)
+    if _add_worktree_for_remote_branch(
+        context,
+        branch_name=branch_name,
+        target_path=target_path,
+    ):
         return
 
-    helpers._eprint(
-        f"Creating new branch '{branch_name}' from '{base_branch}' in a new worktree"
+    _add_worktree_for_new_branch(
+        context,
+        branch_name=branch_name,
+        base_branch=base_branch,
+        target_path=target_path,
     )
-    try:
-        helpers._ensure_local_tracking_branch(
-            context.repo_home,
-            context.remote,
-            base_branch,
-            prefix,
-        )
-        context.repo_home.git.worktree(
-            "add",
-            "-b",
-            branch_name,
-            str(target_path),
-            base_branch,
-        )
-    except GitCommandError as exc:
-        helpers._die(prefix, f"worktree add failed: {exc}", 1)
 
 
 def _load_donkey_context() -> tuple[_DonkeyContext, str]:

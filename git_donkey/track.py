@@ -1,4 +1,12 @@
-"""git-track workflow helpers."""
+"""git-track workflow helpers.
+
+Encapsulates the logic for syncing or creating tracking branches from the first
+remote.
+
+Usage:
+    from git_donkey import track
+    track.run_git_track("feature/foo")
+"""
 
 from __future__ import annotations
 
@@ -45,7 +53,7 @@ def run_git_track(branch: str) -> int:
         helpers._eprint(f"Switching to: {branch}")
         head.checkout()
     except IndexError:
-        head = None
+        pass
     except GitCommandError as exc:
         helpers._die(
             _GIT_TRACK_PREFIX,

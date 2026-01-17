@@ -37,10 +37,14 @@ def _read_token_from_file(path: Path) -> str | None:
         return None
 
     try:
-        token = path.read_text().splitlines()[0].strip()
+        lines = path.read_text().splitlines()
     except OSError:
         return None
 
+    if not lines:
+        return None
+
+    token = lines[0].strip()
     return token or None
 
 
@@ -137,13 +141,18 @@ def _is_repo_already_exists_error(
         return True
 
     for detail in getattr(error, "errors", []):
-        if isinstance(detail, dict):
-            detail_message = str(detail.get("message", "")).lower()
-            detail_code = str(detail.get("code", "")).lower()
-            if "already exists" in detail_message or detail_code == "already_exists":
-                return True
-        elif "already exists" in str(detail).lower():
-            return True
+        match detail:
+            case dict():
+                detail_message = str(detail.get("message", "")).lower()
+                detail_code = str(detail.get("code", "")).lower()
+                if (
+                    "already exists" in detail_message
+                    or detail_code == "already_exists"
+                ):
+                    return True
+            case _:
+                if "already exists" in str(detail).lower():
+                    return True
 
     return False
 

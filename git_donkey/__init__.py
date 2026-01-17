@@ -1,7 +1,5 @@
-"""git-donkey package."""
+"""git-donkey package exports."""
 
-from __future__ import annotations
-
-PACKAGE_NAME = "git_donkey"
+from .constants import PACKAGE_NAME
 
 __all__ = ["PACKAGE_NAME"]

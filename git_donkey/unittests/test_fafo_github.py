@@ -1,4 +1,8 @@
-"""Unit tests for the github3 integration in git-fafo."""
+"""Unit tests for github3 and device-flow behavior in git-fafo.
+
+Covers token selection, device-flow success and failure, and repository
+creation error handling.
+"""
 
 from __future__ import annotations
 
@@ -12,6 +16,74 @@ from git_donkey import fafo
 
 if typ.TYPE_CHECKING:
     from pathlib import Path
+
+
+@dataclasses.dataclass
+class _StubAuthInfo:
+    device_code: str
+    user_code: str
+    verification_uri: str
+    expires_in: int
+    interval: int
+
+
+def _stub_auth_info() -> _StubAuthInfo:
+    return _StubAuthInfo(
+        device_code="device",
+        user_code="USER-CODE",
+        verification_uri="https://example.com/device",
+        expires_in=900,
+        interval=5,
+    )
+
+
+@dataclasses.dataclass
+class _StubAuthenticator:
+    client_id: str
+    auth_url: str
+    token_url: str
+    scopes: list[str]
+    token: str
+    created: dict[str, object] | None = None
+
+    def ping(self) -> _StubAuthInfo:
+        if self.created is not None:
+            self.created["pinged"] = True
+        return _stub_auth_info()
+
+    def poll(self) -> str:
+        if self.created is not None:
+            self.created["polled"] = True
+        return self.token
+
+
+def _fake_authenticator_factory(
+    *,
+    token: str,
+    created: dict[str, object] | None = None,
+) -> typ.Callable[..., _StubAuthenticator]:
+    def _fake_authenticator(
+        *,
+        client_id: str,
+        auth_url: str,
+        token_url: str,
+        scopes: list[str],
+    ) -> _StubAuthenticator:
+        if created is not None:
+            created["client_id"] = client_id
+            created["auth_url"] = auth_url
+            created["token_url"] = token_url
+            created["scopes"] = scopes
+        return _StubAuthenticator(
+            client_id=client_id,
+            auth_url=auth_url,
+            token_url=token_url,
+            scopes=scopes,
+            token=token,
+            created=created,
+        )
+
+    return _fake_authenticator
 
 
 @pytest.fixture(autouse=True)
@@ -80,50 +152,12 @@ def test_github_token_uses_default_client_id(
 
     created: dict[str, object] = {}
 
-    @dataclasses.dataclass
-    class _StubAuthInfo:
-        device_code: str
-        user_code: str
-        verification_uri: str
-        expires_in: int
-        interval: int
-
-    @dataclasses.dataclass
-    class _StubAuthenticator:
-        client_id: str
-        auth_url: str
-        token_url: str
-        scopes: list[str]
-        created: dict[str, object]
-
-        def ping(self) -> _StubAuthInfo:
-            self.created["pinged"] = True
-            return _StubAuthInfo(
-                device_code="device",
-                user_code="USER-CODE",
-                verification_uri="https://example.com/device",
-                expires_in=900,
-                interval=5,
-            )
-
-        def poll(self) -> str:
-            self.created["polled"] = True
-            return "default-token"
-
-    def _fake_authenticator(
-        *,
-        client_id: str,
-        auth_url: str,
-        token_url: str,
-        scopes: list[str],
-    ) -> _StubAuthenticator:
-        created["client_id"] = client_id
-        created["auth_url"] = auth_url
-        created["token_url"] = token_url
-        created["scopes"] = scopes
-        return _StubAuthenticator(client_id, auth_url, token_url, scopes, created)
-
-    monkeypatch.setattr(fafo.loctocat, "Authenticator", _fake_authenticator)
+    auth_value = "default-token"
+    monkeypatch.setattr(
+        fafo.loctocat,
+        "Authenticator",
+        _fake_authenticator_factory(token=auth_value, created=created),
+    )
 
     token = fafo._github_token()
 
@@ -141,45 +175,11 @@ def test_github_token_device_flow_failure(
     monkeypatch.setattr(fafo.sys.stdin, "isatty", lambda: True)
     monkeypatch.setattr(fafo.sys.stdout, "isatty", lambda: True)
 
-    @dataclasses.dataclass
-    class _StubAuthInfo:
-        device_code: str
-        user_code: str
-        verification_uri: str
-        expires_in: int
-        interval: int
-
-    @dataclasses.dataclass
-    class _StubAuthenticator:
-        client_id: str
-        auth_url: str
-        token_url: str
-        scopes: list[str]
-
-        @staticmethod
-        def ping() -> _StubAuthInfo:
-            return _StubAuthInfo(
-                device_code="device",
-                user_code="USER-CODE",
-                verification_uri="https://example.com/device",
-                expires_in=900,
-                interval=5,
-            )
-
-        @staticmethod
-        def poll() -> str:
-            return ""
-
-    def _fake_authenticator(
-        *,
-        client_id: str,
-        auth_url: str,
-        token_url: str,
-        scopes: list[str],
-    ) -> _StubAuthenticator:
-        return _StubAuthenticator(client_id, auth_url, token_url, scopes)
-
-    monkeypatch.setattr(fafo.loctocat, "Authenticator", _fake_authenticator)
+    monkeypatch.setattr(
+        fafo.loctocat,
+        "Authenticator",
+        _fake_authenticator_factory(token=""),
+    )
 
     with pytest.raises(SystemExit) as excinfo:
         fafo._github_token()
@@ -202,50 +202,12 @@ def test_github_token_authorizes_and_persists(
 
     created: dict[str, object] = {}
 
-    @dataclasses.dataclass
-    class _StubAuthInfo:
-        device_code: str
-        user_code: str
-        verification_uri: str
-        expires_in: int
-        interval: int
-
-    @dataclasses.dataclass
-    class _StubAuthenticator:
-        client_id: str
-        auth_url: str
-        token_url: str
-        scopes: list[str]
-        created: dict[str, object]
-
-        def ping(self) -> _StubAuthInfo:
-            self.created["pinged"] = True
-            return _StubAuthInfo(
-                device_code="device",
-                user_code="USER-CODE",
-                verification_uri="https://example.com/device",
-                expires_in=900,
-                interval=5,
-            )
-
-        def poll(self) -> str:
-            self.created["polled"] = True
-            return "created-token"
-
-    def _fake_authenticator(
-        *,
-        client_id: str,
-        auth_url: str,
-        token_url: str,
-        scopes: list[str],
-    ) -> _StubAuthenticator:
-        created["client_id"] = client_id
-        created["auth_url"] = auth_url
-        created["token_url"] = token_url
-        created["scopes"] = scopes
-        return _StubAuthenticator(client_id, auth_url, token_url, scopes, created)
-
-    monkeypatch.setattr(fafo.loctocat, "Authenticator", _fake_authenticator)
+    auth_value = "created-token"
+    monkeypatch.setattr(
+        fafo.loctocat,
+        "Authenticator",
+        _fake_authenticator_factory(token=auth_value, created=created),
+    )
 
     token = fafo._github_token()
 
@@ -259,29 +221,16 @@ def test_github_token_authorizes_and_persists(
 
 def test_create_remote_repository_uses_github3_login(
     monkeypatch: pytest.MonkeyPatch,
+    github_stubs: tuple[type[typ.Any], type[typ.Any]],
 ) -> None:
     """Creating the repo should call github3 login and create_repository."""
     created: dict[str, str | bool] = {}
 
-    @dataclasses.dataclass
-    class _StubUser:
-        login: str
+    stub_github = github_stubs[1]
 
-    @dataclasses.dataclass
-    class _StubGitHub:
-        login: str
-        created: dict[str, str | bool]
-
-        def me(self) -> _StubUser:
-            return _StubUser(self.login)
-
-        def create_repository(self, name: str, *, private: bool = False) -> None:
-            self.created["name"] = name
-            self.created["private"] = private
-
-    def _fake_login(*, token: str) -> _StubGitHub:
+    def _fake_login(*, token: str) -> object:
         created["token"] = token
-        return _StubGitHub("octocat", created)
+        return stub_github("octocat", created)
 
     monkeypatch.setattr(fafo.github3, "login", _fake_login)
 
@@ -342,6 +291,7 @@ def test_create_remote_repository_missing_user_login_exits_with_error(
 def test_create_remote_repository_reports_existing_repo(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
+    github_stubs: tuple[type[typ.Any], type[typ.Any]],
 ) -> None:
     """Provide a friendly message when the repository already exists."""
 
@@ -364,15 +314,11 @@ def test_create_remote_repository_reports_existing_repo(
             }
 
     @dataclasses.dataclass
-    class _StubUser:
-        login: str
-
-    @dataclasses.dataclass
     class _StubGitHub:
         login: str
 
-        def me(self) -> _StubUser:
-            return _StubUser(self.login)
+        def me(self) -> object:
+            return github_stubs[0](self.login)
 
         @staticmethod
         def create_repository(name: str, *, private: bool = False) -> None:

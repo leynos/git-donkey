@@ -1,4 +1,12 @@
-"""Shared helpers for git-donkey commands."""
+"""Shared helpers for git-donkey command workflows.
+
+Provides utility functions for error handling, Git discovery, worktree parsing,
+and slug validation that are reused across the CLI modules.
+
+Usage:
+    from git_donkey import helpers
+    helpers.validate_slug("feature/foo", label="branch", prefix="git-donkey")
+"""
 
 from __future__ import annotations
 

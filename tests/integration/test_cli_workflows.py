@@ -1,8 +1,13 @@
-"""Integration coverage for the git-donkey CLI commands."""
+"""Integration coverage for git-donkey command workflows.
+
+Exercises git-donkey worktree creation, git-track branch synchronization, and
+git-fafo repository scaffolding in real repositories.
+
+Run with `make test` or `pytest tests/integration/test_cli_workflows.py`.
+"""
 
 from __future__ import annotations
 
-import dataclasses
 import os
 import typing as typ
 from pathlib import Path
@@ -15,6 +20,7 @@ from git_donkey import donkey, fafo, track
 
 
 def _configure_repo(repo: Repo) -> None:
+    """Configure user identity for commit creation."""
     config = repo.config_writer()
     config.set_value("user", "name", "Test User")
     config.set_value("user", "email", "test@example.com")
@@ -22,6 +28,7 @@ def _configure_repo(repo: Repo) -> None:
 
 
 def _seed_repo(repo: Repo, filename: str, content: str) -> None:
+    """Create and commit a file in the repository."""
     path = Path(repo.working_tree_dir or ".") / filename
     path.write_text(content)
     repo.index.add([str(path)])
@@ -29,6 +36,7 @@ def _seed_repo(repo: Repo, filename: str, content: str) -> None:
 
 
 def _setup_repo(tmp_path: Path) -> tuple[Path, Path]:
+    """Create a local repo with a bare remote and a seeded main branch."""
     remote_path = tmp_path / "remote.git"
     local_path = tmp_path / "local"
 
@@ -61,8 +69,10 @@ def test_git_track_creates_tracking_branch(
     monkeypatch.chdir(local_path)
     exit_code = track.run_git_track("feature/track")
 
-    assert exit_code == 0
-    assert Repo(local_path).active_branch.name == "feature/track"
+    assert exit_code == 0, "expected git-track to exit successfully"
+    assert Repo(local_path).active_branch.name == "feature/track", (
+        "expected feature/track to be checked out"
+    )
 
 
 def test_git_donkey_creates_new_worktree(
@@ -75,12 +85,38 @@ def test_git_donkey_creates_new_worktree(
     monkeypatch.chdir(local_path)
     exit_code = donkey.run_git_donkey("feature/worktree", no_pull=True)
 
-    assert exit_code == 0
+    assert exit_code == 0, "expected git-donkey to exit successfully"
 
     worktree_root = local_path.parent / f"{local_path.name}.worktrees"
     worktree_path = worktree_root / "feature/worktree"
-    assert worktree_path.exists()
-    assert Repo(worktree_path).active_branch.name == "feature/worktree"
+    assert worktree_path.exists(), "expected worktree directory to be created"
+    assert Repo(worktree_path).active_branch.name == "feature/worktree", (
+        "expected worktree branch name to match"
+    )
+
+
+def test_git_donkey_allows_local_only_base_branch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """git-donkey should allow local-only base branches without --no-pull."""
+    local_path, _remote_path = _setup_repo(tmp_path)
+    repo = Repo(local_path)
+
+    repo.git.checkout("-b", "feature/local-only")
+    _seed_repo(repo, "local.txt", "local change")
+
+    monkeypatch.chdir(local_path)
+    exit_code = donkey.run_git_donkey("feature/from-local", ".", no_pull=False)
+
+    assert exit_code == 0, "expected git-donkey to exit successfully"
+
+    worktree_root = local_path.parent / f"{local_path.name}.worktrees"
+    worktree_path = worktree_root / "feature/from-local"
+    assert worktree_path.exists(), "expected worktree directory to be created"
+    assert Repo(worktree_path).active_branch.name == "feature/from-local", (
+        "expected worktree branch name to match"
+    )
 
 
 def test_git_donkey_updates_base_branch_when_behind_remote(
@@ -119,9 +155,11 @@ def test_git_donkey_updates_base_branch_when_behind_remote(
 
     exit_code = donkey.run_git_donkey("feature/update", no_pull=False)
 
-    assert exit_code == 0
-    assert called["base_branch"] == "main"
-    assert called["prefix"] == donkey._GIT_DONKEY_PREFIX
+    assert exit_code == 0, "expected git-donkey to exit successfully"
+    assert called["base_branch"] == "main", "expected main to be updated"
+    assert called["prefix"] == donkey._GIT_DONKEY_PREFIX, (
+        "expected git-donkey prefix in update call"
+    )
 
 
 def test_git_donkey_sets_upstream_for_existing_branch(
@@ -140,16 +178,18 @@ def test_git_donkey_sets_upstream_for_existing_branch(
     monkeypatch.chdir(local_path)
     exit_code = donkey.run_git_donkey("feature/existing", no_pull=True)
 
-    assert exit_code == 0
+    assert exit_code == 0, "expected git-donkey to exit successfully"
 
     worktree_root = local_path.parent / f"{local_path.name}.worktrees"
     worktree_path = worktree_root / "feature/existing"
-    assert worktree_path.exists()
+    assert worktree_path.exists(), "expected worktree directory to be created"
     worktree_repo = Repo(worktree_path)
-    assert worktree_repo.active_branch.name == "feature/existing"
+    assert worktree_repo.active_branch.name == "feature/existing", (
+        "expected existing branch to be checked out in worktree"
+    )
     assert (
         str(worktree_repo.active_branch.tracking_branch()) == "origin/feature/existing"
-    )
+    ), "expected worktree branch to track origin/feature/existing"
 
 
 def test_git_fafo_existing_repo_early_return(
@@ -168,18 +208,22 @@ def test_git_fafo_existing_repo_early_return(
     def _fake_run_fafo_commands(*_: object, **__: object) -> None:
         called["ran"] = True
 
+    monkeypatch.setattr(fafo.helpers, "_require_command", lambda *_: None)
     monkeypatch.setattr(fafo, "_run_fafo_commands", _fake_run_fafo_commands)
 
     exit_code = fafo.run_git_fafo("demo-repo", "python")
 
-    assert exit_code == 1
-    assert called == {}
-    assert "You did that one already!" in capsys.readouterr().err
+    assert exit_code == 1, "expected git-fafo to return error for existing path"
+    assert called == {}, "expected no git-fafo commands to run"
+    assert "You did that one already!" in capsys.readouterr().err, (
+        "expected early-return message on stderr"
+    )
 
 
 def test_git_fafo_runs_expected_commands(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    github_stubs: tuple[type[typ.Any], type[typ.Any]],
 ) -> None:
     """git-fafo should invoke copier, GitHub API, and git with expected arguments."""
     bin_dir = tmp_path / "bin"
@@ -208,25 +252,11 @@ def test_git_fafo_runs_expected_commands(
 
     created: dict[str, str | bool] = {}
 
-    @dataclasses.dataclass
-    class _StubUser:
-        login: str
+    stub_github = github_stubs[1]
 
-    @dataclasses.dataclass
-    class _StubGitHub:
-        login: str
-        created: dict[str, str | bool]
-
-        def me(self) -> _StubUser:
-            return _StubUser(self.login)
-
-        def create_repository(self, name: str, *, private: bool = False) -> None:
-            self.created["name"] = name
-            self.created["private"] = private
-
-    def _fake_login(*, token: str | None = None) -> _StubGitHub:
+    def _fake_login(*, token: str | None = None) -> object:
         created["token"] = token or ""
-        return _StubGitHub("example", created)
+        return stub_github("example", created)
 
     monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
     monkeypatch.setenv("USER", "example")
@@ -238,14 +268,14 @@ def test_git_fafo_runs_expected_commands(
 
     exit_code = fafo.run_git_fafo("demo-repo", "python")
 
-    assert exit_code == 0
-    assert (tmp_path / "demo-repo").exists()
+    assert exit_code == 0, "expected git-fafo to exit successfully"
+    assert (tmp_path / "demo-repo").exists(), "expected repo directory to exist"
 
     calls = log_path.read_text().splitlines()
     assert (
         calls[0] == "copier copy git@github.com:example/agent-template-python demo-repo"
-    )
-    assert "git init" in calls[1]
-    assert created["token"] == auth_value
-    assert created["name"] == "demo-repo"
-    assert created["private"] is False
+    ), "expected copier to run with the template and repo name"
+    assert "git init" in calls[1], "expected git init to be invoked"
+    assert created["token"] == auth_value, "expected token passed to github3 login"
+    assert created["name"] == "demo-repo", "expected repo to be created"
+    assert created["private"] is False, "expected repo to be public"
