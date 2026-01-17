@@ -1,4 +1,17 @@
-"""git-donkey workflow helpers."""
+"""Implement the git-donkey worktree workflow.
+
+Provides the workflow for managing linked worktrees for feature branches with
+automatic base-branch synchronisation.
+
+Usage
+-----
+Run with::
+
+    git-donkey feature/my-branch
+
+Key utilities include worktree creation, base branch resolution, pull/rebase
+helpers, and upstream tracking.
+"""
 
 from __future__ import annotations
 
