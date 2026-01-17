@@ -28,6 +28,8 @@ _GIT_DONKEY_PREFIX = helpers._GIT_DONKEY_PREFIX
 
 @dataclasses.dataclass(frozen=True, slots=True)
 class _DonkeyContext:
+    """Container for resolved git-donkey repository state."""
+
     repo_home: Repo
     remote: str
     branch_to_worktree: dict[str, Path]
@@ -58,11 +60,13 @@ def choose_base_branch(saved_cwd_branch: str, origin_arg: str | None) -> str:
 
 
 def _pull_rebase_in_worktree(worktree_dir: Path, remote: str, branch: str) -> None:
+    """Pull and rebase the specified branch inside a worktree."""
     git = Git(str(worktree_dir))
     git.pull("--rebase", remote, branch)
 
 
 def _ahead_behind(repo: Repo, base: str, compare_ref: str) -> tuple[int, int]:
+    """Return ahead and behind commit counts between two refs."""
     out = repo.git.rev_list("--left-right", "--count", f"{base}...{compare_ref}")
     ahead, behind = out.split()
     return int(ahead), int(behind)
@@ -74,6 +78,7 @@ def _base_branch_behind_count(
     base_branch: str,
     prefix: str,
 ) -> int:
+    """Return how many commits the base branch is behind its remote counterpart."""
     if not helpers._remote_branch_exists(
         context.repo_home, context.remote, base_branch
     ):
@@ -107,6 +112,7 @@ def _update_base_branch_in_worktree(
     base_branch: str,
     prefix: str,
 ) -> None:
+    """Update the base branch by pulling with rebase in its worktree."""
     worktree = context.branch_to_worktree.get(base_branch)
     if worktree is not None:
         helpers._eprint(f"Updating existing worktree at: {worktree}")
@@ -134,6 +140,7 @@ def _maybe_update_base_branch(
     no_pull: bool,
     prefix: str,
 ) -> None:
+    """Conditionally update the base branch if behind and user confirms."""
     if no_pull:
         return
 
@@ -160,6 +167,7 @@ def _maybe_update_base_branch(
 
 
 def _worktrees_root(home_dir: Path) -> Path:
+    """Return the directory path where worktrees are stored."""
     return (home_dir.parent / f"{home_dir.name}.worktrees").resolve()
 
 
@@ -270,6 +278,7 @@ def _create_worktree(
     base_branch: str,
     target_path: Path,
 ) -> None:
+    """Create a new worktree for the specified branch."""
     prefix = _GIT_DONKEY_PREFIX
     existing_worktree = context.branch_to_worktree.get(branch_name)
     if existing_worktree is not None:
@@ -305,6 +314,7 @@ def _create_worktree(
 
 
 def _load_donkey_context() -> tuple[_DonkeyContext, str]:
+    """Load and return the git-donkey repository context and current branch."""
     repo_cwd = helpers._find_repo(_GIT_DONKEY_PREFIX)
     saved_cwd_branch = helpers._get_checked_out_branch_name(
         repo_cwd, _GIT_DONKEY_PREFIX
@@ -338,6 +348,7 @@ def _ensure_upstream_for_branch(
     remote: str,
     prefix: str,
 ) -> None:
+    """Ensure the specified local branch tracks its remote counterpart."""
     if _has_tracking_branch(repo, branch):
         return
 
@@ -351,6 +362,7 @@ def _ensure_upstream_for_branch(
 
 
 def _has_tracking_branch(repo: Repo, branch: str) -> bool:
+    """Return whether the branch has an upstream tracking branch."""
     try:
         head = repo.heads[branch]
     except IndexError:
