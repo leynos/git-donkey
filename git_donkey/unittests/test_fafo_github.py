@@ -8,7 +8,7 @@ import typing as typ
 import pytest
 from github3 import exceptions as github3_exceptions
 
-from git_donkey import cli
+from git_donkey import fafo
 
 if typ.TYPE_CHECKING:
     from pathlib import Path
@@ -21,7 +21,7 @@ def _clear_token_env(
 ) -> None:
     monkeypatch.delenv("GITHUB_TOKEN", raising=False)
     monkeypatch.delenv("GH_TOKEN", raising=False)
-    monkeypatch.delenv(cli._GIT_DONKEY_CLIENT_ID_ENV, raising=False)
+    monkeypatch.delenv(fafo._GIT_DONKEY_CLIENT_ID_ENV, raising=False)
     monkeypatch.setenv(
         "GIT_DONKEY_CREDENTIALS_FILE",
         str(tmp_path / "missing-token"),
@@ -33,14 +33,14 @@ def test_github_token_prefers_github_token(monkeypatch: pytest.MonkeyPatch) -> N
     monkeypatch.setenv("GITHUB_TOKEN", "primary")
     monkeypatch.setenv("GH_TOKEN", "secondary")
 
-    assert cli._github_token() == "primary"
+    assert fafo._github_token() == "primary"
 
 
 def test_github_token_falls_back_to_gh_token(monkeypatch: pytest.MonkeyPatch) -> None:
     """Fallback to GH_TOKEN when GITHUB_TOKEN is missing."""
     monkeypatch.setenv("GH_TOKEN", "fallback")
 
-    assert cli._github_token() == "fallback"
+    assert fafo._github_token() == "fallback"
 
 
 def test_github_token_reads_from_credentials_file(
@@ -52,18 +52,18 @@ def test_github_token_reads_from_credentials_file(
     token_path.write_text("stored-token\n123\n")
     monkeypatch.setenv("GIT_DONKEY_CREDENTIALS_FILE", str(token_path))
 
-    assert cli._github_token() == "stored-token"
+    assert fafo._github_token() == "stored-token"
 
 
 def test_github_token_requires_interactive_prompt(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Raise a SystemExit when prompting is not possible."""
-    monkeypatch.setattr(cli.sys.stdin, "isatty", lambda: False)
-    monkeypatch.setattr(cli.sys.stdout, "isatty", lambda: False)
+    monkeypatch.setattr(fafo.sys.stdin, "isatty", lambda: False)
+    monkeypatch.setattr(fafo.sys.stdout, "isatty", lambda: False)
 
     with pytest.raises(SystemExit) as excinfo:
-        cli._github_token()
+        fafo._github_token()
 
     assert excinfo.value.code == 1
 
@@ -75,8 +75,8 @@ def test_github_token_uses_default_client_id(
     """Use the built-in client ID when none is provided."""
     token_path = tmp_path / "token.txt"
     monkeypatch.setenv("GIT_DONKEY_CREDENTIALS_FILE", str(token_path))
-    monkeypatch.setattr(cli.sys.stdin, "isatty", lambda: True)
-    monkeypatch.setattr(cli.sys.stdout, "isatty", lambda: True)
+    monkeypatch.setattr(fafo.sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr(fafo.sys.stdout, "isatty", lambda: True)
 
     created: dict[str, object] = {}
 
@@ -123,12 +123,69 @@ def test_github_token_uses_default_client_id(
         created["scopes"] = scopes
         return _StubAuthenticator(client_id, auth_url, token_url, scopes, created)
 
-    monkeypatch.setattr(cli.loctocat, "Authenticator", _fake_authenticator)
+    monkeypatch.setattr(fafo.loctocat, "Authenticator", _fake_authenticator)
 
-    token = cli._github_token()
+    token = fafo._github_token()
 
     assert token == "default-token"  # noqa: S105
-    assert created["client_id"] == cli._DEFAULT_GITHUB_CLIENT_ID
+    assert created["client_id"] == fafo._DEFAULT_GITHUB_CLIENT_ID
+
+
+def test_github_token_device_flow_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Device-flow token acquisition failure (poll returns no token)."""
+    token_path = tmp_path / "device-flow-failure-token"
+    monkeypatch.setenv("GIT_DONKEY_CREDENTIALS_FILE", str(token_path))
+    monkeypatch.setattr(fafo.sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr(fafo.sys.stdout, "isatty", lambda: True)
+
+    @dataclasses.dataclass
+    class _StubAuthInfo:
+        device_code: str
+        user_code: str
+        verification_uri: str
+        expires_in: int
+        interval: int
+
+    @dataclasses.dataclass
+    class _StubAuthenticator:
+        client_id: str
+        auth_url: str
+        token_url: str
+        scopes: list[str]
+
+        @staticmethod
+        def ping() -> _StubAuthInfo:
+            return _StubAuthInfo(
+                device_code="device",
+                user_code="USER-CODE",
+                verification_uri="https://example.com/device",
+                expires_in=900,
+                interval=5,
+            )
+
+        @staticmethod
+        def poll() -> str:
+            return ""
+
+    def _fake_authenticator(
+        *,
+        client_id: str,
+        auth_url: str,
+        token_url: str,
+        scopes: list[str],
+    ) -> _StubAuthenticator:
+        return _StubAuthenticator(client_id, auth_url, token_url, scopes)
+
+    monkeypatch.setattr(fafo.loctocat, "Authenticator", _fake_authenticator)
+
+    with pytest.raises(SystemExit) as excinfo:
+        fafo._github_token()
+
+    assert excinfo.value.code == 1
+    assert not token_path.exists()
 
 
 def test_github_token_authorizes_and_persists(
@@ -138,10 +195,10 @@ def test_github_token_authorizes_and_persists(
     """Prompt, authorize, and persist a new token when none is available."""
     token_path = tmp_path / "token.txt"
     monkeypatch.setenv("GIT_DONKEY_CREDENTIALS_FILE", str(token_path))
-    monkeypatch.setenv(cli._GIT_DONKEY_CLIENT_ID_ENV, "client-id")
+    monkeypatch.setenv(fafo._GIT_DONKEY_CLIENT_ID_ENV, "client-id")
 
-    monkeypatch.setattr(cli.sys.stdin, "isatty", lambda: True)
-    monkeypatch.setattr(cli.sys.stdout, "isatty", lambda: True)
+    monkeypatch.setattr(fafo.sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr(fafo.sys.stdout, "isatty", lambda: True)
 
     created: dict[str, object] = {}
 
@@ -188,9 +245,9 @@ def test_github_token_authorizes_and_persists(
         created["scopes"] = scopes
         return _StubAuthenticator(client_id, auth_url, token_url, scopes, created)
 
-    monkeypatch.setattr(cli.loctocat, "Authenticator", _fake_authenticator)
+    monkeypatch.setattr(fafo.loctocat, "Authenticator", _fake_authenticator)
 
-    token = cli._github_token()
+    token = fafo._github_token()
 
     assert token == "created-token"  # noqa: S105
     assert created["scopes"] == ["user", "repo"]
@@ -226,15 +283,60 @@ def test_create_remote_repository_uses_github3_login(
         created["token"] = token
         return _StubGitHub("octocat", created)
 
-    monkeypatch.setattr(cli.github3, "login", _fake_login)
+    monkeypatch.setattr(fafo.github3, "login", _fake_login)
 
     auth_value = "token-123"
-    owner = cli._create_remote_repository(token=auth_value, repo_name="demo")
+    owner = fafo._create_remote_repository(token=auth_value, repo_name="demo")
 
     assert owner == "octocat"
     assert created["token"] == auth_value
     assert created["name"] == "demo"
     assert created["private"] is False
+
+
+def test_create_remote_repository_auth_failure_exits_with_error(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Auth failures should exit with a clear error message."""
+
+    def _fake_login(*, token: str) -> None:
+        return None
+
+    monkeypatch.setattr(fafo.github3, "login", _fake_login)
+
+    auth_value = "example-value"
+    with pytest.raises(SystemExit) as excinfo:
+        fafo._create_remote_repository(token=auth_value, repo_name="demo-repo")
+
+    assert excinfo.value.code == 1
+    err = capsys.readouterr().err
+    assert "GitHub authentication failed" in err
+
+
+def test_create_remote_repository_missing_user_login_exits_with_error(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Missing user info should exit with a clear error message."""
+
+    class _StubGitHub:
+        @staticmethod
+        def me() -> None:
+            return None
+
+    def _fake_login(*, token: str) -> _StubGitHub:
+        return _StubGitHub()
+
+    monkeypatch.setattr(fafo.github3, "login", _fake_login)
+
+    auth_value = "example-value"
+    with pytest.raises(SystemExit) as excinfo:
+        fafo._create_remote_repository(token=auth_value, repo_name="demo-repo")
+
+    assert excinfo.value.code == 1
+    err = capsys.readouterr().err
+    assert "could not determine GitHub username" in err
 
 
 def test_create_remote_repository_reports_existing_repo(
@@ -279,11 +381,11 @@ def test_create_remote_repository_reports_existing_repo(
     def _fake_login(*, token: str) -> _StubGitHub:
         return _StubGitHub("octocat")
 
-    monkeypatch.setattr(cli.github3, "login", _fake_login)
+    monkeypatch.setattr(fafo.github3, "login", _fake_login)
 
     auth_value = "example-value"
     with pytest.raises(SystemExit) as excinfo:
-        cli._create_remote_repository(token=auth_value, repo_name="demo-repo")
+        fafo._create_remote_repository(token=auth_value, repo_name="demo-repo")
 
     assert excinfo.value.code == 1
     err = capsys.readouterr().err

@@ -11,7 +11,7 @@ if typ.TYPE_CHECKING:
     import pytest
 from git import Repo
 
-from git_donkey import cli
+from git_donkey import donkey, fafo, track
 
 
 def _configure_repo(repo: Repo) -> None:
@@ -59,7 +59,7 @@ def test_git_track_creates_tracking_branch(
     repo.delete_head("feature/track", force=True)
 
     monkeypatch.chdir(local_path)
-    exit_code = cli.run_git_track("feature/track")
+    exit_code = track.run_git_track("feature/track")
 
     assert exit_code == 0
     assert Repo(local_path).active_branch.name == "feature/track"
@@ -73,7 +73,7 @@ def test_git_donkey_creates_new_worktree(
     local_path, _remote_path = _setup_repo(tmp_path)
 
     monkeypatch.chdir(local_path)
-    exit_code = cli.run_git_donkey("feature/worktree", no_pull=True)
+    exit_code = donkey.run_git_donkey("feature/worktree", no_pull=True)
 
     assert exit_code == 0
 
@@ -81,6 +81,47 @@ def test_git_donkey_creates_new_worktree(
     worktree_path = worktree_root / "feature/worktree"
     assert worktree_path.exists()
     assert Repo(worktree_path).active_branch.name == "feature/worktree"
+
+
+def test_git_donkey_updates_base_branch_when_behind_remote(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """git-donkey should update a behind base branch when the prompt is accepted."""
+    local_path, _remote_path = _setup_repo(tmp_path)
+    repo = Repo(local_path)
+
+    repo.git.checkout("main")
+    _seed_repo(repo, "upstream.txt", "upstream change")
+    repo.remote("origin").push("main")
+    repo.git.reset("--hard", "HEAD~1")
+
+    monkeypatch.chdir(local_path)
+    monkeypatch.setattr(donkey.helpers, "_prompt_yes_no", lambda *_: True)
+
+    called: dict[str, object] = {}
+
+    def _fake_update_base_branch_in_worktree(
+        context: donkey._DonkeyContext,
+        *,
+        base_branch: str,
+        prefix: str,
+    ) -> None:
+        called["context"] = context
+        called["base_branch"] = base_branch
+        called["prefix"] = prefix
+
+    monkeypatch.setattr(
+        donkey,
+        "_update_base_branch_in_worktree",
+        _fake_update_base_branch_in_worktree,
+    )
+
+    exit_code = donkey.run_git_donkey("feature/update", no_pull=False)
+
+    assert exit_code == 0
+    assert called["base_branch"] == "main"
+    assert called["prefix"] == donkey._GIT_DONKEY_PREFIX
 
 
 def test_git_donkey_sets_upstream_for_existing_branch(
@@ -97,7 +138,7 @@ def test_git_donkey_sets_upstream_for_existing_branch(
     repo.git.checkout("main")
 
     monkeypatch.chdir(local_path)
-    exit_code = cli.run_git_donkey("feature/existing", no_pull=True)
+    exit_code = donkey.run_git_donkey("feature/existing", no_pull=True)
 
     assert exit_code == 0
 
@@ -109,6 +150,31 @@ def test_git_donkey_sets_upstream_for_existing_branch(
     assert (
         str(worktree_repo.active_branch.tracking_branch()) == "origin/feature/existing"
     )
+
+
+def test_git_fafo_existing_repo_early_return(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """git-fafo should exit early if the target repo directory already exists."""
+    existing_repo_path = tmp_path / "demo-repo"
+    existing_repo_path.mkdir()
+
+    monkeypatch.chdir(tmp_path)
+
+    called: dict[str, bool] = {}
+
+    def _fake_run_fafo_commands(*_: object, **__: object) -> None:
+        called["ran"] = True
+
+    monkeypatch.setattr(fafo, "_run_fafo_commands", _fake_run_fafo_commands)
+
+    exit_code = fafo.run_git_fafo("demo-repo", "python")
+
+    assert exit_code == 1
+    assert called == {}
+    assert "You did that one already!" in capsys.readouterr().err
 
 
 def test_git_fafo_runs_expected_commands(
@@ -167,10 +233,10 @@ def test_git_fafo_runs_expected_commands(
     monkeypatch.setenv("STUB_LOG", str(log_path))
     auth_value = "fake-token"
     monkeypatch.setenv("GITHUB_TOKEN", auth_value)
-    monkeypatch.setattr(cli.github3, "login", _fake_login)
+    monkeypatch.setattr(fafo.github3, "login", _fake_login)
     monkeypatch.chdir(tmp_path)
 
-    exit_code = cli.run_git_fafo("demo-repo", "python")
+    exit_code = fafo.run_git_fafo("demo-repo", "python")
 
     assert exit_code == 0
     assert (tmp_path / "demo-repo").exists()
