@@ -105,7 +105,9 @@ def test_github_token_prefers_github_token(monkeypatch: pytest.MonkeyPatch) -> N
     monkeypatch.setenv("GITHUB_TOKEN", "primary")
     monkeypatch.setenv("GH_TOKEN", "secondary")
 
-    assert fafo._github_token() == "primary"
+    assert fafo._github_token() == "primary", (
+        "GITHUB_TOKEN should take precedence over GH_TOKEN"
+    )
 
 
 def test_github_token_falls_back_to_gh_token(monkeypatch: pytest.MonkeyPatch) -> None:
