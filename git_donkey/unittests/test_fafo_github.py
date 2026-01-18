@@ -106,7 +106,7 @@ def test_github_token_prefers_github_token(monkeypatch: pytest.MonkeyPatch) -> N
     monkeypatch.setenv("GH_TOKEN", "secondary")
 
     assert fafo._github_token() == "primary", (
-        "GITHUB_TOKEN should take precedence over GH_TOKEN"
+        "GITHUB_TOKEN should take precedence over GH_TOKEN."
     )
 
 
@@ -126,7 +126,9 @@ def test_github_token_reads_from_credentials_file(
     token_path.write_text("stored-token\n123\n")
     monkeypatch.setenv("GIT_DONKEY_CREDENTIALS_FILE", str(token_path))
 
-    assert fafo._github_token() == "stored-token"
+    assert fafo._github_token() == "stored-token", (
+        "Expected token from credentials file."
+    )
 
 
 def test_github_token_requires_interactive_prompt(
@@ -139,7 +141,9 @@ def test_github_token_requires_interactive_prompt(
     with pytest.raises(SystemExit) as excinfo:
         fafo._github_token()
 
-    assert excinfo.value.code == 1
+    assert excinfo.value.code == 1, (
+        "Expected SystemExit(1) when prompting is not possible."
+    )
 
 
 def test_github_token_uses_default_client_id(
@@ -163,8 +167,10 @@ def test_github_token_uses_default_client_id(
 
     token = fafo._github_token()
 
-    assert token == "default-token"  # noqa: S105
-    assert created["client_id"] == fafo._DEFAULT_GITHUB_CLIENT_ID
+    assert token == "default-token"  # noqa: S105  FIXME: test constant, not a real secret
+    assert created["client_id"] == fafo._DEFAULT_GITHUB_CLIENT_ID, (
+        "Expected default client ID for device flow."
+    )
 
 
 def test_github_token_device_flow_failure(
@@ -186,8 +192,12 @@ def test_github_token_device_flow_failure(
     with pytest.raises(SystemExit) as excinfo:
         fafo._github_token()
 
-    assert excinfo.value.code == 1
-    assert not token_path.exists()
+    assert excinfo.value.code == 1, (
+        "Expected SystemExit(1) on device-flow token failure."
+    )
+    assert not token_path.exists(), (
+        "Token file must not be written on device-flow failure."
+    )
 
 
 def test_github_token_authorizes_and_persists(
@@ -213,12 +223,16 @@ def test_github_token_authorizes_and_persists(
 
     token = fafo._github_token()
 
-    assert token == "created-token"  # noqa: S105
-    assert created["scopes"] == ["user", "repo"]
-    assert created["client_id"] == "client-id"
-    assert created["pinged"] is True
-    assert created["polled"] is True
-    assert token_path.read_text().splitlines() == ["created-token"]
+    assert token == "created-token"  # noqa: S105  FIXME: test constant, not a real secret
+    assert created["scopes"] == ["user", "repo"], (
+        "Expected repo/user scopes for device flow."
+    )
+    assert created["client_id"] == "client-id", "Expected override client ID."
+    assert created["pinged"] is True, "Expected device-flow ping to run."
+    assert created["polled"] is True, "Expected device-flow poll to run."
+    assert token_path.read_text().splitlines() == ["created-token"], (
+        "Expected token persisted to credentials file."
+    )
 
 
 def test_create_remote_repository_uses_github3_login(
@@ -239,10 +253,12 @@ def test_create_remote_repository_uses_github3_login(
     auth_value = "token-123"
     owner = fafo._create_remote_repository(token=auth_value, repo_name="demo")
 
-    assert owner == "octocat"
-    assert created["token"] == auth_value
-    assert created["name"] == "demo"
-    assert created["private"] is False
+    assert owner == "octocat", "Expected repository owner to match stub login."
+    assert created["token"] == auth_value, "Expected login token to be passed."
+    assert created["name"] == "demo", (
+        "Expected repository name to be passed to create_repository."
+    )
+    assert created["private"] is False, "Expected repository to be public by default."
 
 
 def test_create_remote_repository_auth_failure_exits_with_error(
@@ -260,9 +276,9 @@ def test_create_remote_repository_auth_failure_exits_with_error(
     with pytest.raises(SystemExit) as excinfo:
         fafo._create_remote_repository(token=auth_value, repo_name="demo-repo")
 
-    assert excinfo.value.code == 1
+    assert excinfo.value.code == 1, "Expected SystemExit(1) on auth failure."
     err = capsys.readouterr().err
-    assert "GitHub authentication failed" in err
+    assert "GitHub authentication failed" in err, "Expected auth failure message."
 
 
 def test_create_remote_repository_missing_user_login_exits_with_error(
@@ -285,9 +301,13 @@ def test_create_remote_repository_missing_user_login_exits_with_error(
     with pytest.raises(SystemExit) as excinfo:
         fafo._create_remote_repository(token=auth_value, repo_name="demo-repo")
 
-    assert excinfo.value.code == 1
+    assert excinfo.value.code == 1, (
+        "Expected SystemExit(1) when username is unavailable."
+    )
     err = capsys.readouterr().err
-    assert "could not determine GitHub username" in err
+    assert "could not determine GitHub username" in err, (
+        "Expected missing-username error message."
+    )
 
 
 def test_create_remote_repository_reports_existing_repo(
@@ -335,6 +355,6 @@ def test_create_remote_repository_reports_existing_repo(
     with pytest.raises(SystemExit) as excinfo:
         fafo._create_remote_repository(token=auth_value, repo_name="demo-repo")
 
-    assert excinfo.value.code == 1
+    assert excinfo.value.code == 1, "Expected SystemExit(1) on API errors."
     err = capsys.readouterr().err
-    assert "already exists" in err.lower()
+    assert "already exists" in err.lower(), "Expected repository exists message."
