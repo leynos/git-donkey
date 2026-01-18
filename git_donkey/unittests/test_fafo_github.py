@@ -2,6 +2,12 @@
 
 Covers token selection, device-flow success and failure, and repository
 creation error handling.
+
+Usage
+-----
+Run this module directly with pytest::
+
+    python -m pytest -k test_fafo_github -q
 """
 
 from __future__ import annotations
