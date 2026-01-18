@@ -1,4 +1,4 @@
-"""Unit tests for github3 and device-flow behavior in git-fafo.
+"""Unit tests for github3 and device-flow behaviour in git-fafo.
 
 Covers token selection, device-flow success and failure, and repository
 creation error handling.
@@ -20,6 +20,8 @@ if typ.TYPE_CHECKING:
 
 @dataclasses.dataclass
 class _StubAuthInfo:
+    """Container for stub device-flow metadata."""
+
     device_code: str
     user_code: str
     verification_uri: str
@@ -28,6 +30,7 @@ class _StubAuthInfo:
 
 
 def _stub_auth_info() -> _StubAuthInfo:
+    """Build stub device-flow metadata."""
     return _StubAuthInfo(
         device_code="device",
         user_code="USER-CODE",
@@ -39,6 +42,8 @@ def _stub_auth_info() -> _StubAuthInfo:
 
 @dataclasses.dataclass
 class _StubAuthenticator:
+    """Stub authenticator that records device-flow calls."""
+
     client_id: str
     auth_url: str
     token_url: str
@@ -62,6 +67,8 @@ def _fake_authenticator_factory(
     token: str,
     created: dict[str, object] | None = None,
 ) -> typ.Callable[..., _StubAuthenticator]:
+    """Return a stub authenticator factory with recorded calls."""
+
     def _fake_authenticator(
         *,
         client_id: str,
@@ -91,6 +98,7 @@ def _clear_token_env(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """Reset token-related environment variables for each test."""
     monkeypatch.delenv("GITHUB_TOKEN", raising=False)
     monkeypatch.delenv("GH_TOKEN", raising=False)
     monkeypatch.delenv(fafo._GIT_DONKEY_CLIENT_ID_ENV, raising=False)

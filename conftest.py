@@ -22,24 +22,61 @@ import pytest
 
 @dataclasses.dataclass
 class StubUser:
-    """Simple user stub with a login name."""
+    """Simple user stub with a login name.
+
+    Attributes
+    ----------
+    login : str
+        The GitHub login name for the stub user.
+
+    """
 
     login: str
 
 
 @dataclasses.dataclass
 class StubGitHub:
-    """Minimal GitHub stub that records repository creation requests."""
+    """Minimal GitHub stub that records repository creation requests.
+
+    Attributes
+    ----------
+    login : str
+        The GitHub login name for the stub user.
+    created : dict[str, str | bool]
+        Records repository creation parameters for assertions.
+
+    """
 
     login: str
     created: dict[str, str | bool]
 
     def me(self) -> StubUser:
-        """Return a stub user for the configured login."""
+        """Return a stub user for the configured login.
+
+        Returns
+        -------
+        StubUser
+            Stub user for the configured login.
+
+        """
         return StubUser(self.login)
 
     def create_repository(self, name: str, *, private: bool = False) -> None:
-        """Record a repository creation request."""
+        """Record a repository creation request.
+
+        Parameters
+        ----------
+        name : str
+            Repository name.
+        private : bool, optional
+            Whether the repository should be private.
+
+        Returns
+        -------
+        None
+            This method does not return a value.
+
+        """
         self.created["name"] = name
         self.created["private"] = private
 
