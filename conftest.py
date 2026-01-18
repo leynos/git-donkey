@@ -71,11 +71,6 @@ class StubGitHub:
         private : bool, optional
             Whether the repository should be private.
 
-        Returns
-        -------
-        None
-            This method does not return a value.
-
         """
         self.created["name"] = name
         self.created["private"] = private

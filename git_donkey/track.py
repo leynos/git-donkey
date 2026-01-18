@@ -11,10 +11,14 @@ Usage:
 from __future__ import annotations
 
 import difflib
+import typing as typ
 
 from git import GitCommandError, Repo
 
 from git_donkey import helpers
+
+if typ.TYPE_CHECKING:
+    from git.refs.head import Head
 
 _GIT_TRACK_PREFIX = "git-track"
 
@@ -27,7 +31,7 @@ def _suggest_remote_branches(repo: Repo, remote: str, branch: str) -> list[str]:
     return difflib.get_close_matches(branch, available, n=8, cutoff=0.35)
 
 
-def _checkout_local_branch(repo: Repo, branch: str) -> object | None:
+def _checkout_local_branch(repo: Repo, branch: str) -> Head | None:
     """Check out a local branch and return its head if it exists."""
     try:
         head = repo.heads[branch]

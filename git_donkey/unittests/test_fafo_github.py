@@ -17,6 +17,8 @@ from git_donkey import fafo
 if typ.TYPE_CHECKING:
     from pathlib import Path
 
+    from conftest import StubGitHub, StubUser
+
 
 @dataclasses.dataclass
 class _StubAuthInfo:
@@ -60,6 +62,27 @@ class _StubAuthenticator:
         if self.created is not None:
             self.created["polled"] = True
         return self.token
+
+
+@dataclasses.dataclass
+class _StubResponse:
+    """Stub API response payload for repository creation errors."""
+
+    status_code: int = 422
+
+    @staticmethod
+    def json() -> dict[str, object]:
+        return {
+            "message": "Repository creation failed.",
+            "errors": [
+                {
+                    "resource": "Repository",
+                    "field": "name",
+                    "code": "custom",
+                    "message": "name already exists on this account",
+                }
+            ],
+        }
 
 
 def _fake_authenticator_factory(
@@ -292,7 +315,7 @@ def test_github_token_authorizes_and_persists(
 
 def test_create_remote_repository_uses_github3_login(
     monkeypatch: pytest.MonkeyPatch,
-    github_stubs: tuple[type[typ.Any], type[typ.Any]],
+    github_stubs: tuple[type[StubUser], type[StubGitHub]],
 ) -> None:
     """Creating the repo should call github3 login and create_repository."""
     created: dict[str, str | bool] = {}
@@ -361,27 +384,9 @@ def test_create_remote_repository_missing_user_login_exits_with_error(
 def test_create_remote_repository_reports_existing_repo(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
-    github_stubs: tuple[type[typ.Any], type[typ.Any]],
+    github_stubs: tuple[type[StubUser], type[StubGitHub]],
 ) -> None:
     """Provide a friendly message when the repository already exists."""
-
-    @dataclasses.dataclass
-    class _StubResponse:
-        status_code: int = 422
-
-        @staticmethod
-        def json() -> dict[str, object]:
-            return {
-                "message": "Repository creation failed.",
-                "errors": [
-                    {
-                        "resource": "Repository",
-                        "field": "name",
-                        "code": "custom",
-                        "message": "name already exists on this account",
-                    }
-                ],
-            }
 
     @dataclasses.dataclass
     class _StubGitHub:
