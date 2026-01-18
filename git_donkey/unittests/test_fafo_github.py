@@ -93,6 +93,53 @@ def _fake_authenticator_factory(
     return _fake_authenticator
 
 
+def _patch_github_login(
+    monkeypatch: pytest.MonkeyPatch,
+    handler: typ.Callable[[str], object],
+) -> None:
+    """Patch github3.login with a handler that receives the token."""
+
+    def _fake_login(*, token: str) -> object:
+        return handler(token)
+
+    monkeypatch.setattr(fafo.github3, "login", _fake_login)
+
+
+def _create_repo_with_login(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    token: str,
+    repo_name: str,
+    login_handler: typ.Callable[[str], object],
+) -> str:
+    """Create a repository using a patched github3.login handler."""
+    _patch_github_login(monkeypatch, login_handler)
+    return fafo._create_remote_repository(token=token, repo_name=repo_name)
+
+
+def _assert_create_repo_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    *,
+    login_handler: typ.Callable[[str], object],
+    expected_message: str,
+    normalize: bool = False,
+) -> None:
+    """Assert that repository creation fails with the expected message."""
+    with pytest.raises(SystemExit) as excinfo:
+        _create_repo_with_login(
+            monkeypatch,
+            token="example-value",  # noqa: S106  FIXME: test constant, not a real secret
+            repo_name="demo-repo",
+            login_handler=login_handler,
+        )
+
+    assert excinfo.value.code == 1, "Expected SystemExit(1) on repo creation errors."
+    err = capsys.readouterr().err
+    haystack = err.lower() if normalize else err
+    assert expected_message in haystack, "Expected repository creation error message."
+
+
 @pytest.fixture(autouse=True)
 def _clear_token_env(
     tmp_path: Path,
@@ -252,14 +299,17 @@ def test_create_remote_repository_uses_github3_login(
 
     stub_github = github_stubs[1]
 
-    def _fake_login(*, token: str) -> object:
+    def _login_handler(token: str) -> object:
         created["token"] = token
         return stub_github("octocat", created)
 
-    monkeypatch.setattr(fafo.github3, "login", _fake_login)
-
     auth_value = "token-123"
-    owner = fafo._create_remote_repository(token=auth_value, repo_name="demo")
+    owner = _create_repo_with_login(
+        monkeypatch,
+        token=auth_value,
+        repo_name="demo",
+        login_handler=_login_handler,
+    )
 
     assert owner == "octocat", "Expected repository owner to match stub login."
     assert created["token"] == auth_value, "Expected login token to be passed."
@@ -275,18 +325,15 @@ def test_create_remote_repository_auth_failure_exits_with_error(
 ) -> None:
     """Auth failures should exit with a clear error message."""
 
-    def _fake_login(*, token: str) -> None:
+    def _login_handler(token: str) -> None:
         return None
 
-    monkeypatch.setattr(fafo.github3, "login", _fake_login)
-
-    auth_value = "example-value"
-    with pytest.raises(SystemExit) as excinfo:
-        fafo._create_remote_repository(token=auth_value, repo_name="demo-repo")
-
-    assert excinfo.value.code == 1, "Expected SystemExit(1) on auth failure."
-    err = capsys.readouterr().err
-    assert "GitHub authentication failed" in err, "Expected auth failure message."
+    _assert_create_repo_failure(
+        monkeypatch,
+        capsys,
+        login_handler=_login_handler,
+        expected_message="GitHub authentication failed",
+    )
 
 
 def test_create_remote_repository_missing_user_login_exits_with_error(
@@ -300,21 +347,14 @@ def test_create_remote_repository_missing_user_login_exits_with_error(
         def me() -> None:
             return None
 
-    def _fake_login(*, token: str) -> _StubGitHub:
+    def _login_handler(token: str) -> _StubGitHub:
         return _StubGitHub()
 
-    monkeypatch.setattr(fafo.github3, "login", _fake_login)
-
-    auth_value = "example-value"
-    with pytest.raises(SystemExit) as excinfo:
-        fafo._create_remote_repository(token=auth_value, repo_name="demo-repo")
-
-    assert excinfo.value.code == 1, (
-        "Expected SystemExit(1) when username is unavailable."
-    )
-    err = capsys.readouterr().err
-    assert "could not determine GitHub username" in err, (
-        "Expected missing-username error message."
+    _assert_create_repo_failure(
+        monkeypatch,
+        capsys,
+        login_handler=_login_handler,
+        expected_message="could not determine GitHub username",
     )
 
 
@@ -354,15 +394,13 @@ def test_create_remote_repository_reports_existing_repo(
         def create_repository(name: str, *, private: bool = False) -> None:
             raise github3_exceptions.UnprocessableEntity(_StubResponse())
 
-    def _fake_login(*, token: str) -> _StubGitHub:
+    def _login_handler(token: str) -> _StubGitHub:
         return _StubGitHub("octocat")
 
-    monkeypatch.setattr(fafo.github3, "login", _fake_login)
-
-    auth_value = "example-value"
-    with pytest.raises(SystemExit) as excinfo:
-        fafo._create_remote_repository(token=auth_value, repo_name="demo-repo")
-
-    assert excinfo.value.code == 1, "Expected SystemExit(1) on API errors."
-    err = capsys.readouterr().err
-    assert "already exists" in err.lower(), "Expected repository exists message."
+    _assert_create_repo_failure(
+        monkeypatch,
+        capsys,
+        login_handler=_login_handler,
+        expected_message="already exists",
+        normalize=True,
+    )

@@ -32,6 +32,7 @@ import os
 import shutil
 import subprocess  # noqa: S404
 import sys
+import typing as typ
 from pathlib import Path
 
 import github3
@@ -158,28 +159,33 @@ def _create_remote_repository(*, token: str, repo_name: str) -> str:
     return str(user.login)
 
 
+def _error_message_contains(
+    error: github3_exceptions.GitHubError,
+    needle: str,
+) -> bool:
+    """Return whether the GitHub error message contains the needle."""
+    message = str(getattr(error, "message", "") or "").lower()
+    return needle in message
+
+
+def _detail_mentions_existing(detail: object) -> bool:
+    """Return True when an error detail indicates a duplicate repository."""
+    if isinstance(detail, dict):
+        detail_map = typ.cast("dict[str, object]", detail)
+        detail_message = str(detail_map.get("message") or "").lower()
+        detail_code = str(detail_map.get("code") or "").lower()
+        return "already exists" in detail_message or detail_code == "already_exists"
+    return "already exists" in str(detail).lower()
+
+
 def _is_repo_already_exists_error(
     error: github3_exceptions.GitHubError,
 ) -> bool:
-    message = str(getattr(error, "message", "") or "").lower()
-    if "already exists" in message:
+    if _error_message_contains(error, "already exists"):
         return True
 
-    for detail in getattr(error, "errors", []):
-        match detail:
-            case dict():
-                detail_message = str(detail.get("message", "")).lower()
-                detail_code = str(detail.get("code", "")).lower()
-                if (
-                    "already exists" in detail_message
-                    or detail_code == "already_exists"
-                ):
-                    return True
-            case _:
-                if "already exists" in str(detail).lower():
-                    return True
-
-    return False
+    details = getattr(error, "errors", None) or []
+    return any(_detail_mentions_existing(detail) for detail in details)
 
 
 def _run_copier_interactive(*, template: str, repo_name: str) -> None:
