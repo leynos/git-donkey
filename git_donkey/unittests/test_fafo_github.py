@@ -244,8 +244,9 @@ def test_github_token_uses_default_client_id(
     )
 
     token = fafo._github_token()
+    expected_token = "default-token"  # noqa: S105  FIXME: test constant, not a real secret
 
-    assert token == "default-token", (  # noqa: S105  FIXME: test constant, not a real secret
+    assert token == expected_token, (
         "Expected device-flow token to match the default stub."
     )
     assert created["client_id"] == fafo._DEFAULT_GITHUB_CLIENT_ID, (
@@ -302,8 +303,9 @@ def test_github_token_authorizes_and_persists(
     )
 
     token = fafo._github_token()
+    expected_token = "created-token"  # noqa: S105  FIXME: test constant, not a real secret
 
-    assert token == "created-token", (  # noqa: S105  FIXME: test constant, not a real secret
+    assert token == expected_token, (
         "Expected device-flow token to match the stubbed value."
     )
     assert created["scopes"] == ["user", "repo"], (
