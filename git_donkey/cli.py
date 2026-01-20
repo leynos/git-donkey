@@ -1,0 +1,98 @@
+"""Command-line interfaces for the git-donkey tools.
+
+Provides CLI entrypoints for the git-donkey workflow tools.
+
+This module exposes three console scripts (git-donkey, git-track, git-fafo)
+registered in pyproject.toml. Each entrypoint maps to a workflow runner:
+git_donkey() -> donkey.run_git_donkey, git_track() -> track.run_git_track, and
+git_fafo() -> fafo.run_git_fafo.
+
+Run with::
+
+    git-donkey --help
+    git-track --help
+    git-fafo --help
+"""
+
+from __future__ import annotations
+
+from cyclopts import App
+
+from git_donkey import donkey, fafo, track
+
+_donkey_app = App(
+    name="git donkey",
+    help=(
+        "Create a linked worktree at ../{repo}.worktrees/{branch}, branching from "
+        "main (default), a specified base branch, or '.' meaning the branch "
+        "currently checked out in the CWD. Uses the first remote and reuses "
+        "existing local/remote branches when present."
+    ),
+)
+
+
+@_donkey_app.default
+def _donkey_cli(
+    branch_name: str,
+    origin_branch: str | None = None,
+    *,
+    no_pull: bool = False,
+) -> None:
+    """CLI wrapper for git-donkey."""
+    raise SystemExit(
+        donkey.run_git_donkey(
+            branch_name,
+            origin_branch,
+            no_pull=no_pull,
+        )
+    )
+
+
+_track_app = App(
+    name="git track",
+    help=(
+        "Fetch from the first remote, then switch to an existing local branch "
+        "and update it, or create a new tracking branch from remote/branch."
+    ),
+)
+
+
+@_track_app.default
+def _track_cli(branch: str) -> None:
+    """CLI wrapper for git-track."""
+    raise SystemExit(track.run_git_track(branch))
+
+
+_fafo_app = App(
+    name="git fafo",
+    help=(
+        "Scaffold and publish a new GitHub repository from agent-template-<language> "
+        "using copier and git. Uses GITHUB_TOKEN/GH_TOKEN when set; otherwise runs "
+        "device flow with default client ID "
+        f"{fafo._DEFAULT_GITHUB_CLIENT_ID} (override via "
+        "GIT_DONKEY_GITHUB_CLIENT_ID) and stores the token at "
+        "~/.config/git-donkey/github-token (override via "
+        "GIT_DONKEY_CREDENTIALS_FILE)."
+    ),
+)
+
+
+@_fafo_app.default
+def _fafo_cli(repo_name: str, language: str) -> None:
+    """CLI wrapper for git-fafo."""
+    raise SystemExit(fafo.run_git_fafo(repo_name, language))
+
+
+def git_donkey() -> None:
+    """Console entrypoint for git-donkey."""
+    _donkey_app()
+
+
+def git_track() -> None:
+    """Console entrypoint for git-track."""
+    _track_app()
+
+
+def git_fafo() -> None:
+    """Console entrypoint for git-fafo."""
+    _fafo_app()

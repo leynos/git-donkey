@@ -64,6 +64,7 @@ check-fmt: ruff ## Verify formatting
 
 lint: ruff ## Run linters
 	ruff check
+	pyscn check git_donkey tests
 
 typecheck: build ty ## Run typechecking
 	ty --version

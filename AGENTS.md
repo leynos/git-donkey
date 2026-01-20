@@ -134,9 +134,7 @@ When implementing changes, adhere to the following testing procedures:
     functional change commit.
   - Ensure the refactoring adheres to the testing guidelines (behavioral tests
     pass before and after, unit tests added for new units).
-  - Ensure the refactoring commit itself passes all quality gates.
-
-
+- Ensure the refactoring commit itself passes all quality gates.
 
 ## Markdown Guidance
 

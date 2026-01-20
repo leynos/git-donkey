@@ -1,13 +1,5 @@
-"""git-donkey package."""
+"""git-donkey package exports."""
 
-from __future__ import annotations
+from ._constants import PACKAGE_NAME
 
-PACKAGE_NAME = "git_donkey"
-
-try:  # pragma: no cover - Rust optional
-    rust = __import__(f"_{PACKAGE_NAME}_rs")
-    hello = rust.hello  # type: ignore[attr-defined]
-except ModuleNotFoundError:  # pragma: no cover - Python fallback
-    from .pure import hello
-
-__all__ = ["hello"]
+__all__ = ["PACKAGE_NAME"]
