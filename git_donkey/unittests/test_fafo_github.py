@@ -174,7 +174,7 @@ def test_create_remote_repository_reports_existing_repo(
             return github_stubs[0](self.login)
 
         @staticmethod
-        def create_repository(name: str, *, private: bool = False) -> None:
+        def create_repository(name: str, *, private: bool = False) -> typ.NoReturn:
             raise github3_exceptions.UnprocessableEntity(_StubResponse())
 
     def _login_handler(token: str) -> _StubGitHub:

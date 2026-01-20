@@ -20,6 +20,7 @@ import pytest
 from git_donkey import fafo
 
 if typ.TYPE_CHECKING:
+    import collections.abc as cabc
     from pathlib import Path
 
 
@@ -71,7 +72,7 @@ def _fake_authenticator_factory(
     *,
     token: str,
     created: dict[str, object] | None = None,
-) -> typ.Callable[..., _StubAuthenticator]:
+) -> cabc.Callable[..., _StubAuthenticator]:
     """Return a stub authenticator factory with recorded calls."""
 
     def _fake_authenticator(
@@ -113,21 +114,32 @@ def _clear_token_env(
     )
 
 
-def test_github_token_prefers_github_token(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Prefer GITHUB_TOKEN when both are present."""
-    monkeypatch.setenv("GITHUB_TOKEN", "primary")
-    monkeypatch.setenv("GH_TOKEN", "secondary")
+@pytest.mark.parametrize(
+    ("env_vars", "expected", "message"),
+    [
+        (
+            {"GITHUB_TOKEN": "primary", "GH_TOKEN": "secondary"},
+            "primary",
+            "GITHUB_TOKEN should take precedence over GH_TOKEN.",
+        ),
+        (
+            {"GH_TOKEN": "fallback"},
+            "fallback",
+            "Expected GH_TOKEN fallback value.",
+        ),
+    ],
+)
+def test_github_token_priority(
+    monkeypatch: pytest.MonkeyPatch,
+    env_vars: dict[str, str],
+    expected: str,
+    message: str,
+) -> None:
+    """Test GITHUB_TOKEN takes precedence over GH_TOKEN."""
+    for key, value in env_vars.items():
+        monkeypatch.setenv(key, value)
 
-    assert fafo._github_token() == "primary", (
-        "GITHUB_TOKEN should take precedence over GH_TOKEN."
-    )
-
-
-def test_github_token_falls_back_to_gh_token(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Fallback to GH_TOKEN when GITHUB_TOKEN is missing."""
-    monkeypatch.setenv("GH_TOKEN", "fallback")
-
-    assert fafo._github_token() == "fallback", "Expected GH_TOKEN fallback value."
+    assert fafo._github_token() == expected, message
 
 
 def test_github_token_reads_from_credentials_file(
