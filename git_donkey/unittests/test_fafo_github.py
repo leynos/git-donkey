@@ -20,6 +20,8 @@ from github3 import exceptions as github3_exceptions
 from git_donkey import fafo
 
 if typ.TYPE_CHECKING:
+    import collections.abc as cabc
+
     from conftest import StubGitHub, StubUser
 
 
@@ -46,7 +48,7 @@ class _StubResponse:
 
 def _patch_github_login(
     monkeypatch: pytest.MonkeyPatch,
-    handler: typ.Callable[[str], object],
+    handler: cabc.Callable[[str], object],
 ) -> None:
     """Patch github3.login with a handler that receives the token."""
 
@@ -61,7 +63,7 @@ def _create_repo_with_login(
     *,
     token: str,
     repo_name: str,
-    login_handler: typ.Callable[[str], object],
+    login_handler: cabc.Callable[[str], object],
 ) -> str:
     """Create a repository using a patched github3.login handler."""
     _patch_github_login(monkeypatch, login_handler)
@@ -72,7 +74,7 @@ def _assert_create_repo_failure(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
     *,
-    login_handler: typ.Callable[[str], object],
+    login_handler: cabc.Callable[[str], object],
     expected_message: str,
     normalize: bool = False,
 ) -> None:
