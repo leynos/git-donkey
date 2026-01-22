@@ -205,3 +205,4 @@ target/
 
 .crush/
 *.swp
+.grepai/

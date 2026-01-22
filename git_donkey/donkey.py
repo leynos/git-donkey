@@ -21,7 +21,7 @@ from pathlib import Path
 
 from git import Git, GitCommandError, Repo
 
-from git_donkey import donkey_worktrees, helpers
+from git_donkey import donkey_worktrees, helpers, templates
 
 _GIT_DONKEY_PREFIX = helpers._GIT_DONKEY_PREFIX
 
@@ -265,6 +265,16 @@ def run_git_donkey(
         base_branch=base_branch,
         target_path=target_path,
     )
+
+    # Apply template overlay if available
+    template_dir = templates.get_template_dir(context.repo_home, branch_name)
+    if template_dir is not None:
+        helpers._eprint(f"Applying template overlay from: {template_dir}")
+        templates.apply_template(
+            template_dir,
+            target_path,
+            prefix=_GIT_DONKEY_PREFIX,
+        )
 
     print(f"🫏 Worktree created: {target_path}")
     return 0

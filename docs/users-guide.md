@@ -42,6 +42,40 @@ Options:
 - `--no-pull` skips prompting to pull the base branch if it is behind the
   remote.
 
+### Template Overlays
+
+After creating the worktree, `git donkey` automatically applies template
+overlay files if a template directory exists for the repository and branch.
+Template directories are stored at:
+
+```text
+~/.local/share/git-donkey/template/<repo-url-slug>/<branch-name-slug>
+```
+
+The slug format is `<slugified-text>-<adler32-checksum>`, where the checksum
+provides collision resistance while the slugified text remains human-readable.
+
+When a template exists, all files from the template directory are copied into
+the newly created worktree. If a file already exists in the worktree, a warning
+is issued, but the file is overwritten anyway. This allows you to maintain
+per-repository, per-branch configuration files (such as `.editorconfig`,
+`.vscode/settings.json`, or project-specific configurations) that are
+automatically applied to new worktrees.
+
+Example template structure:
+
+```text
+~/.local/share/git-donkey/template/
+  https-github-com-user-repo-git-abc123xy/
+    main-def456ab/
+      .editorconfig
+      .vscode/
+        settings.json
+    feature-foo-ghi789cd/
+      config/
+        local.json
+```
+
 ## git track
 
 Fetch the first remote, then switch to or create a tracking branch from
