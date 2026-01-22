@@ -52,6 +52,35 @@ class TestGetRepoUrl:
         assert result == "https://github.com/user/repo1.git"
 
 
+class TestGetTemplateDirPath:
+    """Test get_template_dir_path function."""
+
+    def test_no_remotes_returns_none(self) -> None:
+        """Test that None is returned when repo has no remotes."""
+        mock_repo = mock.Mock(spec=Repo)
+        mock_repo.remotes = []
+        result = templates.get_template_dir_path(mock_repo)
+        assert result is None
+
+    def test_with_remote_returns_path(self, tmp_path: Path) -> None:
+        """Test that path is returned when repo has remote."""
+        mock_remote = mock.Mock()
+        mock_remote.url = "https://github.com/user/repo.git"
+        mock_repo = mock.Mock(spec=Repo)
+        mock_repo.remotes = [mock_remote]
+
+        with mock.patch(
+            "git_donkey.templates._get_template_base_dir", return_value=tmp_path
+        ):
+            from git_donkey import slugs
+
+            repo_slug = slugs.slug_dash_adler32(mock_remote.url)
+            expected_path = tmp_path / repo_slug
+
+            result = templates.get_template_dir_path(mock_repo)
+            assert result == expected_path
+
+
 class TestGetTemplateDir:
     """Test get_template_dir function."""
 
@@ -59,7 +88,7 @@ class TestGetTemplateDir:
         """Test that None is returned when repo has no remotes."""
         mock_repo = mock.Mock(spec=Repo)
         mock_repo.remotes = []
-        result = templates.get_template_dir(mock_repo, "main")
+        result = templates.get_template_dir(mock_repo)
         assert result is None
 
     def test_template_dir_not_exists_returns_none(self, tmp_path: Path) -> None:
@@ -72,7 +101,7 @@ class TestGetTemplateDir:
         with mock.patch(
             "git_donkey.templates._get_template_base_dir", return_value=tmp_path
         ):
-            result = templates.get_template_dir(mock_repo, "main")
+            result = templates.get_template_dir(mock_repo)
             assert result is None
 
     def test_template_dir_exists_returns_path(self, tmp_path: Path) -> None:
@@ -86,15 +115,14 @@ class TestGetTemplateDir:
         with mock.patch(
             "git_donkey.templates._get_template_base_dir", return_value=tmp_path
         ):
-            # We need to calculate what the slugs would be
+            # We need to calculate what the slug would be
             from git_donkey import slugs
 
             repo_slug = slugs.slug_dash_adler32(mock_remote.url)
-            branch_slug = slugs.slug_dash_adler32("main")
-            template_path = tmp_path / repo_slug / branch_slug
+            template_path = tmp_path / repo_slug
             template_path.mkdir(parents=True)
 
-            result = templates.get_template_dir(mock_repo, "main")
+            result = templates.get_template_dir(mock_repo)
             assert result == template_path
 
     def test_template_path_is_file_returns_none(self, tmp_path: Path) -> None:
@@ -110,14 +138,13 @@ class TestGetTemplateDir:
             from git_donkey import slugs
 
             repo_slug = slugs.slug_dash_adler32(mock_remote.url)
-            branch_slug = slugs.slug_dash_adler32("main")
-            template_path = tmp_path / repo_slug / branch_slug
+            template_path = tmp_path / repo_slug
 
-            # Create parent and make template_path a file instead of directory
-            template_path.parent.mkdir(parents=True)
+            # Make template_path a file instead of directory
+            template_path.parent.mkdir(parents=True, exist_ok=True)
             template_path.write_text("not a directory")
 
-            result = templates.get_template_dir(mock_repo, "main")
+            result = templates.get_template_dir(mock_repo)
             assert result is None
 
 

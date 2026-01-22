@@ -16,7 +16,7 @@ if typ.TYPE_CHECKING:
     import pytest
 from git import Repo
 
-from git_donkey import donkey, fafo, slugs, templates, track
+from git_donkey import donkey, fafo, slugs, template_cmd, templates, track
 
 
 def _configure_repo(repo: Repo) -> None:
@@ -292,10 +292,9 @@ def test_git_donkey_applies_template_overlay(
     # Set up template directory structure
     remote_url = remote_path.as_posix()
     repo_slug = slugs.slug_dash_adler32(remote_url)
-    branch_slug = slugs.slug_dash_adler32("feature/template-test")
 
     template_base = tmp_path / "templates"
-    template_dir = template_base / repo_slug / branch_slug
+    template_dir = template_base / repo_slug
     template_dir.mkdir(parents=True)
 
     # Create template files
@@ -348,3 +347,68 @@ def test_git_donkey_without_template_succeeds(
     worktree_root = local_path.parent / f"{local_path.name}.worktrees"
     worktree_path = worktree_root / "feature/no-template"
     assert worktree_path.exists(), "expected worktree to be created"
+
+
+def test_git_donkey_template_creates_directory(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """git-donkey-template should create and display template directory."""
+    local_path, remote_path = _setup_repo(tmp_path)
+
+    template_base = tmp_path / "templates"
+    monkeypatch.setattr(templates, "_get_template_base_dir", lambda: template_base)
+
+    monkeypatch.chdir(local_path)
+    exit_code = template_cmd.run_git_donkey_template()
+
+    assert exit_code == 0, "expected git-donkey-template to exit successfully"
+
+    # Calculate expected path
+    remote_url = remote_path.as_posix()
+    repo_slug = slugs.slug_dash_adler32(remote_url)
+    expected_path = template_base / repo_slug
+
+    assert expected_path.exists(), "expected template directory to be created"
+    assert expected_path.is_dir(), "expected template path to be a directory"
+
+    # Check output
+    captured = capsys.readouterr()
+    assert str(expected_path) in captured.out, (
+        "expected template directory path in output"
+    )
+
+
+def test_git_donkey_template_shows_existing_directory(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """git-donkey-template should display existing template directory."""
+    local_path, remote_path = _setup_repo(tmp_path)
+
+    # Create template directory with files
+    template_base = tmp_path / "templates"
+    remote_url = remote_path.as_posix()
+    repo_slug = slugs.slug_dash_adler32(remote_url)
+    template_dir = template_base / repo_slug
+    template_dir.mkdir(parents=True)
+    (template_dir / "test.txt").write_text("test content")
+
+    monkeypatch.setattr(templates, "_get_template_base_dir", lambda: template_base)
+
+    monkeypatch.chdir(local_path)
+    exit_code = template_cmd.run_git_donkey_template()
+
+    assert exit_code == 0, "expected git-donkey-template to exit successfully"
+
+    # Check output
+    captured = capsys.readouterr()
+    assert str(template_dir) in captured.out, (
+        "expected template directory path in output"
+    )
+    # Should not show "empty" message since directory has files
+    assert "empty" not in captured.err.lower(), (
+        "expected no empty message when directory has files"
+    )

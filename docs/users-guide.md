@@ -2,15 +2,16 @@
 
 ## Command overview
 
-git-donkey ships three Git subcommands, exposed as console entrypoints. Git
-invokes these as `git <subcommand>` when `git-<subcommand>` is available on the
-`PATH`.
+git-donkey ships Git subcommands, exposed as console entrypoints. Git invokes
+these as `git <subcommand>` when `git-<subcommand>` is available on the `PATH`.
 
 - `git donkey` (`git-donkey`) creates linked worktrees for branch-based work.
 - `git track` (`git-track`) fetches the first remote and switches to or creates
   a tracking branch.
 - `git fafo` (`git-fafo`) scaffolds and publishes a new GitHub repository from
   a template.
+- `git donkey-template` (`git-donkey-template`) displays and creates the
+  template directory for the current repository.
 
 ## git donkey
 
@@ -45,35 +46,42 @@ Options:
 ### Template Overlays
 
 After creating the worktree, `git donkey` automatically applies template
-overlay files if a template directory exists for the repository and branch.
-Template directories are stored at:
+overlay files if a template directory exists for the repository. Template
+directories are stored at:
 
 ```text
-~/.local/share/git-donkey/template/<repo-url-slug>/<branch-name-slug>
+~/.local/share/git-donkey/template/<repo-url-slug>
 ```
 
 The slug format is `<slugified-text>-<adler32-checksum>`, where the checksum
 provides collision resistance while the slugified text remains human-readable.
 
+Use `git donkey-template` within a repository to display and create the
+template directory path:
+
+```shell
+cd ~/projects/myrepo
+git donkey-template
+# Template directory: ~/.local/share/git-donkey/template/myrepo-a1b2c3d4
+```
+
 When a template exists, all files from the template directory are copied into
 the newly created worktree. If a file already exists in the worktree, a warning
 is issued, but the file is overwritten anyway. This allows you to maintain
-per-repository, per-branch configuration files (such as `.editorconfig`,
+per-repository configuration files (such as `.editorconfig`,
 `.vscode/settings.json`, or project-specific configurations) that are
-automatically applied to new worktrees.
+automatically applied to all new worktrees.
 
 Example template structure:
 
 ```text
 ~/.local/share/git-donkey/template/
-  https-github-com-user-repo-git-abc123xy/
-    main-def456ab/
-      .editorconfig
-      .vscode/
-        settings.json
-    feature-foo-ghi789cd/
-      config/
-        local.json
+  myrepo-a1b2c3d4/
+    .editorconfig
+    .vscode/
+      settings.json
+    config/
+      local.json
 ```
 
 ## git track
@@ -119,3 +127,20 @@ exists, `git fafo` exits early.
 
 `git fafo` expects template repositories named `agent-template-<language>`
 under the current GitHub account.
+
+## git donkey-template
+
+Display and create the template directory for the current repository. Template
+files placed in this directory are automatically copied to new worktrees
+created by `git donkey`.
+
+```shell
+# Display template directory path (creates directory if needed)
+
+git donkey-template
+```
+
+The command must be run from within a Git repository. It creates the template
+directory if it doesn't exist and displays its path. The template directory is
+specific to the repository's remote URL, so different repositories (or
+repositories with different remote URLs) have separate template directories.

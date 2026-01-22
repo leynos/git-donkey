@@ -50,20 +50,20 @@ def _get_repo_url(repo: Repo) -> str | None:
     return repo.remotes[0].url
 
 
-def get_template_dir(repo: Repo, branch_name: str) -> Path | None:
-    """Get the template directory for a given repository and branch.
+def get_template_dir_path(repo: Repo) -> Path | None:
+    """Get the template directory path for a given repository.
+
+    Returns the path regardless of whether the directory exists.
 
     Parameters
     ----------
     repo : Repo
         The Git repository.
-    branch_name : str
-        The branch name.
 
     Returns
     -------
     Path | None
-        The template directory path if it exists, otherwise None.
+        The template directory path, or None if the repository has no remote.
 
     """
     repo_url = _get_repo_url(repo)
@@ -71,9 +71,26 @@ def get_template_dir(repo: Repo, branch_name: str) -> Path | None:
         return None
 
     repo_slug = slugs.slug_dash_adler32(repo_url)
-    branch_slug = slugs.slug_dash_adler32(branch_name)
+    return _get_template_base_dir() / repo_slug
 
-    template_dir = _get_template_base_dir() / repo_slug / branch_slug
+
+def get_template_dir(repo: Repo) -> Path | None:
+    """Get the template directory for a given repository.
+
+    Parameters
+    ----------
+    repo : Repo
+        The Git repository.
+
+    Returns
+    -------
+    Path | None
+        The template directory path if it exists, otherwise None.
+
+    """
+    template_dir = get_template_dir_path(repo)
+    if template_dir is None:
+        return None
 
     if template_dir.exists() and template_dir.is_dir():
         return template_dir

@@ -267,7 +267,7 @@ def run_git_donkey(
     )
 
     # Apply template overlay if available
-    template_dir = templates.get_template_dir(context.repo_home, branch_name)
+    template_dir = templates.get_template_dir(context.repo_home)
     if template_dir is not None:
         helpers._eprint(f"Applying template overlay from: {template_dir}")
         templates.apply_template(

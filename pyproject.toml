@@ -18,6 +18,7 @@ dependencies = [
 git-donkey = "git_donkey.cli:git_donkey"
 git-track = "git_donkey.cli:git_track"
 git-fafo = "git_donkey.cli:git_fafo"
+git-donkey-template = "git_donkey.cli:git_donkey_template"
 
 [dependency-groups]
 dev = [

@@ -2,23 +2,25 @@
 
 Provides CLI entrypoints for the git-donkey workflow tools.
 
-This module exposes three console scripts (git-donkey, git-track, git-fafo)
-registered in pyproject.toml. Each entrypoint maps to a workflow runner:
-git_donkey() -> donkey.run_git_donkey, git_track() -> track.run_git_track, and
-git_fafo() -> fafo.run_git_fafo.
+This module exposes console scripts (git-donkey, git-track, git-fafo,
+git-donkey-template) registered in pyproject.toml. Each entrypoint maps to a
+workflow runner: git_donkey() -> donkey.run_git_donkey, git_track() ->
+track.run_git_track, git_fafo() -> fafo.run_git_fafo, and git_donkey_template()
+-> template_cmd.run_git_donkey_template.
 
 Run with::
 
     git-donkey --help
     git-track --help
     git-fafo --help
+    git-donkey-template --help
 """
 
 from __future__ import annotations
 
 from cyclopts import App
 
-from git_donkey import donkey, fafo, track
+from git_donkey import donkey, fafo, template_cmd, track
 
 _donkey_app = App(
     name="git donkey",
@@ -96,3 +98,24 @@ def git_track() -> None:
 def git_fafo() -> None:
     """Console entrypoint for git-fafo."""
     _fafo_app()
+
+
+_template_app = App(
+    name="git donkey-template",
+    help=(
+        "Display and create the template directory for the current repository. "
+        "Template files placed in this directory are automatically copied to new "
+        "worktrees created by git-donkey."
+    ),
+)
+
+
+@_template_app.default
+def _template_cli() -> None:
+    """CLI wrapper for git-donkey-template."""
+    raise SystemExit(template_cmd.run_git_donkey_template())
+
+
+def git_donkey_template() -> None:
+    """Console entrypoint for git-donkey-template."""
+    _template_app()
