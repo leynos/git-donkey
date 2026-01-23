@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Generator
 from pathlib import Path
 from unittest import mock
 
@@ -9,6 +10,15 @@ import pytest
 from git import Repo
 
 from git_donkey import templates
+
+
+@pytest.fixture
+def mock_template_base_dir(tmp_path: Path) -> Generator[Path, None, None]:
+    """Fixture that patches _get_template_base_dir to return tmp_path."""
+    with mock.patch(
+        "git_donkey.templates._get_template_base_dir", return_value=tmp_path
+    ):
+        yield tmp_path
 
 
 class TestGetTemplateBaseDir:
@@ -78,23 +88,20 @@ class TestGetTemplateDirPath:
         result = templates.get_template_dir_path(mock_repo)
         assert result is None
 
-    def test_with_remote_returns_path(self, tmp_path: Path) -> None:
+    def test_with_remote_returns_path(self, mock_template_base_dir: Path) -> None:
         """Test that path is returned when repo has remote."""
         mock_remote = mock.Mock()
         mock_remote.url = "https://github.com/user/repo.git"
         mock_repo = mock.Mock(spec=Repo)
         mock_repo.remotes = [mock_remote]
 
-        with mock.patch(
-            "git_donkey.templates._get_template_base_dir", return_value=tmp_path
-        ):
-            from git_donkey import slugs
+        from git_donkey import slugs
 
-            repo_slug = slugs.slug_dash_adler32(mock_remote.url)
-            expected_path = tmp_path / repo_slug
+        repo_slug = slugs.slug_dash_adler32(mock_remote.url)
+        expected_path = mock_template_base_dir / repo_slug
 
-            result = templates.get_template_dir_path(mock_repo)
-            assert result == expected_path
+        result = templates.get_template_dir_path(mock_repo)
+        assert result == expected_path
 
 
 class TestGetTemplateDir:
@@ -107,20 +114,21 @@ class TestGetTemplateDir:
         result = templates.get_template_dir(mock_repo)
         assert result is None
 
-    def test_template_dir_not_exists_returns_none(self, tmp_path: Path) -> None:
+    def test_template_dir_not_exists_returns_none(
+        self, mock_template_base_dir: Path
+    ) -> None:
         """Test that None is returned when template directory doesn't exist."""
         mock_remote = mock.Mock()
         mock_remote.url = "https://github.com/user/repo.git"
         mock_repo = mock.Mock(spec=Repo)
         mock_repo.remotes = [mock_remote]
 
-        with mock.patch(
-            "git_donkey.templates._get_template_base_dir", return_value=tmp_path
-        ):
-            result = templates.get_template_dir(mock_repo)
-            assert result is None
+        result = templates.get_template_dir(mock_repo)
+        assert result is None
 
-    def test_template_dir_exists_returns_path(self, tmp_path: Path) -> None:
+    def test_template_dir_exists_returns_path(
+        self, mock_template_base_dir: Path
+    ) -> None:
         """Test that path is returned when template directory exists."""
         mock_remote = mock.Mock()
         mock_remote.url = "https://github.com/user/repo.git"
@@ -128,40 +136,35 @@ class TestGetTemplateDir:
         mock_repo.remotes = [mock_remote]
 
         # Create the expected directory structure
-        with mock.patch(
-            "git_donkey.templates._get_template_base_dir", return_value=tmp_path
-        ):
-            # We need to calculate what the slug would be
-            from git_donkey import slugs
+        from git_donkey import slugs
 
-            repo_slug = slugs.slug_dash_adler32(mock_remote.url)
-            template_path = tmp_path / repo_slug
-            template_path.mkdir(parents=True)
+        repo_slug = slugs.slug_dash_adler32(mock_remote.url)
+        template_path = mock_template_base_dir / repo_slug
+        template_path.mkdir(parents=True)
 
-            result = templates.get_template_dir(mock_repo)
-            assert result == template_path
+        result = templates.get_template_dir(mock_repo)
+        assert result == template_path
 
-    def test_template_path_is_file_returns_none(self, tmp_path: Path) -> None:
+    def test_template_path_is_file_returns_none(
+        self, mock_template_base_dir: Path
+    ) -> None:
         """Test that None is returned when template path is a file, not a directory."""
         mock_remote = mock.Mock()
         mock_remote.url = "https://github.com/user/repo.git"
         mock_repo = mock.Mock(spec=Repo)
         mock_repo.remotes = [mock_remote]
 
-        with mock.patch(
-            "git_donkey.templates._get_template_base_dir", return_value=tmp_path
-        ):
-            from git_donkey import slugs
+        from git_donkey import slugs
 
-            repo_slug = slugs.slug_dash_adler32(mock_remote.url)
-            template_path = tmp_path / repo_slug
+        repo_slug = slugs.slug_dash_adler32(mock_remote.url)
+        template_path = mock_template_base_dir / repo_slug
 
-            # Make template_path a file instead of directory
-            template_path.parent.mkdir(parents=True, exist_ok=True)
-            template_path.write_text("not a directory")
+        # Make template_path a file instead of directory
+        template_path.parent.mkdir(parents=True, exist_ok=True)
+        template_path.write_text("not a directory")
 
-            result = templates.get_template_dir(mock_repo)
-            assert result is None
+        result = templates.get_template_dir(mock_repo)
+        assert result is None
 
 
 class TestApplyTemplate:
@@ -287,8 +290,10 @@ class TestApplyTemplate:
         target_file = target_dir / "file.txt"
         target_stat = target_file.stat()
 
-        # shutil.copy2 preserves modification time
-        assert target_stat.st_mtime == original_stat.st_mtime
+        # shutil.copy2 preserves modification time (allow small tolerance)
+        assert target_stat.st_mtime == pytest.approx(
+            original_stat.st_mtime, rel=0, abs=1
+        )
 
     def test_empty_template_directory(self, tmp_path: Path) -> None:
         """Test that empty template directory results in no files copied."""

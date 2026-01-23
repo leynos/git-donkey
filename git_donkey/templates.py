@@ -4,6 +4,22 @@ Provides functionality to apply overlay templates to worktrees. Templates are
 trees of files stored in a platform-specific directory under
 <user-data-dir>/git-donkey/template/<repo-slug> that are copied into the
 worktree after it is created.
+
+Usage
+-----
+To apply a template overlay when creating a worktree::
+
+    from git_donkey import templates
+    from git import Repo
+
+    repo = Repo(".")
+    template_dir = templates.get_template_dir(repo)
+    if template_dir:
+        templates.apply_template(
+            template_dir,
+            target_worktree_path,
+            prefix="git-donkey"
+        )
 """
 
 from __future__ import annotations

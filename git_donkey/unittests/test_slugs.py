@@ -10,16 +10,14 @@ from git_donkey import slugs
 class TestAdler32Base32Lc:
     """Test adler32_base32_lc function."""
 
-    @staticmethod
-    def test_basic_checksum() -> None:
+    def test_basic_checksum(self) -> None:
         """Test basic checksum generation."""
         result = slugs.adler32_base32_lc("hello")
         assert isinstance(result, str)
         assert result.islower()
         assert "=" not in result  # padding stripped by default
 
-    @staticmethod
-    def test_golden_value_checksum() -> None:
+    def test_golden_value_checksum(self) -> None:
         """Golden-value test to detect unintended algorithm changes."""
         # If this assertion breaks, the checksum / encoding logic has changed.
         result = slugs.adler32_base32_lc("hello")
@@ -33,21 +31,41 @@ class TestAdler32Base32Lc:
     def test_strip_padding_false(self) -> None:
         """Test that padding is kept when strip_padding=False."""
         result = slugs.adler32_base32_lc("test", strip_padding=False)
-        # Base32 encoding may include padding
-        assert len(result) > 0
+        # Base32 encoding of 4 bytes should have padding
+        assert "=" in result
+        assert len(result) == 8  # 4 bytes in base32 with padding
 
-    def test_same_input_same_output(self) -> None:
-        """Test that same input produces same output."""
-        text = "https://github.com/user/repo.git"
-        result1 = slugs.adler32_base32_lc(text)
-        result2 = slugs.adler32_base32_lc(text)
-        assert result1 == result2
-
-    def test_different_inputs_different_outputs(self) -> None:
-        """Test that different inputs produce different outputs."""
-        result1 = slugs.adler32_base32_lc("https://github.com/user/repo1.git")
-        result2 = slugs.adler32_base32_lc("https://github.com/user/repo2.git")
-        assert result1 != result2
+    @pytest.mark.parametrize(
+        ("input1", "input2", "expect_equal"),
+        [
+            # Same input should produce same output
+            (
+                "https://github.com/user/repo.git",
+                "https://github.com/user/repo.git",
+                True,
+            ),
+            # Different inputs should produce different outputs
+            (
+                "https://github.com/user/repo1.git",
+                "https://github.com/user/repo2.git",
+                False,
+            ),
+        ],
+    )
+    def test_adler32_base32_lc_consistency(
+        self,
+        input1: str,
+        input2: str,
+        *,
+        expect_equal: bool,
+    ) -> None:
+        """Test consistency and collision properties of adler32_base32_lc."""
+        result1 = slugs.adler32_base32_lc(input1)
+        result2 = slugs.adler32_base32_lc(input2)
+        if expect_equal:
+            assert result1 == result2
+        else:
+            assert result1 != result2
 
     def test_empty_string(self) -> None:
         """Test checksum of empty string."""

@@ -55,6 +55,10 @@ def slug_dash_adler32(text: str) -> str:
     Slugification uses python-slugify's `slugify()`. The checksum is computed
     from the original (un-slugified) text.
 
+    For empty input (text == ""), slugify("") returns "", so the function
+    returns "-<checksum>" (a leading dash followed by the checksum from
+    adler32_base32_lc("")).
+
     Parameters
     ----------
     text : str
@@ -63,7 +67,8 @@ def slug_dash_adler32(text: str) -> str:
     Returns
     -------
     str
-        Slugified text with appended checksum.
+        Slugified text with appended checksum. For empty strings, returns
+        "-<checksum>".
 
     Raises
     ------
