@@ -18,7 +18,8 @@ class TestGetTemplateBaseDir:
         """Test that the function returns a Path object."""
         result = templates._get_template_base_dir()
         assert isinstance(result, Path)
-        assert str(result).endswith(".local/share/git-donkey/template")
+        assert result.name == "template"
+        assert result.parent.name == "git-donkey"
 
 
 class TestGetRepoUrl:

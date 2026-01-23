@@ -1,8 +1,9 @@
 """Template overlay management for git-donkey.
 
 Provides functionality to apply overlay templates to worktrees. Templates are
-trees of files stored in ~/.local/share/git-donkey/template/<repo-slug>/<branch-slug>
-that are copied into the worktree after it is created.
+trees of files stored in a platform-specific directory under
+<user-data-dir>/git-donkey/template/<repo-slug> that are copied into the
+worktree after it is created.
 """
 
 from __future__ import annotations
@@ -14,20 +15,31 @@ from pathlib import Path
 if typ.TYPE_CHECKING:
     from git import Repo
 
+import platformdirs
+
 from git_donkey import helpers, slugs
 
 
 def _get_template_base_dir() -> Path:
     """Return the base directory for template storage.
 
+    The base directory is derived from the platform-specific user data
+    directory for the ``git-donkey`` application, with ``"template"``
+    appended.
+
+    On most Linux systems this corresponds to
+    ``$XDG_DATA_HOME/git-donkey/template`` (or the appropriate default),
+    while on other platforms it resolves to the conventional user data
+    location as determined by ``platformdirs``.
+
     Returns
     -------
     Path
-        The base template directory: ~/.local/share/git-donkey/template
+        The base template directory.
 
     """
-    home = Path.home()
-    return home / ".local" / "share" / "git-donkey" / "template"
+    base_dir = Path(platformdirs.user_data_dir("git-donkey"))
+    return base_dir / "template"
 
 
 def _get_repo_url(repo: Repo) -> str | None:
