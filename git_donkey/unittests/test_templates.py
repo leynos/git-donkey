@@ -219,7 +219,9 @@ class TestApplyTemplate:
         assert (target_dir / "subdir" / "nested.txt").read_text() == "nested content"
         assert conflicts == []
 
-    def test_overwrites_existing_files(self, tmp_path: Path) -> None:
+    def test_overwrites_existing_files(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Test that existing files are overwritten and conflicts are reported."""
         template_dir = tmp_path / "template"
         template_dir.mkdir()
@@ -227,12 +229,30 @@ class TestApplyTemplate:
 
         target_dir = tmp_path / "target"
         target_dir.mkdir()
-        (target_dir / "file.txt").write_text("old content")
+        existing_file = target_dir / "file.txt"
+        existing_file.write_text("old content")
+
+        # Capture user-facing warnings emitted via helpers._eprint
+        messages: list[str] = []
+
+        def fake_eprint(message: str) -> None:
+            messages.append(message)
+
+        from git_donkey import helpers
+
+        monkeypatch.setattr(helpers, "_eprint", fake_eprint)
 
         conflicts = templates.apply_template(template_dir, target_dir, prefix="TEST")
 
+        assert (target_dir / "file.txt").exists()
         assert (target_dir / "file.txt").read_text() == "new content"
+
+        # The overwritten file should be reported as a conflict
         assert Path("file.txt") in conflicts
+
+        # A warning with the prefix and overwriting wording should be emitted
+        assert any("TEST" in msg for msg in messages)
+        assert any("overwriting" in msg.lower() for msg in messages)
 
     def test_creates_parent_directories(self, tmp_path: Path) -> None:
         """Test that parent directories are created as needed."""
