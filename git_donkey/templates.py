@@ -165,6 +165,15 @@ def apply_template(
             rel_path = template_file.relative_to(template_dir)
             target_file = target_dir / rel_path
 
+            # Check if target path is a directory
+            if target_file.is_dir():
+                helpers._eprint(
+                    f"{prefix} Warning: cannot overwrite directory with file, "
+                    f"skipping: {rel_path}"
+                )
+                conflicts.append(rel_path)
+                continue
+
             # Check if file already exists
             if target_file.exists():
                 helpers._eprint(

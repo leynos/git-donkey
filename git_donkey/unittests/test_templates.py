@@ -321,3 +321,47 @@ class TestApplyTemplate:
         assert len(conflicts) == 2
         assert Path("file1.txt") in conflicts
         assert Path("file2.txt") in conflicts
+
+    def test_skips_directory_collision(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Test that template file is skipped when target is a directory."""
+        template_dir = tmp_path / "template"
+        template_dir.mkdir()
+        # Template has a file named "config"
+        (template_dir / "config").write_text("config content")
+
+        target_dir = tmp_path / "target"
+        target_dir.mkdir()
+        # Target has a directory named "config"
+        config_dir = target_dir / "config"
+        config_dir.mkdir()
+        (config_dir / "nested.txt").write_text("nested file")
+
+        # Capture warnings
+        messages: list[str] = []
+
+        def fake_eprint(message: str) -> None:
+            messages.append(message)
+
+        from git_donkey import helpers
+
+        monkeypatch.setattr(helpers, "_eprint", fake_eprint)
+
+        conflicts = templates.apply_template(template_dir, target_dir, prefix="TEST")
+
+        # The directory should still exist and remain unchanged
+        assert config_dir.is_dir()
+        assert (config_dir / "nested.txt").exists()
+        assert (config_dir / "nested.txt").read_text() == "nested file"
+
+        # The file should not have been created
+        assert not (target_dir / "config").is_file()
+
+        # Should be reported as a conflict
+        assert Path("config") in conflicts
+
+        # Warning should be emitted
+        assert any("TEST" in msg for msg in messages)
+        assert any("directory" in msg.lower() for msg in messages)
+        assert any("skipping" in msg.lower() for msg in messages)
