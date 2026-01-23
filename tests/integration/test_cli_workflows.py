@@ -412,3 +412,70 @@ def test_git_donkey_template_shows_existing_directory(
     assert "empty" not in captured.err.lower(), (
         "expected no empty message when directory has files"
     )
+
+
+def test_git_donkey_template_fails_outside_git_repo(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """git-donkey-template should fail with error outside a Git repo."""
+    # Create a bare temporary directory (no .git)
+    non_repo_dir = tmp_path / "not-a-repo"
+    non_repo_dir.mkdir()
+
+    # Change into the non-repo directory
+    original_cwd = Path.cwd()
+    try:
+        os.chdir(non_repo_dir)
+
+        # Run git-donkey-template; expect SystemExit
+        exit_code = None
+        try:
+            exit_code = template_cmd.run_git_donkey_template()
+        except SystemExit as e:
+            exit_code = e.code
+
+        assert exit_code != 0, (
+            "expected git-donkey-template to exit non-zero outside a Git repo"
+        )
+
+        # helpers._die should emit a clear error message on stderr
+        captured = capsys.readouterr()
+        assert "git repository" in captured.err.lower()
+    finally:
+        os.chdir(original_cwd)
+
+
+def test_git_donkey_template_fails_without_remote(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """git-donkey-template should error when repository has no remote configured."""
+    # Initialize a repo with no remotes
+    repo_path = tmp_path / "repo-without-remote"
+    repo = Repo.init(repo_path)
+    _configure_repo(repo)
+
+    # Ensure the repo has at least one commit
+    dummy_file = repo_path / "README.md"
+    dummy_file.write_text("initial\n", encoding="utf-8")
+    repo.index.add([str(dummy_file)])
+    repo.index.commit("Initial commit without remote")
+
+    # Change into the repo directory
+    monkeypatch.chdir(repo_path)
+
+    # Run git-donkey-template; expect SystemExit due to missing remote
+    exit_code = None
+    try:
+        exit_code = template_cmd.run_git_donkey_template()
+    except SystemExit as e:
+        exit_code = e.code
+
+    assert exit_code != 0, "expected non-zero exit code when no remote is configured"
+
+    # Assert that the error message indicates the missing-remote problem
+    captured = capsys.readouterr()
+    assert "remote" in captured.err.lower()
+    assert "template" in captured.err.lower()
