@@ -18,6 +18,13 @@ class TestAdler32Base32Lc:
         assert result.islower()
         assert "=" not in result  # padding stripped by default
 
+    @staticmethod
+    def test_golden_value_checksum() -> None:
+        """Golden-value test to detect unintended algorithm changes."""
+        # If this assertion breaks, the checksum / encoding logic has changed.
+        result = slugs.adler32_base32_lc("hello")
+        assert result == "aywaefi"
+
     def test_strip_padding_true(self) -> None:
         """Test that padding is stripped when strip_padding=True."""
         result = slugs.adler32_base32_lc("test", strip_padding=True)
