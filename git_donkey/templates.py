@@ -45,6 +45,10 @@ def _get_template_base_dir() -> Path:
 def _get_repo_url(repo: Repo) -> str | None:
     """Get the remote URL for the repository.
 
+    Prefer the ``origin`` remote when available, to ensure consistent behavior
+    across clones. Fall back to the first configured remote if no ``origin``
+    remote is present.
+
     Parameters
     ----------
     repo : Repo
@@ -58,8 +62,13 @@ def _get_repo_url(repo: Repo) -> str | None:
     """
     if not repo.remotes:
         return None
-    # Use the first remote's URL
-    return repo.remotes[0].url
+
+    # Prefer 'origin' when available to avoid depending on remote creation order.
+    origin_remote = next(
+        (remote for remote in repo.remotes if remote.name == "origin"), None
+    )
+    remote = origin_remote or repo.remotes[0]
+    return remote.url
 
 
 def get_template_dir_path(repo: Repo) -> Path | None:

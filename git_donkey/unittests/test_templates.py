@@ -44,13 +44,28 @@ class TestGetRepoUrl:
     def test_multiple_remotes_uses_first(self) -> None:
         """Test that first remote's URL is used when multiple remotes exist."""
         mock_remote1 = mock.Mock()
+        mock_remote1.name = "upstream"
         mock_remote1.url = "https://github.com/user/repo1.git"
         mock_remote2 = mock.Mock()
+        mock_remote2.name = "fork"
         mock_remote2.url = "https://github.com/user/repo2.git"
         mock_repo = mock.Mock(spec=Repo)
         mock_repo.remotes = [mock_remote1, mock_remote2]
         result = templates._get_repo_url(mock_repo)
         assert result == "https://github.com/user/repo1.git"
+
+    def test_multiple_remotes_prefers_origin(self) -> None:
+        """Test that origin remote is preferred over other remotes."""
+        mock_remote1 = mock.Mock()
+        mock_remote1.name = "upstream"
+        mock_remote1.url = "https://github.com/user/repo1.git"
+        mock_remote2 = mock.Mock()
+        mock_remote2.name = "origin"
+        mock_remote2.url = "https://github.com/user/repo2.git"
+        mock_repo = mock.Mock(spec=Repo)
+        mock_repo.remotes = [mock_remote1, mock_remote2]
+        result = templates._get_repo_url(mock_repo)
+        assert result == "https://github.com/user/repo2.git"
 
 
 class TestGetTemplateDirPath:
