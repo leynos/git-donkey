@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Generator
+import typing as typ
 from pathlib import Path
 from unittest import mock
 
@@ -13,7 +13,7 @@ from git_donkey import templates
 
 
 @pytest.fixture
-def mock_template_base_dir(tmp_path: Path) -> Generator[Path, None, None]:
+def mock_template_base_dir(tmp_path: Path) -> typ.Iterator[Path]:
     """Fixture that patches _get_template_base_dir to return tmp_path."""
     with mock.patch(
         "git_donkey.templates._get_template_base_dir", return_value=tmp_path
