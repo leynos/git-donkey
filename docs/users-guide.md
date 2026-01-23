@@ -67,12 +67,12 @@ git donkey-template
 
 When a template exists, all files from the template directory are copied into
 the newly created worktree. If a file already exists in the worktree, a warning
-is issued, but the file is overwritten anyway. This allows you to maintain
-per-repository configuration files (such as `.editorconfig`,
-`.vscode/settings.json`, or project-specific configurations) that are
-automatically applied to all new worktrees.
+is issued, but the file is overwritten anyway. This design allows per-repository
+configuration files (such as `.editorconfig`, `.vscode/settings.json`, or
+project-specific configurations) to be maintained and automatically applied to
+all new worktrees.
 
-Example template structure:
+Example template structure (Linux):
 
 ```text
 ~/.local/share/git-donkey/template/
@@ -83,6 +83,10 @@ Example template structure:
     config/
       local.json
 ```
+
+On other platforms, the template directory follows the platform's conventions for
+user data storage (e.g., `~/Library/Application Support/git-donkey/template` on
+macOS).
 
 ## git track
 
