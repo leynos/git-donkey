@@ -9,11 +9,11 @@ from unittest import mock
 import pytest
 from git import Repo
 
-from git_donkey import templates
+from git_donkey import helpers, slugs, templates
 
 
 @pytest.fixture
-def mock_template_base_dir(tmp_path: Path) -> typ.Iterator[Path]:
+def mock_template_base_dir(tmp_path: Path) -> typ.Generator[Path]:
     """Fixture that patches _get_template_base_dir to return tmp_path."""
     with mock.patch(
         "git_donkey.templates._get_template_base_dir", return_value=tmp_path
@@ -27,9 +27,13 @@ class TestGetTemplateBaseDir:
     def test_returns_path(self) -> None:
         """Test that the function returns a Path object."""
         result = templates._get_template_base_dir()
-        assert isinstance(result, Path)
-        assert result.name == "template"
-        assert result.parent.name == "git-donkey"
+        assert isinstance(result, Path), "expected result to be a Path object"
+        assert result.name == "template", (
+            "expected last path component to be 'template'"
+        )
+        assert result.parent.name == "git-donkey", (
+            "expected parent directory to be 'git-donkey'"
+        )
 
 
 class TestGetRepoUrl:
@@ -95,8 +99,6 @@ class TestGetTemplateDirPath:
         mock_repo = mock.Mock(spec=Repo)
         mock_repo.remotes = [mock_remote]
 
-        from git_donkey import slugs
-
         repo_slug = slugs.slug_dash_adler32(mock_remote.url)
         expected_path = mock_template_base_dir / repo_slug
 
@@ -136,8 +138,6 @@ class TestGetTemplateDir:
         mock_repo.remotes = [mock_remote]
 
         # Create the expected directory structure
-        from git_donkey import slugs
-
         repo_slug = slugs.slug_dash_adler32(mock_remote.url)
         template_path = mock_template_base_dir / repo_slug
         template_path.mkdir(parents=True)
@@ -153,8 +153,6 @@ class TestGetTemplateDir:
         mock_remote.url = "https://github.com/user/repo.git"
         mock_repo = mock.Mock(spec=Repo)
         mock_repo.remotes = [mock_remote]
-
-        from git_donkey import slugs
 
         repo_slug = slugs.slug_dash_adler32(mock_remote.url)
         template_path = mock_template_base_dir / repo_slug
@@ -200,9 +198,11 @@ class TestApplyTemplate:
 
         conflicts = templates.apply_template(template_dir, target_dir, prefix="TEST")
 
-        assert (target_dir / "file.txt").exists()
-        assert (target_dir / "file.txt").read_text() == "content"
-        assert conflicts == []
+        assert (target_dir / "file.txt").exists(), "expected file.txt to be copied"
+        assert (target_dir / "file.txt").read_text() == "content", (
+            "expected file content to match template"
+        )
+        assert conflicts == [], "expected no conflicts for new file"
 
     def test_copy_nested_files(self, tmp_path: Path) -> None:
         """Test copying nested directory structure."""
@@ -217,10 +217,14 @@ class TestApplyTemplate:
 
         conflicts = templates.apply_template(template_dir, target_dir, prefix="TEST")
 
-        assert (target_dir / "root.txt").exists()
-        assert (target_dir / "subdir" / "nested.txt").exists()
-        assert (target_dir / "subdir" / "nested.txt").read_text() == "nested content"
-        assert conflicts == []
+        assert (target_dir / "root.txt").exists(), "expected root.txt to be copied"
+        assert (target_dir / "subdir" / "nested.txt").exists(), (
+            "expected nested.txt to be copied"
+        )
+        assert (target_dir / "subdir" / "nested.txt").read_text() == "nested content", (
+            "expected nested file content to match template"
+        )
+        assert conflicts == [], "expected no conflicts for nested files"
 
     def test_overwrites_existing_files(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -241,21 +245,29 @@ class TestApplyTemplate:
         def fake_eprint(message: str) -> None:
             messages.append(message)
 
-        from git_donkey import helpers
-
         monkeypatch.setattr(helpers, "_eprint", fake_eprint)
 
         conflicts = templates.apply_template(template_dir, target_dir, prefix="TEST")
 
-        assert (target_dir / "file.txt").exists()
-        assert (target_dir / "file.txt").read_text() == "new content"
+        assert (target_dir / "file.txt").exists(), (
+            "expected file.txt to exist after overwrite"
+        )
+        assert (target_dir / "file.txt").read_text() == "new content", (
+            "expected file content to be updated"
+        )
 
         # The overwritten file should be reported as a conflict
-        assert Path("file.txt") in conflicts
+        assert Path("file.txt") in conflicts, (
+            "expected overwritten file to be reported as conflict"
+        )
 
         # A warning with the prefix and overwriting wording should be emitted
-        assert any("TEST" in msg for msg in messages)
-        assert any("overwriting" in msg.lower() for msg in messages)
+        assert any("TEST" in msg for msg in messages), (
+            "expected warning to include prefix"
+        )
+        assert any("overwriting" in msg.lower() for msg in messages), (
+            "expected warning to mention overwriting"
+        )
 
     def test_creates_parent_directories(self, tmp_path: Path) -> None:
         """Test that parent directories are created as needed."""
@@ -269,8 +281,10 @@ class TestApplyTemplate:
 
         conflicts = templates.apply_template(template_dir, target_dir, prefix="TEST")
 
-        assert (target_dir / "deep" / "nested" / "dir" / "file.txt").exists()
-        assert conflicts == []
+        assert (target_dir / "deep" / "nested" / "dir" / "file.txt").exists(), (
+            "expected deeply nested file to be created"
+        )
+        assert conflicts == [], "expected no conflicts when creating directories"
 
     def test_preserves_file_metadata(self, tmp_path: Path) -> None:
         """Test that file metadata (timestamps) are preserved."""
@@ -293,7 +307,7 @@ class TestApplyTemplate:
         # shutil.copy2 preserves modification time (allow small tolerance)
         assert target_stat.st_mtime == pytest.approx(
             original_stat.st_mtime, rel=0, abs=1
-        )
+        ), "expected modification time to be preserved"
 
     def test_empty_template_directory(self, tmp_path: Path) -> None:
         """Test that empty template directory results in no files copied."""
@@ -306,8 +320,10 @@ class TestApplyTemplate:
         conflicts = templates.apply_template(template_dir, target_dir, prefix="TEST")
 
         # Only the target directory should exist, no files copied
-        assert list(target_dir.iterdir()) == []
-        assert conflicts == []
+        assert list(target_dir.iterdir()) == [], (
+            "expected no files to be copied from empty template"
+        )
+        assert conflicts == [], "expected no conflicts from empty template"
 
     def test_multiple_conflicts(self, tmp_path: Path) -> None:
         """Test that multiple conflicts are all reported."""
@@ -323,9 +339,13 @@ class TestApplyTemplate:
 
         conflicts = templates.apply_template(template_dir, target_dir, prefix="TEST")
 
-        assert len(conflicts) == 2
-        assert Path("file1.txt") in conflicts
-        assert Path("file2.txt") in conflicts
+        assert len(conflicts) == 2, "expected two conflicts to be reported"
+        assert Path("file1.txt") in conflicts, (
+            "expected file1.txt to be reported as conflict"
+        )
+        assert Path("file2.txt") in conflicts, (
+            "expected file2.txt to be reported as conflict"
+        )
 
     def test_skips_directory_collision(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -349,24 +369,36 @@ class TestApplyTemplate:
         def fake_eprint(message: str) -> None:
             messages.append(message)
 
-        from git_donkey import helpers
-
         monkeypatch.setattr(helpers, "_eprint", fake_eprint)
 
         conflicts = templates.apply_template(template_dir, target_dir, prefix="TEST")
 
         # The directory should still exist and remain unchanged
-        assert config_dir.is_dir()
-        assert (config_dir / "nested.txt").exists()
-        assert (config_dir / "nested.txt").read_text() == "nested file"
+        assert config_dir.is_dir(), "expected config directory to remain unchanged"
+        assert (config_dir / "nested.txt").exists(), (
+            "expected nested file to remain unchanged"
+        )
+        assert (config_dir / "nested.txt").read_text() == "nested file", (
+            "expected nested file content to remain unchanged"
+        )
 
         # The file should not have been created
-        assert not (target_dir / "config").is_file()
+        assert not (target_dir / "config").is_file(), (
+            "expected config directory not to be overwritten with file"
+        )
 
         # Should be reported as a conflict
-        assert Path("config") in conflicts
+        assert Path("config") in conflicts, (
+            "expected directory collision to be reported as conflict"
+        )
 
         # Warning should be emitted
-        assert any("TEST" in msg for msg in messages)
-        assert any("directory" in msg.lower() for msg in messages)
-        assert any("skipping" in msg.lower() for msg in messages)
+        assert any("TEST" in msg for msg in messages), (
+            "expected warning to include prefix"
+        )
+        assert any("directory" in msg.lower() for msg in messages), (
+            "expected warning to mention directory"
+        )
+        assert any("skipping" in msg.lower() for msg in messages), (
+            "expected warning to mention skipping"
+        )

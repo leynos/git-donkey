@@ -287,7 +287,6 @@ def test_git_donkey_applies_template_overlay(
 ) -> None:
     """git-donkey should apply template overlay files when template exists."""
     local_path, remote_path = _setup_repo(tmp_path)
-    Repo(local_path)
 
     # Set up template directory structure
     remote_url = remote_path.as_posix()
@@ -416,6 +415,7 @@ def test_git_donkey_template_shows_existing_directory(
 
 def test_git_donkey_template_fails_outside_git_repo(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     """git-donkey-template should fail with error outside a Git repo."""
@@ -424,26 +424,22 @@ def test_git_donkey_template_fails_outside_git_repo(
     non_repo_dir.mkdir()
 
     # Change into the non-repo directory
-    original_cwd = Path.cwd()
+    monkeypatch.chdir(non_repo_dir)
+
+    # Run git-donkey-template; expect SystemExit
+    exit_code = None
     try:
-        os.chdir(non_repo_dir)
+        exit_code = template_cmd.run_git_donkey_template()
+    except SystemExit as e:
+        exit_code = e.code
 
-        # Run git-donkey-template; expect SystemExit
-        exit_code = None
-        try:
-            exit_code = template_cmd.run_git_donkey_template()
-        except SystemExit as e:
-            exit_code = e.code
+    assert exit_code != 0, (
+        "expected git-donkey-template to exit non-zero outside a Git repo"
+    )
 
-        assert exit_code != 0, (
-            "expected git-donkey-template to exit non-zero outside a Git repo"
-        )
-
-        # helpers._die should emit a clear error message on stderr
-        captured = capsys.readouterr()
-        assert "git repository" in captured.err.lower()
-    finally:
-        os.chdir(original_cwd)
+    # helpers._die should emit a clear error message on stderr
+    captured = capsys.readouterr()
+    assert "git repository" in captured.err.lower()
 
 
 def test_git_donkey_template_fails_without_remote(

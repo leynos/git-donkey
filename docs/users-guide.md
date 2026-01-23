@@ -84,9 +84,9 @@ Example template structure (Linux):
       local.json
 ```
 
-On other platforms, the template directory follows the platform's conventions for
-user data storage (e.g., `~/Library/Application Support/git-donkey/template` on
-macOS).
+On other platforms, the template directory follows the platform's conventions
+for user data storage (e.g.,
+`~/Library/Application Support/git-donkey/template` on macOS).
 
 ## git track
 

@@ -3,9 +3,8 @@
 *Because sometimes you need a worktree, and a donkey's got your back.*
 
 git-donkey is a collection of Git subcommands that make branch-based
-development less of a… well, you know. Stop wrestling with worktrees,
-tracking branches, and repository scaffolding—let the donkey do the heavy
-lifting.
+development less of a… well, you know. Stop wrestling with worktrees, tracking
+branches, and repository scaffolding—let the donkey do the heavy lifting.
 
 ## What does it do?
 
@@ -48,9 +47,9 @@ git donkey-template
 Check out the [**Users' Guide**](docs/users-guide.md) for detailed usage,
 options, and examples. The donkey's got a lot of tricks up its… hooves?
 
-## Licence
+## License
 
-This project is licensed under the **ISC Licence**. See the [LICENSE](LICENSE)
+This project is licensed under the **ISC License**. See the [LICENSE](LICENSE)
 file for details.
 
 ## Contributing
