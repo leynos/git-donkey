@@ -44,7 +44,7 @@ class TestGetRepoUrl:
         mock_repo = mock.Mock(spec=Repo)
         mock_repo.remotes = []
         result = templates._get_repo_url(mock_repo)
-        assert result is None
+        assert result is None, "expected None when repo has no remotes"
 
     def test_with_remote(self) -> None:
         """Test that URL is returned when repo has remotes."""
@@ -53,7 +53,9 @@ class TestGetRepoUrl:
         mock_repo = mock.Mock(spec=Repo)
         mock_repo.remotes = [mock_remote]
         result = templates._get_repo_url(mock_repo)
-        assert result == "https://github.com/user/repo.git"
+        assert result == "https://github.com/user/repo.git", (
+            "expected remote URL to be returned"
+        )
 
     def test_multiple_remotes_uses_first(self) -> None:
         """Test that first remote's URL is used when multiple remotes exist."""
@@ -66,7 +68,9 @@ class TestGetRepoUrl:
         mock_repo = mock.Mock(spec=Repo)
         mock_repo.remotes = [mock_remote1, mock_remote2]
         result = templates._get_repo_url(mock_repo)
-        assert result == "https://github.com/user/repo1.git"
+        assert result == "https://github.com/user/repo1.git", (
+            "expected first remote URL when no origin exists"
+        )
 
     def test_multiple_remotes_prefers_origin(self) -> None:
         """Test that origin remote is preferred over other remotes."""
@@ -79,7 +83,9 @@ class TestGetRepoUrl:
         mock_repo = mock.Mock(spec=Repo)
         mock_repo.remotes = [mock_remote1, mock_remote2]
         result = templates._get_repo_url(mock_repo)
-        assert result == "https://github.com/user/repo2.git"
+        assert result == "https://github.com/user/repo2.git", (
+            "expected origin remote URL to be preferred"
+        )
 
 
 class TestGetTemplateDirPath:
@@ -90,7 +96,7 @@ class TestGetTemplateDirPath:
         mock_repo = mock.Mock(spec=Repo)
         mock_repo.remotes = []
         result = templates.get_template_dir_path(mock_repo)
-        assert result is None
+        assert result is None, "expected None when repo has no remotes"
 
     def test_with_remote_returns_path(self, mock_template_base_dir: Path) -> None:
         """Test that path is returned when repo has remote."""
@@ -103,7 +109,7 @@ class TestGetTemplateDirPath:
         expected_path = mock_template_base_dir / repo_slug
 
         result = templates.get_template_dir_path(mock_repo)
-        assert result == expected_path
+        assert result == expected_path, "expected template path based on repo slug"
 
 
 class TestGetTemplateDir:
@@ -114,7 +120,7 @@ class TestGetTemplateDir:
         mock_repo = mock.Mock(spec=Repo)
         mock_repo.remotes = []
         result = templates.get_template_dir(mock_repo)
-        assert result is None
+        assert result is None, "expected None when repo has no remotes"
 
     def test_template_dir_not_exists_returns_none(
         self, mock_template_base_dir: Path
@@ -126,7 +132,7 @@ class TestGetTemplateDir:
         mock_repo.remotes = [mock_remote]
 
         result = templates.get_template_dir(mock_repo)
-        assert result is None
+        assert result is None, "expected None when template directory does not exist"
 
     def test_template_dir_exists_returns_path(
         self, mock_template_base_dir: Path
@@ -143,7 +149,9 @@ class TestGetTemplateDir:
         template_path.mkdir(parents=True)
 
         result = templates.get_template_dir(mock_repo)
-        assert result == template_path
+        assert result == template_path, (
+            "expected template directory path when it exists"
+        )
 
     def test_template_path_is_file_returns_none(
         self, mock_template_base_dir: Path
@@ -162,7 +170,7 @@ class TestGetTemplateDir:
         template_path.write_text("not a directory")
 
         result = templates.get_template_dir(mock_repo)
-        assert result is None
+        assert result is None, "expected None when template path is a file"
 
 
 class TestApplyTemplate:
