@@ -3,7 +3,8 @@
 Provides functionality to apply overlay templates to worktrees. Templates are
 trees of files stored in a platform-specific directory under
 <user-data-dir>/git-donkey/template/<repo-slug> that are copied into the
-worktree after it is created.
+worktree after it is created. Templates are keyed by repository remote URL.
+Branch-level templates are not supported.
 
 Usage
 -----
@@ -62,8 +63,8 @@ def _get_repo_url(repo: Repo) -> str | None:
     """Get the remote URL for the repository.
 
     Prefer the ``origin`` remote when available, to ensure consistent behavior
-    across clones. Fall back to the first configured remote if no ``origin``
-    remote is present.
+    across clones. If multiple remotes exist without an ``origin`` remote, a
+    ValueError is raised to avoid ambiguous selection.
 
     Parameters
     ----------
@@ -75,6 +76,11 @@ def _get_repo_url(repo: Repo) -> str | None:
     str | None
         The remote URL if available, otherwise None.
 
+    Raises
+    ------
+    ValueError
+        If multiple remotes exist but none is named ``origin``.
+
     """
     if not repo.remotes:
         return None
@@ -83,8 +89,15 @@ def _get_repo_url(repo: Repo) -> str | None:
     origin_remote = next(
         (remote for remote in repo.remotes if remote.name == "origin"), None
     )
-    remote = origin_remote or repo.remotes[0]
-    return remote.url
+    if origin_remote is not None:
+        return origin_remote.url
+
+    if len(repo.remotes) == 1:
+        return repo.remotes[0].url
+
+    remote_names = ", ".join(remote.name for remote in repo.remotes)
+    msg = f"Multiple remotes configured without an 'origin' remote: {remote_names}"
+    raise ValueError(msg)
 
 
 def get_template_dir_path(repo: Repo) -> Path | None:
@@ -101,6 +114,11 @@ def get_template_dir_path(repo: Repo) -> Path | None:
     -------
     Path | None
         The template directory path, or None if the repository has no remote.
+
+    Raises
+    ------
+    ValueError
+        If multiple remotes exist but none is named ``origin``.
 
     """
     repo_url = _get_repo_url(repo)
@@ -123,6 +141,11 @@ def get_template_dir(repo: Repo) -> Path | None:
     -------
     Path | None
         The template directory path if it exists, otherwise None.
+
+    Raises
+    ------
+    ValueError
+        If multiple remotes exist but none is named ``origin``.
 
     """
     template_dir = get_template_dir_path(repo)

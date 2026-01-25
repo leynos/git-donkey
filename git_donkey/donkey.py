@@ -267,7 +267,11 @@ def run_git_donkey(
     )
 
     # Apply template overlay if available
-    template_dir = templates.get_template_dir(context.repo_home)
+    try:
+        template_dir = templates.get_template_dir(context.repo_home)
+    except ValueError as exc:
+        helpers._eprint(f"{_GIT_DONKEY_PREFIX}: {exc}")
+        template_dir = None
     if template_dir is not None:
         helpers._eprint(f"Applying template overlay from: {template_dir}")
         try:

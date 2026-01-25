@@ -47,10 +47,11 @@ Options:
 
 After creating the worktree, `git donkey` automatically applies template
 overlay files if a template directory exists for the repository. Template
-directories are stored at:
+directories are stored under the platform-specific user data directory for
+git-donkey:
 
 ```text
-~/.local/share/git-donkey/template/<repo-url-slug>
+<user-data-dir>/git-donkey/template/<repo-url-slug>
 ```
 
 The slug format is `<slugified-text>-<adler32-checksum>`, where the checksum
@@ -62,7 +63,7 @@ template directory path:
 ```shell
 cd ~/projects/myrepo
 git donkey-template
-# Template directory: ~/.local/share/git-donkey/template/myrepo-a1b2c3d4
+# Template directory: /path/to/user-data/git-donkey/template/myrepo-a1b2c3d4
 ```
 
 When a template exists, all files from the template directory are copied into
@@ -72,10 +73,10 @@ per-repository configuration files (such as `.editorconfig`,
 `.vscode/settings.json`, or project-specific configurations) and automatically
 applying them to all new worktrees.
 
-Example template structure (Linux):
+Example template structure:
 
 ```text
-~/.local/share/git-donkey/template/
+<user-data-dir>/git-donkey/template/
   myrepo-a1b2c3d4/
     .editorconfig
     .vscode/
@@ -85,7 +86,7 @@ Example template structure (Linux):
 ```
 
 On other platforms, the template directory follows the platform's conventions
-for user data storage (e.g.,
+for user data storage (e.g., `~/.local/share/git-donkey/template` on Linux or
 `~/Library/Application Support/git-donkey/template` on macOS).
 
 ## git track
@@ -147,4 +148,7 @@ git donkey-template
 The command must be run from within a Git repository. It creates the template
 directory if it doesn't exist and displays its path. The template directory is
 specific to the repository's remote URL, so different repositories (or
-repositories with different remote URLs) have separate template directories.
+repositories with different remote URLs) have separate template directories. If
+multiple remotes are configured and none is named `origin`, the command exits
+with an error; rename a remote to `origin` or remove the extra remotes to
+resolve the ambiguity.

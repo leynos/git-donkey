@@ -37,7 +37,11 @@ def run_git_donkey_template() -> int:
     except InvalidGitRepositoryError as exc:
         helpers._die(_TEMPLATE_PREFIX, f"not in a git repository: {exc}", 1)
 
-    template_dir = templates.get_template_dir_path(repo)
+    try:
+        template_dir = templates.get_template_dir_path(repo)
+    except ValueError as exc:
+        helpers._die(_TEMPLATE_PREFIX, str(exc), 1)
+        return 1  # pragma: no cover
 
     if template_dir is None:
         helpers._die(

@@ -475,3 +475,40 @@ def test_git_donkey_template_fails_without_remote(
     captured = capsys.readouterr()
     assert "remote" in captured.err.lower()
     assert "template" in captured.err.lower()
+
+
+def test_git_donkey_template_fails_without_origin_remote(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """git-donkey-template should error when origin remote is missing."""
+    repo_path = tmp_path / "repo-multi-remote"
+    repo = Repo.init(repo_path)
+    _configure_repo(repo)
+
+    dummy_file = repo_path / "README.md"
+    dummy_file.write_text("initial\n", encoding="utf-8")
+    repo.index.add([str(dummy_file)])
+    repo.index.commit("Initial commit")
+
+    upstream_path = tmp_path / "upstream.git"
+    fork_path = tmp_path / "fork.git"
+    Repo.init(upstream_path, bare=True)
+    Repo.init(fork_path, bare=True)
+
+    repo.create_remote("upstream", upstream_path.as_posix())
+    repo.create_remote("fork", fork_path.as_posix())
+
+    monkeypatch.chdir(repo_path)
+
+    exit_code = None
+    try:
+        exit_code = template_cmd.run_git_donkey_template()
+    except SystemExit as e:
+        exit_code = e.code
+
+    assert exit_code != 0, "expected non-zero exit code when origin remote is missing"
+
+    captured = capsys.readouterr()
+    assert "origin" in captured.err.lower()
