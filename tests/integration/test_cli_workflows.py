@@ -16,7 +16,7 @@ if typ.TYPE_CHECKING:
     import pytest
 from git import Repo
 
-from git_donkey import donkey, fafo, track
+from git_donkey import donkey, fafo, slugs, template_cmd, templates, track
 
 
 def _configure_repo(repo: Repo) -> None:
@@ -279,3 +279,236 @@ def test_git_fafo_runs_expected_commands(
     assert created["token"] == auth_value, "expected token passed to github3 login"
     assert created["name"] == "demo-repo", "expected repo to be created"
     assert created["private"] is False, "expected repo to be public"
+
+
+def test_git_donkey_applies_template_overlay(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """git-donkey should apply template overlay files when template exists."""
+    local_path, remote_path = _setup_repo(tmp_path)
+
+    # Set up template directory structure
+    remote_url = remote_path.as_posix()
+    repo_slug = slugs.slug_dash_adler32(remote_url)
+
+    template_base = tmp_path / "templates"
+    template_dir = template_base / repo_slug
+    template_dir.mkdir(parents=True)
+
+    # Create template files
+    (template_dir / ".editorconfig").write_text("[*]\nindent_size = 2\n")
+    (template_dir / "config").mkdir()
+    (template_dir / "config" / "settings.json").write_text('{"key": "value"}\n')
+
+    # Mock the template base directory
+    monkeypatch.setattr(templates, "_get_template_base_dir", lambda: template_base)
+
+    monkeypatch.chdir(local_path)
+    exit_code = donkey.run_git_donkey("feature/template-test", no_pull=True)
+
+    assert exit_code == 0, "expected git-donkey to exit successfully"
+
+    worktree_root = local_path.parent / f"{local_path.name}.worktrees"
+    worktree_path = worktree_root / "feature/template-test"
+
+    # Verify template files were copied
+    assert (worktree_path / ".editorconfig").exists(), (
+        "expected .editorconfig to be copied from template"
+    )
+    assert (worktree_path / ".editorconfig").read_text() == "[*]\nindent_size = 2\n", (
+        "expected .editorconfig content to match template"
+    )
+    assert (worktree_path / "config" / "settings.json").exists(), (
+        "expected nested config file to be copied from template"
+    )
+    assert (worktree_path / "config" / "settings.json").read_text() == (
+        '{"key": "value"}\n'
+    ), "expected settings.json content to match template"
+
+
+def test_git_donkey_without_template_succeeds(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """git-donkey should work normally when no template exists."""
+    local_path, _remote_path = _setup_repo(tmp_path)
+
+    # No template directory created
+    template_base = tmp_path / "templates"
+    monkeypatch.setattr(templates, "_get_template_base_dir", lambda: template_base)
+
+    monkeypatch.chdir(local_path)
+    exit_code = donkey.run_git_donkey("feature/no-template", no_pull=True)
+
+    assert exit_code == 0, "expected git-donkey to exit successfully without template"
+
+    worktree_root = local_path.parent / f"{local_path.name}.worktrees"
+    worktree_path = worktree_root / "feature/no-template"
+    assert worktree_path.exists(), "expected worktree to be created"
+
+
+def test_git_donkey_template_creates_directory(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """git-donkey-template should create and display template directory."""
+    local_path, remote_path = _setup_repo(tmp_path)
+
+    template_base = tmp_path / "templates"
+    monkeypatch.setattr(templates, "_get_template_base_dir", lambda: template_base)
+
+    monkeypatch.chdir(local_path)
+    exit_code = template_cmd.run_git_donkey_template()
+
+    assert exit_code == 0, "expected git-donkey-template to exit successfully"
+
+    # Calculate expected path
+    remote_url = remote_path.as_posix()
+    repo_slug = slugs.slug_dash_adler32(remote_url)
+    expected_path = template_base / repo_slug
+
+    assert expected_path.exists(), "expected template directory to be created"
+    assert expected_path.is_dir(), "expected template path to be a directory"
+
+    # Check output
+    captured = capsys.readouterr()
+    assert str(expected_path) in captured.out, (
+        "expected template directory path in output"
+    )
+
+
+def test_git_donkey_template_shows_existing_directory(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """git-donkey-template should display existing template directory."""
+    local_path, remote_path = _setup_repo(tmp_path)
+
+    # Create template directory with files
+    template_base = tmp_path / "templates"
+    remote_url = remote_path.as_posix()
+    repo_slug = slugs.slug_dash_adler32(remote_url)
+    template_dir = template_base / repo_slug
+    template_dir.mkdir(parents=True)
+    (template_dir / "test.txt").write_text("test content")
+
+    monkeypatch.setattr(templates, "_get_template_base_dir", lambda: template_base)
+
+    monkeypatch.chdir(local_path)
+    exit_code = template_cmd.run_git_donkey_template()
+
+    assert exit_code == 0, "expected git-donkey-template to exit successfully"
+
+    # Check output
+    captured = capsys.readouterr()
+    assert str(template_dir) in captured.out, (
+        "expected template directory path in output"
+    )
+    # Should not show "empty" message since directory has files
+    assert "empty" not in captured.err.lower(), (
+        "expected no empty message when directory has files"
+    )
+
+
+def test_git_donkey_template_fails_outside_git_repo(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """git-donkey-template should fail with error outside a Git repo."""
+    # Create a bare temporary directory (no .git)
+    non_repo_dir = tmp_path / "not-a-repo"
+    non_repo_dir.mkdir()
+
+    # Change into the non-repo directory
+    monkeypatch.chdir(non_repo_dir)
+
+    # Run git-donkey-template; expect SystemExit
+    exit_code = None
+    try:
+        exit_code = template_cmd.run_git_donkey_template()
+    except SystemExit as e:
+        exit_code = e.code
+
+    assert exit_code != 0, (
+        "expected git-donkey-template to exit non-zero outside a Git repo"
+    )
+
+    # helpers._die should emit a clear error message on stderr
+    captured = capsys.readouterr()
+    assert "git repository" in captured.err.lower()
+
+
+def test_git_donkey_template_fails_without_remote(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """git-donkey-template should error when repository has no remote configured."""
+    # Initialize a repo with no remotes
+    repo_path = tmp_path / "repo-without-remote"
+    repo = Repo.init(repo_path)
+    _configure_repo(repo)
+
+    # Ensure the repo has at least one commit
+    dummy_file = repo_path / "README.md"
+    dummy_file.write_text("initial\n", encoding="utf-8")
+    repo.index.add([str(dummy_file)])
+    repo.index.commit("Initial commit without remote")
+
+    # Change into the repo directory
+    monkeypatch.chdir(repo_path)
+
+    # Run git-donkey-template; expect SystemExit due to missing remote
+    exit_code = None
+    try:
+        exit_code = template_cmd.run_git_donkey_template()
+    except SystemExit as e:
+        exit_code = e.code
+
+    assert exit_code != 0, "expected non-zero exit code when no remote is configured"
+
+    # Assert that the error message indicates the missing-remote problem
+    captured = capsys.readouterr()
+    assert "remote" in captured.err.lower()
+    assert "template" in captured.err.lower()
+
+
+def test_git_donkey_template_fails_without_origin_remote(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """git-donkey-template should error when origin remote is missing."""
+    repo_path = tmp_path / "repo-multi-remote"
+    repo = Repo.init(repo_path)
+    _configure_repo(repo)
+
+    dummy_file = repo_path / "README.md"
+    dummy_file.write_text("initial\n", encoding="utf-8")
+    repo.index.add([str(dummy_file)])
+    repo.index.commit("Initial commit")
+
+    upstream_path = tmp_path / "upstream.git"
+    fork_path = tmp_path / "fork.git"
+    Repo.init(upstream_path, bare=True)
+    Repo.init(fork_path, bare=True)
+
+    repo.create_remote("upstream", upstream_path.as_posix())
+    repo.create_remote("fork", fork_path.as_posix())
+
+    monkeypatch.chdir(repo_path)
+
+    exit_code = None
+    try:
+        exit_code = template_cmd.run_git_donkey_template()
+    except SystemExit as e:
+        exit_code = e.code
+
+    assert exit_code != 0, "expected non-zero exit code when origin remote is missing"
+
+    captured = capsys.readouterr()
+    assert "origin" in captured.err.lower()

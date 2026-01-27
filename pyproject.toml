@@ -10,13 +10,16 @@ dependencies = [
     "cyclopts>=2.9",
     "github3.py>=4.0.1",
     "loctocat>=0.6.0",
+    "platformdirs>=4.0.0",
     "plumbum>=1.8",
+    "python-slugify>=8.0.0",
 ]
 
 [project.scripts]
 git-donkey = "git_donkey.cli:git_donkey"
 git-track = "git_donkey.cli:git_track"
 git-fafo = "git_donkey.cli:git_fafo"
+git-donkey-template = "git_donkey.cli:git_donkey_template"
 
 [dependency-groups]
 dev = [
@@ -90,8 +93,9 @@ extend-ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"**/test_*.py" = ["S101", "PLR0913", "PLR2004"]
+"**/test_*.py" = ["S101", "PLR0913", "PLR2004", "PLR6301"]
 "tests/steps/*.py" = ["S101", "PLR0913", "PLR2004"]
+"tests/integration/test_cli_workflows.py" = ["PLR0914"]
 
 [tool.ruff.lint.flake8-import-conventions]
 # Declare the banned `from` imports.

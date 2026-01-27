@@ -203,5 +203,11 @@ target/
 # Contains mutation testing data
 **/mutants.out*/
 
+# Charmbracelet Crush coding agent
 .crush/
+
+# grepai index
+.grepai/
+
+# Vim swap files
 *.swp
