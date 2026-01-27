@@ -17,12 +17,13 @@ these as `git <subcommand>` when `git-<subcommand>` is available on the `PATH`.
 
 Create a linked worktree at `../{repo}.worktrees/{branch}`, branching from
 `main` by default, a named base branch, or the branch checked out in the
-current working directory. The command uses the first Git remote, reuses an
-existing local or remote branch when present, and prompts to pull --rebase the
-base branch if it is behind (unless `--no-pull` is set). If the worktree path
-already exists or the branch is already checked out elsewhere, the command
-exits with a ⚔️ conflict message. If the base branch has no remote counterpart,
-the behind check is skipped.
+current working directory. The command prefers the `origin` remote and falls
+back to the first remote when `origin` is absent, reuses an existing local or
+remote branch when present, and prompts to pull --rebase the base branch if it
+is behind (unless `--no-pull` is set). If the worktree path already exists or
+the branch is already checked out elsewhere, the command exits with a ⚔️
+conflict message. If the base branch has no remote counterpart, the behind
+check is skipped.
 
 ```shell
 # Create a new worktree for feature/foo from main
