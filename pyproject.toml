@@ -10,7 +10,7 @@ dependencies = [
     "cyclopts>=2.9",
     "github3.py>=4.0.1",
     "loctocat>=0.6.0",
-    "platformdirs>=4.0.0",
+    "platformdirs>=4.9.6",
     "plumbum>=1.8",
     "python-slugify>=8.0.0",
 ]
