@@ -134,6 +134,17 @@ exists, `git fafo` exits early.
 `git fafo` expects template repositories named `agent-template-<language>`
 under the current GitHub account.
 
+Some Copier templates use trusted features such as `tasks`, which can run
+commands during the scaffold. Copier blocks those templates unless trust is
+explicitly enabled. After reviewing the template source and confirming that its
+tasks are safe to run, pass `--trust`:
+
+```shell
+# Allow a trusted Python template to run Copier tasks
+
+git fafo demo-repo python --trust
+```
+
 ## git donkey-template
 
 Display and create the template directory for the current repository. Template

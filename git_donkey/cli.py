@@ -80,9 +80,9 @@ _fafo_app = App(
 
 
 @_fafo_app.default
-def _fafo_cli(repo_name: str, language: str) -> None:
+def _fafo_cli(repo_name: str, language: str, *, trust: bool = False) -> None:
     """CLI wrapper for git-fafo."""
-    raise SystemExit(fafo.run_git_fafo(repo_name, language))
+    raise SystemExit(fafo.run_git_fafo(repo_name, language, trust=trust))
 
 
 def git_donkey() -> None:

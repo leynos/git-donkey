@@ -11,17 +11,17 @@ Key capabilities:
 - Project scaffolding with copier templates
 - Git initialisation, commits, and upstream push
 
-Examples
---------
->>> from git_donkey import fafo
->>> fafo.run_git_fafo("demo-repo", "python")
-0
-
 Notes
 -----
 Returns standard process exit codes (0 on success, non-zero on failure).
 Side effects include file and directory creation, GitHub API calls, and Git
 commands that initialise, commit, and push a repository.
+
+Examples
+--------
+>>> from git_donkey import fafo
+>>> fafo.run_git_fafo("demo-repo", "python")
+0
 
 """
 
@@ -188,9 +188,33 @@ def _is_repo_already_exists_error(
     return any(_detail_mentions_existing(detail) for detail in details)
 
 
-def _run_copier_interactive(*, template: str, repo_name: str) -> None:
+def _copier_copy_command(
+    *,
+    copier_path: str,
+    template: str,
+    repo_name: str,
+    trust: bool,
+) -> list[str]:
+    cmd = [copier_path, "copy"]
+    if trust:
+        cmd.append("--trust")
+    cmd.extend([template, repo_name])
+    return cmd
+
+
+def _run_copier_interactive(
+    *,
+    template: str,
+    repo_name: str,
+    trust: bool,
+) -> None:
     copier_path = shutil.which("copier") or "copier"
-    cmd = [copier_path, "copy", template, repo_name]
+    cmd = _copier_copy_command(
+        copier_path=copier_path,
+        template=template,
+        repo_name=repo_name,
+        trust=trust,
+    )
     stdin = helpers._stream_or_none(sys.stdin)
     stdout = helpers._stream_or_none(sys.stdout)
     stderr = helpers._stream_or_none(sys.stderr)
@@ -208,8 +232,8 @@ def _run_copier_interactive(*, template: str, repo_name: str) -> None:
         raise ProcessExecutionError(cmd, exc.returncode, "", "") from exc
 
 
-def _scaffold_repo(*, template: str, repo_name: str) -> Path:
-    _run_copier_interactive(template=template, repo_name=repo_name)
+def _scaffold_repo(*, template: str, repo_name: str, trust: bool) -> Path:
+    _run_copier_interactive(template=template, repo_name=repo_name, trust=trust)
     return Path(repo_name)
 
 
@@ -231,7 +255,13 @@ def _initialise_and_push_git_repo(
         git["push", "--set-upstream", "origin", "main"]()
 
 
-def _run_fafo_commands(*, token: str, repo_name: str, language: str) -> None:
+def _run_fafo_commands(
+    *,
+    token: str,
+    repo_name: str,
+    language: str,
+    trust: bool,
+) -> None:
     owner = _create_remote_repository(token=token, repo_name=repo_name)
     template = f"git@github.com:{owner}/agent-template-{language}"
 
@@ -242,7 +272,11 @@ def _run_fafo_commands(*, token: str, repo_name: str, language: str) -> None:
 
     try:
         with local.env(**env_overrides):
-            repo_path = _scaffold_repo(template=template, repo_name=repo_name)
+            repo_path = _scaffold_repo(
+                template=template,
+                repo_name=repo_name,
+                trust=trust,
+            )
             _initialise_and_push_git_repo(
                 repo_path=repo_path,
                 owner=owner,
@@ -252,7 +286,7 @@ def _run_fafo_commands(*, token: str, repo_name: str, language: str) -> None:
         helpers._die(_GIT_FAFO_PREFIX, f"command failed: {exc}", 1)
 
 
-def run_git_fafo(repo_name: str, language: str) -> int:
+def run_git_fafo(repo_name: str, language: str, *, trust: bool = False) -> int:
     """Run the git-fafo workflow.
 
     Parameters
@@ -261,6 +295,8 @@ def run_git_fafo(repo_name: str, language: str) -> int:
         Name for the new repository (alphanumeric, _, -, . only).
     language : str
         Programming language for the project (alphanumeric, _, -, . only).
+    trust : bool
+        Pass Copier's ``--trust`` flag so templates with trusted tasks can run.
 
     Returns
     -------
@@ -283,5 +319,10 @@ def run_git_fafo(repo_name: str, language: str) -> int:
         return 1
 
     token = _github_token()
-    _run_fafo_commands(token=token, repo_name=repo_name, language=language)
+    _run_fafo_commands(
+        token=token,
+        repo_name=repo_name,
+        language=language,
+        trust=trust,
+    )
     return 0
