@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import typing as typ
+from pathlib import Path
 
 from git_donkey import fafo
 
@@ -25,6 +26,18 @@ def test_copier_copy_command_omits_trust_by_default() -> None:
         "git@example.com:owner/agent-template-python",
         "demo-repo",
     ]
+
+
+def test_template_for_language_returns_none_without_language() -> None:
+    """Omitting the language should select the empty-project path."""
+    assert fafo._template_for_language(owner="octocat", language=None) is None
+
+
+def test_template_for_language_builds_agent_template_url() -> None:
+    """Language-specific scaffolds should use the matching agent template."""
+    template = fafo._template_for_language(owner="octocat", language="python")
+
+    assert template == "git@github.com:octocat/agent-template-python"
 
 
 def test_copier_copy_command_adds_trust_when_requested() -> None:
@@ -73,3 +86,27 @@ def test_run_copier_interactive_uses_trusted_command(
         "demo-repo",
     ]
     assert recorded["check"] is True
+
+
+def test_scaffold_repo_creates_empty_project_without_template(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Empty project scaffolding should create the repo directory directly."""
+    called: dict[str, object] = {}
+
+    def _fake_run_copier_interactive(**kwargs: object) -> None:
+        called["kwargs"] = kwargs
+
+    monkeypatch.setattr(
+        fafo,
+        "_run_copier_interactive",
+        _fake_run_copier_interactive,
+    )
+    monkeypatch.chdir(tmp_path)
+
+    repo_path = fafo._scaffold_repo(template=None, repo_name="demo-repo", trust=True)
+
+    assert repo_path == Path("demo-repo")
+    assert (tmp_path / "demo-repo").is_dir()
+    assert called == {}

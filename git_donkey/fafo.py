@@ -232,9 +232,20 @@ def _run_copier_interactive(
         raise ProcessExecutionError(cmd, exc.returncode, "", "") from exc
 
 
-def _scaffold_repo(*, template: str, repo_name: str, trust: bool) -> Path:
+def _template_for_language(*, owner: str, language: str | None) -> str | None:
+    if language is None:
+        return None
+    return f"git@github.com:{owner}/agent-template-{language}"
+
+
+def _scaffold_repo(*, template: str | None, repo_name: str, trust: bool) -> Path:
+    repo_path = Path(repo_name)
+    if template is None:
+        repo_path.mkdir()
+        return repo_path
+
     _run_copier_interactive(template=template, repo_name=repo_name, trust=trust)
-    return Path(repo_name)
+    return repo_path
 
 
 def _initialise_and_push_git_repo(
@@ -259,11 +270,11 @@ def _run_fafo_commands(
     *,
     token: str,
     repo_name: str,
-    language: str,
+    language: str | None,
     trust: bool,
 ) -> None:
     owner = _create_remote_repository(token=token, repo_name=repo_name)
-    template = f"git@github.com:{owner}/agent-template-{language}"
+    template = _template_for_language(owner=owner, language=language)
 
     env_overrides: dict[str, str] = {"PATH": os.environ.get("PATH", "")}
     stub_log = os.environ.get("STUB_LOG")
@@ -286,15 +297,21 @@ def _run_fafo_commands(
         helpers._die(_GIT_FAFO_PREFIX, f"command failed: {exc}", 1)
 
 
-def run_git_fafo(repo_name: str, language: str, *, trust: bool = False) -> int:
+def run_git_fafo(
+    repo_name: str,
+    language: str | None = None,
+    *,
+    trust: bool = False,
+) -> int:
     """Run the git-fafo workflow.
 
     Parameters
     ----------
     repo_name : str
         Name for the new repository (alphanumeric, _, -, . only).
-    language : str
-        Programming language for the project (alphanumeric, _, -, . only).
+    language : str | None
+        Optional programming language for the project (alphanumeric, _, -, .
+        only). When omitted, create an empty project without Copier.
     trust : bool
         Pass Copier's ``--trust`` flag so templates with trusted tasks can run.
 
@@ -305,14 +322,16 @@ def run_git_fafo(repo_name: str, language: str, *, trust: bool = False) -> int:
 
     """
     helpers._require_command("git", _GIT_FAFO_PREFIX)
-    helpers._require_command("copier", _GIT_FAFO_PREFIX)
+    if language is not None:
+        helpers._require_command("copier", _GIT_FAFO_PREFIX)
 
     repo_name = helpers.validate_slug(
         repo_name, label="repo name", prefix=_GIT_FAFO_PREFIX
     )
-    language = helpers.validate_slug(
-        language, label="language", prefix=_GIT_FAFO_PREFIX
-    )
+    if language is not None:
+        language = helpers.validate_slug(
+            language, label="language", prefix=_GIT_FAFO_PREFIX
+        )
 
     if Path(repo_name).exists():
         helpers._eprint("You did that one already!")

@@ -105,7 +105,7 @@ git track feature/foo
 
 ## git fafo
 
-Scaffold and publish a new GitHub repository from an `agent-template` project.
+Scaffold and publish a new GitHub repository.
 
 ```shell
 # Create a new Python repository named demo-repo
@@ -113,10 +113,16 @@ Scaffold and publish a new GitHub repository from an `agent-template` project.
 git fafo demo-repo python
 ```
 
+```shell
+# Create an empty repository named demo-repo
+
+git fafo demo-repo
+```
+
 Requirements:
 
 - `git`
-- `copier`
+- `copier`, when scaffolding from a language template
 - A GitHub token (`GITHUB_TOKEN` or `GH_TOKEN`) *or* an interactive terminal
   for device flow
 
@@ -131,13 +137,17 @@ at `https://github.com/login/device`. The access token is stored at
 `git fafo` exits with a ⚔️ conflict message. If the target directory already
 exists, `git fafo` exits early.
 
-`git fafo` expects template repositories named `agent-template-<language>`
-under the current GitHub account.
+When a language is provided, `git fafo` expects template repositories named
+`agent-template-<language>` under the current GitHub account and scaffolds the
+project with Copier. When the language is omitted, `git fafo` creates an empty
+local directory, initialises Git, creates the remote repository, and pushes the
+empty initial commit.
 
 Some Copier templates use trusted features such as `tasks`, which can run
 commands during the scaffold. Copier blocks those templates unless trust is
 explicitly enabled. After reviewing the template source and confirming that its
-tasks are safe to run, pass `--trust`:
+tasks are safe to run, pass `--trust`. The option only affects template-backed
+scaffolds:
 
 ```shell
 # Allow a trusted Python template to run Copier tasks

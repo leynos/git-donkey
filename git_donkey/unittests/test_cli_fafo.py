@@ -44,3 +44,33 @@ def test_fafo_cli_passes_trust_option(
         "language": "python",
         "trust": True,
     }
+
+
+def test_fafo_cli_allows_missing_language(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The language positional argument should be optional."""
+    recorded: dict[str, object] = {}
+
+    def _fake_run_git_fafo(
+        repo_name: str,
+        language: str | None,
+        *,
+        trust: bool,
+    ) -> int:
+        recorded["repo_name"] = repo_name
+        recorded["language"] = language
+        recorded["trust"] = trust
+        return 0
+
+    monkeypatch.setattr(fafo, "run_git_fafo", _fake_run_git_fafo)
+
+    with pytest.raises(SystemExit) as excinfo:
+        typ.cast("cabc.Callable[[list[str]], None]", cli._fafo_app)(["demo-repo"])
+
+    assert excinfo.value.code == 0
+    assert recorded == {
+        "repo_name": "demo-repo",
+        "language": None,
+        "trust": False,
+    }
