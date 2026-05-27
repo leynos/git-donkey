@@ -8,13 +8,14 @@ Run with `make test` or `pytest tests/integration/test_cli_workflows.py`.
 
 from __future__ import annotations
 
+import dataclasses
 import os
 import typing as typ
 from pathlib import Path
 
-if typ.TYPE_CHECKING:
-    import pytest
+import pytest
 from git import Repo
+from github3 import exceptions as github3_exceptions
 
 from git_donkey import donkey, fafo, slugs, template_cmd, templates, track
 
@@ -50,6 +51,73 @@ def _setup_repo(tmp_path: Path) -> tuple[Path, Path]:
     local_repo.remote("origin").push("main")
 
     return local_path, remote_path
+
+
+@dataclasses.dataclass
+class _ExistingRepoResponse:
+    """Stub API response for an existing GitHub repository."""
+
+    status_code: int = 422
+
+    @staticmethod
+    def json() -> dict[str, object]:
+        return {
+            "message": "Repository creation failed.",
+            "errors": [{"message": "name already exists on this account"}],
+        }
+
+
+@dataclasses.dataclass
+class _ExistingRepoUser:
+    """GitHub user stub for an existing repository."""
+
+    login: str
+
+
+@dataclasses.dataclass
+class _ExistingRepoGitHub:
+    """GitHub stub that reports an existing repository."""
+
+    login: str
+
+    def me(self) -> _ExistingRepoUser:
+        return _ExistingRepoUser(self.login)
+
+    @staticmethod
+    def create_repository(name: str, *, private: bool = False) -> typ.NoReturn:
+        raise github3_exceptions.UnprocessableEntity(_ExistingRepoResponse())
+
+
+def _create_bare_remote(tmp_path: Path) -> Path:
+    remote_path = tmp_path / "existing.git"
+    Repo.init(remote_path, bare=True)
+    return remote_path
+
+
+def _seed_empty_initial_commit(remote_path: Path, tmp_path: Path) -> None:
+    seed_path = tmp_path / "seed-empty"
+    repo = Repo.init(seed_path)
+    _configure_repo(repo)
+    repo.git.commit("--allow-empty", "-m", "Initial commit")
+    repo.git.branch("-M", "main")
+    repo.create_remote("origin", remote_path.as_posix())
+    repo.remote("origin").push("main")
+    Repo(remote_path).git.symbolic_ref("HEAD", "refs/heads/main")
+
+
+def _patch_existing_github(
+    monkeypatch: pytest.MonkeyPatch,
+    remote_path: Path,
+) -> None:
+    def _fake_login(*, token: str | None = None) -> object:
+        return _ExistingRepoGitHub("example")
+
+    def _fake_remote_repository_url(*, owner: str, repo_name: str) -> str:
+        return remote_path.as_posix()
+
+    monkeypatch.setenv("GITHUB_TOKEN", "fake-token")
+    monkeypatch.setattr(fafo.github3, "login", _fake_login)
+    monkeypatch.setattr(fafo, "_remote_repository_url", _fake_remote_repository_url)
 
 
 def test_git_track_creates_tracking_branch(
@@ -396,6 +464,57 @@ def test_git_fafo_without_language_creates_empty_repo(
     assert created["token"] == auth_value, "expected token passed to github3 login"
     assert created["name"] == "demo-repo", "expected repo to be created"
     assert created["private"] is False, "expected repo to be public"
+
+
+def test_git_fafo_adopts_existing_zero_commit_repo_with_yes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """git-fafo should adopt an existing repository with no commits."""
+    remote_path = _create_bare_remote(tmp_path)
+    _patch_existing_github(monkeypatch, remote_path)
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = fafo.run_git_fafo("demo-repo", yes=True)
+
+    assert exit_code == 0, "expected git-fafo to adopt the empty remote"
+    assert (tmp_path / "demo-repo").is_dir(), "expected local repo directory"
+    remote_repo = Repo(remote_path)
+    assert remote_repo.git.rev_list("--count", "main").strip() == "1"
+
+
+def test_git_fafo_adopts_existing_empty_initial_commit_with_yes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """git-fafo should adopt a repository with only an empty initial commit."""
+    remote_path = _create_bare_remote(tmp_path)
+    _seed_empty_initial_commit(remote_path, tmp_path)
+    _patch_existing_github(monkeypatch, remote_path)
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = fafo.run_git_fafo("demo-repo", yes=True)
+
+    assert exit_code == 0, "expected git-fafo to adopt the empty initial commit"
+    remote_repo = Repo(remote_path)
+    assert remote_repo.git.rev_list("--count", "main").strip() == "1"
+
+
+def test_git_fafo_rejects_existing_repo_without_confirmation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """git-fafo should not adopt an existing repository without confirmation."""
+    remote_path = _create_bare_remote(tmp_path)
+    _patch_existing_github(monkeypatch, remote_path)
+    monkeypatch.setattr(fafo.helpers, "_prompt_yes_no", lambda *_args, **_kwargs: False)
+    monkeypatch.chdir(tmp_path)
+
+    with pytest.raises(SystemExit) as excinfo:
+        fafo.run_git_fafo("demo-repo")
+
+    assert excinfo.value.code == 1
+    assert not (tmp_path / "demo-repo").exists(), "expected no local scaffold"
 
 
 def test_git_donkey_applies_template_overlay(

@@ -23,10 +23,12 @@ def test_fafo_cli_passes_trust_option(
         language: str,
         *,
         trust: bool,
+        yes: bool,
     ) -> int:
         recorded["repo_name"] = repo_name
         recorded["language"] = language
         recorded["trust"] = trust
+        recorded["yes"] = yes
         return 0
 
     monkeypatch.setattr(fafo, "run_git_fafo", _fake_run_git_fafo)
@@ -43,6 +45,7 @@ def test_fafo_cli_passes_trust_option(
         "repo_name": "demo-repo",
         "language": "python",
         "trust": True,
+        "yes": False,
     }
 
 
@@ -57,10 +60,12 @@ def test_fafo_cli_allows_missing_language(
         language: str | None,
         *,
         trust: bool,
+        yes: bool,
     ) -> int:
         recorded["repo_name"] = repo_name
         recorded["language"] = language
         recorded["trust"] = trust
+        recorded["yes"] = yes
         return 0
 
     monkeypatch.setattr(fafo, "run_git_fafo", _fake_run_git_fafo)
@@ -73,4 +78,41 @@ def test_fafo_cli_allows_missing_language(
         "repo_name": "demo-repo",
         "language": None,
         "trust": False,
+        "yes": False,
+    }
+
+
+def test_fafo_cli_passes_yes_short_option(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The -y CLI option should confirm existing repository adoption."""
+    recorded: dict[str, object] = {}
+
+    def _fake_run_git_fafo(
+        repo_name: str,
+        language: str | None,
+        *,
+        trust: bool,
+        yes: bool,
+    ) -> int:
+        recorded["repo_name"] = repo_name
+        recorded["language"] = language
+        recorded["trust"] = trust
+        recorded["yes"] = yes
+        return 0
+
+    monkeypatch.setattr(fafo, "run_git_fafo", _fake_run_git_fafo)
+
+    with pytest.raises(SystemExit) as excinfo:
+        typ.cast("cabc.Callable[[list[str]], None]", cli._fafo_app)([
+            "demo-repo",
+            "-y",
+        ])
+
+    assert excinfo.value.code == 0
+    assert recorded == {
+        "repo_name": "demo-repo",
+        "language": None,
+        "trust": False,
+        "yes": True,
     }

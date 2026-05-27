@@ -18,7 +18,9 @@ Run with::
 
 from __future__ import annotations
 
-from cyclopts import App
+import typing as typ
+
+from cyclopts import App, Parameter
 
 from git_donkey import donkey, fafo, template_cmd, track
 
@@ -68,9 +70,9 @@ def _track_cli(branch: str) -> None:
 _fafo_app = App(
     name="git fafo",
     help=(
-        "Scaffold and publish a new GitHub repository from agent-template-<language> "
-        "using copier and git. Uses GITHUB_TOKEN/GH_TOKEN when set; otherwise runs "
-        "device flow with default client ID "
+        "Scaffold and publish a new GitHub repository, optionally from "
+        "agent-template-<language> using copier and git. Uses GITHUB_TOKEN/GH_TOKEN "
+        "when set; otherwise runs device flow with default client ID "
         f"{fafo._DEFAULT_GITHUB_CLIENT_ID} (override via "
         "GIT_DONKEY_GITHUB_CLIENT_ID) and stores the token at "
         "~/.config/git-donkey/github-token (override via "
@@ -85,9 +87,13 @@ def _fafo_cli(
     language: str | None = None,
     *,
     trust: bool = False,
+    yes: typ.Annotated[
+        bool,
+        Parameter(alias=["--yes", "-y"]),
+    ] = False,
 ) -> None:
     """CLI wrapper for git-fafo."""
-    raise SystemExit(fafo.run_git_fafo(repo_name, language, trust=trust))
+    raise SystemExit(fafo.run_git_fafo(repo_name, language, trust=trust, yes=yes))
 
 
 def git_donkey() -> None:

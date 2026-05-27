@@ -28,6 +28,7 @@ Examples
 from __future__ import annotations
 
 import contextlib
+import dataclasses
 import os
 import shutil
 import subprocess  # noqa: S404
@@ -49,6 +50,37 @@ _GITHUB_DEVICE_CODE_URL = "https://github.com/login/device/code"
 _GITHUB_DEVICE_ACCESS_URL = "https://github.com/login/oauth/access_token"
 _GIT_DONKEY_CLIENT_ID_ENV = "GIT_DONKEY_GITHUB_CLIENT_ID"
 _DEFAULT_GITHUB_CLIENT_ID = "Ov23liD2cKOAh7xmpXKR"
+
+
+@dataclasses.dataclass(frozen=True)
+class _RemoteRepository:
+    """GitHub repository creation result."""
+
+    owner: str
+    already_exists: bool = False
+
+
+@dataclasses.dataclass(frozen=True)
+class _FafoRequest:
+    """Validated git-fafo workflow request."""
+
+    token: str
+    repo_name: str
+    language: str | None
+    trust: bool
+    yes: bool
+
+
+class _GitCommand(typ.Protocol):
+    """Minimal plumbum command protocol used by Git helpers."""
+
+    def __getitem__(self, args: object) -> _GitCommand:
+        """Return a command with additional arguments bound."""
+        ...
+
+    def __call__(self) -> str:
+        """Run the command and return stdout."""
+        ...
 
 
 def _credentials_path() -> Path:
@@ -131,7 +163,7 @@ def _github_token() -> str:
     return _device_flow_token(credentials_path)
 
 
-def _create_remote_repository(*, token: str, repo_name: str) -> str:
+def _create_remote_repository(*, token: str, repo_name: str) -> _RemoteRepository:
     github = github3.login(token=token)
     if github is None:
         helpers._die(_GIT_FAFO_PREFIX, "GitHub authentication failed", 1)
@@ -144,19 +176,38 @@ def _create_remote_repository(*, token: str, repo_name: str) -> str:
         github.create_repository(repo_name, private=False)
     except github3_exceptions.UnprocessableEntity as exc:
         if _is_repo_already_exists_error(exc):
-            helpers._die_conflict(
-                _GIT_FAFO_PREFIX,
-                f"GitHub repository '{user.login}/{repo_name}' already exists. "
-                "Pick a new name or delete the existing repository before "
-                "running git-fafo again.",
-                1,
-            )
+            return _RemoteRepository(owner=str(user.login), already_exists=True)
         helpers._die(
             _GIT_FAFO_PREFIX,
             f"GitHub repository creation failed: {exc}",
             1,
         )
-    return str(user.login)
+    return _RemoteRepository(owner=str(user.login))
+
+
+def _confirm_adopt_existing_repository(
+    *,
+    owner: str,
+    repo_name: str,
+    yes: bool,
+) -> None:
+    if yes:
+        return
+
+    if helpers._prompt_yes_no(
+        "GitHub repository "
+        f"'{owner}/{repo_name}' already exists. Adopt it if it has no commits "
+        "or only an empty initial commit?",
+        default=False,
+    ):
+        return
+
+    helpers._die_conflict(
+        _GIT_FAFO_PREFIX,
+        f"GitHub repository '{owner}/{repo_name}' already exists. Pass --yes to "
+        "adopt it when it has no commits or only an empty initial commit.",
+        1,
+    )
 
 
 def _error_message_contains(
@@ -238,6 +289,10 @@ def _template_for_language(*, owner: str, language: str | None) -> str | None:
     return f"git@github.com:{owner}/agent-template-{language}"
 
 
+def _remote_repository_url(*, owner: str, repo_name: str) -> str:
+    return f"git@github.com:{owner}/{repo_name}"
+
+
 def _scaffold_repo(*, template: str | None, repo_name: str, trust: bool) -> Path:
     repo_path = Path(repo_name)
     if template is None:
@@ -253,28 +308,93 @@ def _initialise_and_push_git_repo(
     repo_path: Path,
     owner: str,
     repo_name: str,
+    adopt_existing: bool,
 ) -> None:
     git = local["git"]
     with local.cwd(repo_path):
         git["init"]()
-        git["remote", "add", "origin", f"git@github.com:{owner}/{repo_name}"]()
-        git["branch", "-m", "main"]()
-        git["commit", "-m", "Initial commit", "--allow-empty"]()
+        git[
+            "remote",
+            "add",
+            "origin",
+            _remote_repository_url(
+                owner=owner,
+                repo_name=repo_name,
+            ),
+        ]()
+        branch = (
+            _prepare_adopted_remote(git, owner=owner, repo_name=repo_name)
+            if adopt_existing
+            else _prepare_new_remote(git)
+        )
         git["add", "."]()
         if git["status", "--porcelain"]().strip():
             git["commit", "-m", "Add repo skeleton"]()
-        git["push", "--set-upstream", "origin", "main"]()
+        git["push", "--set-upstream", "origin", branch]()
 
 
-def _run_fafo_commands(
+def _prepare_new_remote(git: _GitCommand) -> str:
+    branch = "main"
+    git["branch", "-m", branch]()
+    git["commit", "-m", "Initial commit", "--allow-empty"]()
+    return branch
+
+
+def _prepare_adopted_remote(
+    git: _GitCommand,
     *,
-    token: str,
+    owner: str,
     repo_name: str,
-    language: str | None,
-    trust: bool,
-) -> None:
-    owner = _create_remote_repository(token=token, repo_name=repo_name)
-    template = _template_for_language(owner=owner, language=language)
+) -> str:
+    branch = _remote_default_branch(git)
+    if branch is None:
+        return _prepare_new_remote(git)
+
+    git["fetch", "origin", branch]()
+    remote_ref = f"origin/{branch}"
+    if not _is_empty_initial_commit(git, remote_ref):
+        helpers._die_conflict(
+            _GIT_FAFO_PREFIX,
+            f"GitHub repository '{owner}/{repo_name}' already exists and is not "
+            "empty. Pick a new name or delete the existing repository before "
+            "running git-fafo again.",
+            1,
+        )
+
+    git["checkout", "-B", branch, remote_ref]()
+    return branch
+
+
+def _remote_default_branch(git: _GitCommand) -> str | None:
+    output = git["ls-remote", "--symref", "origin", "HEAD"]()
+    for line in output.splitlines():
+        if not line.startswith("ref: "):
+            continue
+        ref = line.split()[1]
+        return ref.removeprefix("refs/heads/")
+    return None
+
+
+def _is_empty_initial_commit(git: _GitCommand, ref: str) -> bool:
+    if int(git["rev-list", "--count", ref]().strip()) != 1:
+        return False
+
+    try:
+        git["diff-tree", "--quiet", "--exit-code", "--root", ref]()
+    except ProcessExecutionError:
+        return False
+    return True
+
+
+def _run_fafo_commands(request: _FafoRequest) -> None:
+    remote = _create_remote_repository(token=request.token, repo_name=request.repo_name)
+    if remote.already_exists:
+        _confirm_adopt_existing_repository(
+            owner=remote.owner,
+            repo_name=request.repo_name,
+            yes=request.yes,
+        )
+    template = _template_for_language(owner=remote.owner, language=request.language)
 
     env_overrides: dict[str, str] = {"PATH": os.environ.get("PATH", "")}
     stub_log = os.environ.get("STUB_LOG")
@@ -285,13 +405,14 @@ def _run_fafo_commands(
         with local.env(**env_overrides):
             repo_path = _scaffold_repo(
                 template=template,
-                repo_name=repo_name,
-                trust=trust,
+                repo_name=request.repo_name,
+                trust=request.trust,
             )
             _initialise_and_push_git_repo(
                 repo_path=repo_path,
-                owner=owner,
-                repo_name=repo_name,
+                owner=remote.owner,
+                repo_name=request.repo_name,
+                adopt_existing=remote.already_exists,
             )
     except ProcessExecutionError as exc:
         helpers._die(_GIT_FAFO_PREFIX, f"command failed: {exc}", 1)
@@ -302,6 +423,7 @@ def run_git_fafo(
     language: str | None = None,
     *,
     trust: bool = False,
+    yes: bool = False,
 ) -> int:
     """Run the git-fafo workflow.
 
@@ -314,6 +436,8 @@ def run_git_fafo(
         only). When omitted, create an empty project without Copier.
     trust : bool
         Pass Copier's ``--trust`` flag so templates with trusted tasks can run.
+    yes : bool
+        Adopt an existing empty GitHub repository without prompting.
 
     Returns
     -------
@@ -339,9 +463,12 @@ def run_git_fafo(
 
     token = _github_token()
     _run_fafo_commands(
-        token=token,
-        repo_name=repo_name,
-        language=language,
-        trust=trust,
+        _FafoRequest(
+            token=token,
+            repo_name=repo_name,
+            language=language,
+            trust=trust,
+            yes=yes,
+        )
     )
     return 0

@@ -133,15 +133,28 @@ the default OAuth client ID `Ov23liD2cKOAh7xmpXKR`. Override the client ID by
 setting `GIT_DONKEY_GITHUB_CLIENT_ID`, then follow the prompt to enter the code
 at `https://github.com/login/device`. The access token is stored at
 `~/.config/git-donkey/github-token`. Override the path with
-`GIT_DONKEY_CREDENTIALS_FILE`. If the GitHub repository already exists,
-`git fafo` exits with a ⚔️ conflict message. If the target directory already
-exists, `git fafo` exits early.
+`GIT_DONKEY_CREDENTIALS_FILE`. If the target directory already exists,
+`git fafo` exits early.
 
 When a language is provided, `git fafo` expects template repositories named
 `agent-template-<language>` under the current GitHub account and scaffolds the
 project with Copier. When the language is omitted, `git fafo` creates an empty
 local directory, initialises Git, creates the remote repository, and pushes the
 empty initial commit.
+
+If the GitHub repository already exists, `git fafo` can adopt it only when the
+remote has no commits or only an empty initial commit. The command prompts
+before adopting an existing repository. Use `--yes` or `-y` to confirm adoption
+non-interactively:
+
+```shell
+# Adopt an existing empty repository without prompting
+
+git fafo demo-repo --yes
+```
+
+Existing repositories with real content still exit with a ⚔️ conflict message;
+choose a new name or clear the remote first.
 
 Some Copier templates use trusted features such as `tasks`, which can run
 commands during the scaffold. Copier blocks those templates unless trust is
