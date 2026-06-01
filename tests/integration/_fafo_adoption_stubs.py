@@ -80,5 +80,9 @@ def _patch_existing_github(
         return remote_path.as_posix()
 
     monkeypatch.setenv("GITHUB_TOKEN", "fake-token")
+    monkeypatch.setenv("GIT_AUTHOR_NAME", "Test User")
+    monkeypatch.setenv("GIT_AUTHOR_EMAIL", "test@example.com")
+    monkeypatch.setenv("GIT_COMMITTER_NAME", "Test User")
+    monkeypatch.setenv("GIT_COMMITTER_EMAIL", "test@example.com")
     monkeypatch.setattr(fafo.github3, "login", _fake_login)
     monkeypatch.setattr(fafo, "_remote_repository_url", _fake_remote_repository_url)
