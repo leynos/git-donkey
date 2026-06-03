@@ -400,6 +400,18 @@ def _run_fafo_commands(request: _FafoRequest) -> None:
     stub_log = os.environ.get("STUB_LOG")
     if stub_log is not None:
         env_overrides["STUB_LOG"] = stub_log
+    # plumbum snapshots os.environ at import time, so values set later by
+    # pytest's monkeypatch (and by CI runners with no global git config)
+    # don't reach git subprocesses unless we forward them explicitly.
+    for git_var in (
+        "GIT_AUTHOR_NAME",
+        "GIT_AUTHOR_EMAIL",
+        "GIT_COMMITTER_NAME",
+        "GIT_COMMITTER_EMAIL",
+    ):
+        git_val = os.environ.get(git_var)
+        if git_val is not None:
+            env_overrides[git_var] = git_val
 
     try:
         with local.env(**env_overrides):
