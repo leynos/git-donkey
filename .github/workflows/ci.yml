@@ -47,6 +47,7 @@ jobs:
             --source=./git_donkey \
             --omit="*/unittests/*,*/.venv/*" \
             --branch \
+            --xml \
             --out coverage.xml \
             -m pytest -v
 
