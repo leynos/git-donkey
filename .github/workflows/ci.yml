@@ -42,13 +42,13 @@ jobs:
 
       - name: Run tests with coverage
         run: |
-          uv pip install slipcover pytest-forked
+          uv pip install slipcover
           uv run python -m slipcover \
             --source=./git_donkey \
             --omit="*/unittests/*,*/.venv/*" \
             --branch \
             --out coverage.xml \
-            -m pytest --forked -v
+            -m pytest -v
 
       - name: Upload coverage to CodeScene
         uses: leynos/shared-actions/.github/actions/upload-codescene-coverage@42267e344b8153291c6ce9e8d87689ba374f21ee

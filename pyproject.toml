@@ -134,16 +134,6 @@ max-locals = 10
 [tool.pytest.ini_options]
 # Tests automatically killed after seconds elapsed
 timeout = 30
-filterwarnings = [
-    # slipcover wraps os.fork() to aggregate coverage from pytest-forked
-    # children, but its own background threads make the process
-    # multi-threaded, which trips Python 3.12+'s fork-in-multithread
-    # DeprecationWarning once per test. slipcover is invoked as
-    # `python -m slipcover`, so its __main__.py runs with __name__ ==
-    # "__main__"; pair the __main__ module match with the fork message
-    # text to keep the suppression scoped to slipcover's wrapper.
-    "ignore:.*multi-threaded, use of fork\\(\\).*:DeprecationWarning:__main__",
-]
 
 [tool.uv]
 package = true
