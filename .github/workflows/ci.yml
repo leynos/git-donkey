@@ -47,6 +47,7 @@ jobs:
           format: cobertura
 
       - name: Upload coverage to CodeScene
+        if: ${{ secrets.CS_ACCESS_TOKEN != '' }}
         uses: leynos/shared-actions/.github/actions/upload-codescene-coverage@455d9ed03477c0026da96c2541ca26569a74acac
         with:
           path: coverage.xml
