@@ -45,14 +45,14 @@ jobs:
           uv pip install slipcover
           uv run python -m slipcover \
             --source=./git_donkey \
-            --omit="*/unittests/*,*/.venv/*" \
+            --omit="*/.venv/*" \
             --branch \
             --xml \
             --out coverage.xml \
             -m pytest -v
 
       - name: Upload coverage to CodeScene
-        uses: leynos/shared-actions/.github/actions/upload-codescene-coverage@42267e344b8153291c6ce9e8d87689ba374f21ee
+        uses: leynos/shared-actions/.github/actions/upload-codescene-coverage@455d9ed03477c0026da96c2541ca26569a74acac
         with:
           path: coverage.xml
           format: cobertura
