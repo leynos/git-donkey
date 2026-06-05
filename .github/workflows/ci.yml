@@ -41,15 +41,10 @@ jobs:
         run: make typecheck
 
       - name: Run tests with coverage
-        run: |
-          uv pip install slipcover
-          uv run python -m slipcover \
-            --source=./git_donkey \
-            --omit="*/.venv/*" \
-            --branch \
-            --xml \
-            --out coverage.xml \
-            -m pytest -v
+        uses: leynos/shared-actions/.github/actions/generate-coverage@455d9ed03477c0026da96c2541ca26569a74acac
+        with:
+          output-path: coverage.xml
+          format: cobertura
 
       - name: Upload coverage to CodeScene
         uses: leynos/shared-actions/.github/actions/upload-codescene-coverage@455d9ed03477c0026da96c2541ca26569a74acac
