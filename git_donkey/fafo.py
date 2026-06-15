@@ -33,6 +33,7 @@ import os
 import shutil
 import subprocess  # noqa: S404
 import sys
+import tempfile
 import typing as typ
 from pathlib import Path
 
@@ -346,33 +347,105 @@ def _prepare_adopted_remote(
     owner: str,
     repo_name: str,
 ) -> str:
-    branch = _remote_default_branch(git)
-    if branch is None:
+    state = _classify_remote(git)
+    if not state.adoptable:
+        _die_existing_not_empty(owner=owner, repo_name=repo_name)
+    if state.branch is None:
+        # The remote exists but holds no refs at all; treat it like a fresh
+        # remote and seed it with an empty initial commit.
         return _prepare_new_remote(git)
 
-    git["fetch", "origin", branch]()
-    remote_ref = f"origin/{branch}"
-    if not _is_empty_initial_commit(git, remote_ref):
-        helpers._die_conflict(
-            _GIT_FAFO_PREFIX,
-            f"GitHub repository '{owner}/{repo_name}' already exists and is not "
-            "empty. Pick a new name or delete the existing repository before "
-            "running git-fafo again.",
-            1,
-        )
-
-    git["checkout", "-B", branch, remote_ref]()
-    return branch
+    # `_classify_remote` already fetched `origin/<branch>` to confirm the
+    # commit is empty, so the objects are present for the checkout.
+    git["checkout", "-B", state.branch, f"origin/{state.branch}"]()
+    return state.branch
 
 
-def _remote_default_branch(git: _GitCommand) -> str | None:
-    output = git["ls-remote", "--symref", "origin", "HEAD"]()
+def _die_existing_not_empty(*, owner: str, repo_name: str) -> typ.NoReturn:
+    helpers._die_conflict(
+        _GIT_FAFO_PREFIX,
+        f"GitHub repository '{owner}/{repo_name}' already exists and is not "
+        "empty. Pick a new name or delete the existing repository before "
+        "running git-fafo again.",
+        1,
+    )
+
+
+@dataclasses.dataclass(frozen=True)
+class _RemoteState:
+    """Adoption-relevant view of an existing remote.
+
+    ``branch`` names the single existing head when the remote holds nothing but
+    an empty initial commit; it is ``None`` when the remote has no refs at all.
+    ``adoptable`` is ``False`` whenever the remote carries real content — extra
+    branches, any tags, or a default branch with real history.
+    """
+
+    adoptable: bool
+    branch: str | None = None
+
+
+def _remote_heads_and_tags(git: _GitCommand) -> tuple[list[str], list[str]]:
+    """Return the head and tag names advertised by the ``origin`` remote.
+
+    Reads every ref via ``git ls-remote`` (not just the default branch) so
+    adoption can reject a remote that carries additional branches or tags.
+    Peeled annotated-tag entries (``refs/tags/<name>^{}``) are ignored to avoid
+    double-counting.
+    """
+    output = git["ls-remote", "origin"]()
+    heads: list[str] = []
+    tags: list[str] = []
     for line in output.splitlines():
-        if not line.startswith("ref: "):
+        # ls-remote prints `<object-id>\t<ref-name>` per line.
+        _, _, ref = line.partition("\t")
+        if not ref:
             continue
-        ref = line.split()[1]
-        return ref.removeprefix("refs/heads/")
-    return None
+        if ref == "HEAD" or ref.endswith("^{}"):
+            continue
+        if ref.startswith("refs/heads/"):
+            heads.append(ref.removeprefix("refs/heads/"))
+        elif ref.startswith("refs/tags/"):
+            tags.append(ref.removeprefix("refs/tags/"))
+    return heads, tags
+
+
+def _classify_remote(git: _GitCommand) -> _RemoteState:
+    """Classify an existing ``origin`` remote for adoption.
+
+    A remote is adoptable only when it is empty or contains nothing but a
+    single empty initial commit on one branch. Any extra branch or tag — or a
+    default branch carrying real history — makes it non-adoptable.
+    """
+    heads, tags = _remote_heads_and_tags(git)
+    if tags or len(heads) > 1:
+        return _RemoteState(adoptable=False)
+    if not heads:
+        return _RemoteState(adoptable=True, branch=None)
+
+    branch = heads[0]
+    git["fetch", "origin", branch]()
+    if not _is_empty_initial_commit(git, f"origin/{branch}"):
+        return _RemoteState(adoptable=False)
+    return _RemoteState(adoptable=True, branch=branch)
+
+
+def _assert_remote_adoptable(*, owner: str, repo_name: str) -> None:
+    """Reject a non-empty existing remote before any local scaffolding.
+
+    Adoption validation must happen before ``_scaffold_repo`` runs: with a
+    language template (especially under ``--trust``), Copier would otherwise
+    create ``repo_name/`` and run tasks before the conflict is reported,
+    leaving local side effects that block a clean retry. The check runs in a
+    throwaway working directory so it has no side effects of its own.
+    """
+    url = _remote_repository_url(owner=owner, repo_name=repo_name)
+    git = local["git"]
+    with tempfile.TemporaryDirectory() as tmp, local.cwd(tmp):
+        git["init"]()
+        git["remote", "add", "origin", url]()
+        if not _classify_remote(git).adoptable:
+            _die_existing_not_empty(owner=owner, repo_name=repo_name)
 
 
 def _is_empty_initial_commit(git: _GitCommand, ref: str) -> bool:
@@ -415,6 +488,13 @@ def _run_fafo_commands(request: _FafoRequest) -> None:
 
     try:
         with local.env(**env_overrides):
+            if remote.already_exists:
+                # Validate the remote is adoptable before scaffolding so a
+                # rejected adoption leaves no local directory behind.
+                _assert_remote_adoptable(
+                    owner=remote.owner,
+                    repo_name=request.repo_name,
+                )
             repo_path = _scaffold_repo(
                 template=template,
                 repo_name=request.repo_name,

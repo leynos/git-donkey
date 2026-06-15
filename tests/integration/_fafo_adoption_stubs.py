@@ -69,6 +69,51 @@ def _seed_empty_initial_commit(remote_path: Path, tmp_path: Path) -> None:
     Repo(remote_path).git.symbolic_ref("HEAD", "refs/heads/main")
 
 
+def _seed_nonempty_default(remote_path: Path, tmp_path: Path) -> None:
+    """Seed the remote's default branch with a real (non-empty) commit."""
+    seed_path = tmp_path / "seed-nonempty"
+    repo = Repo.init(seed_path)
+    _configure_repo(repo)
+    (seed_path / "file.txt").write_text("real work\n")
+    repo.git.add("file.txt")
+    repo.git.commit("-m", "Add real work")
+    repo.git.branch("-M", "main")
+    repo.create_remote("origin", remote_path.as_posix())
+    repo.remote("origin").push("main")
+    Repo(remote_path).git.symbolic_ref("HEAD", "refs/heads/main")
+
+
+def _seed_empty_initial_with_extra_branch(remote_path: Path, tmp_path: Path) -> None:
+    """Seed an empty initial commit on main plus a branch with real commits."""
+    seed_path = tmp_path / "seed-extra-branch"
+    repo = Repo.init(seed_path)
+    _configure_repo(repo)
+    repo.git.commit("--allow-empty", "-m", "Initial commit")
+    repo.git.branch("-M", "main")
+    repo.git.checkout("-b", "feature")
+    (seed_path / "file.txt").write_text("real work\n")
+    repo.git.add("file.txt")
+    repo.git.commit("-m", "Add real work")
+    repo.create_remote("origin", remote_path.as_posix())
+    repo.remote("origin").push("main")
+    repo.remote("origin").push("feature")
+    Repo(remote_path).git.symbolic_ref("HEAD", "refs/heads/main")
+
+
+def _seed_empty_initial_with_tag(remote_path: Path, tmp_path: Path) -> None:
+    """Seed an empty initial commit on main plus a tag."""
+    seed_path = tmp_path / "seed-tag"
+    repo = Repo.init(seed_path)
+    _configure_repo(repo)
+    repo.git.commit("--allow-empty", "-m", "Initial commit")
+    repo.git.branch("-M", "main")
+    repo.git.tag("v1")
+    repo.create_remote("origin", remote_path.as_posix())
+    repo.remote("origin").push("main")
+    repo.remote("origin").push("v1")
+    Repo(remote_path).git.symbolic_ref("HEAD", "refs/heads/main")
+
+
 def _patch_existing_github(
     monkeypatch: pytest.MonkeyPatch,
     remote_path: Path,
