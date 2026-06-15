@@ -139,7 +139,7 @@ at `https://github.com/login/device`. The access token is stored at
 When a language is provided, `git fafo` expects template repositories named
 `agent-template-<language>` under the current GitHub account and scaffolds the
 project with Copier. When the language is omitted, `git fafo` creates an empty
-local directory, initialises Git, creates the remote repository, and pushes the
+local directory, initializes Git, creates the remote repository, and pushes the
 empty initial commit.
 
 If the GitHub repository already exists, `git fafo` can adopt it only when the

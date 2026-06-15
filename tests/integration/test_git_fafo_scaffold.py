@@ -12,6 +12,8 @@ if typ.TYPE_CHECKING:
 
     import pytest
 
+    from conftest import StubGitHub, StubUser
+
 
 def test_git_fafo_existing_repo_early_return(
     tmp_path: Path,
@@ -44,7 +46,7 @@ def test_git_fafo_existing_repo_early_return(
 def test_git_fafo_runs_expected_commands(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-    github_stubs: tuple[type[typ.Any], type[typ.Any]],
+    github_stubs: tuple[type[StubUser], type[StubGitHub]],
 ) -> None:
     """git-fafo should invoke copier, GitHub API, and git with expected arguments."""
     bin_dir = tmp_path / "bin"
@@ -105,7 +107,7 @@ def test_git_fafo_runs_expected_commands(
 def test_git_fafo_trusts_copier_template_when_requested(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-    github_stubs: tuple[type[typ.Any], type[typ.Any]],
+    github_stubs: tuple[type[StubUser], type[StubGitHub]],
 ) -> None:
     """git-fafo should pass --trust to Copier for trusted templates."""
     bin_dir = tmp_path / "bin"
@@ -160,7 +162,7 @@ def test_git_fafo_trusts_copier_template_when_requested(
 def test_git_fafo_without_language_creates_empty_repo(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-    github_stubs: tuple[type[typ.Any], type[typ.Any]],
+    github_stubs: tuple[type[StubUser], type[StubGitHub]],
 ) -> None:
     """git-fafo should create an empty repo when language is omitted."""
     bin_dir = tmp_path / "bin"
