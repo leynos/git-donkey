@@ -8,6 +8,10 @@ on:
 jobs:
   lint-test:
     runs-on: ubuntu-latest
+    env:
+      # Surface the secret as an env var so the CodeScene gate can test it:
+      # GitHub Actions does not allow `secrets.*` in step-level `if:`.
+      CS_ACCESS_TOKEN: ${{ secrets.CS_ACCESS_TOKEN }}
     steps:
       - name: Check out repository
         uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4
@@ -47,7 +51,7 @@ jobs:
           format: cobertura
 
       - name: Upload coverage to CodeScene
-        if: ${{ secrets.CS_ACCESS_TOKEN != '' }}
+        if: env.CS_ACCESS_TOKEN != ''
         uses: leynos/shared-actions/.github/actions/upload-codescene-coverage@455d9ed03477c0026da96c2541ca26569a74acac
         with:
           path: coverage.xml
