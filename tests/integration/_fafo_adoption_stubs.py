@@ -59,42 +59,44 @@ def _create_bare_remote(tmp_path: Path) -> Path:
     return remote_path
 
 
-def _seed_with_empty_initial(  # noqa: PLR0913 - parametrised seed helper
+@dataclasses.dataclass
+class _SeedConfig:
+    """Configuration for :func:`_seed_with_empty_initial`."""
+
+    seed_name: str
+    extra_refs: cabc.Sequence[str] = dataclasses.field(default_factory=list)
+    setup_fn: cabc.Callable[[Repo], None] | None = None
+
+
+def _seed_with_empty_initial(
     remote_path: Path,
     tmp_path: Path,
-    seed_name: str,
-    extra_refs: cabc.Sequence[str] = (),
-    *,
-    setup_fn: cabc.Callable[[Repo], None] | None = None,
+    config: _SeedConfig,
 ) -> None:
     """Initialise a repo, make an empty initial commit on main, push to remote.
 
     Args:
         remote_path: Path to the bare remote repository.
         tmp_path: Pytest temporary directory in which to create the seed clone.
-        seed_name: Subdirectory name for the seed clone inside ``tmp_path``.
-        extra_refs: Additional refs to push to origin after ``main``.
-        setup_fn: Optional callback invoked on the local repo after the initial
-            commit and branch rename, but before the remote is wired.  Use it
-            to add tags, extra branches, etc.
+        config: Seed parameters (name, extra refs, optional setup callback).
 
     """
-    seed_path = tmp_path / seed_name
+    seed_path = tmp_path / config.seed_name
     repo = Repo.init(seed_path)
     _configure_repo(repo)
     repo.git.commit("--allow-empty", "-m", "Initial commit")
     repo.git.branch("-M", "main")
-    if setup_fn is not None:
-        setup_fn(repo)
+    if config.setup_fn is not None:
+        config.setup_fn(repo)
     repo.create_remote("origin", remote_path.as_posix())
     repo.remote("origin").push("main")
-    for ref in extra_refs:
+    for ref in config.extra_refs:
         repo.remote("origin").push(ref)
     Repo(remote_path).git.symbolic_ref("HEAD", "refs/heads/main")
 
 
 def _seed_empty_initial_commit(remote_path: Path, tmp_path: Path) -> None:
-    _seed_with_empty_initial(remote_path, tmp_path, "seed-empty")
+    _seed_with_empty_initial(remote_path, tmp_path, _SeedConfig("seed-empty"))
 
 
 def _seed_nonempty_default(remote_path: Path, tmp_path: Path) -> None:
@@ -135,7 +137,7 @@ def _seed_empty_initial_with_tag(remote_path: Path, tmp_path: Path) -> None:
         repo.git.tag("v1")
 
     _seed_with_empty_initial(
-        remote_path, tmp_path, "seed-tag", ["v1"], setup_fn=_add_tag
+        remote_path, tmp_path, _SeedConfig("seed-tag", ["v1"], _add_tag)
     )
 
 
