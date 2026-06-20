@@ -1,4 +1,9 @@
-"""Integration tests for git-donkey worktree management."""
+"""Integration tests for git-donkey worktree management.
+
+These tests cover the worktree orchestration in ``git_donkey.donkey`` and
+``git_donkey.donkey_worktrees`` using real Git repositories. Shared repository
+setup comes from ``tests.integration.conftest``.
+"""
 
 from __future__ import annotations
 

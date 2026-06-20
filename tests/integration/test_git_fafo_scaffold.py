@@ -1,4 +1,10 @@
-"""Integration tests for git-fafo repository scaffolding."""
+"""Integration tests for git-fafo repository scaffolding.
+
+These tests cover the orchestration in ``git_donkey.fafo`` with stubbed
+external commands and stubbed GitHub API calls. Shared command-stub setup lives
+in ``tests.integration.conftest`` so each test only declares the workflow
+variation it needs to verify.
+"""
 
 from __future__ import annotations
 
@@ -13,6 +19,7 @@ if typ.TYPE_CHECKING:
     import pytest
 
     from conftest import StubGitHub, StubUser
+    from tests.integration.conftest import StubCommands
 
 
 def test_git_fafo_existing_repo_early_return(
@@ -47,32 +54,9 @@ def test_git_fafo_runs_expected_commands(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     github_stubs: tuple[type[StubUser], type[StubGitHub]],
+    stub_commands: StubCommands,
 ) -> None:
     """git-fafo should invoke copier, GitHub API, and git with expected arguments."""
-    bin_dir = tmp_path / "bin"
-    bin_dir.mkdir()
-    log_path = tmp_path / "calls.log"
-
-    stub_template = (
-        "#!/usr/bin/env python3\n"
-        "from __future__ import annotations\n"
-        "import os\n"
-        "import sys\n"
-        "from pathlib import Path\n"
-        "log_path = Path(os.environ['STUB_LOG'])\n"
-        "name = Path(sys.argv[0]).name\n"
-        "with log_path.open('a') as handle:\n"
-        "    handle.write(f\"{name} {' '.join(sys.argv[1:])}\\n\")\n"
-        "if name == 'copier':\n"
-        "    Path(sys.argv[-1]).mkdir(parents=True, exist_ok=True)\n"
-        "sys.exit(0)\n"
-    )
-
-    for cmd in ("copier", "git"):
-        stub_path = bin_dir / cmd
-        stub_path.write_text(stub_template)
-        stub_path.chmod(0o755)
-
     created: dict[str, str | bool] = {}
 
     stub_github = github_stubs[1]
@@ -81,9 +65,11 @@ def test_git_fafo_runs_expected_commands(
         created["token"] = token or ""
         return stub_github("example", created)
 
-    monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
+    monkeypatch.setenv(
+        "PATH", f"{stub_commands.bin_dir}{os.pathsep}{os.environ['PATH']}"
+    )
     monkeypatch.setenv("USER", "example")
-    monkeypatch.setenv("STUB_LOG", str(log_path))
+    monkeypatch.setenv("STUB_LOG", str(stub_commands.log_path))
     auth_value = "fake-token"
     monkeypatch.setenv("GITHUB_TOKEN", auth_value)
     monkeypatch.setattr(fafo.github3, "login", _fake_login)
@@ -94,7 +80,7 @@ def test_git_fafo_runs_expected_commands(
     assert exit_code == 0, "expected git-fafo to exit successfully"
     assert (tmp_path / "demo-repo").exists(), "expected repo directory to exist"
 
-    calls = log_path.read_text().splitlines()
+    calls = stub_commands.log_path.read_text().splitlines()
     assert (
         calls[0] == "copier copy git@github.com:example/agent-template-python demo-repo"
     ), "expected copier to run with the template and repo name"
@@ -108,32 +94,9 @@ def test_git_fafo_trusts_copier_template_when_requested(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     github_stubs: tuple[type[StubUser], type[StubGitHub]],
+    stub_commands: StubCommands,
 ) -> None:
     """git-fafo should pass --trust to Copier for trusted templates."""
-    bin_dir = tmp_path / "bin"
-    bin_dir.mkdir()
-    log_path = tmp_path / "calls.log"
-
-    stub_template = (
-        "#!/usr/bin/env python3\n"
-        "from __future__ import annotations\n"
-        "import os\n"
-        "import sys\n"
-        "from pathlib import Path\n"
-        "log_path = Path(os.environ['STUB_LOG'])\n"
-        "name = Path(sys.argv[0]).name\n"
-        "with log_path.open('a') as handle:\n"
-        "    handle.write(f\"{name} {' '.join(sys.argv[1:])}\\n\")\n"
-        "if name == 'copier':\n"
-        "    Path(sys.argv[-1]).mkdir(parents=True, exist_ok=True)\n"
-        "sys.exit(0)\n"
-    )
-
-    for cmd in ("copier", "git"):
-        stub_path = bin_dir / cmd
-        stub_path.write_text(stub_template)
-        stub_path.chmod(0o755)
-
     created: dict[str, str | bool] = {}
     stub_github = github_stubs[1]
 
@@ -141,9 +104,11 @@ def test_git_fafo_trusts_copier_template_when_requested(
         created["token"] = token or ""
         return stub_github("example", created)
 
-    monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
+    monkeypatch.setenv(
+        "PATH", f"{stub_commands.bin_dir}{os.pathsep}{os.environ['PATH']}"
+    )
     monkeypatch.setenv("USER", "example")
-    monkeypatch.setenv("STUB_LOG", str(log_path))
+    monkeypatch.setenv("STUB_LOG", str(stub_commands.log_path))
     auth_value = "fake-token"
     monkeypatch.setenv("GITHUB_TOKEN", auth_value)
     monkeypatch.setattr(fafo.github3, "login", _fake_login)
@@ -152,7 +117,7 @@ def test_git_fafo_trusts_copier_template_when_requested(
     exit_code = fafo.run_git_fafo("demo-repo", "python", trust=True)
 
     assert exit_code == 0, "expected git-fafo to exit successfully"
-    calls = log_path.read_text().splitlines()
+    calls = stub_commands.log_path.read_text().splitlines()
     assert (
         calls[0]
         == "copier copy --trust git@github.com:example/agent-template-python demo-repo"
@@ -163,27 +128,9 @@ def test_git_fafo_without_language_creates_empty_repo(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     github_stubs: tuple[type[StubUser], type[StubGitHub]],
+    stub_commands: StubCommands,
 ) -> None:
     """git-fafo should create an empty repo when language is omitted."""
-    bin_dir = tmp_path / "bin"
-    bin_dir.mkdir()
-    log_path = tmp_path / "calls.log"
-
-    git_stub = (
-        "#!/usr/bin/env python3\n"
-        "from __future__ import annotations\n"
-        "import os\n"
-        "import sys\n"
-        "from pathlib import Path\n"
-        "log_path = Path(os.environ['STUB_LOG'])\n"
-        "with log_path.open('a') as handle:\n"
-        "    handle.write(f\"git {' '.join(sys.argv[1:])}\\n\")\n"
-        "sys.exit(0)\n"
-    )
-    git_path = bin_dir / "git"
-    git_path.write_text(git_stub)
-    git_path.chmod(0o755)
-
     created: dict[str, str | bool] = {}
     stub_github = github_stubs[1]
 
@@ -196,9 +143,11 @@ def test_git_fafo_without_language_creates_empty_repo(
     def _fake_require_command(command: str, _: str) -> None:
         required_commands.append(command)
 
-    monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
+    monkeypatch.setenv(
+        "PATH", f"{stub_commands.bin_dir}{os.pathsep}{os.environ['PATH']}"
+    )
     monkeypatch.setenv("USER", "example")
-    monkeypatch.setenv("STUB_LOG", str(log_path))
+    monkeypatch.setenv("STUB_LOG", str(stub_commands.log_path))
     auth_value = "fake-token"
     monkeypatch.setenv("GITHUB_TOKEN", auth_value)
     monkeypatch.setattr(fafo.github3, "login", _fake_login)
@@ -211,7 +160,7 @@ def test_git_fafo_without_language_creates_empty_repo(
     assert (tmp_path / "demo-repo").is_dir(), "expected empty repo directory"
     assert required_commands == ["git"], "expected no copier requirement"
 
-    calls = log_path.read_text().splitlines()
+    calls = stub_commands.log_path.read_text().splitlines()
     assert calls[0] == "git init", "expected git init to be invoked"
     assert not any(call.startswith("copier ") for call in calls), (
         "expected no copier invocation"

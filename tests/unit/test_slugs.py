@@ -1,4 +1,9 @@
-"""Unit tests for git_donkey.slugs module."""
+"""Unit tests for ``git_donkey.slugs``.
+
+The slug helpers provide stable path components for worktree and template
+directories. These tests pin checksum behaviour and runtime type guards used by
+the higher-level workflow modules.
+"""
 
 from __future__ import annotations
 

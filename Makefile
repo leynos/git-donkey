@@ -9,6 +9,7 @@ UV_ENV = UV_CACHE_DIR=.uv-cache UV_TOOL_DIR=.uv-tools
 
 .PHONY: help all clean build build-release lint fmt check-fmt \
         markdownlint nixie test typecheck ruff $(TOOLS) $(VENV_TOOLS)
+.PHONY: pytest test
 
 .DEFAULT_GOAL := all
 
@@ -57,12 +58,7 @@ endif
 
 ruff: ## Verify Ruff is installed and pinned to $(RUFF_VERSION)
 	$(call ensure_tool,ruff)
-	@installed="$$(ruff --version | awk '{print $$2}')"; \
-	if [ "$$installed" != "$(RUFF_VERSION)" ]; then \
-	  printf "Error: ruff %s is required, but %s is installed\n" \
-	    "$(RUFF_VERSION)" "$$installed" >&2; \
-	  exit 1; \
-	fi
+	@scripts/check-ruff-version.sh "$(RUFF_VERSION)"
 
 fmt: ruff $(MDFORMAT_ALL) ## Format sources
 	ruff format

@@ -1,4 +1,9 @@
-"""Unit tests for git-fafo Copier command construction."""
+"""Unit tests for git-fafo Copier command construction.
+
+These tests target the local scaffold helpers in ``git_donkey.fafo`` without
+touching GitHub or real Git remotes. Broader input-space checks for the same
+helpers live in ``test_fafo_properties``.
+"""
 
 from __future__ import annotations
 

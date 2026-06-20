@@ -24,6 +24,7 @@ git-donkey-template = "git_donkey.cli:git_donkey_template"
 [dependency-groups]
 dev = [
     "pytest",
+    "hypothesis",
     "ruff",
     "pyright",
     "pytest-timeout",

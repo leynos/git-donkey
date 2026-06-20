@@ -1,4 +1,9 @@
-"""Integration tests for the git-donkey-template sub-command."""
+"""Integration tests for the ``git-donkey-template`` sub-command.
+
+These tests exercise the CLI command in ``git_donkey.cli`` against real
+temporary repositories and template directories. They depend on the shared
+GitPython setup helpers from ``tests.integration.conftest``.
+"""
 
 from __future__ import annotations
 

@@ -1,4 +1,9 @@
-"""Integration tests for git-fafo existing repository adoption."""
+"""Integration tests for git-fafo existing repository adoption.
+
+These scenarios exercise ``git_donkey.fafo`` against local bare remotes that
+stand in for GitHub repositories. Remote history builders and API stubs live in
+``tests.integration._fafo_adoption_stubs``.
+"""
 
 from __future__ import annotations
 

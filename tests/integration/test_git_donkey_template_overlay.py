@@ -1,4 +1,10 @@
-"""Integration tests for git-donkey template overlay application."""
+"""Integration tests for git-donkey template overlay application.
+
+The template overlay workflow spans ``git_donkey.donkey`` and
+``git_donkey.templates``. These tests use real temporary repositories from
+``tests.integration.conftest`` to verify copied files and slugged template
+paths.
+"""
 
 from __future__ import annotations
 

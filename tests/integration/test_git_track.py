@@ -1,4 +1,9 @@
-"""Integration tests for git-track branch synchronization."""
+"""Integration tests for git-track branch synchronization.
+
+The ``git_donkey.track`` workflow is validated against temporary local and
+bare repositories. Repository setup is shared through
+``tests.integration.conftest``.
+"""
 
 from __future__ import annotations
 

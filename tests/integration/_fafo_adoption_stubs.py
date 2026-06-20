@@ -1,4 +1,10 @@
-"""Stub classes and helpers for git-fafo adoption integration tests."""
+"""Stub classes and helpers for git-fafo adoption integration tests.
+
+The adoption workflow needs a GitHub API duplicate-repository response and
+bare Git remotes with different histories. This module provides those reusable
+fixtures for ``test_git_fafo_adoption`` while sharing repository configuration
+with ``tests.integration.conftest``.
+"""
 
 from __future__ import annotations
 
