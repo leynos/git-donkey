@@ -73,10 +73,10 @@ def test_fafo_cli_passes_scaffold_options(
     with pytest.raises(SystemExit) as excinfo:
         typ.cast("cabc.Callable[[list[str]], None]", cli._fafo_app)(argv)
 
-    assert excinfo.value.code == 0
+    assert excinfo.value.code == 0, "git-fafo CLI should exit successfully"
     assert recorded == {
         "repo_name": "demo-repo",
         "language": expected.language,
         "trust": expected.trust,
         "yes": expected.yes,
-    }
+    }, "git-fafo CLI should pass parsed scaffold options to run_git_fafo"
