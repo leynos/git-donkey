@@ -29,6 +29,7 @@ dev = [
     "pyright",
     "pytest-timeout",
     "pytest-xdist",
+    "interrogate>=1.7.0",
 ]
 
 [tool.ruff]

@@ -8,11 +8,11 @@ orchestrator can treat repository preparation as a single dependency.
 
 from __future__ import annotations
 
-import contextlib
 import dataclasses
 import logging
 import os
 import sys
+import tempfile
 import typing as typ
 from pathlib import Path
 
@@ -31,7 +31,7 @@ _DEFAULT_GITHUB_CLIENT_ID = "Ov23liD2cKOAh7xmpXKR"
 _LOGGER = logging.getLogger(__name__)
 
 
-@dataclasses.dataclass(frozen=True)
+@dataclasses.dataclass(frozen=True, slots=True)
 class _RemoteRepository:
     """GitHub repository creation result."""
 
@@ -70,9 +70,18 @@ def _write_token_file(path: Path, token: str, auth_id: int | None) -> None:
     payload = f"{token}\n"
     if auth_id is not None:
         payload += f"{auth_id}\n"
-    path.write_text(payload)
-    with contextlib.suppress(OSError):
-        path.chmod(0o600)
+    temporary_handle, temporary_name = tempfile.mkstemp(dir=path.parent)
+    os.close(temporary_handle)
+    temporary_path = Path(temporary_name)
+    temporary_path.unlink()
+    with open(
+        temporary_path,
+        "w",
+        encoding="utf-8",
+        opener=lambda p, f: os.open(p, f | os.O_EXCL, 0o600),
+    ) as fh:
+        fh.write(payload)
+    temporary_path.replace(path)
 
 
 def _ensure_interactive() -> None:

@@ -35,7 +35,7 @@ class _GitCommand(typ.Protocol):
         ...
 
 
-@dataclasses.dataclass(frozen=True)
+@dataclasses.dataclass(frozen=True, slots=True)
 class _RemoteState:
     """Adoption-relevant view of an existing remote.
 
@@ -76,7 +76,7 @@ def _heads_and_tags_from_ls_remote(output: str) -> tuple[list[str], list[str]]:
 
 
 def _classify_remote(git: _GitCommand) -> _RemoteState:
-    """Classify an existing ``origin`` remote for adoption."""
+    """Classify an existing ``origin`` remote for adoption after fetching it."""
     heads, tags = _remote_heads_and_tags(git)
     if tags:
         _LOGGER.info(
@@ -123,7 +123,14 @@ def _assert_remote_adoptable(
     with tempfile.TemporaryDirectory() as tmp, local.cwd(tmp):
         git["init"]()
         git["remote", "add", "origin", remote_url]()
-        state = _classify_remote(git)
+        try:
+            state = _classify_remote(git)
+        except ProcessExecutionError as exc:
+            helpers._die(
+                _GIT_FAFO_PREFIX,
+                f"failed to inspect existing remote '{owner}/{repo_name}': {exc}",
+                1,
+            )
         if not state.adoptable:
             _LOGGER.info(
                 "Existing remote adoption rejected",

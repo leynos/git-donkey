@@ -18,7 +18,7 @@ if typ.TYPE_CHECKING:
     import collections.abc as cabc
 
 
-@dataclasses.dataclass(frozen=True)
+@dataclasses.dataclass(frozen=True, slots=True)
 class _ExpectedOptions:
     """Expected scaffold option values for a single parametrised case."""
 

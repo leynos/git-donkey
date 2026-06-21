@@ -71,6 +71,7 @@ check-fmt: ruff ## Verify formatting
 
 lint: ruff ## Run linters
 	ruff check
+	$(UV_ENV) uv run interrogate --fail-under 100 git_donkey
 	pyscn check git_donkey tests --skip-clones
 
 typecheck: build ty ## Run typechecking

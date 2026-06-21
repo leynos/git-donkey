@@ -103,7 +103,7 @@ __all__ = [
 ]
 
 
-@dataclasses.dataclass(frozen=True)
+@dataclasses.dataclass(frozen=True, slots=True)
 class _FafoRequest:
     """Validated git-fafo workflow request."""
 
@@ -114,7 +114,7 @@ class _FafoRequest:
     yes: bool
 
 
-@dataclasses.dataclass(frozen=True)
+@dataclasses.dataclass(frozen=True, slots=True)
 class _FafoOptions:
     """User-selected git-fafo workflow options."""
 
@@ -146,6 +146,7 @@ def _run_copier_interactive(
     repo_name: str,
     trust: bool,
 ) -> None:
+    """Run Copier interactively for a template-backed repository scaffold."""
     copier_path = shutil.which("copier") or "copier"
     if trust:
         _LOGGER.info(

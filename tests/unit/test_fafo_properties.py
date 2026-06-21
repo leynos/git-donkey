@@ -18,7 +18,7 @@ from hypothesis import given
 from hypothesis import strategies as st
 from plumbum.commands.processes import ProcessExecutionError
 
-from git_donkey import fafo
+from git_donkey import fafo, fafo_adoption
 
 _SLUG_TEXT = st.text(
     alphabet="abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_",
@@ -200,6 +200,26 @@ def test_adoption_confirmation_requires_yes_or_prompt_acceptance(
                 )
 
     assert bool(prompts) is not yes
+
+
+def test_remote_adoption_inspection_failure_exits(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Remote inspection failures should exit with a diagnostic failure."""
+
+    def _fail_classify(_: object) -> fafo_adoption._RemoteState:
+        raise ProcessExecutionError(["git", "ls-remote"], 128, "", "boom")
+
+    monkeypatch.setattr(fafo_adoption, "_classify_remote", _fail_classify)
+
+    with pytest.raises(SystemExit) as excinfo:
+        fafo_adoption._assert_remote_adoptable(
+            owner="octocat",
+            repo_name="demo-repo",
+            remote_url="git@example.invalid:octocat/demo-repo",
+        )
+
+    assert excinfo.value.code == 1
 
 
 @given(repo_name=_SLUG_TEXT)
