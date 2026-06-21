@@ -41,7 +41,8 @@ def test_git_fafo_existing_repo_early_return(
     monkeypatch.setattr(fafo.helpers, "_require_command", lambda *_: None)
     monkeypatch.setattr(fafo, "_run_fafo_commands", _fake_run_fafo_commands)
 
-    exit_code = fafo.run_git_fafo("demo-repo", "python")
+    auth_value = "fake-token"
+    exit_code = fafo.run_git_fafo("demo-repo", "python", token=auth_value)
 
     assert exit_code == 1, "expected git-fafo to return error for existing path"
     assert called == {}, "expected no git-fafo commands to run"
@@ -75,7 +76,7 @@ def test_git_fafo_runs_expected_commands(
     monkeypatch.setattr(fafo.github3, "login", _fake_login)
     monkeypatch.chdir(tmp_path)
 
-    exit_code = fafo.run_git_fafo("demo-repo", "python")
+    exit_code = fafo.run_git_fafo("demo-repo", "python", token=auth_value)
 
     assert exit_code == 0, "expected git-fafo to exit successfully"
     assert (tmp_path / "demo-repo").exists(), "expected repo directory to exist"
@@ -114,7 +115,12 @@ def test_git_fafo_trusts_copier_template_when_requested(
     monkeypatch.setattr(fafo.github3, "login", _fake_login)
     monkeypatch.chdir(tmp_path)
 
-    exit_code = fafo.run_git_fafo("demo-repo", "python", trust=True)
+    exit_code = fafo.run_git_fafo(
+        "demo-repo",
+        "python",
+        token=auth_value,
+        options=fafo._FafoOptions(trust=True),
+    )
 
     assert exit_code == 0, "expected git-fafo to exit successfully"
     calls = stub_commands.log_path.read_text().splitlines()
@@ -154,7 +160,7 @@ def test_git_fafo_without_language_creates_empty_repo(
     monkeypatch.setattr(fafo.helpers, "_require_command", _fake_require_command)
     monkeypatch.chdir(tmp_path)
 
-    exit_code = fafo.run_git_fafo("demo-repo")
+    exit_code = fafo.run_git_fafo("demo-repo", token=auth_value)
 
     assert exit_code == 0, "expected git-fafo to exit successfully"
     assert (tmp_path / "demo-repo").is_dir(), "expected empty repo directory"

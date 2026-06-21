@@ -36,7 +36,12 @@ def test_git_fafo_adopts_existing_zero_commit_repo_with_yes(
     _patch_existing_github(monkeypatch, remote_path)
     monkeypatch.chdir(tmp_path)
 
-    exit_code = fafo.run_git_fafo("demo-repo", yes=True)
+    auth_value = "fake-token"
+    exit_code = fafo.run_git_fafo(
+        "demo-repo",
+        token=auth_value,
+        options=fafo._FafoOptions(yes=True),
+    )
 
     assert exit_code == 0, "expected git-fafo to adopt the empty remote"
     assert (tmp_path / "demo-repo").is_dir(), "expected local repo directory"
@@ -54,7 +59,12 @@ def test_git_fafo_adopts_existing_empty_initial_commit_with_yes(
     _patch_existing_github(monkeypatch, remote_path)
     monkeypatch.chdir(tmp_path)
 
-    exit_code = fafo.run_git_fafo("demo-repo", yes=True)
+    auth_value = "fake-token"
+    exit_code = fafo.run_git_fafo(
+        "demo-repo",
+        token=auth_value,
+        options=fafo._FafoOptions(yes=True),
+    )
 
     assert exit_code == 0, "expected git-fafo to adopt the empty initial commit"
     remote_repo = Repo(remote_path)
@@ -71,8 +81,9 @@ def test_git_fafo_rejects_existing_repo_without_confirmation(
     monkeypatch.setattr(fafo.helpers, "_prompt_yes_no", lambda *_args, **_kwargs: False)
     monkeypatch.chdir(tmp_path)
 
+    auth_value = "fake-token"
     with pytest.raises(SystemExit) as excinfo:
-        fafo.run_git_fafo("demo-repo")
+        fafo.run_git_fafo("demo-repo", token=auth_value)
 
     assert excinfo.value.code == 1
     assert not (tmp_path / "demo-repo").exists(), "expected no local scaffold"
@@ -99,8 +110,13 @@ def test_git_fafo_validates_remote_before_scaffolding(
     monkeypatch.setattr(fafo, "_scaffold_repo", _fail_scaffold)
     monkeypatch.chdir(tmp_path)
 
+    auth_value = "fake-token"
     with pytest.raises(SystemExit) as excinfo:
-        fafo.run_git_fafo("demo-repo", yes=True)
+        fafo.run_git_fafo(
+            "demo-repo",
+            token=auth_value,
+            options=fafo._FafoOptions(yes=True),
+        )
 
     assert excinfo.value.code == 1
     assert not (tmp_path / "demo-repo").exists(), "expected no local scaffold"
@@ -130,8 +146,13 @@ def test_git_fafo_rejects_remote_with_additional_refs(
     _patch_existing_github(monkeypatch, remote_path)
     monkeypatch.chdir(tmp_path)
 
+    auth_value = "fake-token"
     with pytest.raises(SystemExit) as excinfo:
-        fafo.run_git_fafo("demo-repo", yes=True)
+        fafo.run_git_fafo(
+            "demo-repo",
+            token=auth_value,
+            options=fafo._FafoOptions(yes=True),
+        )
 
     assert excinfo.value.code == 1
     assert not (tmp_path / "demo-repo").exists(), "expected no local scaffold"

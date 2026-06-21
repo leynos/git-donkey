@@ -22,7 +22,7 @@ commands that initialise, commit, and push a repository.
 Examples
 --------
 >>> from git_donkey import fafo
->>> fafo.run_git_fafo("demo-repo", "python")
+>>> fafo.run_git_fafo("demo-repo", "python", token="...")
 0
 
 """
@@ -114,6 +114,17 @@ class _FafoRequest:
     yes: bool
 
 
+@dataclasses.dataclass(frozen=True)
+class _FafoOptions:
+    """User-selected git-fafo workflow options."""
+
+    trust: bool = False
+    yes: bool = False
+
+
+_DEFAULT_FAFO_OPTIONS = _FafoOptions()
+
+
 def _copier_copy_command(
     *,
     copier_path: str,
@@ -121,6 +132,7 @@ def _copier_copy_command(
     repo_name: str,
     trust: bool,
 ) -> list[str]:
+    """Build the interactive Copier command for a repository scaffold."""
     cmd = [copier_path, "copy"]
     if trust:
         cmd.append("--trust")
@@ -164,12 +176,15 @@ def _run_copier_interactive(
 
 
 def _template_for_language(*, owner: str, language: str | None) -> str | None:
+    """Return the owner-scoped template URL for ``language`` if supplied."""
     if language is None:
+        _LOGGER.info("No language supplied; using empty scaffold")
         return None
     return f"git@github.com:{owner}/agent-template-{language}"
 
 
 def _remote_repository_url(*, owner: str, repo_name: str) -> str:
+    """Return the SSH URL for the GitHub repository."""
     return f"git@github.com:{owner}/{repo_name}"
 
 
@@ -198,8 +213,13 @@ def _initialise_and_push_git_repo(
     repo_name: str,
     adopt_existing: bool,
 ) -> None:
+    """Initialize the local Git repository and push it to GitHub."""
     git = local["git"]
     with local.cwd(repo_path):
+        _LOGGER.info(
+            "Initializing local git repository",
+            extra={"operation": "git_init", "repo_name": repo_name},
+        )
         git["init"]()
         git[
             "remote",
@@ -218,6 +238,16 @@ def _initialise_and_push_git_repo(
         git["add", "."]()
         if git["status", "--porcelain"]().strip():
             git["commit", "-m", "Add repo skeleton"]()
+        _LOGGER.info(
+            "Pushing scaffolded repository",
+            extra={
+                "operation": "git_push",
+                "repo_name": repo_name,
+                "owner": owner,
+                "branch": branch,
+                "adopt_existing": adopt_existing,
+            },
+        )
         git["push", "--set-upstream", "origin", branch]()
 
 
@@ -260,6 +290,7 @@ def _assert_remote_adoptable(*, owner: str, repo_name: str) -> None:
 
 
 def _run_fafo_commands(request: _FafoRequest) -> None:
+    """Run the side-effecting GitHub, scaffold, Git init, and push steps."""
     remote = _create_remote_repository(token=request.token, repo_name=request.repo_name)
     if remote.already_exists:
         _confirm_adopt_existing_repository(
@@ -314,8 +345,8 @@ def run_git_fafo(
     repo_name: str,
     language: str | None = None,
     *,
-    trust: bool = False,
-    yes: bool = False,
+    token: str,
+    options: _FafoOptions = _DEFAULT_FAFO_OPTIONS,
 ) -> int:
     """Run the git-fafo workflow.
 
@@ -326,10 +357,10 @@ def run_git_fafo(
     language : str | None
         Optional programming language for the project (alphanumeric, _, -, .
         only). When omitted, create an empty project without Copier.
-    trust : bool
-        Pass Copier's ``--trust`` flag so templates with trusted tasks can run.
-    yes : bool
-        Adopt an existing empty GitHub repository without prompting.
+    token : str
+        GitHub token supplied by the caller or CLI adapter.
+    options : _FafoOptions
+        User-selected scaffold trust and adoption confirmation options.
 
     Returns
     -------
@@ -353,14 +384,13 @@ def run_git_fafo(
         helpers._eprint("You did that one already!")
         return 1
 
-    token = _github_token()
     _run_fafo_commands(
         _FafoRequest(
             token=token,
             repo_name=repo_name,
             language=language,
-            trust=trust,
-            yes=yes,
+            trust=options.trust,
+            yes=options.yes,
         )
     )
     return 0

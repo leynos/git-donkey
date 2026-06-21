@@ -93,7 +93,15 @@ def _fafo_cli(
     ] = False,
 ) -> None:
     """CLI wrapper for git-fafo."""
-    raise SystemExit(fafo.run_git_fafo(repo_name, language, trust=trust, yes=yes))
+    token = fafo._github_token()
+    raise SystemExit(
+        fafo.run_git_fafo(
+            repo_name,
+            language,
+            token=token,
+            options=fafo._FafoOptions(trust=trust, yes=yes),
+        )
+    )
 
 
 def git_donkey() -> None:

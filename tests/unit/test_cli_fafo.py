@@ -32,17 +32,29 @@ class _ExpectedOptions:
     [
         pytest.param(
             ["demo-repo", "python", "--trust"],
-            _ExpectedOptions(language="python", trust=True, yes=False),
+            _ExpectedOptions(
+                language="python",
+                trust=True,
+                yes=False,
+            ),
             id="trust-option",
         ),
         pytest.param(
             ["demo-repo"],
-            _ExpectedOptions(language=None, trust=False, yes=False),
+            _ExpectedOptions(
+                language=None,
+                trust=False,
+                yes=False,
+            ),
             id="missing-language",
         ),
         pytest.param(
             ["demo-repo", "-y"],
-            _ExpectedOptions(language=None, trust=False, yes=True),
+            _ExpectedOptions(
+                language=None,
+                trust=False,
+                yes=True,
+            ),
             id="yes-short-option",
         ),
     ],
@@ -59,15 +71,18 @@ def test_fafo_cli_passes_scaffold_options(
         repo_name: str,
         language: str | None,
         *,
-        trust: bool,
-        yes: bool,
+        token: str,
+        options: fafo._FafoOptions,
     ) -> int:
         recorded["repo_name"] = repo_name
         recorded["language"] = language
-        recorded["trust"] = trust
-        recorded["yes"] = yes
+        recorded["token"] = token
+        recorded["trust"] = options.trust
+        recorded["yes"] = options.yes
         return 0
 
+    auth_value = "fake-token"
+    monkeypatch.setattr(fafo, "_github_token", lambda: auth_value)
     monkeypatch.setattr(fafo, "run_git_fafo", _fake_run_git_fafo)
 
     with pytest.raises(SystemExit) as excinfo:
@@ -77,6 +92,7 @@ def test_fafo_cli_passes_scaffold_options(
     assert recorded == {
         "repo_name": "demo-repo",
         "language": expected.language,
+        "token": auth_value,
         "trust": expected.trust,
         "yes": expected.yes,
     }, "git-fafo CLI should pass parsed scaffold options to run_git_fafo"

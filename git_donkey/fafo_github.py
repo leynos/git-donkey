@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import contextlib
 import dataclasses
+import logging
 import os
 import sys
 import typing as typ
@@ -27,6 +28,7 @@ _GITHUB_DEVICE_CODE_URL = "https://github.com/login/device/code"
 _GITHUB_DEVICE_ACCESS_URL = "https://github.com/login/oauth/access_token"
 _GIT_DONKEY_CLIENT_ID_ENV = "GIT_DONKEY_GITHUB_CLIENT_ID"
 _DEFAULT_GITHUB_CLIENT_ID = "Ov23liD2cKOAh7xmpXKR"
+_LOGGER = logging.getLogger(__name__)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -106,6 +108,10 @@ def _device_flow_token(credentials_path: Path) -> str:
         helpers._die(_GIT_FAFO_PREFIX, "failed to create GitHub device token", 1)
 
     _write_token_file(credentials_path, token, None)
+    _LOGGER.info(
+        "Acquired GitHub token using device flow",
+        extra={"token_source": "device_flow"},
+    )
     return token
 
 
@@ -113,18 +119,34 @@ def _github_token() -> str:
     """Return a GitHub token from env, cache, or interactive device flow."""
     token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
     if token:
+        _LOGGER.info(
+            "Using GitHub token from environment",
+            extra={"token_source": "environment"},
+        )
         return token
 
     credentials_path = _credentials_path()
     stored_token = _read_token_from_file(credentials_path)
     if stored_token:
+        _LOGGER.info(
+            "Using cached GitHub token",
+            extra={"token_source": "cache"},
+        )
         return stored_token
 
+    _LOGGER.info(
+        "Starting GitHub device flow token acquisition",
+        extra={"token_source": "device_flow"},
+    )
     return _device_flow_token(credentials_path)
 
 
 def _create_remote_repository(*, token: str, repo_name: str) -> _RemoteRepository:
     """Create the GitHub repository or report that it already exists."""
+    _LOGGER.info(
+        "Creating GitHub repository",
+        extra={"operation": "github_create_repository", "repo_name": repo_name},
+    )
     github = github3.login(token=token)
     if github is None:
         helpers._die(_GIT_FAFO_PREFIX, "GitHub authentication failed", 1)
@@ -137,12 +159,30 @@ def _create_remote_repository(*, token: str, repo_name: str) -> _RemoteRepositor
         github.create_repository(repo_name, private=False)
     except github3_exceptions.UnprocessableEntity as exc:
         if _is_repo_already_exists_error(exc):
+            _LOGGER.info(
+                "GitHub repository already exists",
+                extra={
+                    "operation": "github_create_repository",
+                    "repo_name": repo_name,
+                    "owner": str(user.login),
+                    "result": "already_exists",
+                },
+            )
             return _RemoteRepository(owner=str(user.login), already_exists=True)
         helpers._die(
             _GIT_FAFO_PREFIX,
             f"GitHub repository creation failed: {exc}",
             1,
         )
+    _LOGGER.info(
+        "Created GitHub repository",
+        extra={
+            "operation": "github_create_repository",
+            "repo_name": repo_name,
+            "owner": str(user.login),
+            "result": "created",
+        },
+    )
     return _RemoteRepository(owner=str(user.login))
 
 
