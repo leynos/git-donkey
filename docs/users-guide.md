@@ -105,7 +105,7 @@ git track feature/foo
 
 ## git fafo
 
-Scaffold and publish a new GitHub repository from an `agent-template` project.
+Scaffold and publish a new GitHub repository.
 
 ```shell
 # Create a new Python repository named demo-repo
@@ -113,10 +113,16 @@ Scaffold and publish a new GitHub repository from an `agent-template` project.
 git fafo demo-repo python
 ```
 
+```shell
+# Create an empty repository named demo-repo
+
+git fafo demo-repo
+```
+
 Requirements:
 
 - `git`
-- `copier`
+- `copier`, when scaffolding from a language template
 - A GitHub token (`GITHUB_TOKEN` or `GH_TOKEN`) *or* an interactive terminal
   for device flow
 
@@ -127,12 +133,40 @@ the default OAuth client ID `Ov23liD2cKOAh7xmpXKR`. Override the client ID by
 setting `GIT_DONKEY_GITHUB_CLIENT_ID`, then follow the prompt to enter the code
 at `https://github.com/login/device`. The access token is stored at
 `~/.config/git-donkey/github-token`. Override the path with
-`GIT_DONKEY_CREDENTIALS_FILE`. If the GitHub repository already exists,
-`git fafo` exits with a ⚔️ conflict message. If the target directory already
-exists, `git fafo` exits early.
+`GIT_DONKEY_CREDENTIALS_FILE`. If the target directory already exists,
+`git fafo` exits early.
 
-`git fafo` expects template repositories named `agent-template-<language>`
-under the current GitHub account.
+When a language is provided, `git fafo` expects template repositories named
+`agent-template-<language>` under the current GitHub account and scaffolds the
+project with Copier. When the language is omitted, `git fafo` creates an empty
+local directory, initializes Git, creates the remote repository, and pushes the
+empty initial commit.
+
+If the GitHub repository already exists, `git fafo` can adopt it only when the
+remote has no commits or only an empty initial commit. The command prompts
+before adopting an existing repository. Use `--yes` or `-y` to confirm adoption
+non-interactively:
+
+```shell
+# Adopt an existing empty repository without prompting
+
+git fafo demo-repo --yes
+```
+
+Existing repositories with real content still exit with a ⚔️ conflict message;
+choose a new name or clear the remote first.
+
+Some Copier templates use trusted features such as `tasks`, which can run
+commands during the scaffold. Copier blocks those templates unless trust is
+explicitly enabled. After reviewing the template source and confirming that its
+tasks are safe to run, pass `--trust`. The option only affects template-backed
+scaffolds:
+
+```shell
+# Allow a trusted Python template to run Copier tasks
+
+git fafo demo-repo python --trust
+```
 
 ## git donkey-template
 

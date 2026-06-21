@@ -1,12 +1,15 @@
 MDLINT ?= markdownlint-cli2
 NIXIE ?= nixie
 MDFORMAT_ALL ?= mdformat-all
-TOOLS = $(MDFORMAT_ALL) ruff ty $(MDLINT) uv
+# Pin Ruff so local and CI runs agree; keep in sync with .github/workflows/ci.yml.
+RUFF_VERSION ?= 0.15.12
+TOOLS = $(MDFORMAT_ALL) ty $(MDLINT) uv
 VENV_TOOLS = pytest
 UV_ENV = UV_CACHE_DIR=.uv-cache UV_TOOL_DIR=.uv-tools
 
 .PHONY: help all clean build build-release lint fmt check-fmt \
-        markdownlint nixie test typecheck $(TOOLS) $(VENV_TOOLS)
+        markdownlint nixie test typecheck ruff $(TOOLS) $(VENV_TOOLS)
+.PHONY: pytest test
 
 .DEFAULT_GOAL := all
 
@@ -53,6 +56,10 @@ $(VENV_TOOLS): ## Verify required CLI tools in venv
 	$(call ensure_tool_venv,$@)
 endif
 
+ruff: ## Verify Ruff is installed and pinned to $(RUFF_VERSION)
+	$(call ensure_tool,ruff)
+	@scripts/check-ruff-version.sh "$(RUFF_VERSION)"
+
 fmt: ruff $(MDFORMAT_ALL) ## Format sources
 	ruff format
 	ruff check --select I --fix
@@ -64,7 +71,8 @@ check-fmt: ruff ## Verify formatting
 
 lint: ruff ## Run linters
 	ruff check
-	pyscn check git_donkey tests
+	$(UV_ENV) uv run interrogate --fail-under 100 git_donkey
+	pyscn check git_donkey tests --skip-clones
 
 typecheck: build ty ## Run typechecking
 	ty --version

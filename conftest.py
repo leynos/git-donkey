@@ -1,16 +1,9 @@
 """Shared pytest fixtures for git-donkey tests.
 
-Provides reusable stub classes and fixtures that simplify GitHub API interactions
-in the test suite.
-
-Usage
------
-Use the shared stubs fixture in tests::
-
-    def test_example(github_stubs):
-        StubUser, StubGitHub = github_stubs
-        stub = StubGitHub(login="octo", created={})
-        assert stub.me().login == "octo"
+The unit and integration suites both need lightweight GitHub API doubles while
+keeping the real workflow modules importable. This root ``conftest`` provides
+the reusable user and repository stubs; integration-specific Git repository
+helpers live in ``tests.integration.conftest``.
 """
 
 from __future__ import annotations

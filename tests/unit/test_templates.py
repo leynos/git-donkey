@@ -1,4 +1,9 @@
-"""Unit tests for git_donkey.templates module."""
+"""Unit tests for ``git_donkey.templates``.
+
+Template overlay helpers are tested with temporary filesystem trees and mocked
+copy operations. Integration coverage for the command-level workflow lives in
+``tests.integration.test_git_donkey_template_overlay``.
+"""
 
 from __future__ import annotations
 

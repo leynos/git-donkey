@@ -1,6 +1,13 @@
-"""Unit tests for git_donkey.slugs module."""
+"""Unit tests for ``git_donkey.slugs``.
+
+The slug helpers provide stable path components for worktree and template
+directories. These tests pin checksum behaviour and runtime type guards used by
+the higher-level workflow modules.
+"""
 
 from __future__ import annotations
+
+import typing as typ
 
 import pytest
 
@@ -81,8 +88,9 @@ class TestAdler32Base32Lc:
 
     def test_type_error_non_string(self) -> None:
         """Test that TypeError is raised for non-string input."""
+        non_string = typ.cast("str", 123)
         with pytest.raises(TypeError, match="text must be str"):
-            slugs.adler32_base32_lc(123)  # type: ignore[arg-type]
+            slugs.adler32_base32_lc(non_string)
 
 
 class TestSlugDashAdler32:
@@ -146,5 +154,6 @@ class TestSlugDashAdler32:
 
     def test_type_error_non_string(self) -> None:
         """Test that TypeError is raised for non-string input."""
+        non_string = typ.cast("str", 123)
         with pytest.raises(TypeError, match="text must be str"):
-            slugs.slug_dash_adler32(123)  # type: ignore[arg-type]
+            slugs.slug_dash_adler32(non_string)

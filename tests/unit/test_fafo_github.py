@@ -64,7 +64,7 @@ def _create_repo_with_login(
     token: str,
     repo_name: str,
     login_handler: cabc.Callable[[str], object],
-) -> str:
+) -> fafo._RemoteRepository:
     """Create a repository using a patched github3.login handler."""
     _patch_github_login(monkeypatch, login_handler)
     return fafo._create_remote_repository(token=token, repo_name=repo_name)
@@ -107,14 +107,15 @@ def test_create_remote_repository_uses_github3_login(
         return stub_github("octocat", created)
 
     auth_value = "token-123"
-    owner = _create_repo_with_login(
+    remote = _create_repo_with_login(
         monkeypatch,
         token=auth_value,
         repo_name="demo",
         login_handler=_login_handler,
     )
 
-    assert owner == "octocat", "Expected repository owner to match stub login."
+    assert remote.owner == "octocat", "Expected repository owner to match stub login."
+    assert not remote.already_exists, "Expected new repository metadata."
     assert created["token"] == auth_value, "Expected login token to be passed."
     assert created["name"] == "demo", (
         "Expected repository name to be passed to create_repository."
@@ -161,12 +162,11 @@ def test_create_remote_repository_missing_user_login_exits_with_error(
     )
 
 
-def test_create_remote_repository_reports_existing_repo(
+def test_create_remote_repository_returns_existing_repo(
     monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
     github_stubs: tuple[type[StubUser], type[StubGitHub]],
 ) -> None:
-    """Provide a friendly message when the repository already exists."""
+    """Existing repositories should be returned for adoption handling."""
 
     @dataclasses.dataclass
     class _StubGitHub:
@@ -182,10 +182,53 @@ def test_create_remote_repository_reports_existing_repo(
     def _login_handler(token: str) -> _StubGitHub:
         return _StubGitHub("octocat")
 
-    _assert_create_repo_failure(
+    remote = _create_repo_with_login(
         monkeypatch,
-        capsys,
+        token="example-value",  # noqa: S106  FIXME: test constant, not a real secret
+        repo_name="demo-repo",
         login_handler=_login_handler,
-        expected_message="already exists",
-        normalize=True,
+    )
+
+    assert remote.owner == "octocat"
+    assert remote.already_exists
+
+
+def test_confirm_adopt_existing_repository_prompts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Existing repository adoption should prompt unless --yes was supplied."""
+    recorded: dict[str, object] = {}
+
+    def _fake_prompt(question: str, *, default: bool = False) -> bool:
+        recorded["question"] = question
+        recorded["default"] = default
+        return True
+
+    monkeypatch.setattr(fafo.helpers, "_prompt_yes_no", _fake_prompt)
+
+    fafo._confirm_adopt_existing_repository(
+        owner="octocat",
+        repo_name="demo-repo",
+        yes=False,
+    )
+
+    assert "octocat/demo-repo" in str(recorded["question"])
+    assert recorded["default"] is False
+
+
+def test_confirm_adopt_existing_repository_uses_yes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The --yes option should skip the adoption prompt."""
+
+    def _fail_prompt(*_: object, **__: object) -> typ.NoReturn:
+        msg = "prompt should not be called"
+        raise AssertionError(msg)
+
+    monkeypatch.setattr(fafo.helpers, "_prompt_yes_no", _fail_prompt)
+
+    fafo._confirm_adopt_existing_repository(
+        owner="octocat",
+        repo_name="demo-repo",
+        yes=True,
     )

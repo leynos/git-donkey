@@ -28,6 +28,19 @@ _GIT_DONKEY_PREFIX = helpers._GIT_DONKEY_PREFIX
 
 @dataclasses.dataclass(frozen=True, slots=True)
 class _WorktreeContext:
+    """Resolved repository state needed while creating a worktree.
+
+    Parameters
+    ----------
+    repo_home
+        Source repository that owns the branches and worktrees.
+    remote
+        Remote name used for branch discovery and upstream tracking.
+    branch_to_worktree
+        Existing branch-to-worktree mapping for collision checks.
+
+    """
+
     repo_home: Repo
     remote: str
     branch_to_worktree: dict[str, Path]
@@ -35,6 +48,19 @@ class _WorktreeContext:
 
 @dataclasses.dataclass(frozen=True, slots=True)
 class _WorktreeRequest:
+    """Requested worktree branch, base branch, and target directory.
+
+    Parameters
+    ----------
+    branch_name
+        Branch that should be checked out in the new worktree.
+    base_branch
+        Existing branch used when creating ``branch_name``.
+    target_path
+        Filesystem path for the new worktree checkout.
+
+    """
+
     branch_name: str
     base_branch: str
     target_path: Path

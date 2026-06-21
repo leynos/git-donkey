@@ -24,10 +24,12 @@ git-donkey-template = "git_donkey.cli:git_donkey_template"
 [dependency-groups]
 dev = [
     "pytest",
+    "hypothesis",
     "ruff",
     "pyright",
     "pytest-timeout",
     "pytest-xdist",
+    "interrogate>=1.7.0",
 ]
 
 [tool.ruff]
@@ -134,6 +136,16 @@ max-locals = 10
 [tool.pytest.ini_options]
 # Tests automatically killed after seconds elapsed
 timeout = 30
+filterwarnings = [
+    # slipcover registers a pytest11 plugin entry point (for its
+    # pytest-xdist support added in plasma-umass/slipcover#71). When
+    # invoked as `python -m slipcover -m pytest`, slipcover is already
+    # imported by the time pytest tries to rewrite its assertions, so
+    # pytest emits PytestAssertRewriteWarning. Slipcover isn't a test
+    # library and doesn't need rewriting; suppress the specific
+    # message so unrelated rewrite warnings still surface.
+    "ignore:Module already imported so cannot be rewritten; slipcover:pytest.PytestAssertRewriteWarning",
+]
 
 [tool.uv]
 package = true

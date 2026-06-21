@@ -9,8 +9,9 @@ jobs:
   lint-test:
     runs-on: ubuntu-latest
     env:
+      # Surface the secret as an env var so the CodeScene gate can test it:
+      # GitHub Actions does not allow `secrets.*` in step-level `if:`.
       CS_ACCESS_TOKEN: ${{ secrets.CS_ACCESS_TOKEN }}
-      CODESCENE_CLI_SHA256: ${{ vars.CODESCENE_CLI_SHA256 }}
     steps:
       - name: Check out repository
         uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4
@@ -25,7 +26,9 @@ jobs:
 
       - name: Install CLI tools
         run: |
-          for tool in mbake ty ruff pyscn; do uv tool install ${tool}; done
+          for tool in mbake ty pyscn; do uv tool install ${tool}; done
+          # Pin Ruff so CI matches local runs; keep in sync with Makefile RUFF_VERSION.
+          uv tool install ruff==0.15.12
           npm install -g markdownlint-cli2
 
       - name: Validate Makefile
@@ -44,37 +47,16 @@ jobs:
         run: make typecheck
 
       - name: Run tests with coverage
-        run: |
-          uv pip install slipcover pytest-forked
-          uv run python -m slipcover \
-            --source=./git_donkey \
-            --omit="*/unittests/*,*/.venv/*" \
-            --branch \
-            --out coverage.xml \
-            -m pytest --forked -v
-
-      - name: Upload coverage artifact
-        uses: actions/upload-artifact@v4
+        uses: leynos/shared-actions/.github/actions/generate-coverage@455d9ed03477c0026da96c2541ca26569a74acac
         with:
-          name: coverage
-          path: coverage.xml
-
-      - name: Install CodeScene Coverage CLI
-        if: env.CS_ACCESS_TOKEN != ''
-        run: |
-          curl -fsSL https://downloads.codescene.io/enterprise/cli/install-cs-coverage-tool.sh | bash -s -- -y
-          if [ -n "${CODESCENE_CLI_SHA256:-}" ]; then
-            echo "${CODESCENE_CLI_SHA256}  install-cs-coverage-tool.sh" | sha256sum -c -
-          fi
+          output-path: coverage.xml
+          format: cobertura
 
       - name: Upload coverage to CodeScene
         if: env.CS_ACCESS_TOKEN != ''
-        run: |
-          if [ ! -f coverage.xml ]; then
-            echo "coverage.xml not found!"
-            exit 1
-          fi
-          cs-coverage upload \
-            --format "cobertura" \
-            --metric "line-coverage" \
-            coverage.xml
+        uses: leynos/shared-actions/.github/actions/upload-codescene-coverage@455d9ed03477c0026da96c2541ca26569a74acac
+        with:
+          path: coverage.xml
+          format: cobertura
+          access-token: ${{ secrets.CS_ACCESS_TOKEN }}
+          installer-checksum: ${{ vars.CODESCENE_CLI_SHA256 }}
