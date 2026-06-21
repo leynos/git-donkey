@@ -71,14 +71,11 @@ def _write_token_file(path: Path, token: str, auth_id: int | None) -> None:
     if auth_id is not None:
         payload += f"{auth_id}\n"
     temporary_handle, temporary_name = tempfile.mkstemp(dir=path.parent)
-    os.close(temporary_handle)
     temporary_path = Path(temporary_name)
-    temporary_path.unlink()
-    with open(
-        temporary_path,
+    with os.fdopen(
+        temporary_handle,
         "w",
         encoding="utf-8",
-        opener=lambda p, f: os.open(p, f | os.O_EXCL, 0o600),
     ) as fh:
         fh.write(payload)
     temporary_path.replace(path)
@@ -203,14 +200,23 @@ def _confirm_adopt_existing_repository(
 ) -> None:
     """Require explicit confirmation before adopting an existing repository."""
     if yes:
+        _LOGGER.info(
+            "Existing repository adoption accepted without prompt",
+            extra={"owner": owner, "repo_name": repo_name, "accepted": True},
+        )
         return
 
-    if helpers._prompt_yes_no(
+    accepted = helpers._prompt_yes_no(
         "GitHub repository "
         f"'{owner}/{repo_name}' already exists. Adopt it if it has no commits "
         "or only an empty initial commit?",
         default=False,
-    ):
+    )
+    _LOGGER.info(
+        "Existing repository adoption prompt answered",
+        extra={"owner": owner, "repo_name": repo_name, "accepted": accepted},
+    )
+    if accepted:
         return
 
     helpers._die_conflict(

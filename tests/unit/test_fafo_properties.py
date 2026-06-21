@@ -219,7 +219,7 @@ def test_remote_adoption_inspection_failure_exits(
             remote_url="git@example.invalid:octocat/demo-repo",
         )
 
-    assert excinfo.value.code == 1
+    assert excinfo.value.code == 1, "expected adoption inspection failure to exit"
 
 
 @given(repo_name=_SLUG_TEXT)

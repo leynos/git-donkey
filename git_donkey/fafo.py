@@ -308,15 +308,15 @@ def _run_fafo_commands(request: _FafoRequest) -> None:
     # plumbum snapshots os.environ at import time, so values set later by
     # pytest's monkeypatch (and by CI runners with no global git config)
     # don't reach git subprocesses unless we forward them explicitly.
-    for _git_var in (  # noqa: RUF052 - Review requested single-use underscore.
+    for git_var in (
         "GIT_AUTHOR_NAME",
         "GIT_AUTHOR_EMAIL",
         "GIT_COMMITTER_NAME",
         "GIT_COMMITTER_EMAIL",
     ):
-        _git_val = os.environ.get(_git_var)  # noqa: RUF052
-        if _git_val is not None:
-            env_overrides[_git_var] = _git_val
+        git_val = os.environ.get(git_var)
+        if git_val is not None:
+            env_overrides[git_var] = git_val
 
     try:
         with local.env(**env_overrides):
@@ -385,6 +385,7 @@ def run_git_fafo(
         helpers._eprint("You did that one already!")
         return 1
 
+    _LOGGER.info("Starting git-fafo workflow", extra={"repo_name": repo_name})
     _run_fafo_commands(
         _FafoRequest(
             token=token,
@@ -393,5 +394,9 @@ def run_git_fafo(
             trust=options.trust,
             yes=options.yes,
         )
+    )
+    _LOGGER.info(
+        "Completed git-fafo workflow",
+        extra={"repo_name": repo_name, "status": "success"},
     )
     return 0

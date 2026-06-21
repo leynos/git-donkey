@@ -54,7 +54,7 @@ Remote classification rejects:
 - A branch with more than one commit.
 - A single initial commit that changes files.
 
-The validation runs in a temporary Git repository so a rejection leaves no
+The validation runs in a temporary Git repository, so a rejection leaves no
 local scaffold directory behind. This matters most for trusted Copier
 templates, where task execution could otherwise happen before the conflict is
 reported.
