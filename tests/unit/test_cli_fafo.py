@@ -7,6 +7,7 @@ GitHub or Git orchestration layers.
 
 from __future__ import annotations
 
+import dataclasses
 import typing as typ
 
 import pytest
@@ -17,27 +18,39 @@ if typ.TYPE_CHECKING:
     import collections.abc as cabc
 
 
+@dataclasses.dataclass(frozen=True)
+class _ExpectedOptions:
+    """Expected scaffold option values for a single parametrised case."""
+
+    language: str | None
+    trust: bool
+    yes: bool
+
+
 @pytest.mark.parametrize(
-    ("argv", "expected_language", "expected_trust", "expected_yes"),
+    ("argv", "expected"),
     [
         pytest.param(
             ["demo-repo", "python", "--trust"],
-            "python",
-            True,
-            False,
+            _ExpectedOptions(language="python", trust=True, yes=False),
             id="trust-option",
         ),
-        pytest.param(["demo-repo"], None, False, False, id="missing-language"),
-        pytest.param(["demo-repo", "-y"], None, False, True, id="yes-short-option"),
+        pytest.param(
+            ["demo-repo"],
+            _ExpectedOptions(language=None, trust=False, yes=False),
+            id="missing-language",
+        ),
+        pytest.param(
+            ["demo-repo", "-y"],
+            _ExpectedOptions(language=None, trust=False, yes=True),
+            id="yes-short-option",
+        ),
     ],
 )
 def test_fafo_cli_passes_scaffold_options(
     monkeypatch: pytest.MonkeyPatch,
     argv: list[str],
-    *,
-    expected_language: str | None,
-    expected_trust: bool,
-    expected_yes: bool,
+    expected: _ExpectedOptions,
 ) -> None:
     """CLI scaffold options should pass through to the workflow function."""
     recorded: dict[str, object] = {}
@@ -63,7 +76,7 @@ def test_fafo_cli_passes_scaffold_options(
     assert excinfo.value.code == 0
     assert recorded == {
         "repo_name": "demo-repo",
-        "language": expected_language,
-        "trust": expected_trust,
-        "yes": expected_yes,
+        "language": expected.language,
+        "trust": expected.trust,
+        "yes": expected.yes,
     }
