@@ -31,7 +31,7 @@ An omitted language creates the target directory, initializes Git, makes an
 empty initial commit, and pushes `main`. This path is useful when the
 repository should exist before language-specific files are known.
 
-The direct directory creation handles `FileExistsError` as a conflict so
+The direct directory creation handles `FileExistsError` as a conflict, so
 concurrent runs fail with the same user-facing category as an already-existing
 path.
 
