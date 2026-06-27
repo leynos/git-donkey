@@ -1,4 +1,13 @@
-"""BDD tests for the ``git plonk`` cleanup command."""
+"""Behaviour tests for the ``git plonk`` cleanup command.
+
+These scenarios exercise the public `git_donkey.plonk.run_git_plonk` workflow
+against real temporary Git repositories instead of stubs. They prove that the
+plonk module honours its contract with `git donkey` worktrees: default mode
+removes only completed worktrees, soft mode removes generated directories
+without changing Git state, hard mode removes completed worktrees and local
+branches, and cleanup still resolves completion markers from the main worktree
+history when invoked from a linked topic worktree.
+"""
 
 from __future__ import annotations
 
@@ -186,6 +195,34 @@ def branches_remain(scenario: PlonkScenario) -> None:
 def completed_branch_is_deleted(scenario: PlonkScenario) -> None:
     """Assert hard mode deletes the completed local branch."""
     assert scenario.completed_branch not in Repo(scenario.local_path).heads
+
+
+def test_git_plonk_uses_main_history_when_run_from_topic_worktree(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Default mode should remove completed worktrees from a topic CWD."""
+    local_path, _remote_path = _setup_repo(tmp_path)
+    monkeypatch.chdir(local_path)
+    completed_branch = "issue-789-completed-from-main"
+    topic_branch = "issue-790-active-topic"
+
+    _create_git_donkey_worktree(local_path, completed_branch)
+    _create_git_donkey_worktree(local_path, topic_branch)
+    _commit_completion_marker(local_path, "(#789)")
+    scenario = PlonkScenario(
+        local_path=local_path,
+        completed_branch=completed_branch,
+        active_branch=topic_branch,
+    )
+
+    monkeypatch.chdir(scenario.worktree_path(topic_branch))
+    exit_code = plonk.run_git_plonk()
+
+    assert exit_code == 0
+    assert not scenario.worktree_path(completed_branch).exists()
+    assert scenario.worktree_path(topic_branch).exists()
+    assert completed_branch in Repo(local_path).heads
 
 
 scenarios("features/git_plonk.feature")

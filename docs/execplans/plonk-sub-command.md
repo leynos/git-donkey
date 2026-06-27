@@ -98,6 +98,16 @@ directories being removed or retained.
 - [x] 2026-06-27: Committed the implementation, pushed
   `plonk-sub-command` with upstream tracking to `origin/plonk-sub-command`, and
   opened draft PR <https://github.com/leynos/git-donkey/pull/17>.
+- [x] 2026-06-27: Added review-requested regression coverage for mutually
+  exclusive `--soft --hard` CLI use and for running `git plonk` from a linked
+  topic worktree while the completion marker exists only on `main`.
+- [x] 2026-06-27: Split completion-marker policy into pure
+  `git_donkey.plonk_policy`, added Git/filesystem adapter boundaries in
+  `git_donkey.plonk`, and added structured logging around cleanup start,
+  candidate selection, removals, and failure boundaries.
+- [x] 2026-06-27: Expanded module and developer documentation for
+  `git-plonk`, including CLI entrypoint, module boundaries, test tooling, and
+  logging fields.
 
 ## Surprises & Discoveries
 
@@ -112,6 +122,12 @@ directories being removed or retained.
 - Focused testing found the only first green-stage failure was the expected
   missing syrupy snapshot. Generating the snapshot made all 10 focused tests
   pass.
+- Follow-up review found happy-path cleanup coverage was not enough to rule out
+  broken flag handling or using the current topic worktree history instead of
+  trunk history. The added regression tests now pin both behaviours.
+- Follow-up review also found plonk policy was coupled to Git and filesystem
+  mutation. The policy is now isolated in `git_donkey.plonk_policy`, while
+  `git_donkey.plonk` owns infrastructure adapters and user summaries.
 
 ## Decision Log
 
@@ -139,6 +155,15 @@ directories being removed or retained.
   marker in history. Requiring Git ancestry would fail common squash-merge
   branches that still have a valid completion marker. Remote branches remain
   out of scope.
+- Decision: keep completion-marker policy in `git_donkey.plonk_policy` and use
+  small Git/filesystem adapters in `git_donkey.plonk`. Rationale: marker
+  derivation and history matching are pure domain rules that should remain
+  testable without GitPython, `os.chdir`, `Path`, `shutil`, or branch mutation.
+- Decision: add structured module logging rather than changing stdout.
+  Rationale: users still need the concise summary, while operators and tests
+  can observe cleanup decisions through stable `extra` fields such as `mode`,
+  `operation`, `worktree`, `branch`, `marker`, `candidate_count`, and
+  `completed_count`.
 
 ## Implementation Plan
 
@@ -199,12 +224,17 @@ Then implement `git_donkey.plonk` with:
 
 - `_PlonkMode`, using values `default`, `soft`, and `hard`.
 - `_PlonkCandidate`, containing branch name, worktree path, and marker.
-- `_completion_marker_for_branch(branch_name: str) -> str | None`.
-- `_has_completion_marker(messages: Iterable[str], marker: str) -> bool`.
+- `plonk_policy.completion_marker_for_branch`, deriving issue and roadmap
+  markers from branch names.
+- `plonk_policy.has_completion_marker`, matching exact or dotted markers in
+  commit messages.
+- `plonk_policy.completed_candidates`, filtering candidates by history.
 - `_PlonkResult`, containing the mode and removed worktrees, branches, and
   generated paths for deterministic summary rendering.
 - `_donkey_worktree_candidates(stanzas, worktrees_root) -> list[_PlonkCandidate]`.
-- `_completed_candidates(candidates, messages) -> list[_PlonkCandidate]`.
+- `_GitWorktreeAdapter`, containing GitPython-backed history, worktree removal,
+  and local branch deletion.
+- `_FilesystemCleanupAdapter`, containing generated-directory removal.
 - `_remove_soft_targets(worktree_path: Path) -> list[Path]`.
 - `_render_summary(result: _PlonkResult) -> str`.
 - `run_git_plonk(*, soft: bool = False, hard: bool = False) -> int`.
@@ -236,8 +266,8 @@ Full validation passes when these Makefile targets all succeed:
 
 The completed implementation passed `make check-fmt`, `make lint`,
 `make typecheck`, `make test`, `make markdownlint`, `make nixie`, and
-`uv run git-plonk --help` on 2026-06-27. The full test run reported
-`110 passed`.
+`uv run git-plonk --help` on 2026-06-27. After review-response tests and
+refactors, the full test run reported `112 passed`.
 
 After the gates pass, commit the implementation with a descriptive imperative
 message, push with `git push -u origin plonk-sub-command`, and create a draft
@@ -257,3 +287,8 @@ Validation passed through focused tests, the full Makefile quality gates, and a
 direct `git-plonk --help` smoke check. Draft PR
 <https://github.com/leynos/git-donkey/pull/17> contains the required Lody
 session reference.
+
+Follow-up review fixes added missing CLI-conflict and trunk-history regression
+coverage, isolated completion-marker policy in a pure module, added
+Git/filesystem adapter boundaries, expanded developer documentation, and added
+structured logging for cleanup decisions and failure boundaries.
