@@ -108,6 +108,11 @@ directories being removed or retained.
 - [x] 2026-06-27: Expanded module and developer documentation for
   `git-plonk`, including CLI entrypoint, module boundaries, test tooling, and
   logging fields.
+- [x] 2026-06-27: Verified the latest inline findings against current code and
+  fixed the still-valid issues: trunk/default history lookup, soft-mode no-op
+  summaries, bounded `pytest-bdd` and `syrupy` dev dependencies, BDD coverage
+  for conflicting flags, explicit BDD assertion messages, and the BDD module
+  docstring.
 
 ## Surprises & Discoveries
 
@@ -128,6 +133,17 @@ directories being removed or retained.
 - Follow-up review also found plonk policy was coupled to Git and filesystem
   mutation. The policy is now isolated in `git_donkey.plonk_policy`, while
   `git_donkey.plonk` owns infrastructure adapters and user summaries.
+- Inline review found completion history still depended on checked-out state in
+  the main worktree. The workflow now resolves a canonical trunk/default ref,
+  preferring local `main` and falling back to a remote `HEAD`, before scanning
+  completion history.
+- Inline review found soft mode could inspect worktrees and remove nothing but
+  still report "No matching git donkey worktrees found." `_PlonkResult` now
+  records inspected worktree count so soft mode can report that there were no
+  generated paths to clean.
+- Inline review found `pytest-bdd` and `syrupy` had minimum versions without
+  upper bounds. The development dependency entries now keep the existing
+  minimums and cap the next major releases.
 
 ## Decision Log
 
@@ -164,6 +180,15 @@ directories being removed or retained.
   can observe cleanup decisions through stable `extra` fields such as `mode`,
   `operation`, `worktree`, `branch`, `marker`, `candidate_count`, and
   `completed_count`.
+- Decision: prefer `main` as the local canonical trunk ref for completion
+  history, with remote `HEAD` as fallback. Rationale: `git donkey` already uses
+  `main` as its default base branch, and plonk cleanup must not treat commits
+  unique to whichever branch is checked out in the main worktree as completed
+  trunk work.
+- Decision: keep conflicting `--soft --hard` coverage in both unit CLI-boundary
+  tests and the BDD feature. Rationale: the unit test pins the Cyclopts-facing
+  usage error cheaply, while the BDD scenario records the user workflow in the
+  feature specification.
 
 ## Implementation Plan
 
@@ -267,7 +292,9 @@ Full validation passes when these Makefile targets all succeed:
 The completed implementation passed `make check-fmt`, `make lint`,
 `make typecheck`, `make test`, `make markdownlint`, `make nixie`, and
 `uv run git-plonk --help` on 2026-06-27. After review-response tests and
-refactors, the full test run reported `112 passed`.
+refactors, the full test run reported `112 passed`. After the latest inline
+fixes, focused plonk validation reported `15 passed`, and the full suite
+reported `115 passed`.
 
 After the gates pass, commit the implementation with a descriptive imperative
 message, push with `git push -u origin plonk-sub-command`, and create a draft
@@ -292,3 +319,8 @@ Follow-up review fixes added missing CLI-conflict and trunk-history regression
 coverage, isolated completion-marker policy in a pure module, added
 Git/filesystem adapter boundaries, expanded developer documentation, and added
 structured logging for cleanup decisions and failure boundaries.
+
+Latest inline fixes made completion matching independent of checked-out branch
+state, made soft-mode no-op output distinguish "nothing to clean" from "no
+worktrees found", bounded the new test dependencies, and expanded BDD behaviour
+coverage and diagnostics.

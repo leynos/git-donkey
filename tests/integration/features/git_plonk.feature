@@ -19,3 +19,8 @@ Feature: Clean git donkey worktrees
     When I run git plonk in hard mode
     Then the completed worktree is removed
     And the completed branch is deleted
+
+  Scenario: Soft and hard modes cannot be combined
+    Given a repository with completed and active git donkey worktrees
+    When I run git plonk with soft and hard modes
+    Then git plonk exits with a usage error

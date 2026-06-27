@@ -117,6 +117,27 @@ def test_plonk_cli_rejects_soft_and_hard_together() -> None:
     assert exc_info.value.code == 2
 
 
+def test_soft_summary_reports_nothing_to_clean_after_inspection() -> None:
+    """Soft mode should distinguish empty worktrees from no matching worktrees."""
+    result = plonk._PlonkResult(
+        mode=plonk._PlonkMode.SOFT,
+        inspected_worktrees=2,
+    )
+
+    assert plonk._render_summary(result) == (
+        "git-plonk: mode=soft\nNo generated paths to clean in git donkey worktrees."
+    )
+
+
+def test_soft_summary_reports_no_matching_worktrees_when_none_inspected() -> None:
+    """Soft mode should keep the generic no-match message with no worktrees."""
+    result = plonk._PlonkResult(mode=plonk._PlonkMode.SOFT)
+
+    assert plonk._render_summary(result) == (
+        "git-plonk: mode=soft\nNo matching git donkey worktrees found."
+    )
+
+
 def test_summary_rendering_matches_snapshot(snapshot: SnapshotAssertion) -> None:
     """Command summaries should stay stable for reviewable CLI output."""
     result = plonk._PlonkResult(

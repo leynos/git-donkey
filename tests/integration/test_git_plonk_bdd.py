@@ -1,29 +1,29 @@
-"""Behaviour tests for the ``git plonk`` cleanup command.
+"""Behaviour-driven integration tests for the ``git plonk`` command.
 
-These scenarios exercise the public `git_donkey.plonk.run_git_plonk` workflow
-against real temporary Git repositories instead of stubs. They prove that the
-plonk module honours its contract with `git donkey` worktrees: default mode
-removes only completed worktrees, soft mode removes generated directories
-without changing Git state, hard mode removes completed worktrees and local
-branches, and cleanup still resolves completion markers from the main worktree
-history when invoked from a linked topic worktree.
+The module binds scenarios from ``features/git_plonk.feature`` to real
+temporary Git repositories created by ``tests.integration.conftest._setup_repo``.
+Shared helpers create `git donkey` worktrees, add trunk completion-marker
+commits, and expose a small ``PlonkScenario`` object so BDD steps can assert on
+branches, worktree paths, generated directories, and exit codes.
+
+These tests exercise the public ``git_donkey.plonk.run_git_plonk`` workflow
+rather than low-level helpers. They validate default, soft, hard, and
+mutually-exclusive flag behavior, and include a direct regression test proving
+that cleanup uses main/trunk history even when invoked from a linked topic
+worktree.
 """
 
 from __future__ import annotations
 
 import dataclasses
-import typing as typ
+from pathlib import Path
 
+import pytest
 from git import Repo
 from pytest_bdd import given, scenarios, then, when
 
 from git_donkey import donkey, plonk
 from tests.integration.conftest import _setup_repo
-
-if typ.TYPE_CHECKING:
-    from pathlib import Path
-
-    import pytest
 
 
 @dataclasses.dataclass(frozen=True)
@@ -60,7 +60,7 @@ def _create_git_donkey_worktree(local_path: Path, branch_name: str) -> None:
     repo = Repo(local_path)
     repo.git.checkout("main")
     exit_code = donkey.run_git_donkey(branch_name, no_pull=True)
-    assert exit_code == 0
+    assert exit_code == 0, f"expected git donkey to create {branch_name}"
 
 
 @given(
@@ -98,7 +98,7 @@ def repository_with_generated_directories(
 ) -> PlonkScenario:
     """Create worktrees containing generated dependency and build directories."""
     scenario = repository_with_completed_and_active_worktrees(tmp_path, monkeypatch)
-    assert scenario.active_branch is not None
+    assert scenario.active_branch is not None, "expected active branch in scenario"
     for branch_name in (scenario.completed_branch, scenario.active_branch):
         worktree_path = scenario.worktree_path(branch_name)
         for dirname in ("target", "node_modules"):
@@ -128,73 +128,103 @@ def repository_with_completed_worktree(
 def run_default_plonk(scenario: PlonkScenario) -> None:
     """Run the default cleanup mode."""
     exit_code = plonk.run_git_plonk()
-    assert exit_code == 0
+    assert exit_code == 0, "expected default git plonk to succeed"
 
 
 @when("I run git plonk in soft mode")
 def run_soft_plonk(scenario: PlonkScenario) -> None:
     """Run the soft cleanup mode."""
     exit_code = plonk.run_git_plonk(soft=True)
-    assert exit_code == 0
+    assert exit_code == 0, "expected soft git plonk to succeed"
 
 
 @when("I run git plonk in hard mode")
 def run_hard_plonk(scenario: PlonkScenario) -> None:
     """Run the hard cleanup mode."""
     exit_code = plonk.run_git_plonk(hard=True)
-    assert exit_code == 0
+    assert exit_code == 0, "expected hard git plonk to succeed"
+
+
+@when("I run git plonk with soft and hard modes", target_fixture="plonk_exit")
+def run_conflicting_plonk_modes(scenario: PlonkScenario) -> int | str | None:
+    """Run git-plonk with mutually exclusive cleanup modes."""
+    with pytest.raises(SystemExit) as exc_info:
+        plonk.run_git_plonk(soft=True, hard=True)
+    return exc_info.value.code
 
 
 @then("the completed worktree is removed")
 def completed_worktree_is_removed(scenario: PlonkScenario) -> None:
     """Assert the completed worktree path no longer exists."""
-    assert not scenario.worktree_path(scenario.completed_branch).exists()
+    assert not scenario.worktree_path(scenario.completed_branch).exists(), (
+        "expected completed worktree to be removed"
+    )
 
 
 @then("the active worktree remains")
 def active_worktree_remains(scenario: PlonkScenario) -> None:
     """Assert the active worktree path remains."""
-    assert scenario.active_branch is not None
-    assert scenario.worktree_path(scenario.active_branch).exists()
+    assert scenario.active_branch is not None, "expected active branch in scenario"
+    assert scenario.worktree_path(scenario.active_branch).exists(), (
+        "expected active worktree to remain"
+    )
 
 
 @then("the completed branch remains")
 def completed_branch_remains(scenario: PlonkScenario) -> None:
     """Assert default mode leaves the completed local branch intact."""
-    assert scenario.completed_branch in Repo(scenario.local_path).heads
+    assert scenario.completed_branch in Repo(scenario.local_path).heads, (
+        "expected default mode to keep completed branch"
+    )
 
 
 @then("the generated directories are removed")
 def generated_directories_are_removed(scenario: PlonkScenario) -> None:
     """Assert generated directories are removed from every git-donkey worktree."""
-    assert scenario.active_branch is not None
+    assert scenario.active_branch is not None, "expected active branch in scenario"
     for branch_name in (scenario.completed_branch, scenario.active_branch):
         worktree_path = scenario.worktree_path(branch_name)
-        assert not (worktree_path / "target").exists()
-        assert not (worktree_path / "node_modules").exists()
+        assert not (worktree_path / "target").exists(), (
+            f"expected target to be removed from {branch_name}"
+        )
+        assert not (worktree_path / "node_modules").exists(), (
+            f"expected node_modules to be removed from {branch_name}"
+        )
 
 
 @then("the worktrees remain")
 def worktrees_remain(scenario: PlonkScenario) -> None:
     """Assert soft mode leaves every linked worktree in place."""
-    assert scenario.active_branch is not None
+    assert scenario.active_branch is not None, "expected active branch in scenario"
     for branch_name in (scenario.completed_branch, scenario.active_branch):
-        assert scenario.worktree_path(branch_name).exists()
+        assert scenario.worktree_path(branch_name).exists(), (
+            f"expected soft mode to keep worktree {branch_name}"
+        )
 
 
 @then("the branches remain")
 def branches_remain(scenario: PlonkScenario) -> None:
     """Assert soft mode leaves every local branch in place."""
-    assert scenario.active_branch is not None
+    assert scenario.active_branch is not None, "expected active branch in scenario"
     heads = Repo(scenario.local_path).heads
-    assert scenario.completed_branch in heads
-    assert scenario.active_branch in heads
+    assert scenario.completed_branch in heads, (
+        "expected soft mode to keep completed branch"
+    )
+    assert scenario.active_branch in heads, "expected soft mode to keep active branch"
 
 
 @then("the completed branch is deleted")
 def completed_branch_is_deleted(scenario: PlonkScenario) -> None:
     """Assert hard mode deletes the completed local branch."""
-    assert scenario.completed_branch not in Repo(scenario.local_path).heads
+    assert scenario.completed_branch not in Repo(scenario.local_path).heads, (
+        "expected hard mode to delete completed branch"
+    )
+
+
+@then("git plonk exits with a usage error")
+def git_plonk_exits_with_usage_error(plonk_exit: int | str | None) -> None:
+    """Assert conflicting cleanup modes fail as a usage error."""
+    assert plonk_exit == 2, "expected conflicting plonk modes to exit with code 2"
 
 
 def test_git_plonk_uses_main_history_when_run_from_topic_worktree(
@@ -209,7 +239,6 @@ def test_git_plonk_uses_main_history_when_run_from_topic_worktree(
 
     _create_git_donkey_worktree(local_path, completed_branch)
     _create_git_donkey_worktree(local_path, topic_branch)
-    _commit_completion_marker(local_path, "(#789)")
     scenario = PlonkScenario(
         local_path=local_path,
         completed_branch=completed_branch,
@@ -217,12 +246,23 @@ def test_git_plonk_uses_main_history_when_run_from_topic_worktree(
     )
 
     monkeypatch.chdir(scenario.worktree_path(topic_branch))
+    topic_repo = Repo(Path.cwd())
+    marker_path = Path.cwd() / "topic-only-marker.txt"
+    marker_path.write_text("(#789)")
+    topic_repo.index.add([marker_path.as_posix()])
+    topic_repo.index.commit("Topic-only completion marker (#789)")
     exit_code = plonk.run_git_plonk()
 
-    assert exit_code == 0
-    assert not scenario.worktree_path(completed_branch).exists()
-    assert scenario.worktree_path(topic_branch).exists()
-    assert completed_branch in Repo(local_path).heads
+    assert exit_code == 0, "expected default git plonk to succeed from topic worktree"
+    assert scenario.worktree_path(completed_branch).exists(), (
+        "expected trunk history to ignore topic-only completion marker"
+    )
+    assert scenario.worktree_path(topic_branch).exists(), (
+        "expected topic worktree to remain"
+    )
+    assert completed_branch in Repo(local_path).heads, (
+        "expected completed branch to remain without trunk marker"
+    )
 
 
 scenarios("features/git_plonk.feature")

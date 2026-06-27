@@ -440,11 +440,11 @@ dev = [
     { name = "interrogate", specifier = ">=1.7.0" },
     { name = "pyright" },
     { name = "pytest" },
-    { name = "pytest-bdd", specifier = ">=8.1.0" },
+    { name = "pytest-bdd", specifier = ">=8.1.0,<9" },
     { name = "pytest-timeout" },
     { name = "pytest-xdist" },
     { name = "ruff" },
-    { name = "syrupy", specifier = ">=5.3.4" },
+    { name = "syrupy", specifier = ">=5.3.4,<6" },
 ]
 
 [[package]]

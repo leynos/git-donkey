@@ -60,9 +60,20 @@ class _PlonkResult:
     """Summary of filesystem and Git state removed by a git-plonk run."""
 
     mode: _PlonkMode
+    inspected_worktrees: int = 0
     removed_worktrees: tuple[Path, ...] = ()
     removed_branches: tuple[str, ...] = ()
     cleaned_paths: tuple[Path, ...] = ()
+
+
+@dataclasses.dataclass(frozen=True)
+class _PlonkContext:
+    """Resolved repository state used by one git-plonk run."""
+
+    repo_home: Repo
+    stanzas: list[dict[str, object]]
+    worktrees_root: Path
+    trunk_ref: str
 
 
 @dataclasses.dataclass(frozen=True)
@@ -71,10 +82,10 @@ class _GitWorktreeAdapter:
 
     repo: Repo
 
-    def history_messages(self) -> tuple[str, ...]:
-        """Return commit messages from ``HEAD`` history."""
+    def history_messages(self, ref: str) -> tuple[str, ...]:
+        """Return commit messages from ``ref`` history."""
         messages: list[str] = []
-        for commit in self.repo.iter_commits("HEAD"):
+        for commit in self.repo.iter_commits(ref):
             message = commit.message
             if isinstance(message, bytes):
                 messages.append(message.decode(errors="replace"))
@@ -222,8 +233,8 @@ def _donkey_worktree_candidates(
 
 
 def _history_messages(repo: Repo) -> tuple[str, ...]:
-    """Return commit messages from ``HEAD`` history."""
-    return _GitWorktreeAdapter(repo).history_messages()
+    """Return commit messages from canonical trunk history."""
+    return _GitWorktreeAdapter(repo).history_messages(_canonical_trunk_ref(repo))
 
 
 def _remove_soft_targets(worktree_path: Path) -> list[Path]:
@@ -240,6 +251,9 @@ def _render_summary(result: _PlonkResult) -> str:
         result.cleaned_paths,
     ))
     if not has_removals:
+        if result.mode is _PlonkMode.SOFT and result.inspected_worktrees > 0:
+            lines.append("No generated paths to clean in git donkey worktrees.")
+            return "\n".join(lines)
         lines.append("No matching git donkey worktrees found.")
         return "\n".join(lines)
 
@@ -255,31 +269,59 @@ def _render_summary(result: _PlonkResult) -> str:
     return "\n".join(lines)
 
 
-def _load_plonk_context() -> tuple[Repo, list[dict[str, object]], Path]:
-    """Load the main repository, worktree stanzas, and git-donkey root."""
+def _canonical_trunk_ref(repo: Repo) -> str:
+    """Return the canonical trunk/default ref for completion history."""
+    if helpers._local_branch_exists(repo, "main"):
+        return "main"
+
+    for remote in repo.remotes:
+        remote_head_ref = f"refs/remotes/{remote.name}/HEAD"
+        try:
+            return repo.git.symbolic_ref("--quiet", "--short", remote_head_ref)
+        except GitCommandError:
+            continue
+
+    helpers._die(
+        _GIT_PLONK_PREFIX,
+        "could not determine canonical trunk ref for completion history",
+        2,
+    )
+    return ""
+
+
+def _load_plonk_context() -> _PlonkContext:
+    """Load the main repository, worktree stanzas, root, and trunk ref."""
     repo_cwd = helpers._find_repo(_GIT_PLONK_PREFIX)
     stanzas = helpers._parse_worktree_porcelain(repo_cwd)
     home_dir = helpers._main_worktree_path_from_list(stanzas, _GIT_PLONK_PREFIX)
     os.chdir(home_dir)
     repo_home = Repo(home_dir)
     worktrees_root = donkey._worktrees_root(home_dir)
-    return repo_home, stanzas, worktrees_root
+    trunk_ref = _canonical_trunk_ref(repo_home)
+    return _PlonkContext(
+        repo_home=repo_home,
+        stanzas=stanzas,
+        worktrees_root=worktrees_root,
+        trunk_ref=trunk_ref,
+    )
 
 
 def _run_soft(
     stanzas: typ.Iterable[dict[str, object]], worktrees_root: Path
 ) -> _PlonkResult:
     """Run soft cleanup for every git-donkey worktree."""
+    worktree_paths = _donkey_worktree_paths(stanzas, worktrees_root)
     _LOGGER.info(
         "Starting git-plonk soft cleanup",
         extra={
             "mode": _PlonkMode.SOFT.value,
             "worktrees_root": worktrees_root.as_posix(),
+            "inspected_worktrees": len(worktree_paths),
         },
     )
     filesystem = _FilesystemCleanupAdapter()
     cleaned_paths: list[Path] = []
-    for worktree_path in _donkey_worktree_paths(stanzas, worktrees_root):
+    for worktree_path in worktree_paths:
         removed_paths = filesystem.remove_soft_targets(worktree_path)
         cleaned_paths.extend(removed_paths)
         _LOGGER.info(
@@ -293,25 +335,29 @@ def _run_soft(
         )
     return _PlonkResult(
         mode=_PlonkMode.SOFT,
+        inspected_worktrees=len(worktree_paths),
         cleaned_paths=tuple(cleaned_paths),
     )
 
 
 def _run_completed_cleanup(
-    repo: Repo,
-    stanzas: typ.Iterable[dict[str, object]],
-    worktrees_root: Path,
+    context: _PlonkContext,
     mode: _PlonkMode,
 ) -> _PlonkResult:
     """Remove completed worktrees and optionally their local branches."""
-    git_adapter = _GitWorktreeAdapter(repo)
+    git_adapter = _GitWorktreeAdapter(context.repo_home)
     _LOGGER.info(
         "Starting git-plonk completed cleanup",
-        extra={"mode": mode.value, "worktrees_root": worktrees_root.as_posix()},
+        extra={
+            "mode": mode.value,
+            "worktrees_root": context.worktrees_root.as_posix(),
+            "trunk_ref": context.trunk_ref,
+        },
     )
-    candidates = _donkey_worktree_candidates(stanzas, worktrees_root)
+    candidates = _donkey_worktree_candidates(context.stanzas, context.worktrees_root)
     completed_candidates = _completed_candidates(
-        candidates, git_adapter.history_messages()
+        candidates,
+        git_adapter.history_messages(context.trunk_ref),
     )
     _LOGGER.info(
         "Selected git-plonk completion candidates",
@@ -352,6 +398,7 @@ def _run_completed_cleanup(
 
     return _PlonkResult(
         mode=mode,
+        inspected_worktrees=len(candidates),
         removed_worktrees=tuple(removed_worktrees),
         removed_branches=tuple(removed_branches),
     )
@@ -381,12 +428,12 @@ def run_git_plonk(
     if soft and hard:
         helpers._die(_GIT_PLONK_PREFIX, "--soft and --hard are mutually exclusive", 2)
 
-    repo_home, stanzas, worktrees_root = _load_plonk_context()
+    context = _load_plonk_context()
     if soft:
-        result = _run_soft(stanzas, worktrees_root)
+        result = _run_soft(context.stanzas, context.worktrees_root)
     else:
         mode = _PlonkMode.HARD if hard else _PlonkMode.DEFAULT
-        result = _run_completed_cleanup(repo_home, stanzas, worktrees_root, mode)
+        result = _run_completed_cleanup(context, mode)
 
     print(_render_summary(result))
     return 0
