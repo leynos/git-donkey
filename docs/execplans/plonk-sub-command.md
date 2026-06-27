@@ -50,8 +50,8 @@ directories being removed or retained.
   through project development dependencies.
 - Stop and ask if any full quality gate fails for a reason unrelated to this
   change after one focused investigation and fix attempt.
-- Stop and ask before force-deleting a local branch if normal `git branch -d`
-  refuses because Git does not consider it merged.
+- Stop and ask before deleting any remote branch. Local hard-mode branch
+  deletion is allowed after the marker check succeeds.
 
 ## Risks
 
@@ -69,6 +69,9 @@ directories being removed or retained.
 - Soft cleanup can delete useful generated state. The directory list will be
   explicit, documented, and limited to conventional build, dependency, cache,
   coverage, and virtual-environment directories.
+- Squash-merge workflows can produce the requested marker in history without
+  making the local branch an ancestor of `HEAD`. Hard mode therefore treats the
+  marker match as the safety check for local branch deletion.
 
 ## Progress
 
@@ -80,10 +83,18 @@ directories being removed or retained.
   Makefile gates, and user documentation.
 - [x] 2026-06-27: Added and built test dependencies for `pytest-bdd` and
   `syrupy`.
-- [ ] Add unit, property, snapshot, and BDD tests for `git plonk`.
-- [ ] Run focused tests and record the expected red failure.
-- [ ] Implement `git_donkey.plonk`, wire the CLI, and add the console script.
-- [ ] Update user-facing documentation.
+- [x] 2026-06-27: Added unit, property, snapshot, and BDD tests for
+  `git plonk`.
+- [x] 2026-06-27: Ran focused tests and observed the expected red import
+  failure for missing `git_donkey.plonk`.
+- [x] 2026-06-27: Implemented `git_donkey.plonk`, wired the CLI, added the
+  console script, generated the new syrupy snapshot, and passed 10 focused
+  tests.
+- [x] 2026-06-27: Updated the README and users' guide for `git plonk`.
+- [x] 2026-06-27: Passed `make check-fmt`, `make lint`, `make typecheck`,
+  `make test`, `make markdownlint`, and `make nixie`.
+- [x] 2026-06-27: Confirmed `uv run git-plonk --help` shows the default,
+  `--soft`, and `--hard` command surface.
 - [ ] Run focused tests, full gates, commit, push, and open a draft PR.
 
 ## Surprises & Discoveries
@@ -96,6 +107,9 @@ directories being removed or retained.
 - Existing `git donkey` worktrees are stored at `../{repo}.worktrees/{branch}`
   and can be safely identified by combining Git's porcelain worktree list with
   that derived root.
+- Focused testing found the only first green-stage failure was the expected
+  missing syrupy snapshot. Generating the snapshot made all 10 focused tests
+  pass.
 
 ## Decision Log
 
@@ -118,6 +132,11 @@ directories being removed or retained.
   soft, and hard modes against real temporary Git repositories. Rationale:
   these behaviours are user workflows rather than isolated helper calls, and
   BDD keeps the expected mode differences explicit.
+- Decision: use `git branch -D` for hard-mode local branch deletion after the
+  marker check succeeds. Rationale: the requested completion signal is a merge
+  marker in history. Requiring Git ancestry would fail common squash-merge
+  branches that still have a valid completion marker. Remote branches remain
+  out of scope.
 
 ## Implementation Plan
 
@@ -217,4 +236,6 @@ section at the end of the PR body.
 
 ## Outcomes & Retrospective
 
-Pending implementation.
+Implementation and local validation are complete. The remaining work is to
+commit the implementation, push `plonk-sub-command`, and open the draft pull
+request with the required Lody session reference.

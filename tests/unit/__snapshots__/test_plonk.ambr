@@ -1,0 +1,14 @@
+# serializer version: 1
+# name: test_summary_rendering_matches_snapshot
+  '''
+  git-plonk: mode=hard
+  Removed worktrees:
+  - /repo.worktrees/issue-123-fix
+  - /repo.worktrees/road-1-2-3a-4-task
+  Removed branches:
+  - issue-123-fix
+  - road-1-2-3a-4-task
+  Removed generated paths:
+  - /repo.worktrees/issue-123-fix/target
+  '''
+# ---

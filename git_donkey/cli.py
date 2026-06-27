@@ -22,7 +22,7 @@ import typing as typ
 
 from cyclopts import App, Parameter
 
-from git_donkey import donkey, fafo, template_cmd, track
+from git_donkey import donkey, fafo, plonk, template_cmd, track
 
 _donkey_app = App(
     name="git donkey",
@@ -117,6 +117,31 @@ def git_track() -> None:
 def git_fafo() -> None:
     """Console entrypoint for git-fafo."""
     _fafo_app()
+
+
+_plonk_app = App(
+    name="git plonk",
+    help=(
+        "Clean up git-donkey worktrees. Default mode removes completed "
+        "worktrees, --soft removes generated directories, and --hard also "
+        "deletes completed local branches."
+    ),
+)
+
+
+@_plonk_app.default
+def _plonk_cli(
+    *,
+    soft: bool = False,
+    hard: bool = False,
+) -> None:
+    """CLI wrapper for git-plonk."""
+    raise SystemExit(plonk.run_git_plonk(soft=soft, hard=hard))
+
+
+def git_plonk() -> None:
+    """Console entrypoint for git-plonk."""
+    _plonk_app()
 
 
 _template_app = App(

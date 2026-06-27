@@ -10,6 +10,8 @@ these as `git <subcommand>` when `git-<subcommand>` is available on the `PATH`.
   a tracking branch.
 - `git fafo` (`git-fafo`) scaffolds and publishes a new GitHub repository from
   a template.
+- `git plonk` (`git-plonk`) removes completed worktrees or generated
+  directories from worktrees created by `git donkey`.
 - `git donkey-template` (`git-donkey-template`) displays and creates the
   template directory for the current repository.
 
@@ -167,6 +169,46 @@ scaffolds:
 
 git fafo demo-repo python --trust
 ```
+
+## git plonk
+
+Clean up worktrees created by `git donkey`. The command must be run inside a
+Git repository. It discovers the main worktree, derives the
+`../{repo}.worktrees` directory used by `git donkey`, and only operates on
+linked worktrees listed by Git under that directory.
+
+```shell
+# Remove completed git-donkey worktrees
+
+git plonk
+```
+
+Default mode removes worktrees whose branch name has a recognized completion
+marker and whose marker appears in `HEAD` history. Issue branches named like
+`issue-123-short-title` match commits containing `(#123)`. Roadmap branches
+named like `road-1-2-3a-4-short-title` match commits containing
+`(road.1.2.3a.4)` or `(road.1.2.3a.4.)`. Branches with unrecognized names or no
+matching history marker are left alone.
+
+Soft mode removes generated directories from all `git donkey` worktrees without
+removing worktrees or branches:
+
+```shell
+git plonk --soft
+```
+
+The generated directory names are `target`, `node_modules`, `.venv`, `.tox`,
+`.mypy_cache`, `.pytest_cache`, `.ruff_cache`, `htmlcov`, `dist`, `build`, and
+`coverage`.
+
+Hard mode removes completed worktrees and deletes their matching local branches:
+
+```shell
+git plonk --hard
+```
+
+Hard mode uses the same history-marker check as default mode before deleting a
+branch. It deletes local branches only; it never deletes remote branches.
 
 ## git donkey-template
 
