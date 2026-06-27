@@ -104,8 +104,8 @@ directories being removed or retained.
 - The repository already has Hypothesis available in the development
   dependency group, so generated invariant tests can be added without a new
   property-testing dependency.
-- The repository does not yet depend on `pytest-bdd` or `syrupy`; they must be
-  added to the development dependency group.
+- The repository did not previously depend on `pytest-bdd` or `syrupy`; they
+  were added to the development dependency group and locked with `uv`.
 - Existing `git donkey` worktrees are stored at `../{repo}.worktrees/{branch}`
   and can be safely identified by combining Git's porcelain worktree list with
   that derived root.
@@ -201,8 +201,12 @@ Then implement `git_donkey.plonk` with:
 - `_PlonkCandidate`, containing branch name, worktree path, and marker.
 - `_completion_marker_for_branch(branch_name: str) -> str | None`.
 - `_has_completion_marker(messages: Iterable[str], marker: str) -> bool`.
-- `_donkey_worktree_candidates(repo: Repo) -> list[_PlonkCandidate]`.
+- `_PlonkResult`, containing the mode and removed worktrees, branches, and
+  generated paths for deterministic summary rendering.
+- `_donkey_worktree_candidates(stanzas, worktrees_root) -> list[_PlonkCandidate]`.
+- `_completed_candidates(candidates, messages) -> list[_PlonkCandidate]`.
 - `_remove_soft_targets(worktree_path: Path) -> list[Path]`.
+- `_render_summary(result: _PlonkResult) -> str`.
 - `run_git_plonk(*, soft: bool = False, hard: bool = False) -> int`.
 
 Wire `git_donkey.cli` with a Cyclopts app named `git plonk`. Add mutually
@@ -229,6 +233,11 @@ Focused validation passes when the new unit and BDD tests pass with `pytest`.
 Full validation passes when these Makefile targets all succeed:
 `make check-fmt`, `make lint`, `make typecheck`, `make test`,
 `make markdownlint`, and `make nixie`.
+
+The completed implementation passed `make check-fmt`, `make lint`,
+`make typecheck`, `make test`, `make markdownlint`, `make nixie`, and
+`uv run git-plonk --help` on 2026-06-27. The full test run reported
+`110 passed`.
 
 After the gates pass, commit the implementation with a descriptive imperative
 message, push with `git push -u origin plonk-sub-command`, and create a draft
