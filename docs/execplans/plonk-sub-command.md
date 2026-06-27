@@ -78,7 +78,8 @@ directories being removed or retained.
 - [x] 2026-06-27: Renamed the local branch to `plonk-sub-command`.
 - [x] 2026-06-27: Inspected existing CLI entrypoints, worktree helpers,
   Makefile gates, and user documentation.
-- [ ] Add test dependencies for `pytest-bdd` and `syrupy`.
+- [x] 2026-06-27: Added and built test dependencies for `pytest-bdd` and
+  `syrupy`.
 - [ ] Add unit, property, snapshot, and BDD tests for `git plonk`.
 - [ ] Run focused tests and record the expected red failure.
 - [ ] Implement `git_donkey.plonk`, wire the CLI, and add the console script.
