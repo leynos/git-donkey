@@ -4,7 +4,7 @@ This ExecPlan (execution plan) is a living document. The sections `Constraints`,
 `Tolerances`, `Risks`, `Progress`, `Surprises & Discoveries`, `Decision Log`,
 and `Outcomes & Retrospective` must be kept up to date as work proceeds.
 
-Status: IN PROGRESS
+Status: COMPLETE
 
 ## Purpose / big picture
 
@@ -95,7 +95,9 @@ directories being removed or retained.
   `make test`, `make markdownlint`, and `make nixie`.
 - [x] 2026-06-27: Confirmed `uv run git-plonk --help` shows the default,
   `--soft`, and `--hard` command surface.
-- [ ] Run focused tests, full gates, commit, push, and open a draft PR.
+- [x] 2026-06-27: Committed the implementation, pushed
+  `plonk-sub-command` with upstream tracking to `origin/plonk-sub-command`, and
+  opened draft PR <https://github.com/leynos/git-donkey/pull/17>.
 
 ## Surprises & Discoveries
 
@@ -236,6 +238,13 @@ section at the end of the PR body.
 
 ## Outcomes & Retrospective
 
-Implementation and local validation are complete. The remaining work is to
-commit the implementation, push `plonk-sub-command`, and open the draft pull
-request with the required Lody session reference.
+Implemented `git-plonk` with default, `--soft`, and `--hard` modes. Default and
+hard modes remove only recognized `git donkey` worktrees with matching issue or
+roadmap completion markers in `HEAD` history; hard mode also deletes the local
+branches. Soft mode removes conventional generated directories from all
+`git donkey` worktrees without removing worktrees or branches.
+
+Validation passed through focused tests, the full Makefile quality gates, and a
+direct `git-plonk --help` smoke check. Draft PR
+<https://github.com/leynos/git-donkey/pull/17> contains the required Lody
+session reference.
