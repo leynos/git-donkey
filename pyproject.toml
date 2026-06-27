@@ -30,6 +30,8 @@ dev = [
     "pytest-timeout",
     "pytest-xdist",
     "interrogate>=1.7.0",
+    "pytest-bdd>=8.1.0",
+    "syrupy>=5.3.4",
 ]
 
 [tool.ruff]
