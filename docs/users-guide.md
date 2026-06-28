@@ -183,12 +183,12 @@ linked worktrees listed by Git under that directory.
 git plonk
 ```
 
-Default mode removes worktrees whose branch name has a recognized completion
+Default mode removes worktrees whose branch name has a recognised completion
 marker and whose marker appears in the canonical trunk history used by
 `git plonk`. Issue branches named like `issue-123-short-title` match commits
 containing `(#123)`. Roadmap branches named like `road-1-2-3a-4-short-title`
 match commits containing `(road.1.2.3a.4)` or `(road.1.2.3a.4.)`. Branches with
-unrecognized names or no matching trunk history marker are left alone.
+unrecognised names or no matching trunk history marker are left alone.
 
 Soft mode removes generated directories from all `git donkey` worktrees without
 removing worktrees or branches:
