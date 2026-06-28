@@ -1,9 +1,9 @@
 """Implement the git-plonk worktree cleanup command.
 
 The command cleans worktrees created by ``git donkey``. Default and hard modes
-use branch names to derive completion markers and then scan ``HEAD`` history
-for matching merge messages. Soft mode only removes generated directories from
-linked worktrees and leaves Git state untouched.
+use branch names to derive completion markers and then scan canonical trunk
+history for matching merge messages. Soft mode only removes generated
+directories from linked worktrees and leaves Git state untouched.
 """
 
 from __future__ import annotations
@@ -74,6 +74,7 @@ class _PlonkContext:
     stanzas: list[dict[str, object]]
     worktrees_root: Path
     trunk_ref: str
+    invoking_worktree: Path | None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -281,15 +282,15 @@ def _render_summary(result: _PlonkResult) -> str:
 
 def _canonical_trunk_ref(repo: Repo) -> str:
     """Return the canonical trunk/default ref for completion history."""
-    if helpers._local_branch_exists(repo, "main"):
-        return "main"
-
     for remote in repo.remotes:
         remote_head_ref = f"refs/remotes/{remote.name}/HEAD"
         try:
             return repo.git.symbolic_ref("--quiet", "--short", remote_head_ref)
         except GitCommandError:
             continue
+
+    if helpers._local_branch_exists(repo, "main"):
+        return "main"
 
     helpers._die(
         _GIT_PLONK_PREFIX,
@@ -302,6 +303,11 @@ def _canonical_trunk_ref(repo: Repo) -> str:
 def _load_plonk_context() -> _PlonkContext:
     """Load the main repository, worktree stanzas, root, and trunk ref."""
     repo_cwd = helpers._find_repo(_GIT_PLONK_PREFIX)
+    invoking_worktree = (
+        Path(repo_cwd.working_tree_dir).resolve()
+        if repo_cwd.working_tree_dir is not None
+        else None
+    )
     stanzas = helpers._parse_worktree_porcelain(repo_cwd)
     home_dir = helpers._main_worktree_path_from_list(stanzas, _GIT_PLONK_PREFIX)
     os.chdir(home_dir)
@@ -313,6 +319,7 @@ def _load_plonk_context() -> _PlonkContext:
         stanzas=stanzas,
         worktrees_root=worktrees_root,
         trunk_ref=trunk_ref,
+        invoking_worktree=invoking_worktree,
     )
 
 
@@ -369,18 +376,25 @@ def _run_completed_cleanup(
         candidates,
         git_adapter.history_messages(context.trunk_ref),
     )
+    removable_candidates = [
+        candidate
+        for candidate in completed_candidates
+        if candidate.worktree_path != context.invoking_worktree
+    ]
     _LOGGER.info(
         "Selected git-plonk completion candidates",
         extra={
             "mode": mode.value,
             "candidate_count": len(candidates),
             "completed_count": len(completed_candidates),
+            "excluded_invocation_count": len(completed_candidates)
+            - len(removable_candidates),
         },
     )
     removed_worktrees: list[Path] = []
     removed_branches: list[str] = []
 
-    for candidate in completed_candidates:
+    for candidate in removable_candidates:
         _LOGGER.info(
             "Removing completed git-plonk worktree",
             extra={

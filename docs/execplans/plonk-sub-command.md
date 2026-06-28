@@ -12,10 +12,10 @@ This change adds a new Git subcommand, `git plonk`, exposed by the `git-plonk`
 console script. A user can run it inside any worktree of a repository managed by
 `git donkey` and reclaim disk space from old linked worktrees. In default mode
 it removes completed worktrees whose branch names map to merge markers already
-present in the current history. In `--soft` mode it removes generated build and
-dependency directories from linked worktrees without removing the worktrees. In
-`--hard` mode it removes completed worktrees and then deletes the matching
-local branches.
+present in canonical trunk/default history. In `--soft` mode it removes
+generated build and dependency directories from linked worktrees without
+removing the worktrees. In `--hard` mode it removes completed worktrees and
+then deletes the matching local branches.
 
 The observable result is that focused `pytest` and `pytest-bdd` tests pass,
 `git plonk --help` documents the three modes, and integration tests using real
@@ -29,9 +29,10 @@ directories being removed or retained.
 - Do not remove arbitrary directories. Only operate on linked worktrees under
   the `../{repo}.worktrees` directory derived from the main worktree path.
 - Default and `--hard` mode must only remove worktrees whose branch names are
-  recognized and whose corresponding marker appears in `HEAD` history.
+  recognized and whose corresponding marker appears in canonical trunk/default
+  history.
 - `--soft` mode must not remove worktrees or branches.
-- `--hard` mode must not delete the currently checked-out branch.
+- `--hard` mode must not delete the invoking linked worktree's branch.
 - Follow Red-Green-Refactor: tests first, observe focused failure, then
   implement the smallest passing change.
 - Use Makefile targets for quality gates and capture command output with
@@ -69,9 +70,10 @@ directories being removed or retained.
 - Soft cleanup can delete useful generated state. The directory list will be
   explicit, documented, and limited to conventional build, dependency, cache,
   coverage, and virtual-environment directories.
-- Squash-merge workflows can produce the requested marker in history without
-  making the local branch an ancestor of `HEAD`. Hard mode therefore treats the
-  marker match as the safety check for local branch deletion.
+- Squash-merge workflows can produce the requested marker in trunk history
+  without making the local branch an ancestor of the canonical trunk/default
+  ref. Hard mode therefore treats the marker match as the safety check for
+  local branch deletion.
 
 ## Progress
 
@@ -117,6 +119,11 @@ directories being removed or retained.
   Tightened the still-valid test gaps by driving the `--soft --hard` BDD
   scenario through the CLI app and adding a positive topic-worktree regression
   where the completion marker exists only on `main`.
+- [x] 2026-06-28: Re-verified the latest inline comments and fixed the
+  still-valid issues: docs now consistently describe canonical trunk/default
+  history, trunk-ref resolution prefers remote default branches before local
+  `main`, completed cleanup excludes the invoking linked worktree, and unit
+  plonk assertions now include diagnostics.
 
 ## Surprises & Discoveries
 
@@ -139,8 +146,8 @@ directories being removed or retained.
   `git_donkey.plonk` owns infrastructure adapters and user summaries.
 - Inline review found completion history still depended on checked-out state in
   the main worktree. The workflow now resolves a canonical trunk/default ref,
-  preferring local `main` and falling back to a remote `HEAD`, before scanning
-  completion history.
+  preferring the remote default branch and falling back to local `main`, before
+  scanning completion history.
 - Inline review found soft mode could inspect worktrees and remove nothing but
   still report "No matching git donkey worktrees found." `_PlonkResult` now
   records inspected worktree count so soft mode can report that there were no
@@ -184,11 +191,11 @@ directories being removed or retained.
   can observe cleanup decisions through stable `extra` fields such as `mode`,
   `operation`, `worktree`, `branch`, `marker`, `candidate_count`, and
   `completed_count`.
-- Decision: prefer `main` as the local canonical trunk ref for completion
-  history, with remote `HEAD` as fallback. Rationale: `git donkey` already uses
-  `main` as its default base branch, and plonk cleanup must not treat commits
-  unique to whichever branch is checked out in the main worktree as completed
-  trunk work.
+- Decision: prefer the remote default branch as the canonical trunk ref for
+  completion history, with local `main` as fallback. Rationale: repositories
+  may keep local `main` while their configured remote default branch is
+  different, and plonk cleanup must follow the repository default rather than a
+  stale local branch.
 - Decision: keep conflicting `--soft --hard` coverage in both unit CLI-boundary
   tests and the BDD feature. Rationale: the unit test pins the Cyclopts-facing
   usage error cheaply, while the BDD scenario records the user workflow in the
@@ -330,3 +337,8 @@ Latest inline fixes made completion matching independent of checked-out branch
 state, made soft-mode no-op output distinguish "nothing to clean" from "no
 worktrees found", bounded the new test dependencies, and expanded BDD behaviour
 coverage and diagnostics.
+
+The final review-response pass also made remote default branch resolution take
+precedence over local `main`, protected the invoking linked worktree from
+default and hard cleanup, and corrected plan/user documentation to describe
+canonical trunk/default history consistently.

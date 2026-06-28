@@ -299,4 +299,35 @@ def test_git_plonk_removes_main_completed_worktree_from_topic_worktree(
     )
 
 
+@pytest.mark.parametrize("hard", [False, True])
+def test_git_plonk_keeps_invoking_completed_worktree(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    hard: bool,
+) -> None:
+    """Default and hard modes should not remove their invoking worktree."""
+    local_path, _remote_path = _setup_repo(tmp_path)
+    monkeypatch.chdir(local_path)
+    completed_branch = "issue-793-invoking-completed-worktree"
+
+    _create_git_donkey_worktree(local_path, completed_branch)
+    _commit_completion_marker(local_path, "(#793)")
+    scenario = PlonkScenario(
+        local_path=local_path,
+        completed_branch=completed_branch,
+    )
+
+    monkeypatch.chdir(scenario.worktree_path(completed_branch))
+    exit_code = plonk.run_git_plonk(hard=hard)
+
+    assert exit_code == 0, "expected git plonk to succeed from completed worktree"
+    assert scenario.worktree_path(completed_branch).exists(), (
+        "expected invoking completed worktree to remain"
+    )
+    assert completed_branch in Repo(local_path).heads, (
+        "expected invoking completed branch to remain"
+    )
+
+
 scenarios("features/git_plonk.feature")
