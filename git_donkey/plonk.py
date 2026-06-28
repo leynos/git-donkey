@@ -242,6 +242,25 @@ def _remove_soft_targets(worktree_path: Path) -> list[Path]:
     return _FilesystemCleanupAdapter().remove_soft_targets(worktree_path)
 
 
+def _empty_summary_message(result: _PlonkResult) -> str:
+    """Return the no-op summary line for ``result``."""
+    if result.mode is _PlonkMode.SOFT and result.inspected_worktrees > 0:
+        return "No generated paths to clean in git donkey worktrees."
+    return "No matching git donkey worktrees found."
+
+
+def _append_summary_section(
+    lines: list[str], heading: str, entries: typ.Iterable[object]
+) -> None:
+    """Append ``heading`` and bullet entries when ``entries`` is populated."""
+    section_entries = tuple(entries)
+    if not section_entries:
+        return
+
+    lines.append(heading)
+    lines.extend(f"- {entry}" for entry in section_entries)
+
+
 def _render_summary(result: _PlonkResult) -> str:
     """Render a deterministic human-readable summary for ``result``."""
     lines: list[str] = [f"git-plonk: mode={result.mode.value}"]
@@ -251,21 +270,12 @@ def _render_summary(result: _PlonkResult) -> str:
         result.cleaned_paths,
     ))
     if not has_removals:
-        if result.mode is _PlonkMode.SOFT and result.inspected_worktrees > 0:
-            lines.append("No generated paths to clean in git donkey worktrees.")
-            return "\n".join(lines)
-        lines.append("No matching git donkey worktrees found.")
+        lines.append(_empty_summary_message(result))
         return "\n".join(lines)
 
-    if result.removed_worktrees:
-        lines.append("Removed worktrees:")
-        lines.extend(f"- {path}" for path in result.removed_worktrees)
-    if result.removed_branches:
-        lines.append("Removed branches:")
-        lines.extend(f"- {branch}" for branch in result.removed_branches)
-    if result.cleaned_paths:
-        lines.append("Removed generated paths:")
-        lines.extend(f"- {path}" for path in result.cleaned_paths)
+    _append_summary_section(lines, "Removed worktrees:", result.removed_worktrees)
+    _append_summary_section(lines, "Removed branches:", result.removed_branches)
+    _append_summary_section(lines, "Removed generated paths:", result.cleaned_paths)
     return "\n".join(lines)
 
 
