@@ -20,6 +20,16 @@ class CompletionCandidate(typ.Protocol):
     marker: str
 
 
+def _marker_body(marker: str) -> str:
+    """Return ``marker`` without surrounding parentheses."""
+    return marker.removeprefix("(").removesuffix(")")
+
+
+def _marker_pattern(marker: str) -> re.Pattern[str]:
+    """Return the exact-or-dotted history pattern for ``marker``."""
+    return re.compile(rf"\({re.escape(_marker_body(marker))}\.?\)")
+
+
 def completion_marker_for_branch(branch_name: str) -> str | None:
     """Return the completion marker implied by ``branch_name``, if recognized."""
     issue_match = _ISSUE_BRANCH_PATTERN.match(branch_name)
@@ -42,8 +52,7 @@ def completion_marker_for_branch(branch_name: str) -> str | None:
 
 def has_completion_marker(messages: typ.Iterable[str], marker: str) -> bool:
     """Return whether any commit message contains ``marker`` or its dotted form."""
-    marker_body = marker.removeprefix("(").removesuffix(")")
-    marker_pattern = re.compile(rf"\({re.escape(marker_body)}\.?\)")
+    marker_pattern = _marker_pattern(marker)
     return any(marker_pattern.search(message) is not None for message in messages)
 
 
@@ -52,9 +61,25 @@ def completed_candidates[CandidateT: CompletionCandidate](
     messages: typ.Iterable[str],
 ) -> list[CandidateT]:
     """Return candidates whose completion markers appear in commit history."""
-    history_messages = tuple(messages)
+    candidate_list = list(candidates)
+    candidates_by_marker = {
+        _marker_body(candidate.marker): candidate for candidate in candidate_list
+    }
+    if not candidates_by_marker:
+        return []
+
+    marker_alternatives = "|".join(
+        re.escape(marker_body) for marker_body in candidates_by_marker
+    )
+    marker_pattern = re.compile(rf"\(({marker_alternatives})\.?\)")
+    matched_markers: set[str] = set()
+    for message in messages:
+        matched_markers.update(marker_pattern.findall(message))
+        if len(matched_markers) == len(candidates_by_marker):
+            break
+
     return [
         candidate
-        for candidate in candidates
-        if has_completion_marker(history_messages, candidate.marker)
+        for candidate in candidate_list
+        if _marker_body(candidate.marker) in matched_markers
     ]

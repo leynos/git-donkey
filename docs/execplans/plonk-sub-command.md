@@ -124,6 +124,10 @@ directories being removed or retained.
   history, trunk-ref resolution prefers remote default branches before local
   `main`, completed cleanup excludes the invoking linked worktree, and unit
   plonk assertions now include diagnostics.
+- [x] 2026-06-28: Re-verified the latest failed-check report. The users' guide
+  warning was stale. Fixed the still-valid soft-mode architecture and marker
+  scan findings by splitting soft setup from trunk cleanup setup and streaming
+  trunk history through an indexed marker scan.
 
 ## Surprises & Discoveries
 
@@ -342,3 +346,9 @@ The final review-response pass also made remote default branch resolution take
 precedence over local `main`, protected the invoking linked worktree from
 default and hard cleanup, and corrected plan/user documentation to describe
 canonical trunk/default history consistently.
+
+The latest architecture follow-up split `--soft` context loading from
+default/hard trunk cleanup context loading, so soft cleanup does not resolve
+trunk history or change the process working directory. Completion candidate
+selection now indexes candidate markers and streams history once, stopping when
+all markers have been seen.

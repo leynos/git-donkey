@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import typing as typ
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from git import Repo
@@ -127,6 +128,43 @@ def test_completed_candidates_use_history_markers() -> None:
     ], "expected only candidates with matching history markers"
 
 
+def test_completed_candidates_streams_history_until_markers_match() -> None:
+    """Candidate filtering should not consume history after all markers match."""
+    candidates = [
+        plonk._PlonkCandidate(
+            branch_name="issue-123-fix",
+            worktree_path=Path("/repo.worktrees/issue-123-fix"),
+            marker="(#123)",
+        ),
+        plonk._PlonkCandidate(
+            branch_name="issue-456-fix",
+            worktree_path=Path("/repo.worktrees/issue-456-fix"),
+            marker="(#456)",
+        ),
+    ]
+
+    consumed_messages = 0
+
+    def messages() -> typ.Iterator[str]:
+        nonlocal consumed_messages
+        consumed_messages += 1
+        yield "Merge pull request (#123)"
+        consumed_messages += 1
+        yield "Merge pull request (#456)"
+        consumed_messages += 1
+        yield "Unneeded late history"
+
+    completed = plonk._completed_candidates(candidates, messages())
+
+    assert [candidate.branch_name for candidate in completed] == [
+        "issue-123-fix",
+        "issue-456-fix",
+    ], "expected streaming scan to stop after all markers match"
+    assert consumed_messages == 2, (
+        "expected history scan to stop after all markers match"
+    )
+
+
 def test_plonk_cli_rejects_soft_and_hard_together() -> None:
     """The CLI boundary should reject mutually exclusive cleanup modes."""
     with pytest.raises(SystemExit) as exc_info:
@@ -155,6 +193,49 @@ def test_canonical_trunk_ref_prefers_remote_default_over_local_main(
 
     assert plonk._canonical_trunk_ref(repo) == "origin/trunk", (
         "expected remote default branch to take precedence over local main"
+    )
+
+
+def test_soft_mode_loads_only_worktree_context(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Soft mode should avoid trunk ref resolution and global cwd changes."""
+    worktrees_root = tmp_path / "repo.worktrees"
+    stanzas = [{"worktree": worktrees_root / "issue-123-fix"}]
+
+    monkeypatch.setattr(plonk.helpers, "_find_repo", lambda _prefix: SimpleNamespace())
+    monkeypatch.setattr(
+        plonk.helpers, "_parse_worktree_porcelain", lambda _repo: stanzas
+    )
+    monkeypatch.setattr(
+        plonk.helpers,
+        "_main_worktree_path_from_list",
+        lambda _stanzas, _prefix: tmp_path / "repo",
+    )
+    monkeypatch.setattr(plonk.donkey, "_worktrees_root", lambda _home: worktrees_root)
+    monkeypatch.setattr(
+        plonk,
+        "_load_plonk_context",
+        lambda: pytest.fail("soft mode should not load trunk cleanup context"),
+    )
+    monkeypatch.setattr(
+        plonk,
+        "_canonical_trunk_ref",
+        lambda _repo: pytest.fail("soft mode should not resolve trunk history"),
+    )
+    monkeypatch.setattr(
+        plonk.os,
+        "chdir",
+        lambda _path: pytest.fail("soft mode should not mutate cwd"),
+    )
+
+    exit_code = plonk.run_git_plonk(soft=True)
+
+    assert exit_code == 0, "expected soft git plonk to succeed"
+    assert "git-plonk: mode=soft" in capsys.readouterr().out, (
+        "expected soft-mode summary output"
     )
 
 

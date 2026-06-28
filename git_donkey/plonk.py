@@ -78,21 +78,27 @@ class _PlonkContext:
 
 
 @dataclasses.dataclass(frozen=True)
+class _SoftPlonkContext:
+    """Resolved repository state used by a soft git-plonk run."""
+
+    stanzas: list[dict[str, object]]
+    worktrees_root: Path
+
+
+@dataclasses.dataclass(frozen=True)
 class _GitWorktreeAdapter:
     """GitPython-backed adapter for history and worktree mutation."""
 
     repo: Repo
 
-    def history_messages(self, ref: str) -> tuple[str, ...]:
+    def history_messages(self, ref: str) -> typ.Iterator[str]:
         """Return commit messages from ``ref`` history."""
-        messages: list[str] = []
         for commit in self.repo.iter_commits(ref):
             message = commit.message
             if isinstance(message, bytes):
-                messages.append(message.decode(errors="replace"))
+                yield message.decode(errors="replace")
                 continue
-            messages.append(message)
-        return tuple(messages)
+            yield message
 
     def remove_worktree(self, worktree_path: Path) -> None:
         """Remove a linked worktree with Git's worktree machinery."""
@@ -235,7 +241,7 @@ def _donkey_worktree_candidates(
 
 def _history_messages(repo: Repo) -> tuple[str, ...]:
     """Return commit messages from canonical trunk history."""
-    return _GitWorktreeAdapter(repo).history_messages(_canonical_trunk_ref(repo))
+    return tuple(_GitWorktreeAdapter(repo).history_messages(_canonical_trunk_ref(repo)))
 
 
 def _remove_soft_targets(worktree_path: Path) -> list[Path]:
@@ -323,8 +329,21 @@ def _load_plonk_context() -> _PlonkContext:
     )
 
 
+def _load_soft_plonk_context() -> _SoftPlonkContext:
+    """Load only worktree state required by soft cleanup."""
+    repo_cwd = helpers._find_repo(_GIT_PLONK_PREFIX)
+    stanzas = helpers._parse_worktree_porcelain(repo_cwd)
+    home_dir = helpers._main_worktree_path_from_list(stanzas, _GIT_PLONK_PREFIX)
+    return _SoftPlonkContext(
+        stanzas=stanzas,
+        worktrees_root=donkey._worktrees_root(home_dir),
+    )
+
+
 def _run_soft(
-    stanzas: typ.Iterable[dict[str, object]], worktrees_root: Path
+    stanzas: typ.Iterable[dict[str, object]],
+    worktrees_root: Path,
+    filesystem: _FilesystemCleanupAdapter | None = None,
 ) -> _PlonkResult:
     """Run soft cleanup for every git-donkey worktree."""
     worktree_paths = _donkey_worktree_paths(stanzas, worktrees_root)
@@ -336,10 +355,10 @@ def _run_soft(
             "inspected_worktrees": len(worktree_paths),
         },
     )
-    filesystem = _FilesystemCleanupAdapter()
+    cleanup = filesystem or _FilesystemCleanupAdapter()
     cleaned_paths: list[Path] = []
     for worktree_path in worktree_paths:
-        removed_paths = filesystem.remove_soft_targets(worktree_path)
+        removed_paths = cleanup.remove_soft_targets(worktree_path)
         cleaned_paths.extend(removed_paths)
         _LOGGER.info(
             "Cleaned generated paths from git-plonk worktree",
@@ -360,9 +379,10 @@ def _run_soft(
 def _run_completed_cleanup(
     context: _PlonkContext,
     mode: _PlonkMode,
+    git_adapter: _GitWorktreeAdapter | None = None,
 ) -> _PlonkResult:
     """Remove completed worktrees and optionally their local branches."""
-    git_adapter = _GitWorktreeAdapter(context.repo_home)
+    adapter = git_adapter or _GitWorktreeAdapter(context.repo_home)
     _LOGGER.info(
         "Starting git-plonk completed cleanup",
         extra={
@@ -374,7 +394,7 @@ def _run_completed_cleanup(
     candidates = _donkey_worktree_candidates(context.stanzas, context.worktrees_root)
     completed_candidates = _completed_candidates(
         candidates,
-        git_adapter.history_messages(context.trunk_ref),
+        adapter.history_messages(context.trunk_ref),
     )
     removable_candidates = [
         candidate
@@ -405,7 +425,7 @@ def _run_completed_cleanup(
                 "worktree": candidate.worktree_path.as_posix(),
             },
         )
-        git_adapter.remove_worktree(candidate.worktree_path)
+        adapter.remove_worktree(candidate.worktree_path)
         removed_worktrees.append(candidate.worktree_path)
         if mode is _PlonkMode.HARD:
             _LOGGER.info(
@@ -417,7 +437,7 @@ def _run_completed_cleanup(
                     "marker": candidate.marker,
                 },
             )
-            git_adapter.delete_branch(candidate.branch_name)
+            adapter.delete_branch(candidate.branch_name)
             removed_branches.append(candidate.branch_name)
 
     return _PlonkResult(
@@ -452,10 +472,11 @@ def run_git_plonk(
     if soft and hard:
         helpers._die(_GIT_PLONK_PREFIX, "--soft and --hard are mutually exclusive", 2)
 
-    context = _load_plonk_context()
     if soft:
-        result = _run_soft(context.stanzas, context.worktrees_root)
+        soft_context = _load_soft_plonk_context()
+        result = _run_soft(soft_context.stanzas, soft_context.worktrees_root)
     else:
+        context = _load_plonk_context()
         mode = _PlonkMode.HARD if hard else _PlonkMode.DEFAULT
         result = _run_completed_cleanup(context, mode)
 
