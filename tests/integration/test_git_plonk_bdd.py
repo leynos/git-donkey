@@ -6,11 +6,11 @@ Shared helpers create `git donkey` worktrees, add trunk completion-marker
 commits, and expose a small ``PlonkScenario`` object so BDD steps can assert on
 branches, worktree paths, generated directories, and exit codes.
 
-These tests exercise the public ``git_donkey.plonk.run_git_plonk`` workflow
-rather than low-level helpers. They validate default, soft, hard, and
-mutually-exclusive flag behavior, and include a direct regression test proving
-that cleanup uses main/trunk history even when invoked from a linked topic
-worktree.
+These tests exercise the public ``git_donkey.plonk.run_git_plonk`` workflow and
+the ``git_donkey.cli`` command boundary rather than low-level helpers. They
+validate default, soft, hard, and mutually-exclusive flag behavior, and include
+direct regression tests proving that cleanup uses main/trunk history even when
+invoked from a linked topic worktree.
 """
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ import pytest
 from git import Repo
 from pytest_bdd import given, scenarios, then, when
 
-from git_donkey import donkey, plonk
+from git_donkey import cli, donkey, plonk
 from tests.integration.conftest import _setup_repo
 
 
@@ -147,9 +147,9 @@ def run_hard_plonk(scenario: PlonkScenario) -> None:
 
 @when("I run git plonk with soft and hard modes", target_fixture="plonk_exit")
 def run_conflicting_plonk_modes(scenario: PlonkScenario) -> int | str | None:
-    """Run git-plonk with mutually exclusive cleanup modes."""
+    """Run the CLI boundary with mutually exclusive cleanup modes."""
     with pytest.raises(SystemExit) as exc_info:
-        plonk.run_git_plonk(soft=True, hard=True)
+        cli._plonk_app(["--soft", "--hard"])
     return exc_info.value.code
 
 
@@ -231,7 +231,7 @@ def test_git_plonk_uses_main_history_when_run_from_topic_worktree(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Default mode should remove completed worktrees from a topic CWD."""
+    """Default mode should ignore topic-only markers from a topic CWD."""
     local_path, _remote_path = _setup_repo(tmp_path)
     monkeypatch.chdir(local_path)
     completed_branch = "issue-789-completed-from-main"
@@ -262,6 +262,40 @@ def test_git_plonk_uses_main_history_when_run_from_topic_worktree(
     )
     assert completed_branch in Repo(local_path).heads, (
         "expected completed branch to remain without trunk marker"
+    )
+
+
+def test_git_plonk_removes_main_completed_worktree_from_topic_worktree(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Default mode should use main markers when run from a topic CWD."""
+    local_path, _remote_path = _setup_repo(tmp_path)
+    monkeypatch.chdir(local_path)
+    completed_branch = "issue-791-completed-on-main"
+    topic_branch = "issue-792-active-topic"
+
+    _create_git_donkey_worktree(local_path, completed_branch)
+    _create_git_donkey_worktree(local_path, topic_branch)
+    _commit_completion_marker(local_path, "(#791)")
+    scenario = PlonkScenario(
+        local_path=local_path,
+        completed_branch=completed_branch,
+        active_branch=topic_branch,
+    )
+
+    monkeypatch.chdir(scenario.worktree_path(topic_branch))
+    exit_code = plonk.run_git_plonk()
+
+    assert exit_code == 0, "expected default git plonk to succeed from topic worktree"
+    assert not scenario.worktree_path(completed_branch).exists(), (
+        "expected main-history completion marker to remove completed worktree"
+    )
+    assert scenario.worktree_path(topic_branch).exists(), (
+        "expected active topic worktree to remain"
+    )
+    assert completed_branch in Repo(local_path).heads, (
+        "expected default mode to keep completed branch"
     )
 
 

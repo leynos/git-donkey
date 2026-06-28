@@ -38,17 +38,18 @@ infrastructure mutation:
   generated-directory cleanup, Git worktree removal, local branch deletion, and
   user-facing summaries.
 
-The plonk workflow deliberately reads completion history from the main
-worktree. This allows `git plonk` to be invoked from a linked topic worktree
+The plonk workflow deliberately reads completion history from the canonical
+trunk ref. This allows `git plonk` to be invoked from a linked topic worktree
 while still using the trunk history that contains issue or roadmap merge
 markers.
 
 Default and hard modes only consider linked worktrees under
 `../{repo}.worktrees` and only remove worktrees whose branch-derived completion
-marker is present in `HEAD` history. Hard mode deletes local branches after
-that marker check succeeds; it does not delete remote branches. Soft mode uses
-the same git-donkey worktree discovery but only removes conventional generated
-directories such as `target`, `node_modules`, `.venv`, and cache directories.
+marker is present in canonical trunk history. Hard mode deletes local branches
+after that marker check succeeds; it does not delete remote branches. Soft mode
+uses the same git-donkey worktree discovery but only removes conventional
+generated directories such as `target`, `node_modules`, `.venv`, and cache
+directories.
 
 `pytest-bdd` and `syrupy` are development dependencies for this command.
 `pytest-bdd` covers user workflows against real temporary Git repositories, and

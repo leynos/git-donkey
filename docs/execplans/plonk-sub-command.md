@@ -113,6 +113,10 @@ directories being removed or retained.
   summaries, bounded `pytest-bdd` and `syrupy` dev dependencies, BDD coverage
   for conflicting flags, explicit BDD assertion messages, and the BDD module
   docstring.
+- [x] 2026-06-28: Re-verified the failed-check report against current code.
+  Tightened the still-valid test gaps by driving the `--soft --hard` BDD
+  scenario through the CLI app and adding a positive topic-worktree regression
+  where the completion marker exists only on `main`.
 
 ## Surprises & Discoveries
 
@@ -294,26 +298,28 @@ The completed implementation passed `make check-fmt`, `make lint`,
 `uv run git-plonk --help` on 2026-06-27. After review-response tests and
 refactors, the full test run reported `112 passed`. After the latest inline
 fixes, focused plonk validation reported `15 passed`, and the full suite
-reported `115 passed`.
+reported `115 passed`. After the 2026-06-28 failed-check follow-up, focused BDD
+validation reported `6 passed`.
 
 After the gates pass, commit the implementation with a descriptive imperative
-message, push with `git push -u origin plonk-sub-command`, and create a draft
-pull request. Before creating the PR, run `echo ${LODY_SESSION_ID}` and include
-`https://lody.ai/leynos/sessions/${LODY_SESSION_ID}` in a `## References`
-section at the end of the PR body.
+message, push with `git push -u origin plonk-sub-command`, and keep the pull
+request ready for review unless the user explicitly requests draft state.
+Before creating or updating the PR body, run `echo ${LODY_SESSION_ID}` and
+include `https://lody.ai/leynos/sessions/${LODY_SESSION_ID}` in a
+`## References` section at the end of the PR body.
 
 ## Outcomes & Retrospective
 
 Implemented `git-plonk` with default, `--soft`, and `--hard` modes. Default and
 hard modes remove only recognized `git donkey` worktrees with matching issue or
-roadmap completion markers in `HEAD` history; hard mode also deletes the local
-branches. Soft mode removes conventional generated directories from all
-`git donkey` worktrees without removing worktrees or branches.
+roadmap completion markers in canonical trunk history; hard mode also deletes
+the local branches. Soft mode removes conventional generated directories from
+all `git donkey` worktrees without removing worktrees or branches.
 
 Validation passed through focused tests, the full Makefile quality gates, and a
-direct `git-plonk --help` smoke check. Draft PR
+direct `git-plonk --help` smoke check. PR
 <https://github.com/leynos/git-donkey/pull/17> contains the required Lody
-session reference.
+session reference and is ready for review.
 
 Follow-up review fixes added missing CLI-conflict and trunk-history regression
 coverage, isolated completion-marker policy in a pure module, added
