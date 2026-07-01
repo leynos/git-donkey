@@ -4,7 +4,7 @@ This ExecPlan (execution plan) is a living document. The sections `Constraints`,
 `Tolerances`, `Risks`, `Progress`, `Surprises & discoveries`, `Decision log`,
 and `Outcomes & retrospective` must be kept up to date as work proceeds.
 
-Status: IN PROGRESS
+Status: IMPLEMENTED
 
 ## Purpose / big picture
 
@@ -96,7 +96,12 @@ Mercurial bundles, templates, phases, or bookmark comparison output.
 - [x] (2026-07-01 00:00Z) Ran full quality gates successfully:
   `make check-fmt`, `make lint`, `make typecheck`, `make test`,
   `make markdownlint`, and `make nixie`.
-- [ ] Review changed production code for small follow-up refactors.
+- [x] (2026-07-01 00:00Z) Ran `coderabbit review --agent` after the
+  deterministic gates passed; CodeRabbit completed with zero findings.
+- [x] (2026-07-01 00:00Z) Reviewed the changed production code for follow-up
+  refactors. No separate refactor commit is needed because the implementation
+  is contained in one focused module and the CLI additions follow existing
+  wrapper patterns.
 
 ## Surprises & discoveries
 
@@ -120,6 +125,12 @@ Mercurial bundles, templates, phases, or bookmark comparison output.
   track `origin/main`. Impact: the incoming and outgoing integration tests need
   to set upstreams explicitly in each scenario that exercises default ref
   resolution.
+- Observation: `ty` does not treat GitPython's dynamic `repo.git` object as
+  structurally satisfying a custom protocol for a repository wrapper. Evidence:
+  `make typecheck` rejected passing `Repo` to `_print_commits_unique_to()` when
+  the protocol expected a `.git` member. Impact: the comparison helper now
+  accepts only the small `git.log` command surface, and production casts
+  `repo.git` at the boundary where GitPython is dynamic.
 
 ## Decision log
 
@@ -148,9 +159,17 @@ Mercurial bundles, templates, phases, or bookmark comparison output.
 
 ## Outcomes & retrospective
 
-This plan has not yet been implemented. The intended outcome is a tested,
-documented command pair that gives a Mercurial-style preview of branch movement
-before pull or push operations.
+This plan has been implemented. Users can now run `git incoming`, `git in`,
+`git outgoing`, or `git out` to preview branch commits that would be pulled
+from, or pushed to, the current branch upstream or an explicit comparison ref.
+The implementation preserves the planned Mercurial-style exit codes: `0` when
+matching commits are printed, `1` when no matching commits exist, and `2` for
+configuration or comparison errors.
+
+The main lesson is that GitPython's dynamic command facade is best isolated at
+small helper boundaries when the repository is checked with `ty`. Keeping the
+typed helper focused on `git.log` made the unit tests straightforward without
+weakening production typing elsewhere.
 
 ## Context and orientation
 
