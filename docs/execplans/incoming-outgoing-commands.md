@@ -4,7 +4,7 @@ This ExecPlan (execution plan) is a living document. The sections `Constraints`,
 `Tolerances`, `Risks`, `Progress`, `Surprises & discoveries`, `Decision log`,
 and `Outcomes & retrospective` must be kept up to date as work proceeds.
 
-Status: DRAFT
+Status: IN PROGRESS
 
 ## Purpose / big picture
 
@@ -80,7 +80,10 @@ Mercurial bundles, templates, phases, or bookmark comparison output.
 ## Progress
 
 - [x] (2026-07-01 00:00Z) Drafted the pre-implementation ExecPlan.
-- [ ] Review and approve this ExecPlan before implementation begins.
+- [x] (2026-07-01 00:00Z) User approved implementation by requesting that the
+  planned functionality be implemented from this document.
+- [x] (2026-07-01 00:00Z) Removed the `Plan:` prefix from the draft PR title
+  and renamed the Lody session to match the implementation PR title.
 - [ ] Add red tests for incoming and outgoing branch comparisons.
 - [ ] Implement the minimal command module and console entrypoints.
 - [ ] Update user-facing documentation.
@@ -99,6 +102,16 @@ Mercurial bundles, templates, phases, or bookmark comparison output.
   repositories. Evidence: `tests/integration/conftest.py` provides
   `_setup_repo()` and `_seed_repo()`. Impact: New behavioural tests can reuse
   those helpers instead of creating a separate fixture layer.
+- Observation: `git_donkey/cli.py` exposes one Cyclopts `App` per Git
+  subcommand wrapper and raises `SystemExit` with the workflow runner return
+  value from each default command. Impact: the new incoming and outgoing
+  wrappers should follow the same shape and keep aliases as separate entrypoint
+  functions.
+- Observation: `tests/integration/conftest.py::_setup_repo()` pushes the
+  seeded `main` branch to `origin` but does not configure the local branch to
+  track `origin/main`. Impact: the incoming and outgoing integration tests need
+  to set upstreams explicitly in each scenario that exercises default ref
+  resolution.
 
 ## Decision log
 
@@ -117,6 +130,12 @@ Mercurial bundles, templates, phases, or bookmark comparison output.
   flag. Rationale: Mercurial examples show brief and patch-oriented output, but
   the core value is identifying candidate commits. The concise log is
   observable, familiar to Git users, and easy to validate. Date/Author:
+  2026-07-01, Codex.
+- Decision: Keep the first implementation to the planned `--no-fetch` option
+  and do not add merge-inclusion or formatting flags in this branch. Rationale:
+  the accepted observable behaviour does not require a flag matrix, and keeping
+  the command small reduces risk while preserving the documented
+  Mercurial-style commit direction and exit-code semantics. Date/Author:
   2026-07-01, Codex.
 
 ## Outcomes & retrospective
