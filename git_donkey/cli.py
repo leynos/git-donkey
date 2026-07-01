@@ -3,14 +3,12 @@
 Provides CLI entrypoints for the git-donkey workflow tools. This module is the
 console-script boundary: it owns Cyclopts argument parsing and delegates all
 workflow behaviour to modules such as ``donkey``, ``track``, ``fafo``,
-``plonk``, and ``template_cmd``.
+``incoming_outgoing``, ``plonk``, and ``template_cmd``.
 
 This module exposes console scripts (git-donkey, git-track, git-fafo,
-git-plonk, git-donkey-template) registered in pyproject.toml. Each entrypoint
-maps to a workflow runner: git_donkey() -> donkey.run_git_donkey, git_track()
--> track.run_git_track, git_fafo() -> fafo.run_git_fafo, git_plonk() ->
-plonk.run_git_plonk, and git_donkey_template() ->
-template_cmd.run_git_donkey_template.
+git-plonk, git-donkey-template, git-incoming, git-in, git-outgoing, and
+git-out) registered in pyproject.toml. Each entrypoint maps to a workflow
+runner.
 
 Run with::
 
@@ -19,6 +17,8 @@ Run with::
     git-fafo --help
     git-plonk --help
     git-donkey-template --help
+    git-incoming --help
+    git-outgoing --help
 """
 
 from __future__ import annotations
@@ -27,7 +27,7 @@ import typing as typ
 
 from cyclopts import App, Parameter
 
-from git_donkey import donkey, fafo, plonk, template_cmd, track
+from git_donkey import donkey, fafo, incoming_outgoing, plonk, template_cmd, track
 
 _donkey_app = App(
     name="git donkey",
@@ -117,6 +117,74 @@ def git_donkey() -> None:
 def git_track() -> None:
     """Console entrypoint for git-track."""
     _track_app()
+
+
+_incoming_app = App(
+    name="git incoming",
+    help=(
+        "Fetch the comparison remote, then show commits present in the upstream "
+        "or explicit ref and absent from HEAD."
+    ),
+)
+
+
+@_incoming_app.default
+def _incoming_cli(
+    ref: str | None = None,
+    *,
+    no_fetch: bool = False,
+) -> None:
+    """CLI wrapper for git-incoming."""
+    raise SystemExit(
+        incoming_outgoing.run_git_incoming(
+            ref,
+            fetch=not no_fetch,
+        )
+    )
+
+
+def git_incoming() -> None:
+    """Console entrypoint for git-incoming."""
+    _incoming_app()
+
+
+def git_in() -> None:
+    """Console entrypoint for git-in."""
+    _incoming_app()
+
+
+_outgoing_app = App(
+    name="git outgoing",
+    help=(
+        "Fetch the comparison remote, then show commits present in HEAD and "
+        "absent from the upstream or explicit ref."
+    ),
+)
+
+
+@_outgoing_app.default
+def _outgoing_cli(
+    ref: str | None = None,
+    *,
+    no_fetch: bool = False,
+) -> None:
+    """CLI wrapper for git-outgoing."""
+    raise SystemExit(
+        incoming_outgoing.run_git_outgoing(
+            ref,
+            fetch=not no_fetch,
+        )
+    )
+
+
+def git_outgoing() -> None:
+    """Console entrypoint for git-outgoing."""
+    _outgoing_app()
+
+
+def git_out() -> None:
+    """Console entrypoint for git-out."""
+    _outgoing_app()
 
 
 def git_fafo() -> None:

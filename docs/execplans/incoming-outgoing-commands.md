@@ -84,10 +84,18 @@ Mercurial bundles, templates, phases, or bookmark comparison output.
   planned functionality be implemented from this document.
 - [x] (2026-07-01 00:00Z) Removed the `Plan:` prefix from the draft PR title
   and renamed the Lody session to match the implementation PR title.
-- [ ] Add red tests for incoming and outgoing branch comparisons.
-- [ ] Implement the minimal command module and console entrypoints.
-- [ ] Update user-facing documentation.
-- [ ] Run full quality gates and commit the implementation.
+- [x] (2026-07-01 00:00Z) Added red unit and integration tests for incoming
+  and outgoing branch comparisons; the focused run failed on the expected
+  missing `git_donkey.incoming_outgoing` module.
+- [x] (2026-07-01 00:00Z) Implemented the minimal command module, console
+  entrypoints, and script registrations. The focused incoming/outgoing tests
+  passed.
+- [x] (2026-07-01 00:00Z) Updated the users' guide and README command overview
+  for the new commands, aliases, upstream default, explicit refs, `--no-fetch`,
+  and return codes.
+- [x] (2026-07-01 00:00Z) Ran full quality gates successfully:
+  `make check-fmt`, `make lint`, `make typecheck`, `make test`,
+  `make markdownlint`, and `make nixie`.
 - [ ] Review changed production code for small follow-up refactors.
 
 ## Surprises & discoveries
