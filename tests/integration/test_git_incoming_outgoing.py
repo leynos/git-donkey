@@ -17,7 +17,7 @@ if typ.TYPE_CHECKING:
 
 def _clone_remote(remote_path: Path, clone_path: Path) -> Repo:
     """Clone the bare test remote and configure an author identity."""
-    repo = Repo.clone_from(remote_path.as_posix(), clone_path)
+    repo = Repo.clone_from(remote_path.as_posix(), clone_path, branch="main")
     _configure_repo(repo)
     return repo
 
