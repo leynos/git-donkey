@@ -119,6 +119,16 @@ def git_track() -> None:
     _track_app()
 
 
+def _run_comparison_cli(
+    runner: typ.Callable[..., int],
+    ref: str | None,
+    *,
+    no_fetch: bool,
+) -> None:
+    """Run an incoming or outgoing comparison CLI wrapper."""
+    raise SystemExit(runner(ref, fetch=not no_fetch))
+
+
 _incoming_app = App(
     name="git incoming",
     help=(
@@ -135,11 +145,10 @@ def _incoming_cli(
     no_fetch: bool = False,
 ) -> None:
     """CLI wrapper for git-incoming."""
-    raise SystemExit(
-        incoming_outgoing.run_git_incoming(
-            ref,
-            fetch=not no_fetch,
-        )
+    _run_comparison_cli(
+        incoming_outgoing.run_git_incoming,
+        ref,
+        no_fetch=no_fetch,
     )
 
 
@@ -169,11 +178,10 @@ def _outgoing_cli(
     no_fetch: bool = False,
 ) -> None:
     """CLI wrapper for git-outgoing."""
-    raise SystemExit(
-        incoming_outgoing.run_git_outgoing(
-            ref,
-            fetch=not no_fetch,
-        )
+    _run_comparison_cli(
+        incoming_outgoing.run_git_outgoing,
+        ref,
+        no_fetch=no_fetch,
     )
 
 
