@@ -1,18 +1,23 @@
 """Command-line interfaces for the git-donkey tools.
 
-Provides CLI entrypoints for the git-donkey workflow tools.
+Provides CLI entrypoints for the git-donkey workflow tools. This module is the
+console-script boundary: it owns Cyclopts argument parsing and delegates all
+workflow behaviour to modules such as ``donkey``, ``track``, ``fafo``,
+``plonk``, and ``template_cmd``.
 
 This module exposes console scripts (git-donkey, git-track, git-fafo,
-git-donkey-template) registered in pyproject.toml. Each entrypoint maps to a
-workflow runner: git_donkey() -> donkey.run_git_donkey, git_track() ->
-track.run_git_track, git_fafo() -> fafo.run_git_fafo, and git_donkey_template()
--> template_cmd.run_git_donkey_template.
+git-plonk, git-donkey-template) registered in pyproject.toml. Each entrypoint
+maps to a workflow runner: git_donkey() -> donkey.run_git_donkey, git_track()
+-> track.run_git_track, git_fafo() -> fafo.run_git_fafo, git_plonk() ->
+plonk.run_git_plonk, and git_donkey_template() ->
+template_cmd.run_git_donkey_template.
 
 Run with::
 
     git-donkey --help
     git-track --help
     git-fafo --help
+    git-plonk --help
     git-donkey-template --help
 """
 
@@ -22,7 +27,7 @@ import typing as typ
 
 from cyclopts import App, Parameter
 
-from git_donkey import donkey, fafo, template_cmd, track
+from git_donkey import donkey, fafo, plonk, template_cmd, track
 
 _donkey_app = App(
     name="git donkey",
@@ -117,6 +122,31 @@ def git_track() -> None:
 def git_fafo() -> None:
     """Console entrypoint for git-fafo."""
     _fafo_app()
+
+
+_plonk_app = App(
+    name="git plonk",
+    help=(
+        "Clean up git-donkey worktrees. Default mode removes completed "
+        "worktrees, --soft removes generated directories, and --hard also "
+        "deletes completed local branches."
+    ),
+)
+
+
+@_plonk_app.default
+def _plonk_cli(
+    *,
+    soft: bool = False,
+    hard: bool = False,
+) -> None:
+    """CLI wrapper for git-plonk."""
+    raise SystemExit(plonk.run_git_plonk(soft=soft, hard=hard))
+
+
+def git_plonk() -> None:
+    """Console entrypoint for git-plonk."""
+    _plonk_app()
 
 
 _template_app = App(

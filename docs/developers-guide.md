@@ -22,18 +22,55 @@ The command-line interface obtains the GitHub token before calling
 argument and can focus on validated workflow inputs rather than environment
 variables, credential files, or OAuth prompts.
 
+## git-plonk module boundaries
+
+`git-plonk` is split between pure completion policy, CLI parsing, and
+infrastructure mutation:
+
+- `git_donkey.cli` exposes the `git-plonk` console script and maps `--soft` and
+  `--hard` to `git_donkey.plonk.run_git_plonk()`.
+- `git_donkey.plonk_policy` owns branch-name and commit-message policy. It maps
+  issue branches such as `issue-123-title` to `(#123)`, maps roadmap branches
+  such as `road-1-2-3a-4-title` to `(road.1.2.3a.4)`, and selects candidates
+  whose markers appear in history. It must stay free of GitPython, filesystem,
+  and process mutation.
+- `git_donkey.plonk` owns repository discovery, git-donkey worktree discovery,
+  generated-directory cleanup, Git worktree removal, local branch deletion, and
+  user-facing summaries.
+
+The plonk workflow deliberately reads completion history from the canonical
+trunk ref. This allows `git plonk` to be invoked from a linked topic worktree
+while still using the trunk history that contains issue or roadmap merge
+markers.
+
+Default and hard modes only consider linked worktrees under
+`../{repo}.worktrees` and only remove worktrees whose branch-derived completion
+marker is present in canonical trunk history. Hard mode deletes local branches
+after that marker check succeeds; it does not delete remote branches. Soft mode
+uses the same git-donkey worktree discovery but only removes conventional
+generated directories such as `target`, `node_modules`, `.venv`, and cache
+directories.
+
+`pytest-bdd` and `syrupy` are development dependencies for this command.
+`pytest-bdd` covers user workflows against real temporary Git repositories, and
+`syrupy` pins stable summary rendering. Hypothesis checks marker-shape
+invariants in the pure policy layer.
+
 ## Operational logging
 
-`git-fafo` logs decision boundaries without logging secrets. Stable fields are
-provided through `extra`, so callers can route records into structured logging
-later:
+`git-fafo` and `git-plonk` log decision boundaries without logging secrets.
+Stable fields are provided through `extra`, so callers can route records into
+structured logging later:
 
 - `token_source` records whether credentials came from the environment, cache,
   or device flow.
 - `operation` records GitHub and Git operations such as repository creation,
-  local initialization, and push.
+  local initialization, push, generated-path cleanup, worktree removal, and
+  branch deletion.
 - `repo_name`, `owner`, `branch`, `result`, and adoption `reason` provide
   diagnostic context for repository decisions.
+- `mode`, `worktree`, `marker`, `candidate_count`, `completed_count`, and
+  `removed_count` provide diagnostic context for plonk cleanup decisions.
 
 ## Ruff pinning
 

@@ -8,7 +8,7 @@ branches, and repository scaffolding—let the donkey do the heavy lifting.
 
 ## What does it do?
 
-git-donkey gives you four powerful Git subcommands:
+git-donkey gives you five powerful Git subcommands:
 
 - **`git donkey`** – Creates linked worktrees at
   `../{repo}.worktrees/{branch}` so you can work on multiple branches without
@@ -21,6 +21,10 @@ git-donkey gives you four powerful Git subcommands:
 - **`git fafo`** – Scaffold and publish a new GitHub repository from your
   `agent-template` projects. Find out what happens when you want to start a new
   project *fast*.
+
+- **`git plonk`** – Reclaim disk space from completed `git donkey` worktrees,
+  optionally cleaning generated directories or deleting completed local
+  branches.
 
 - **`git donkey-template`** – Manage template directories that get
   automatically copied into new worktrees. Perfect for per-repository config
@@ -37,6 +41,9 @@ git track feature/from-teammate
 
 # Scaffold a new GitHub repo from a template
 git fafo my-new-project python
+
+# Remove completed git-donkey worktrees
+git plonk
 
 # Set up a template directory for this repo
 git donkey-template

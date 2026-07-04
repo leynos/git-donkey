@@ -19,6 +19,7 @@ dependencies = [
 git-donkey = "git_donkey.cli:git_donkey"
 git-track = "git_donkey.cli:git_track"
 git-fafo = "git_donkey.cli:git_fafo"
+git-plonk = "git_donkey.cli:git_plonk"
 git-donkey-template = "git_donkey.cli:git_donkey_template"
 
 [dependency-groups]
@@ -30,6 +31,8 @@ dev = [
     "pytest-timeout",
     "pytest-xdist",
     "interrogate>=1.7.0",
+    "pytest-bdd>=8.1.0,<9",
+    "syrupy>=5.3.4,<6",
 ]
 
 [tool.ruff]
