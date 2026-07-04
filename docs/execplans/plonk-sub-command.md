@@ -11,11 +11,11 @@ Status: COMPLETE
 This change adds a new Git subcommand, `git plonk`, exposed by the `git-plonk`
 console script. A user can run it inside any worktree of a repository managed by
 `git donkey` and reclaim disk space from old linked worktrees. In default mode
-it removes completed worktrees whose branch names map to merge markers already
-present in canonical trunk/default history. In `--soft` mode it removes
-generated build and dependency directories from linked worktrees without
-removing the worktrees. In `--hard` mode it removes completed worktrees and
-then deletes the matching local branches.
+it removes completed worktrees whose branch names map to branch-derived
+completion markers already present in canonical trunk/default history. In
+`--soft` mode it removes generated build and dependency directories from linked
+worktrees without removing the worktrees. In `--hard` mode it removes completed
+worktrees and then deletes the matching local branches.
 
 The observable result is that focused `pytest` and `pytest-bdd` tests pass,
 `git plonk --help` documents the three modes, and integration tests using real

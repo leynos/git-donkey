@@ -94,11 +94,11 @@ class _GitWorktreeAdapter:
     def history_messages(self, ref: str) -> typ.Iterator[str]:
         """Return commit messages from ``ref`` history."""
         for commit in self.repo.iter_commits(ref):
-            message = commit.message
-            if isinstance(message, bytes):
-                yield message.decode(errors="replace")
-                continue
-            yield message
+            match commit.message:
+                case bytes() as message:
+                    yield message.decode(errors="replace")
+                case message:
+                    yield message
 
     def remove_worktree(self, worktree_path: Path) -> None:
         """Remove a linked worktree with Git's worktree machinery."""
