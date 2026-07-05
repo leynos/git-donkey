@@ -14,6 +14,14 @@ Feature: Clean git donkey worktrees
     And the worktrees remain
     And the branches remain
 
+  Scenario: Soft dry-run reports generated cleanup without removing anything
+    Given a repository with generated directories inside git donkey worktrees
+    When I run git plonk in soft dry-run mode
+    Then the generated directories remain
+    And the worktrees remain
+    And the branches remain
+    And git plonk reports planned generated path cleanup
+
   Scenario: Hard mode removes completed worktrees and branches
     Given a repository with a completed git donkey worktree
     When I run git plonk in hard mode

@@ -128,6 +128,11 @@ directories being removed or retained.
   warning was stale. Fixed the still-valid soft-mode architecture and marker
   scan findings by splitting soft setup from trunk cleanup setup and streaming
   trunk history through an indexed marker scan.
+- [x] 2026-07-05: Added the follow-up `--dry-run` extension for `git-plonk`.
+  The command now previews default, soft, and hard cleanup actions without
+  mutating filesystem or Git state. Follow-up review coverage now includes a
+  `pytest-bdd` soft dry-run scenario proving generated paths stay put while the
+  planned cleanup summary is printed.
 
 ## Surprises & Discoveries
 
@@ -241,6 +246,14 @@ Feature: Clean git donkey worktrees
     And the worktrees remain
     And the branches remain
 
+  Scenario: Soft dry-run reports generated cleanup without removing anything
+    Given a repository with generated directories inside git donkey worktrees
+    When I run git plonk in soft dry-run mode
+    Then the generated directories remain
+    And the worktrees remain
+    And the branches remain
+    And git plonk reports planned generated path cleanup
+
   Scenario: Hard mode removes completed worktrees and branches
     Given a repository with a completed git donkey worktree
     When I run git plonk in hard mode
@@ -352,3 +365,16 @@ default/hard trunk cleanup context loading, so soft cleanup does not resolve
 trunk history or change the process working directory. Completion candidate
 selection now indexes candidate markers and streams history once, stopping when
 all markers have been seen.
+
+The dry-run follow-up extends the completed command with `--dry-run` for
+default, soft, and hard modes. Dry-run summaries report planned worktree,
+branch, and generated-path removals without calling destructive Git or
+filesystem adapters. Follow-up `pytest-bdd` coverage now includes both hard
+dry-run and soft dry-run behaviour; the soft dry-run scenario proves generated
+directories remain while the planned generated-path summary is printed.
+
+Revision note, 2026-07-05: Updated this ExecPlan after the dry-run follow-up so
+the living Progress, BDD specification, and Outcomes sections reflect the
+extension. Remaining work is unchanged: keep review follow-ups narrow, preserve
+the documented cleanup contracts, and run the project gates after behaviour
+changes.

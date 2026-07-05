@@ -139,6 +139,17 @@ def run_soft_plonk(scenario: PlonkScenario) -> None:
     assert exit_code == 0, "expected soft git plonk to succeed"
 
 
+@when("I run git plonk in soft dry-run mode", target_fixture="plonk_output")
+def run_soft_dry_run_plonk(
+    scenario: PlonkScenario,
+    capsys: pytest.CaptureFixture[str],
+) -> str:
+    """Run soft cleanup in dry-run mode and capture its report."""
+    exit_code = plonk.run_git_plonk(soft=True, dry_run=True)
+    assert exit_code == 0, "expected soft dry-run git plonk to succeed"
+    return capsys.readouterr().out
+
+
 @when("I run git plonk in hard mode")
 def run_hard_plonk(scenario: PlonkScenario) -> None:
     """Run the hard cleanup mode."""
@@ -212,6 +223,20 @@ def generated_directories_are_removed(scenario: PlonkScenario) -> None:
         )
 
 
+@then("the generated directories remain")
+def generated_directories_remain(scenario: PlonkScenario) -> None:
+    """Assert generated directories remain in every git-donkey worktree."""
+    assert scenario.active_branch is not None, "expected active branch in scenario"
+    for branch_name in (scenario.completed_branch, scenario.active_branch):
+        worktree_path = scenario.worktree_path(branch_name)
+        assert (worktree_path / "target").is_dir(), (
+            f"expected target to remain in {branch_name}"
+        )
+        assert (worktree_path / "node_modules").is_dir(), (
+            f"expected node_modules to remain in {branch_name}"
+        )
+
+
 @then("the worktrees remain")
 def worktrees_remain(scenario: PlonkScenario) -> None:
     """Assert soft mode leaves every linked worktree in place."""
@@ -268,6 +293,29 @@ def git_plonk_reports_planned_cleanup(
     assert f"- {scenario.completed_branch}" in plonk_output, (
         "expected completed branch in dry-run output"
     )
+
+
+@then("git plonk reports planned generated path cleanup")
+def git_plonk_reports_planned_generated_cleanup(
+    scenario: PlonkScenario,
+    plonk_output: str,
+) -> None:
+    """Assert soft dry-run output describes generated paths it would remove."""
+    assert scenario.active_branch is not None, "expected active branch in scenario"
+    assert "git-plonk: mode=soft dry-run" in plonk_output, (
+        "expected soft dry-run summary header"
+    )
+    assert "Planned generated path removals:" in plonk_output, (
+        "expected planned generated path section"
+    )
+    for branch_name in (scenario.completed_branch, scenario.active_branch):
+        worktree_path = scenario.worktree_path(branch_name)
+        assert str(worktree_path / "target") in plonk_output, (
+            f"expected target path in dry-run output for {branch_name}"
+        )
+        assert str(worktree_path / "node_modules") in plonk_output, (
+            f"expected node_modules path in dry-run output for {branch_name}"
+        )
 
 
 def test_git_plonk_uses_main_history_when_run_from_topic_worktree(
