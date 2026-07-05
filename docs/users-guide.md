@@ -210,6 +210,16 @@ git plonk --hard
 Hard mode uses the same history-marker check as default mode before deleting a
 branch. It deletes local branches only; it never deletes remote branches.
 
+Dry-run mode prints the actions `git plonk` would take and exits without
+removing generated paths, worktrees, or branches. It can be combined with the
+default, soft, or hard cleanup mode:
+
+```shell
+git plonk --dry-run
+git plonk --soft --dry-run
+git plonk --hard --dry-run
+```
+
 ## git donkey-template
 
 Display and create the template directory for the current repository. Template

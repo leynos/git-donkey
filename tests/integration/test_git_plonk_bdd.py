@@ -53,6 +53,7 @@ def _commit_completion_marker(local_path: Path, marker: str) -> None:
     marker_path.write_text(marker)
     repo.index.add([marker_path.as_posix()])
     repo.index.commit(f"Complete work {marker}")
+    repo.remote("origin").push("main")
 
 
 def _create_git_donkey_worktree(local_path: Path, branch_name: str) -> None:
@@ -145,6 +146,17 @@ def run_hard_plonk(scenario: PlonkScenario) -> None:
     assert exit_code == 0, "expected hard git plonk to succeed"
 
 
+@when("I run git plonk in hard dry-run mode", target_fixture="plonk_output")
+def run_hard_dry_run_plonk(
+    scenario: PlonkScenario,
+    capsys: pytest.CaptureFixture[str],
+) -> str:
+    """Run hard cleanup in dry-run mode and capture its report."""
+    exit_code = plonk.run_git_plonk(hard=True, dry_run=True)
+    assert exit_code == 0, "expected hard dry-run git plonk to succeed"
+    return capsys.readouterr().out
+
+
 @when("I run git plonk with soft and hard modes", target_fixture="plonk_exit")
 def run_conflicting_plonk_modes(scenario: PlonkScenario) -> int | str | None:
     """Run the CLI boundary with mutually exclusive cleanup modes."""
@@ -158,6 +170,14 @@ def completed_worktree_is_removed(scenario: PlonkScenario) -> None:
     """Assert the completed worktree path no longer exists."""
     assert not scenario.worktree_path(scenario.completed_branch).exists(), (
         "expected completed worktree to be removed"
+    )
+
+
+@then("the completed worktree remains")
+def completed_worktree_remains(scenario: PlonkScenario) -> None:
+    """Assert the completed worktree path still exists."""
+    assert scenario.worktree_path(scenario.completed_branch).exists(), (
+        "expected completed worktree to remain"
     )
 
 
@@ -225,6 +245,29 @@ def completed_branch_is_deleted(scenario: PlonkScenario) -> None:
 def git_plonk_exits_with_usage_error(plonk_exit: int | str | None) -> None:
     """Assert conflicting cleanup modes fail as a usage error."""
     assert plonk_exit == 2, "expected conflicting plonk modes to exit with code 2"
+
+
+@then("git plonk reports planned worktree and branch cleanup")
+def git_plonk_reports_planned_cleanup(
+    scenario: PlonkScenario,
+    plonk_output: str,
+) -> None:
+    """Assert dry-run output describes the work that would be performed."""
+    assert "git-plonk: mode=hard dry-run" in plonk_output, (
+        "expected dry-run summary header"
+    )
+    assert "Planned worktree removals:" in plonk_output, (
+        "expected planned worktree section"
+    )
+    assert str(scenario.worktree_path(scenario.completed_branch)) in plonk_output, (
+        "expected completed worktree path in dry-run output"
+    )
+    assert "Planned branch deletions:" in plonk_output, (
+        "expected planned branch section"
+    )
+    assert f"- {scenario.completed_branch}" in plonk_output, (
+        "expected completed branch in dry-run output"
+    )
 
 
 def test_git_plonk_uses_main_history_when_run_from_topic_worktree(

@@ -35,16 +35,16 @@ variables, credential files, or OAuth prompts.
 `git-plonk` is split between pure completion policy, CLI parsing, and
 infrastructure mutation:
 
-- `git_donkey.cli` exposes the `git-plonk` console script and maps `--soft` and
-  `--hard` to `git_donkey.plonk.run_git_plonk()`.
+- `git_donkey.cli` exposes the `git-plonk` console script and maps `--soft`,
+  `--hard`, and `--dry-run` to `git_donkey.plonk.run_git_plonk()`.
 - `git_donkey.plonk_policy` owns branch-name and commit-message policy. It maps
   issue branches such as `issue-123-title` to `(#123)`, maps roadmap branches
   such as `road-1-2-3a-4-title` to `(road.1.2.3a.4)`, and selects candidates
   whose markers appear in history. It must stay free of GitPython, filesystem,
   and process mutation.
 - `git_donkey.plonk` owns repository discovery, git-donkey worktree discovery,
-  generated-directory cleanup, Git worktree removal, local branch deletion, and
-  user-facing summaries.
+  generated-directory cleanup, Git worktree removal, local branch deletion,
+  dry-run planning, and user-facing summaries.
 
 The plonk workflow deliberately reads completion history from the canonical
 trunk ref. This allows `git plonk` to be invoked from a linked topic worktree

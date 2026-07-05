@@ -139,9 +139,10 @@ def _plonk_cli(
     *,
     soft: bool = False,
     hard: bool = False,
+    dry_run: bool = False,
 ) -> None:
     """CLI wrapper for git-plonk."""
-    raise SystemExit(plonk.run_git_plonk(soft=soft, hard=hard))
+    raise SystemExit(plonk.run_git_plonk(soft=soft, hard=hard, dry_run=dry_run))
 
 
 def git_plonk() -> None:

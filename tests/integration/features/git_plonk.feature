@@ -20,6 +20,13 @@ Feature: Clean git donkey worktrees
     Then the completed worktree is removed
     And the completed branch is deleted
 
+  Scenario: Hard dry-run reports completed cleanup without removing anything
+    Given a repository with a completed git donkey worktree
+    When I run git plonk in hard dry-run mode
+    Then the completed worktree remains
+    And the completed branch remains
+    And git plonk reports planned worktree and branch cleanup
+
   Scenario: Soft and hard modes cannot be combined
     Given a repository with completed and active git donkey worktrees
     When I run git plonk with soft and hard modes

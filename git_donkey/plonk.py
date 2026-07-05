@@ -60,6 +60,7 @@ class _PlonkResult:
     """Summary of filesystem and Git state removed by a git-plonk run."""
 
     mode: _PlonkMode
+    is_dry_run: bool = False
     inspected_worktrees: int = 0
     removed_worktrees: tuple[Path, ...] = ()
     removed_branches: tuple[str, ...] = ()
@@ -141,16 +142,23 @@ class _FilesystemCleanupAdapter:
     """Filesystem-backed adapter for generated-directory removal."""
 
     @staticmethod
+    def soft_targets(worktree_path: Path) -> list[Path]:
+        """Return generated paths present in ``worktree_path``."""
+        paths: list[Path] = []
+        for target_name in _SOFT_TARGET_NAMES:
+            target_path = worktree_path / target_name
+            if target_path.is_symlink() or target_path.is_dir():
+                paths.append(target_path)
+        return paths
+
+    @staticmethod
     def remove_soft_targets(worktree_path: Path) -> list[Path]:
         """Remove generated directories from ``worktree_path`` and return removals."""
         removed_paths: list[Path] = []
-        for target_name in _SOFT_TARGET_NAMES:
-            target_path = worktree_path / target_name
+        for target_path in _FilesystemCleanupAdapter.soft_targets(worktree_path):
             if target_path.is_symlink():
                 target_path.unlink()
                 removed_paths.append(target_path)
-                continue
-            if not target_path.is_dir():
                 continue
             shutil.rmtree(target_path)
             removed_paths.append(target_path)
@@ -270,7 +278,8 @@ def _append_summary_section(
 
 def _render_summary(result: _PlonkResult) -> str:
     """Render a deterministic human-readable summary for ``result``."""
-    lines: list[str] = [f"git-plonk: mode={result.mode.value}"]
+    suffix = " dry-run" if result.is_dry_run else ""
+    lines: list[str] = [f"git-plonk: mode={result.mode.value}{suffix}"]
     has_removals = any((
         result.removed_worktrees,
         result.removed_branches,
@@ -278,6 +287,18 @@ def _render_summary(result: _PlonkResult) -> str:
     ))
     if not has_removals:
         lines.append(_empty_summary_message(result))
+        return "\n".join(lines)
+
+    if result.is_dry_run:
+        _append_summary_section(
+            lines, "Planned worktree removals:", result.removed_worktrees
+        )
+        _append_summary_section(
+            lines, "Planned branch deletions:", result.removed_branches
+        )
+        _append_summary_section(
+            lines, "Planned generated path removals:", result.cleaned_paths
+        )
         return "\n".join(lines)
 
     _append_summary_section(lines, "Removed worktrees:", result.removed_worktrees)
@@ -344,6 +365,8 @@ def _run_soft(
     stanzas: typ.Iterable[dict[str, object]],
     worktrees_root: Path,
     filesystem: _FilesystemCleanupAdapter | None = None,
+    *,
+    dry_run: bool = False,
 ) -> _PlonkResult:
     """Run soft cleanup for every git-donkey worktree."""
     worktree_paths = _donkey_worktree_paths(stanzas, worktrees_root)
@@ -358,7 +381,11 @@ def _run_soft(
     cleanup = filesystem or _FilesystemCleanupAdapter()
     cleaned_paths: list[Path] = []
     for worktree_path in worktree_paths:
-        removed_paths = cleanup.remove_soft_targets(worktree_path)
+        removed_paths = (
+            cleanup.soft_targets(worktree_path)
+            if dry_run
+            else cleanup.remove_soft_targets(worktree_path)
+        )
         cleaned_paths.extend(removed_paths)
         _LOGGER.info(
             "Cleaned generated paths from git-plonk worktree",
@@ -371,6 +398,7 @@ def _run_soft(
         )
     return _PlonkResult(
         mode=_PlonkMode.SOFT,
+        is_dry_run=dry_run,
         inspected_worktrees=len(worktree_paths),
         cleaned_paths=tuple(cleaned_paths),
     )
@@ -380,6 +408,8 @@ def _run_completed_cleanup(
     context: _PlonkContext,
     mode: _PlonkMode,
     git_adapter: _GitWorktreeAdapter | None = None,
+    *,
+    dry_run: bool = False,
 ) -> _PlonkResult:
     """Remove completed worktrees and optionally their local branches."""
     adapter = git_adapter or _GitWorktreeAdapter(context.repo_home)
@@ -425,7 +455,8 @@ def _run_completed_cleanup(
                 "worktree": candidate.worktree_path.as_posix(),
             },
         )
-        adapter.remove_worktree(candidate.worktree_path)
+        if not dry_run:
+            adapter.remove_worktree(candidate.worktree_path)
         removed_worktrees.append(candidate.worktree_path)
         if mode is _PlonkMode.HARD:
             _LOGGER.info(
@@ -437,11 +468,13 @@ def _run_completed_cleanup(
                     "marker": candidate.marker,
                 },
             )
-            adapter.delete_branch(candidate.branch_name)
+            if not dry_run:
+                adapter.delete_branch(candidate.branch_name)
             removed_branches.append(candidate.branch_name)
 
     return _PlonkResult(
         mode=mode,
+        is_dry_run=dry_run,
         inspected_worktrees=len(candidates),
         removed_worktrees=tuple(removed_worktrees),
         removed_branches=tuple(removed_branches),
@@ -452,6 +485,7 @@ def run_git_plonk(
     *,
     soft: bool = False,
     hard: bool = False,
+    dry_run: bool = False,
 ) -> int:
     """Run the git-plonk cleanup workflow.
 
@@ -462,6 +496,8 @@ def run_git_plonk(
         worktrees or branches.
     hard : bool, optional
         Remove completed git-donkey worktrees and delete their local branches.
+    dry_run : bool, optional
+        Print planned cleanup actions without removing paths or branches.
 
     Returns
     -------
@@ -474,11 +510,15 @@ def run_git_plonk(
 
     if soft:
         soft_context = _load_soft_plonk_context()
-        result = _run_soft(soft_context.stanzas, soft_context.worktrees_root)
+        result = _run_soft(
+            soft_context.stanzas,
+            soft_context.worktrees_root,
+            dry_run=dry_run,
+        )
     else:
         context = _load_plonk_context()
         mode = _PlonkMode.HARD if hard else _PlonkMode.DEFAULT
-        result = _run_completed_cleanup(context, mode)
+        result = _run_completed_cleanup(context, mode, dry_run=dry_run)
 
     print(_render_summary(result))
     return 0
