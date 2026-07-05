@@ -388,7 +388,9 @@ def _run_soft(
         )
         cleaned_paths.extend(removed_paths)
         _LOGGER.info(
-            "Cleaned generated paths from git-plonk worktree",
+            "Planned generated path cleanup"
+            if dry_run
+            else "Cleaned generated paths from git-plonk worktree",
             extra={
                 "mode": _PlonkMode.SOFT.value,
                 "operation": "soft_cleanup",
@@ -444,7 +446,9 @@ def _remove_completed_candidate(
 ) -> str | None:
     """Remove one completed candidate and return its branch when deleted."""
     _LOGGER.info(
-        "Removing completed git-plonk worktree",
+        "Planning completed git-plonk worktree removal"
+        if dry_run
+        else "Removing completed git-plonk worktree",
         extra={
             "mode": mode.value,
             "operation": "remove_worktree",
@@ -459,7 +463,9 @@ def _remove_completed_candidate(
         return None
 
     _LOGGER.info(
-        "Deleting completed git-plonk branch",
+        "Planning completed git-plonk branch deletion"
+        if dry_run
+        else "Deleting completed git-plonk branch",
         extra={
             "mode": mode.value,
             "operation": "delete_branch",
