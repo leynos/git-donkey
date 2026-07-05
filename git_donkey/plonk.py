@@ -404,15 +404,8 @@ def _run_soft(
     )
 
 
-def _run_completed_cleanup(
-    context: _PlonkContext,
-    mode: _PlonkMode,
-    git_adapter: _GitWorktreeAdapter | None = None,
-    *,
-    dry_run: bool = False,
-) -> _PlonkResult:
-    """Remove completed worktrees and optionally their local branches."""
-    adapter = git_adapter or _GitWorktreeAdapter(context.repo_home)
+def _log_plonk_cleanup_start(mode: _PlonkMode, context: _PlonkContext) -> None:
+    """Log the start of completed git-plonk cleanup."""
     _LOGGER.info(
         "Starting git-plonk completed cleanup",
         extra={
@@ -421,16 +414,15 @@ def _run_completed_cleanup(
             "trunk_ref": context.trunk_ref,
         },
     )
-    candidates = _donkey_worktree_candidates(context.stanzas, context.worktrees_root)
-    completed_candidates = _completed_candidates(
-        candidates,
-        adapter.history_messages(context.trunk_ref),
-    )
-    removable_candidates = [
-        candidate
-        for candidate in completed_candidates
-        if candidate.worktree_path != context.invoking_worktree
-    ]
+
+
+def _log_plonk_candidates_selected(
+    mode: _PlonkMode,
+    candidates: typ.Sequence[_PlonkCandidate],
+    completed_candidates: typ.Sequence[_PlonkCandidate],
+    removable_candidates: typ.Sequence[_PlonkCandidate],
+) -> None:
+    """Log candidate selection counts for completed git-plonk cleanup."""
     _LOGGER.info(
         "Selected git-plonk completion candidates",
         extra={
@@ -441,36 +433,85 @@ def _run_completed_cleanup(
             - len(removable_candidates),
         },
     )
-    removed_worktrees: list[Path] = []
-    removed_branches: list[str] = []
 
-    for candidate in removable_candidates:
-        _LOGGER.info(
-            "Removing completed git-plonk worktree",
-            extra={
-                "mode": mode.value,
-                "operation": "remove_worktree",
-                "branch": candidate.branch_name,
-                "marker": candidate.marker,
-                "worktree": candidate.worktree_path.as_posix(),
-            },
-        )
-        if not dry_run:
-            adapter.remove_worktree(candidate.worktree_path)
-        removed_worktrees.append(candidate.worktree_path)
-        if mode is _PlonkMode.HARD:
-            _LOGGER.info(
-                "Deleting completed git-plonk branch",
-                extra={
-                    "mode": mode.value,
-                    "operation": "delete_branch",
-                    "branch": candidate.branch_name,
-                    "marker": candidate.marker,
-                },
+
+def _remove_completed_candidate(
+    candidate: _PlonkCandidate,
+    adapter: _GitWorktreeAdapter,
+    mode: _PlonkMode,
+    *,
+    dry_run: bool,
+) -> str | None:
+    """Remove one completed candidate and return its branch when deleted."""
+    _LOGGER.info(
+        "Removing completed git-plonk worktree",
+        extra={
+            "mode": mode.value,
+            "operation": "remove_worktree",
+            "branch": candidate.branch_name,
+            "marker": candidate.marker,
+            "worktree": candidate.worktree_path.as_posix(),
+        },
+    )
+    if not dry_run:
+        adapter.remove_worktree(candidate.worktree_path)
+    if mode is not _PlonkMode.HARD:
+        return None
+
+    _LOGGER.info(
+        "Deleting completed git-plonk branch",
+        extra={
+            "mode": mode.value,
+            "operation": "delete_branch",
+            "branch": candidate.branch_name,
+            "marker": candidate.marker,
+        },
+    )
+    if not dry_run:
+        adapter.delete_branch(candidate.branch_name)
+    return candidate.branch_name
+
+
+def _run_completed_cleanup(
+    context: _PlonkContext,
+    mode: _PlonkMode,
+    git_adapter: _GitWorktreeAdapter | None = None,
+    *,
+    dry_run: bool = False,
+) -> _PlonkResult:
+    """Remove completed worktrees and optionally their local branches."""
+    adapter = git_adapter or _GitWorktreeAdapter(context.repo_home)
+    _log_plonk_cleanup_start(mode, context)
+    candidates = _donkey_worktree_candidates(context.stanzas, context.worktrees_root)
+    completed_candidates = _completed_candidates(
+        candidates,
+        adapter.history_messages(context.trunk_ref),
+    )
+    removable_candidates = [
+        candidate
+        for candidate in completed_candidates
+        if candidate.worktree_path != context.invoking_worktree
+    ]
+    _log_plonk_candidates_selected(
+        mode,
+        candidates,
+        completed_candidates,
+        removable_candidates,
+    )
+    removed_worktrees = [candidate.worktree_path for candidate in removable_candidates]
+    removed_branches = [
+        branch_name
+        for candidate in removable_candidates
+        if (
+            branch_name := _remove_completed_candidate(
+                candidate,
+                adapter,
+                mode,
+                dry_run=dry_run,
             )
-            if not dry_run:
-                adapter.delete_branch(candidate.branch_name)
-            removed_branches.append(candidate.branch_name)
+        )
+        is not None
+    ]
 
     return _PlonkResult(
         mode=mode,
