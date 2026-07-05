@@ -221,32 +221,36 @@ def completed_branch_remains(scenario: PlonkScenario) -> None:
     )
 
 
+def _scenario_branches(scenario: PlonkScenario) -> tuple[str, str]:
+    assert scenario.active_branch is not None, "expected active branch in scenario"
+    return scenario.completed_branch, scenario.active_branch
+
+
+def _assert_generated_directories(scenario: PlonkScenario, *, exist: bool) -> None:
+    for branch_name in _scenario_branches(scenario):
+        worktree_path = scenario.worktree_path(branch_name)
+        for name in ("target", "node_modules"):
+            path = worktree_path / name
+            message = (
+                f"expected {name} to {'remain in' if exist else 'be removed from'} "
+                f"{branch_name}"
+            )
+            if exist:
+                assert path.is_dir(), message
+            else:
+                assert not path.exists(), message
+
+
 @then("the generated directories are removed")
 def generated_directories_are_removed(scenario: PlonkScenario) -> None:
     """Assert generated directories are removed from every git-donkey worktree."""
-    assert scenario.active_branch is not None, "expected active branch in scenario"
-    for branch_name in (scenario.completed_branch, scenario.active_branch):
-        worktree_path = scenario.worktree_path(branch_name)
-        assert not (worktree_path / "target").exists(), (
-            f"expected target to be removed from {branch_name}"
-        )
-        assert not (worktree_path / "node_modules").exists(), (
-            f"expected node_modules to be removed from {branch_name}"
-        )
+    _assert_generated_directories(scenario, exist=False)
 
 
 @then("the generated directories remain")
 def generated_directories_remain(scenario: PlonkScenario) -> None:
     """Assert generated directories remain in every git-donkey worktree."""
-    assert scenario.active_branch is not None, "expected active branch in scenario"
-    for branch_name in (scenario.completed_branch, scenario.active_branch):
-        worktree_path = scenario.worktree_path(branch_name)
-        assert (worktree_path / "target").is_dir(), (
-            f"expected target to remain in {branch_name}"
-        )
-        assert (worktree_path / "node_modules").is_dir(), (
-            f"expected node_modules to remain in {branch_name}"
-        )
+    _assert_generated_directories(scenario, exist=True)
 
 
 @then("the worktrees remain")
@@ -284,27 +288,58 @@ def git_plonk_exits_with_usage_error(plonk_exit: int | str | None) -> None:
     assert plonk_exit == 2, "expected conflicting plonk modes to exit with code 2"
 
 
-@then("git plonk reports planned worktree and branch cleanup")
-def git_plonk_reports_planned_cleanup(
+def _assert_dry_run_header(mode: str, plonk_output: str) -> None:
+    message = (
+        "expected dry-run summary header"
+        if mode == "hard"
+        else f"expected {mode} dry-run summary header"
+    )
+    assert f"git-plonk: mode={mode} dry-run" in plonk_output, message
+
+
+def _assert_planned_worktree_removal(
     scenario: PlonkScenario,
     plonk_output: str,
 ) -> None:
-    """Assert dry-run output describes the work that would be performed."""
-    assert "git-plonk: mode=hard dry-run" in plonk_output, (
-        "expected dry-run summary header"
-    )
     assert "Planned worktree removals:" in plonk_output, (
         "expected planned worktree section"
     )
     assert str(scenario.worktree_path(scenario.completed_branch)) in plonk_output, (
         "expected completed worktree path in dry-run output"
     )
-    assert "Planned branch deletions:" in plonk_output, (
-        "expected planned branch section"
-    )
-    assert f"- {scenario.completed_branch}" in plonk_output, (
-        "expected completed branch in dry-run output"
-    )
+
+
+def _assert_branch_deletion_section(
+    scenario: PlonkScenario,
+    plonk_output: str,
+    *,
+    expected: bool,
+) -> None:
+    if expected:
+        assert "Planned branch deletions:" in plonk_output, (
+            "expected planned branch section"
+        )
+        assert f"- {scenario.completed_branch}" in plonk_output, (
+            "expected completed branch in dry-run output"
+        )
+    else:
+        assert "Planned branch deletions:" not in plonk_output, (
+            "expected default dry-run output to omit branch deletion section"
+        )
+        assert f"- {scenario.completed_branch}" not in plonk_output, (
+            "expected default dry-run output to omit completed branch deletion"
+        )
+
+
+@then("git plonk reports planned worktree and branch cleanup")
+def git_plonk_reports_planned_cleanup(
+    scenario: PlonkScenario,
+    plonk_output: str,
+) -> None:
+    """Assert dry-run output describes the work that would be performed."""
+    _assert_dry_run_header("hard", plonk_output)
+    _assert_planned_worktree_removal(scenario, plonk_output)
+    _assert_branch_deletion_section(scenario, plonk_output, expected=True)
 
 
 @then("git plonk reports planned default worktree cleanup only")
@@ -313,21 +348,9 @@ def git_plonk_reports_planned_default_cleanup(
     plonk_output: str,
 ) -> None:
     """Assert default dry-run output excludes hard-mode branch deletion."""
-    assert "git-plonk: mode=default dry-run" in plonk_output, (
-        "expected default dry-run summary header"
-    )
-    assert "Planned worktree removals:" in plonk_output, (
-        "expected planned worktree section"
-    )
-    assert str(scenario.worktree_path(scenario.completed_branch)) in plonk_output, (
-        "expected completed worktree path in dry-run output"
-    )
-    assert "Planned branch deletions:" not in plonk_output, (
-        "expected default dry-run output to omit branch deletion section"
-    )
-    assert f"- {scenario.completed_branch}" not in plonk_output, (
-        "expected default dry-run output to omit completed branch deletion"
-    )
+    _assert_dry_run_header("default", plonk_output)
+    _assert_planned_worktree_removal(scenario, plonk_output)
+    _assert_branch_deletion_section(scenario, plonk_output, expected=False)
 
 
 @then("git plonk reports planned generated path cleanup")
@@ -336,14 +359,12 @@ def git_plonk_reports_planned_generated_cleanup(
     plonk_output: str,
 ) -> None:
     """Assert soft dry-run output describes generated paths it would remove."""
-    assert scenario.active_branch is not None, "expected active branch in scenario"
-    assert "git-plonk: mode=soft dry-run" in plonk_output, (
-        "expected soft dry-run summary header"
-    )
+    branches = _scenario_branches(scenario)
+    _assert_dry_run_header("soft", plonk_output)
     assert "Planned generated path removals:" in plonk_output, (
         "expected planned generated path section"
     )
-    for branch_name in (scenario.completed_branch, scenario.active_branch):
+    for branch_name in branches:
         worktree_path = scenario.worktree_path(branch_name)
         assert str(worktree_path / "target") in plonk_output, (
             f"expected target path in dry-run output for {branch_name}"
