@@ -132,6 +132,18 @@ def run_default_plonk(scenario: PlonkScenario) -> None:
     assert exit_code == 0, "expected default git plonk to succeed"
 
 
+@when("I run git plonk in default dry-run mode", target_fixture="plonk_output")
+def run_default_dry_run_plonk(
+    scenario: PlonkScenario,
+    capsys: pytest.CaptureFixture[str],
+) -> str:
+    """Run default cleanup in dry-run mode through the CLI boundary."""
+    with pytest.raises(SystemExit) as exc_info:
+        cli._plonk_app(["--dry-run"])
+    assert exc_info.value.code == 0, "expected default dry-run git plonk to succeed"
+    return capsys.readouterr().out
+
+
 @when("I run git plonk in soft mode")
 def run_soft_plonk(scenario: PlonkScenario) -> None:
     """Run the soft cleanup mode."""
@@ -292,6 +304,29 @@ def git_plonk_reports_planned_cleanup(
     )
     assert f"- {scenario.completed_branch}" in plonk_output, (
         "expected completed branch in dry-run output"
+    )
+
+
+@then("git plonk reports planned default worktree cleanup only")
+def git_plonk_reports_planned_default_cleanup(
+    scenario: PlonkScenario,
+    plonk_output: str,
+) -> None:
+    """Assert default dry-run output excludes hard-mode branch deletion."""
+    assert "git-plonk: mode=default dry-run" in plonk_output, (
+        "expected default dry-run summary header"
+    )
+    assert "Planned worktree removals:" in plonk_output, (
+        "expected planned worktree section"
+    )
+    assert str(scenario.worktree_path(scenario.completed_branch)) in plonk_output, (
+        "expected completed worktree path in dry-run output"
+    )
+    assert "Planned branch deletions:" not in plonk_output, (
+        "expected default dry-run output to omit branch deletion section"
+    )
+    assert f"- {scenario.completed_branch}" not in plonk_output, (
+        "expected default dry-run output to omit completed branch deletion"
     )
 
 
