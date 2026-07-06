@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import typing as typ
 from pathlib import Path
-from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 
 import pytest
@@ -279,9 +278,33 @@ def test_dry_run_soft_mode_reports_targets_without_removing_them(
         dry_run=True,
     )
 
+    assert result.mode is plonk._PlonkMode.SOFT, "expected soft dry-run mode"
     assert result.is_dry_run, "expected dry-run result marker"
     assert result.cleaned_paths == (target_path,), "expected planned target removal"
     assert target_path.is_dir(), "expected dry run to leave generated path intact"
+
+
+class _FailingGitAdapter:
+    """Git adapter double that plans cleanup but refuses to mutate.
+
+    Dry-run cleanup must reuse candidate discovery while skipping destructive
+    Git APIs, so ``remove_worktree`` and ``delete_branch`` fail the test if the
+    planner ever invokes them. The completion marker is configurable so callers
+    can pin it to the candidate branch under test.
+    """
+
+    def __init__(self, marker: str = "Merge pull request (#123)") -> None:
+        self._marker = marker
+
+    def history_messages(self, ref: str) -> typ.Iterator[str]:
+        assert ref == "main", "expected configured trunk ref"
+        yield self._marker
+
+    def remove_worktree(self, worktree_path: Path) -> None:
+        pytest.fail(f"dry run should not remove worktree {worktree_path}")
+
+    def delete_branch(self, branch_name: str) -> None:
+        pytest.fail(f"dry run should not delete branch {branch_name}")
 
 
 @pytest.mark.parametrize(
@@ -314,21 +337,10 @@ def test_dry_run_completed_mode_reports_plans_without_mutating(
         invoking_worktree=None,
     )
 
-    class FailingGitAdapter:
-        def history_messages(self, ref: str) -> typ.Iterator[str]:
-            assert ref == "main", "expected configured trunk ref"
-            yield "Merge pull request (#123)"
-
-        def remove_worktree(self, worktree_path: Path) -> None:
-            pytest.fail(f"dry run should not remove worktree {worktree_path}")
-
-        def delete_branch(self, branch_name: str) -> None:
-            pytest.fail(f"dry run should not delete branch {branch_name}")
-
     result = plonk._run_completed_cleanup(
         context,
         mode,
-        git_adapter=typ.cast("plonk._GitWorktreeAdapter", FailingGitAdapter()),
+        git_adapter=typ.cast("plonk._GitWorktreeAdapter", _FailingGitAdapter()),
         dry_run=True,
     )
 
@@ -344,7 +356,6 @@ def test_dry_run_completed_mode_reports_plans_without_mutating(
 @given(
     mode=st.sampled_from((
         plonk._PlonkMode.DEFAULT,
-        plonk._PlonkMode.SOFT,
         plonk._PlonkMode.HARD,
     )),
     issue_number=st.integers(min_value=1, max_value=999_999),
@@ -353,25 +364,12 @@ def test_dry_run_modes_never_mutate_and_report_mode_specific_plans(
     mode: plonk._PlonkMode,
     issue_number: int,
 ) -> None:
-    """Dry-run modes should report plans without invoking mutating adapters."""
-    if mode is plonk._PlonkMode.SOFT:
-        with TemporaryDirectory() as tmp_dir:
-            worktrees_root = Path(tmp_dir) / "repo.worktrees"
-            worktree_path = worktrees_root / f"issue-{issue_number}-fix"
-            target_path = worktree_path / "target"
-            target_path.mkdir(parents=True, exist_ok=True)
-            result = plonk._run_soft(
-                [{"worktree": worktree_path}],
-                worktrees_root,
-                dry_run=True,
-            )
+    """Completed-cleanup dry runs should report plans without mutating adapters.
 
-            assert result.mode is plonk._PlonkMode.SOFT, "expected soft dry-run mode"
-            assert result.is_dry_run, "expected dry-run result marker"
-            assert result.cleaned_paths == (target_path,), "expected planned target"
-            assert target_path.is_dir(), "expected soft dry run to leave target intact"
-        return
-
+    This pins the pure policy invariant for the ``DEFAULT`` and ``HARD`` modes;
+    ``SOFT`` filesystem planning is covered separately by
+    ``test_dry_run_soft_mode_reports_targets_without_removing_them``.
+    """
     branch_name = f"issue-{issue_number}-fix"
     candidate = plonk._PlonkCandidate(
         branch_name=branch_name,
@@ -391,21 +389,13 @@ def test_dry_run_modes_never_mutate_and_report_mode_specific_plans(
         invoking_worktree=None,
     )
 
-    class FailingGitAdapter:
-        def history_messages(self, ref: str) -> typ.Iterator[str]:
-            assert ref == "main", "expected configured trunk ref"
-            yield f"Merge pull request (#{issue_number})"
-
-        def remove_worktree(self, worktree_path: Path) -> None:
-            pytest.fail(f"dry run should not remove worktree {worktree_path}")
-
-        def delete_branch(self, branch_name: str) -> None:
-            pytest.fail(f"dry run should not delete branch {branch_name}")
-
     result = plonk._run_completed_cleanup(
         context,
         mode,
-        git_adapter=typ.cast("plonk._GitWorktreeAdapter", FailingGitAdapter()),
+        git_adapter=typ.cast(
+            "plonk._GitWorktreeAdapter",
+            _FailingGitAdapter(f"Merge pull request (#{issue_number})"),
+        ),
         dry_run=True,
     )
 
