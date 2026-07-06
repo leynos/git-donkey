@@ -222,11 +222,13 @@ def completed_branch_remains(scenario: PlonkScenario) -> None:
 
 
 def _scenario_branches(scenario: PlonkScenario) -> tuple[str, str]:
+    """Return the completed and active branch names from ``scenario``."""
     assert scenario.active_branch is not None, "expected active branch in scenario"
     return scenario.completed_branch, scenario.active_branch
 
 
 def _assert_generated_directories(scenario: PlonkScenario, *, exist: bool) -> None:
+    """Assert generated worktree directories exist or are absent for all branches."""
     for branch_name in _scenario_branches(scenario):
         worktree_path = scenario.worktree_path(branch_name)
         for name in ("target", "node_modules"):
@@ -289,6 +291,7 @@ def git_plonk_exits_with_usage_error(plonk_exit: int | str | None) -> None:
 
 
 def _assert_dry_run_header(mode: str, plonk_output: str) -> None:
+    """Assert the dry-run summary header for ``mode`` appears in ``plonk_output``."""
     message = (
         "expected dry-run summary header"
         if mode == "hard"
@@ -301,6 +304,7 @@ def _assert_planned_worktree_removal(
     scenario: PlonkScenario,
     plonk_output: str,
 ) -> None:
+    """Assert the planned worktree-removal section lists the completed path."""
     assert "Planned worktree removals:" in plonk_output, (
         "expected planned worktree section"
     )
@@ -315,6 +319,7 @@ def _assert_branch_deletion_section(
     *,
     expected: bool,
 ) -> None:
+    """Assert the branch-deletion section is present or absent as ``expected``."""
     if expected:
         assert "Planned branch deletions:" in plonk_output, (
             "expected planned branch section"

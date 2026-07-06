@@ -297,13 +297,16 @@ class _FailingGitAdapter:
         self._marker = marker
 
     def history_messages(self, ref: str) -> typ.Iterator[str]:
+        """Assert ``ref`` is ``main``, then yield the configured completion marker."""
         assert ref == "main", "expected configured trunk ref"
         yield self._marker
 
     def remove_worktree(self, worktree_path: Path) -> None:
+        """Fail the test unconditionally — dry runs must not remove worktrees."""
         pytest.fail(f"dry run should not remove worktree {worktree_path}")
 
     def delete_branch(self, branch_name: str) -> None:
+        """Fail the test unconditionally — dry runs must not delete branches."""
         pytest.fail(f"dry run should not delete branch {branch_name}")
 
 
