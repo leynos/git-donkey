@@ -27,6 +27,22 @@ def _set_main_upstream(repo: Repo) -> None:
     repo.git.branch("--set-upstream-to", "origin/main", "main")
 
 
+def _run_and_capture(  # noqa: PLR0917
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    path: Path,
+    runner: typ.Callable[..., int],
+    ref: str | None = None,
+    *,
+    fetch: bool = True,
+) -> tuple[int, str, str]:
+    """Run a comparison workflow in ``path`` and return its captured output."""
+    monkeypatch.chdir(path)
+    exit_code = runner(ref, fetch=fetch)
+    captured = capsys.readouterr()
+    return exit_code, captured.out, captured.err
+
+
 def test_git_incoming_fetches_and_reports_remote_only_commit(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -41,13 +57,16 @@ def test_git_incoming_fetches_and_reports_remote_only_commit(
     _seed_repo(peer_repo, "remote.txt", "remote")
     peer_repo.remote("origin").push("main")
 
-    monkeypatch.chdir(local_path)
-    exit_code = incoming_outgoing.run_git_incoming()
+    exit_code, out, err = _run_and_capture(
+        monkeypatch,
+        capsys,
+        local_path,
+        incoming_outgoing.run_git_incoming,
+    )
 
-    captured = capsys.readouterr()
     assert exit_code == 0
-    assert "Seed commit" in captured.out
-    assert captured.err == ""
+    assert "Seed commit" in out
+    assert err == ""
 
 
 def test_git_incoming_no_changes_returns_one(
@@ -61,13 +80,16 @@ def test_git_incoming_no_changes_returns_one(
     _set_main_upstream(repo)
     repo.remote("origin").fetch()
 
-    monkeypatch.chdir(local_path)
-    exit_code = incoming_outgoing.run_git_incoming()
+    exit_code, out, err = _run_and_capture(
+        monkeypatch,
+        capsys,
+        local_path,
+        incoming_outgoing.run_git_incoming,
+    )
 
-    captured = capsys.readouterr()
     assert exit_code == 1
-    assert captured.out == ""
-    assert captured.err == ""
+    assert out == ""
+    assert err == ""
 
 
 def test_git_outgoing_reports_local_only_commit(
@@ -82,13 +104,17 @@ def test_git_outgoing_reports_local_only_commit(
     repo.remote("origin").fetch()
     _seed_repo(repo, "local.txt", "local")
 
-    monkeypatch.chdir(local_path)
-    exit_code = incoming_outgoing.run_git_outgoing(fetch=False)
+    exit_code, out, err = _run_and_capture(
+        monkeypatch,
+        capsys,
+        local_path,
+        incoming_outgoing.run_git_outgoing,
+        fetch=False,
+    )
 
-    captured = capsys.readouterr()
     assert exit_code == 0
-    assert "Seed commit" in captured.out
-    assert captured.err == ""
+    assert "Seed commit" in out
+    assert err == ""
 
 
 def test_git_outgoing_no_changes_returns_one(
@@ -102,13 +128,17 @@ def test_git_outgoing_no_changes_returns_one(
     _set_main_upstream(repo)
     repo.remote("origin").fetch()
 
-    monkeypatch.chdir(local_path)
-    exit_code = incoming_outgoing.run_git_outgoing(fetch=False)
+    exit_code, out, err = _run_and_capture(
+        monkeypatch,
+        capsys,
+        local_path,
+        incoming_outgoing.run_git_outgoing,
+        fetch=False,
+    )
 
-    captured = capsys.readouterr()
     assert exit_code == 1
-    assert captured.out == ""
-    assert captured.err == ""
+    assert out == ""
+    assert err == ""
 
 
 def test_default_ref_requires_upstream(
@@ -119,14 +149,18 @@ def test_default_ref_requires_upstream(
     """Default comparison should fail clearly when no upstream is configured."""
     local_path, _remote_path = _setup_repo(tmp_path)
 
-    monkeypatch.chdir(local_path)
-    exit_code = incoming_outgoing.run_git_incoming(fetch=False)
+    exit_code, out, err = _run_and_capture(
+        monkeypatch,
+        capsys,
+        local_path,
+        incoming_outgoing.run_git_incoming,
+        fetch=False,
+    )
 
-    captured = capsys.readouterr()
     assert exit_code == 2
-    assert captured.out == ""
-    assert "no upstream branch configured" in captured.err
-    assert "pass a ref" in captured.err
+    assert out == ""
+    assert "no upstream branch configured" in err
+    assert "pass a ref" in err
 
 
 def test_no_fetch_uses_current_remote_tracking_ref(
@@ -144,13 +178,17 @@ def test_no_fetch_uses_current_remote_tracking_ref(
     _seed_repo(peer_repo, "remote.txt", "remote")
     peer_repo.remote("origin").push("main")
 
-    monkeypatch.chdir(local_path)
-    exit_code = incoming_outgoing.run_git_incoming(fetch=False)
+    exit_code, out, err = _run_and_capture(
+        monkeypatch,
+        capsys,
+        local_path,
+        incoming_outgoing.run_git_incoming,
+        fetch=False,
+    )
 
-    captured = capsys.readouterr()
     assert exit_code == 1
-    assert captured.out == ""
-    assert captured.err == ""
+    assert out == ""
+    assert err == ""
 
 
 def test_explicit_ref_does_not_require_upstream(
@@ -167,10 +205,14 @@ def test_explicit_ref_does_not_require_upstream(
     _seed_repo(peer_repo, "remote.txt", "remote")
     peer_repo.remote("origin").push("main")
 
-    monkeypatch.chdir(local_path)
-    exit_code = incoming_outgoing.run_git_incoming("origin/main")
+    exit_code, out, err = _run_and_capture(
+        monkeypatch,
+        capsys,
+        local_path,
+        incoming_outgoing.run_git_incoming,
+        "origin/main",
+    )
 
-    captured = capsys.readouterr()
     assert exit_code == 0
-    assert "Seed commit" in captured.out
-    assert captured.err == ""
+    assert "Seed commit" in out
+    assert err == ""
