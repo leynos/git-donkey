@@ -505,19 +505,16 @@ def _run_completed_cleanup(
         removable_candidates,
     )
     removed_worktrees = [candidate.worktree_path for candidate in removable_candidates]
-    removed_branches = [
-        branch_name
-        for candidate in removable_candidates
-        if (
-            branch_name := _remove_completed_candidate(
-                candidate,
-                adapter,
-                mode,
-                dry_run=dry_run,
-            )
+    removed_branches: list[str] = []
+    for candidate in removable_candidates:
+        branch_name = _remove_completed_candidate(
+            candidate,
+            adapter,
+            mode,
+            dry_run=dry_run,
         )
-        is not None
-    ]
+        if branch_name is not None:
+            removed_branches.append(branch_name)
 
     return _PlonkResult(
         mode=mode,
