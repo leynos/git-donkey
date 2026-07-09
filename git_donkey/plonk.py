@@ -394,6 +394,7 @@ def _run_soft(
             extra={
                 "mode": _PlonkMode.SOFT.value,
                 "operation": "soft_cleanup",
+                "dry_run": dry_run,
                 "worktree": worktree_path.as_posix(),
                 "removed_count": len(removed_paths),
             },
@@ -452,6 +453,7 @@ def _remove_completed_candidate(
         extra={
             "mode": mode.value,
             "operation": "remove_worktree",
+            "dry_run": dry_run,
             "branch": candidate.branch_name,
             "marker": candidate.marker,
             "worktree": candidate.worktree_path.as_posix(),
