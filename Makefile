@@ -3,17 +3,19 @@ NIXIE ?= nixie
 MDFORMAT_ALL ?= mdformat-all
 # Pin Ruff so local and CI runs agree; keep in sync with .github/workflows/ci.yml.
 RUFF_VERSION ?= 0.15.12
+TYPOS_VERSION ?= 1.48.0
 TOOLS = $(MDFORMAT_ALL) ty $(MDLINT) uv
 VENV_TOOLS = pytest
 UV_ENV = UV_CACHE_DIR=.uv-cache UV_TOOL_DIR=.uv-tools
 
 .PHONY: help all clean build build-release lint fmt check-fmt \
-        markdownlint nixie test typecheck ruff $(TOOLS) $(VENV_TOOLS)
+        markdownlint nixie spelling spelling-helper-test test typecheck ruff \
+        $(TOOLS) $(VENV_TOOLS)
 .PHONY: pytest test
 
 .DEFAULT_GOAL := all
 
-all: build check-fmt lint typecheck test
+all: build check-fmt lint typecheck test spelling
 
 .venv: pyproject.toml
 	$(UV_ENV) uv venv --clear
@@ -78,8 +80,30 @@ typecheck: build ty ## Run typechecking
 	ty --version
 	ty check
 
-markdownlint: $(MDLINT) ## Lint Markdown files
+markdownlint: spelling $(MDLINT) ## Lint Markdown files and enforce spelling
 	$(MDLINT) '**/*.md'
+
+spelling: spelling-helper-test ## Enforce en-GB-oxendict spelling in Markdown prose
+	@$(UV_ENV) uv run scripts/generate_typos_config.py
+	@git ls-files -z '*.md' | \
+		xargs -0 -r env $(UV_ENV) uv tool run typos@$(TYPOS_VERSION) \
+		--config typos.toml --force-exclude
+
+spelling-helper-test: ## Validate the shared spelling-policy integration
+	@$(UV_ENV) uv tool run ruff@$(RUFF_VERSION) format --isolated \
+		--target-version py313 --check scripts/generate_typos_config.py \
+		scripts/typos_rollout.py scripts/typos_rollout_cache.py \
+		scripts/tests/test_typos_rollout.py
+	@$(UV_ENV) uv tool run ruff@$(RUFF_VERSION) check --isolated \
+		--target-version py313 scripts/generate_typos_config.py \
+		scripts/typos_rollout.py scripts/typos_rollout_cache.py \
+		scripts/tests/test_typos_rollout.py
+	@PYTHONPATH=scripts $(UV_ENV) uv run --no-project --python 3.13 \
+		--with pytest==9.0.2 --with pytest-cov==7.0.0 \
+		python -m pytest scripts/tests/test_typos_rollout.py \
+		-c /dev/null --rootdir=. -p no:cacheprovider \
+		--cov=generate_typos_config --cov=typos_rollout \
+		--cov=typos_rollout_cache --cov-fail-under=90
 
 nixie: ## Validate Mermaid diagrams
 	$(call ensure_tool,nixie)
