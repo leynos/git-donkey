@@ -210,5 +210,9 @@ target/
 # grepai index
 .grepai/
 
+# Generated spelling-policy caches
+.typos-oxendict-base.json
+.typos-oxendict-base.toml
+
 # Vim swap files
 *.swp

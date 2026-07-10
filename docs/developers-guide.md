@@ -3,6 +3,14 @@
 This guide records internal module boundaries and local tooling conventions for
 contributors working on `git-donkey`.
 
+## Spelling policy
+
+Run `make spelling` to enforce en-GB-oxendict prose spelling. The generated
+`typos.toml` starts from the shared estate dictionary, refreshes its untracked
+local cache only when the authority is newer, and then applies the narrow
+repository policy in `typos.local.toml`. Edit the local policy and regenerate
+the configuration rather than changing generated entries by hand.
+
 ## git-fafo module boundaries
 
 `git-fafo` is split across three modules, so infrastructure details stay out of

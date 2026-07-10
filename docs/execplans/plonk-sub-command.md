@@ -29,7 +29,7 @@ directories being removed or retained.
 - Do not remove arbitrary directories. Only operate on linked worktrees under
   the `../{repo}.worktrees` directory derived from the main worktree path.
 - Default and `--hard` mode must only remove worktrees whose branch names are
-  recognised and whose corresponding marker appears in canonical trunk/default
+  recognized and whose corresponding marker appears in canonical trunk/default
   history.
 - `--soft` mode must not remove worktrees or branches.
 - `--hard` mode must not delete the invoking linked worktree's branch.
@@ -171,7 +171,7 @@ directories being removed or retained.
   worktree creation and should be unit-testable without invoking Cyclopts.
 - Decision: use Hypothesis rather than CrossHair for invariants.
   Rationale: branch-marker parsing is a pure string transformation with a
-  compact generated input space. Hypothesis can generate recognised branches
+  compact generated input space. Hypothesis can generate recognized branches
   and prove the marker shape over many cases cheaply in normal test runs.
 - Decision: use `syrupy` snapshots for command summaries, not destructive
   filesystem state. Rationale: snapshots are useful for stable user-visible
@@ -215,7 +215,7 @@ and environment are updated through the repository's normal build path.
 Next, add failing tests before production code:
 
 - Unit tests in `tests/unit/test_plonk.py` for issue markers, roadmap markers,
-  unrecognised branch names, merged candidate selection, and summary rendering.
+  unrecognized branch names, merged candidate selection, and summary rendering.
 - A Hypothesis property in `tests/unit/test_plonk.py` that generates valid
   roadmap prefixes and asserts that the derived marker is parenthesized, uses
   dot separators, contains no hyphen, and matches a commit message containing
@@ -322,7 +322,7 @@ include `https://lody.ai/leynos/sessions/${LODY_SESSION_ID}` in a
 ## Outcomes & Retrospective
 
 Implemented `git-plonk` with default, `--soft`, and `--hard` modes. Default and
-hard modes remove only recognised `git donkey` worktrees with matching issue or
+hard modes remove only recognized `git donkey` worktrees with matching issue or
 roadmap completion markers in canonical trunk history; hard mode also deletes
 the local branches. Soft mode removes conventional generated directories from
 all `git donkey` worktrees without removing worktrees or branches.
