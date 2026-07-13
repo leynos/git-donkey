@@ -129,7 +129,8 @@ _plonk_app = App(
     help=(
         "Clean up git-donkey worktrees. Default mode removes completed "
         "worktrees, --soft removes generated directories, and --hard also "
-        "deletes completed local branches."
+        "deletes completed local branches. --dry-run previews planned "
+        "actions without mutating the filesystem or Git state."
     ),
 )
 
@@ -139,9 +140,10 @@ def _plonk_cli(
     *,
     soft: bool = False,
     hard: bool = False,
+    dry_run: bool = False,
 ) -> None:
     """CLI wrapper for git-plonk."""
-    raise SystemExit(plonk.run_git_plonk(soft=soft, hard=hard))
+    raise SystemExit(plonk.run_git_plonk(soft=soft, hard=hard, dry_run=dry_run))
 
 
 def git_plonk() -> None:
