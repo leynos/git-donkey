@@ -471,6 +471,7 @@ def _remove_completed_candidate(
         extra={
             "mode": mode.value,
             "operation": "delete_branch",
+            "dry_run": dry_run,
             "branch": candidate.branch_name,
             "marker": candidate.marker,
         },
