@@ -32,7 +32,7 @@ dev = [
     "pytest-xdist",
     "interrogate>=1.7.0",
     "pytest-bdd>=8.1.0,<9",
-    "syrupy>=5.4.0,<6",
+    "syrupy>=5.5.1,<6",
 ]
 
 [tool.ruff]
