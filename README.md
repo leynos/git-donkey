@@ -1,5 +1,8 @@
 # 🫏 git-donkey
 
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](
+https://deepwiki.com/leynos/git-donkey)
+
 *Because sometimes you need a worktree, and a donkey's got your back.*
 
 git-donkey is a collection of Git subcommands that make branch-based
