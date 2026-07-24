@@ -7,7 +7,7 @@ requires-python = ">=3.13"
 license = { text = "ISC" }
 dependencies = [
     "GitPython>=3.1.45",
-    "cyclopts>=4.21.0",
+    "cyclopts>=4.21.1",
     "github3.py>=4.0.1",
     "loctocat>=0.6.0",
     "platformdirs>=4.10.0",
