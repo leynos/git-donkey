@@ -109,7 +109,6 @@ extend-ignore = [
 [tool.ruff.lint.per-file-ignores]
 "**/test_*.py" = ["assert", "too-many-arguments", "magic-value-comparison", "no-self-use"]
 "tests/steps/*.py" = ["assert", "too-many-arguments", "magic-value-comparison"]
-"tests/integration/test_cli_workflows.py" = ["too-many-locals"]
 
 [tool.ruff.lint.flake8-import-conventions]
 # Declare the banned `from` imports.
