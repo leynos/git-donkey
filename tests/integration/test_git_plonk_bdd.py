@@ -36,7 +36,7 @@ class PlonkScenario:
 
     @property
     def worktree_root(self) -> Path:
-        """Return the git-donkey worktree root for the scenario repository."""
+        """The git-donkey worktree root for the scenario repository."""
         return self.local_path.parent / f"{self.local_path.name}.worktrees"
 
     def worktree_path(self, branch_name: str) -> Path:

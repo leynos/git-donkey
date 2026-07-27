@@ -30,19 +30,23 @@ def test_copier_copy_command_omits_trust_by_default() -> None:
         "copy",
         "git@example.com:owner/agent-template-python",
         "demo-repo",
-    ]
+    ], "untrusted copy command should omit the --trust flag"
 
 
 def test_template_for_language_returns_none_without_language() -> None:
     """Omitting the language should select the empty-project path."""
-    assert fafo._template_for_language(owner="octocat", language=None) is None
+    assert fafo._template_for_language(owner="octocat", language=None) is None, (
+        "a missing language should yield no template"
+    )
 
 
 def test_template_for_language_builds_agent_template_url() -> None:
     """Language-specific scaffolds should use the matching agent template."""
     template = fafo._template_for_language(owner="octocat", language="python")
 
-    assert template == "git@github.com:octocat/agent-template-python"
+    assert template == "git@github.com:octocat/agent-template-python", (
+        "language template should target the owner's agent-template repo"
+    )
 
 
 def test_copier_copy_command_adds_trust_when_requested() -> None:
@@ -60,7 +64,7 @@ def test_copier_copy_command_adds_trust_when_requested() -> None:
         "--trust",
         "git@example.com:owner/agent-template-python",
         "demo-repo",
-    ]
+    ], "trusted copy command should include the --trust flag"
 
 
 def test_run_copier_interactive_uses_trusted_command(
@@ -89,8 +93,10 @@ def test_run_copier_interactive_uses_trusted_command(
         "--trust",
         "git@example.com:owner/agent-template-python",
         "demo-repo",
-    ]
-    assert recorded["check"] is True
+    ], "interactive runner should invoke the resolved trusted copier command"
+    assert recorded["check"] is True, (
+        "interactive runner should run subprocess with check enabled"
+    )
 
 
 def test_scaffold_repo_creates_empty_project_without_template(
@@ -112,6 +118,10 @@ def test_scaffold_repo_creates_empty_project_without_template(
 
     repo_path = fafo._scaffold_repo(template=None, repo_name="demo-repo", trust=True)
 
-    assert repo_path == Path("demo-repo")
-    assert (tmp_path / "demo-repo").is_dir()
-    assert called == {}
+    assert repo_path == Path("demo-repo"), (
+        "scaffolding should return the relative repo path"
+    )
+    assert (tmp_path / "demo-repo").is_dir(), (
+        "scaffolding should create the repo directory"
+    )
+    assert not called, "empty-project scaffolding should not invoke the copier runner"

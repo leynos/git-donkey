@@ -19,11 +19,10 @@ import typing as typ
 from git import GitCommandError, Repo
 
 from git_donkey import helpers
+from git_donkey.helpers import _GIT_DONKEY_PREFIX as _GIT_DONKEY_PREFIX
 
 if typ.TYPE_CHECKING:
     from pathlib import Path
-
-_GIT_DONKEY_PREFIX = helpers._GIT_DONKEY_PREFIX
 
 
 @dataclasses.dataclass(frozen=True, slots=True)

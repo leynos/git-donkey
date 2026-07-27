@@ -48,11 +48,19 @@ def test_copier_copy_command_keeps_trust_position(
         trust=trust,
     )
 
-    assert command[:2] == [copier_path, "copy"]
-    assert command[-2:] == [template, repo_name]
-    assert ("--trust" in command) is trust
+    assert command[:2] == [copier_path, "copy"], (
+        "copier command must start with the copier path and 'copy' subcommand"
+    )
+    assert command[-2:] == [template, repo_name], (
+        "copier command must end with the template and repo name arguments"
+    )
+    assert ("--trust" in command) is trust, (
+        "'--trust' must appear if and only if trust is requested"
+    )
     if trust:
-        assert command[2] == "--trust"
+        assert command[2] == "--trust", (
+            "'--trust' must immediately follow the 'copy' subcommand"
+        )
 
 
 @given(owner=_SLUG_TEXT, language=st.none() | _SLUG_TEXT)
@@ -64,9 +72,11 @@ def test_template_for_language_maps_language_to_owner_template(
     template = fafo._template_for_language(owner=owner, language=language)
 
     if language is None:
-        assert template is None
+        assert template is None, "a missing language must resolve to no template"
     else:
-        assert template == f"git@github.com:{owner}/agent-template-{language}"
+        assert template == f"git@github.com:{owner}/agent-template-{language}", (
+            "a language must resolve to the owner's agent-template URL"
+        )
 
 
 @given(
@@ -87,8 +97,10 @@ def test_remote_ref_parser_classifies_heads_and_tags(
 
     parsed_heads, parsed_tags = fafo._heads_and_tags_from_ls_remote("\n".join(lines))
 
-    assert parsed_heads == heads
-    assert parsed_tags == tags
+    assert parsed_heads == heads, (
+        "parser must return branch heads, excluding the HEAD alias"
+    )
+    assert parsed_tags == tags, "parser must return tags, excluding peeled tag aliases"
 
 
 @dataclasses.dataclass
@@ -147,8 +159,12 @@ def test_remote_classification_rejects_non_adoptable_histories(
 
     state = fafo._classify_remote(typ.cast("fafo._GitCommand", git))
 
-    assert not state.adoptable
-    assert state.reason in {"tags_present", "multiple_heads"}
+    assert not state.adoptable, (
+        "remotes with tags or multiple heads must not be adoptable"
+    )
+    assert state.reason in {"tags_present", "multiple_heads"}, (
+        "rejection reason must identify tags or multiple heads"
+    )
 
 
 @given(empty_commit=st.booleans())
@@ -167,7 +183,9 @@ def test_remote_classification_depends_on_single_head_commit_emptiness(
 
     state = fafo._classify_remote(typ.cast("fafo._GitCommand", git))
 
-    assert state.adoptable is empty_commit
+    assert state.adoptable is empty_commit, (
+        "a single-head remote is adoptable only when its commit is empty"
+    )
 
 
 @given(yes=st.booleans(), prompt_response=st.booleans())
@@ -199,7 +217,9 @@ def test_adoption_confirmation_requires_yes_or_prompt_acceptance(
                     yes=yes,
                 )
 
-    assert bool(prompts) is not yes
+    assert bool(prompts) is not yes, (
+        "the user must be prompted exactly when '--yes' was not supplied"
+    )
 
 
 def test_remote_adoption_inspection_failure_exits(
@@ -233,5 +253,9 @@ def test_empty_scaffold_creates_only_requested_directory(
 
         repo_path = fafo._scaffold_repo(template=None, repo_name=repo_name, trust=True)
 
-        assert repo_path == Path(repo_name)
-        assert (tmp_path / repo_name).is_dir()
+        assert repo_path == Path(repo_name), (
+            "empty scaffolding must return the requested repo path"
+        )
+        assert (tmp_path / repo_name).is_dir(), (
+            "empty scaffolding must create the requested directory"
+        )

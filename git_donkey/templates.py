@@ -115,11 +115,6 @@ def get_template_dir_path(repo: Repo) -> Path | None:
     Path | None
         The template directory path, or None if the repository has no remote.
 
-    Raises
-    ------
-    ValueError
-        If multiple remotes exist but none is named ``origin``.
-
     """
     repo_url = _get_repo_url(repo)
     if repo_url is None:
@@ -141,11 +136,6 @@ def get_template_dir(repo: Repo) -> Path | None:
     -------
     Path | None
         The template directory path if it exists, otherwise None.
-
-    Raises
-    ------
-    ValueError
-        If multiple remotes exist but none is named ``origin``.
 
     """
     template_dir = get_template_dir_path(repo)

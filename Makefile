@@ -2,11 +2,23 @@ MDLINT ?= markdownlint-cli2
 NIXIE ?= nixie
 MDFORMAT_ALL ?= mdformat-all
 # Pin Ruff so local and CI runs agree; keep in sync with .github/workflows/ci.yml.
-RUFF_VERSION ?= 0.15.12
+RUFF_VERSION ?= 0.15.22
 TYPOS_VERSION ?= 1.48.0
 TOOLS = $(MDFORMAT_ALL) ty $(MDLINT) uv
 VENV_TOOLS = pytest
 UV_ENV = UV_CACHE_DIR=.uv-cache UV_TOOL_DIR=.uv-tools
+# Pylint targets shared by both passes.
+PYLINT_TARGETS ?= git_donkey scripts tests
+# The built-in Pylint pass runs under the PyPy shim for speed, mirroring lading.
+# It reads the [tool.pylint] config in pyproject.toml.
+PYLINT_PYTHON ?= pypy
+PYLINT_PYPY_SHIM_REF ?= 726d09f968b4d729ee4b29c71fc732e744854f3b
+PYLINT_PYPY_SHIM = git+https://github.com/leynos/pylint-pypy-shim.git@$(PYLINT_PYPY_SHIM_REF)
+PYLINT_PYPY = $(UV_ENV) uv tool run --python $(PYLINT_PYTHON) \
+        --from '$(PYLINT_PYPY_SHIM)' pylint-pypy
+# The df12-python-lints plugin runs under CPython with its own config so it can
+# import the plugin and parse the project's Python 3.13 syntax.
+PYLINT_DF12 = $(UV_ENV) uv run pylint --rcfile=.pylintrc-df12.toml
 
 .PHONY: help all clean build build-release lint fmt check-fmt \
         markdownlint nixie spelling spelling-helper-test test typecheck ruff \
@@ -71,10 +83,13 @@ check-fmt: ruff ## Verify formatting
 	ruff format --check
 	# mdformat-all doesn't currently do checking
 
-lint: ruff ## Run linters
+lint: ruff build ## Run linters
 	ruff check
 	$(UV_ENV) uv run interrogate --fail-under 100 git_donkey
 	pyscn check git_donkey tests --skip-clones
+	$(PYLINT_PYPY) $(PYLINT_TARGETS)
+	$(PYLINT_DF12) $(PYLINT_TARGETS)
+	$(UV_ENV) uv run ambrleaks tests
 
 typecheck: build ty ## Run typechecking
 	ty --version
