@@ -58,6 +58,11 @@ def _patch_github_login(
     monkeypatch.setattr(fafo.github3, "login", _fake_login)
 
 
+def _stub_token() -> str:
+    """Return a placeholder GitHub token; the stubbed login ignores its value."""
+    return "example-value"
+
+
 def _create_repo_with_login(
     monkeypatch: pytest.MonkeyPatch,
     *,
@@ -82,7 +87,7 @@ def _assert_create_repo_failure(
     with pytest.raises(SystemExit) as excinfo:
         _create_repo_with_login(
             monkeypatch,
-            token="example-value",  # ruff:ignore[hardcoded-password-func-arg]  FIXME: test constant, not a real secret
+            token=_stub_token(),
             repo_name="demo-repo",
             login_handler=login_handler,
         )
@@ -184,7 +189,7 @@ def test_create_remote_repository_returns_existing_repo(
 
     remote = _create_repo_with_login(
         monkeypatch,
-        token="example-value",  # ruff:ignore[hardcoded-password-func-arg]  FIXME: test constant, not a real secret
+        token=_stub_token(),
         repo_name="demo-repo",
         login_handler=_login_handler,
     )
