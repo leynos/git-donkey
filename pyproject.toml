@@ -26,13 +26,15 @@ git-donkey-template = "git_donkey.cli:git_donkey_template"
 dev = [
     "pytest",
     "hypothesis",
-    "ruff",
+    "ruff==0.15.22",
     "pyright",
     "pytest-timeout",
     "pytest-xdist",
     "interrogate>=1.7.0",
     "pytest-bdd>=8.1.0,<9",
     "syrupy>=5.5.3,<6",
+    "pylint>=3.3",
+    "df12-python-lints @ git+https://github.com/leynos/df12-python-lints@v0.1.0",
 ]
 
 [tool.ruff]
@@ -79,34 +81,35 @@ select = [
     "PERF",
     "TRY",
     "D",
+    "DOC",      # Enforce docstring signature/return/raises sections (pydoclint)
     "ANN",
     "C90",
     "PLR",
-    "PLE4703",
-    "PLR0202",
-    "PLR0203",
-    "PLR0914",
-    "PLR0916",
-    "PLR1702",
-    "PLR6104",
-    "PLR6201",
-    "PLR6301",
-    "PLW0108",
-    "RUF036",
-    "RUF053",
-    "RUF055",
-    "RUF064",
-    "RUF066",
+    "modified-iterating-set",
+    "no-classmethod-decorator",
+    "no-staticmethod-decorator",
+    "too-many-locals",
+    "too-many-boolean-expressions",
+    "too-many-nested-blocks",
+    "non-augmented-assignment",
+    "literal-membership",
+    "no-self-use",
+    "unnecessary-lambda",
+    "none-not-at-end-of-union",
+    "class-with-mixed-type-vars",
+    "unnecessary-regular-expression",
+    "non-octal-permissions",
+    "property-without-return",
 ]
 extend-ignore = [
-    "D203",  # Conflicts with D211; prefer enforcing no blank line before class docstring.
-    "D213",  # Conflicts with D212; keep summary on the first line.
+    "incorrect-blank-line-before-class",  # Conflicts with D211; prefer enforcing no blank line before class docstring.
+    "multi-line-summary-second-line",  # Conflicts with D212; keep summary on the first line.
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"**/test_*.py" = ["S101", "PLR0913", "PLR2004", "PLR6301"]
-"tests/steps/*.py" = ["S101", "PLR0913", "PLR2004"]
-"tests/integration/test_cli_workflows.py" = ["PLR0914"]
+"**/test_*.py" = ["assert", "too-many-arguments", "magic-value-comparison", "no-self-use"]
+"tests/steps/*.py" = ["assert", "too-many-arguments", "magic-value-comparison"]
+"tests/integration/test_cli_workflows.py" = ["too-many-locals"]
 
 [tool.ruff.lint.flake8-import-conventions]
 # Declare the banned `from` imports.
@@ -134,6 +137,16 @@ datetime = "dt"
 "msgspec.json" = "msjson"
 typing = "typ"
 
+[tool.ruff.lint.pydocstyle]
+# Enforce NumPy docstring style
+convention = "numpy"
+ignore-decorators = ["typing.overload", "typ.overload"]
+
+[tool.ruff.lint.pydoclint]
+# Keep the repository convention of single-line docstrings for simple, mostly
+# private helpers; DOC signature checks apply only to multi-line docstrings.
+ignore-one-line-docstrings = true
+
 [tool.ruff.lint.mccabe]
 max-complexity = 8
 
@@ -141,6 +154,169 @@ max-complexity = 8
 max-args = 4
 max-bool-expr = 2
 max-locals = 10
+
+[tool.interrogate]
+ignore-overloaded-functions = true
+
+# This [tool.pylint] table configures the built-in Pylint pass, which runs
+# under the PyPy shim (see the Makefile) for speed. The df12-python-lints
+# plugin needs CPython and the project's 3.13 syntax, so it runs separately
+# under CPython with its own config in .pylintrc-df12.toml.
+[tool.pylint.main]
+# The shared spelling-rollout helpers keep their own pinned Ruff and coverage
+# policy; exclude them here as they are excluded from Ruff.
+ignore = [
+    "generate_typos_config.py",
+    "typos_rollout.py",
+    "typos_rollout_cache.py",
+    "test_typos_rollout.py",
+]
+# Expand directory targets like git_donkey and tests even when a target is not
+# a package.
+recursive = true
+# Managed PyPy currently ships 3.11 while the project targets 3.13 syntax;
+# keep PyPy-backed Pylint useful on the files it can parse.
+py-version = "3.11"
+# Keep Pylint's module-size check active without forcing an unrelated module
+# split while introducing the second-tier lint gate.
+max-module-lines = 800
+
+[tool.pylint.design]
+# Keep function call surfaces small enough to understand without memorising
+# positional argument order.
+max-args = 5
+# Complement Ruff's stricter PLR0914 threshold without forcing broad refactors
+# while introducing the additional rule families below.
+max-locals = 20
+# Use Pylint's statement-count proxy for function length; Pylint 4 does not
+# expose a distinct physical-lines-per-function option.
+max-statements = 70
+# Keep positional call surfaces aligned with Ruff's existing argument limit.
+max-positional-arguments = 5
+
+[tool.pylint."messages control"]
+# Keep this Pylint pass focused on the explicitly selected messages.
+disable = [
+    "all",
+    # Managed PyPy is currently 3.11 while the project targets Python 3.13
+    # syntax; keep PyPy-backed Pylint useful on files it can parse.
+    "syntax-error",
+]
+enable = [
+    # Logging format safety.
+    "logging-format-interpolation",
+    "logging-format-truncated",
+    "logging-fstring-interpolation",
+    "logging-not-lazy",
+    "logging-too-few-args",
+    "logging-too-many-args",
+    "logging-unsupported-format",
+
+    # Pattern matching correctness and readability.
+    "bare-name-capture-pattern",
+    "invalid-match-args-definition",
+    "match-class-bind-self",
+    "match-class-positional-attributes",
+    "multiple-class-sub-patterns",
+    "too-many-positional-sub-patterns",
+
+    # Control-flow simplification.
+    "chained-comparison",
+    "condition-evals-to-constant",
+    "consider-merging-isinstance",
+    "consider-swap-variables",
+    "consider-using-in",
+    "consider-using-max-builtin",
+    "consider-using-min-builtin",
+    "consider-using-sys-exit",
+    "consider-using-ternary",
+    "inconsistent-return-statements",
+    "no-else-break",
+    "no-else-continue",
+    "no-else-raise",
+    "no-else-return",
+    "redefined-argument-from-local",
+    "simplifiable-condition",
+    "simplifiable-if-expression",
+    "simplifiable-if-statement",
+    "simplify-boolean-expression",
+    "stop-iteration-return",
+    "super-with-arguments",
+    "trailing-comma-tuple",
+    "unnecessary-negation",
+    "useless-return",
+
+    # Collection and iterator idioms.
+    "consider-iterating-dictionary",
+    "consider-using-dict-comprehension",
+    "consider-using-dict-items",
+    "consider-using-enumerate",
+    "consider-using-f-string",
+    "consider-using-generator",
+    "consider-using-get",
+    "consider-using-join",
+    "consider-using-set-comprehension",
+    "unnecessary-comprehension",
+    "unnecessary-dict-index-lookup",
+    "unnecessary-list-index-lookup",
+    "use-a-generator",
+    "use-dict-literal",
+    "use-implicit-booleaness-not-comparison",
+    "use-implicit-booleaness-not-comparison-to-string",
+    "use-implicit-booleaness-not-len",
+    "use-list-literal",
+    "use-maxsplit-arg",
+    "use-sequence-for-iteration",
+    "use-yield-from",
+
+    # Runtime APIs, resources, and compatibility hazards.
+    "bad-open-mode",
+    "bad-thread-instantiation",
+    "boolean-datetime",
+    "consider-using-with",
+    "deprecated-argument",
+    "deprecated-attribute",
+    "deprecated-class",
+    "deprecated-decorator",
+    "deprecated-method",
+    "forgotten-debug-statement",
+    "invalid-envvar-default",
+    "invalid-envvar-value",
+    "method-cache-max-size-none",
+    "redundant-unittest-assert",
+    "shallow-copy-environ",
+    "singledispatch-method",
+    "singledispatchmethod-function",
+    "subprocess-popen-preexec-fn",
+    "subprocess-run-check",
+    "unnecessary-dunder-call",
+    "unnecessary-ellipsis",
+    "unspecified-encoding",
+
+    # Source layout and text hygiene.
+    "missing-final-newline",
+    "mixed-line-endings",
+    "superfluous-parens",
+    "trailing-newlines",
+    "trailing-whitespace",
+    "unexpected-line-ending-format",
+
+    # Mutation during iteration.
+    "modified-iterating-dict",
+    "modified-iterating-list",
+    "modified-iterating-set",
+
+    # Structural complexity limits.
+    "too-many-arguments",
+    "too-many-boolean-expressions",
+    "too-many-branches",
+    "too-many-lines",
+    "too-many-locals",
+    "too-many-nested-blocks",
+    "too-many-positional-arguments",
+    "too-many-public-methods",
+    "too-many-statements",
+]
 
 [tool.pytest.ini_options]
 # Tests automatically killed after seconds elapsed

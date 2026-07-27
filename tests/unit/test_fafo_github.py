@@ -82,7 +82,7 @@ def _assert_create_repo_failure(
     with pytest.raises(SystemExit) as excinfo:
         _create_repo_with_login(
             monkeypatch,
-            token="example-value",  # noqa: S106  FIXME: test constant, not a real secret
+            token="example-value",  # ruff:ignore[hardcoded-password-func-arg]  FIXME: test constant, not a real secret
             repo_name="demo-repo",
             login_handler=login_handler,
         )
@@ -184,13 +184,15 @@ def test_create_remote_repository_returns_existing_repo(
 
     remote = _create_repo_with_login(
         monkeypatch,
-        token="example-value",  # noqa: S106  FIXME: test constant, not a real secret
+        token="example-value",  # ruff:ignore[hardcoded-password-func-arg]  FIXME: test constant, not a real secret
         repo_name="demo-repo",
         login_handler=_login_handler,
     )
 
-    assert remote.owner == "octocat"
-    assert remote.already_exists
+    assert remote.owner == "octocat", "remote owner should match the login handler user"
+    assert remote.already_exists, (
+        "existing repository should be flagged as pre-existing"
+    )
 
 
 def test_confirm_adopt_existing_repository_prompts(
@@ -212,8 +214,10 @@ def test_confirm_adopt_existing_repository_prompts(
         yes=False,
     )
 
-    assert "octocat/demo-repo" in str(recorded["question"])
-    assert recorded["default"] is False
+    assert "octocat/demo-repo" in str(recorded["question"]), (
+        "adoption prompt should name the owner/repo being adopted"
+    )
+    assert recorded["default"] is False, "adoption prompt should default to declining"
 
 
 def test_confirm_adopt_existing_repository_uses_yes(

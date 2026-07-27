@@ -22,8 +22,7 @@ from pathlib import Path
 from git import Git, GitCommandError, Repo
 
 from git_donkey import donkey_worktrees, helpers, templates
-
-_GIT_DONKEY_PREFIX = helpers._GIT_DONKEY_PREFIX
+from git_donkey.helpers import _GIT_DONKEY_PREFIX as _GIT_DONKEY_PREFIX
 
 
 @dataclasses.dataclass(frozen=True, slots=True)

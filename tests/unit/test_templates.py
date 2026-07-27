@@ -246,7 +246,7 @@ class TestApplyTemplate:
         assert (target_dir / "file.txt").read_text() == "content", (
             "expected file content to match template"
         )
-        assert conflicts == [], "expected no conflicts for new file"
+        assert not conflicts, "expected no conflicts for new file"
 
     def test_copy_nested_files(self, tmp_path: Path) -> None:
         """Test copying nested directory structure."""
@@ -268,7 +268,7 @@ class TestApplyTemplate:
         assert (target_dir / "subdir" / "nested.txt").read_text() == "nested content", (
             "expected nested file content to match template"
         )
-        assert conflicts == [], "expected no conflicts for nested files"
+        assert not conflicts, "expected no conflicts for nested files"
 
     def test_overwrites_existing_files(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -328,7 +328,7 @@ class TestApplyTemplate:
         assert (target_dir / "deep" / "nested" / "dir" / "file.txt").exists(), (
             "expected deeply nested file to be created"
         )
-        assert conflicts == [], "expected no conflicts when creating directories"
+        assert not conflicts, "expected no conflicts when creating directories"
 
     def test_preserves_file_metadata(self, tmp_path: Path) -> None:
         """Test that file metadata (timestamps) are preserved."""
@@ -364,10 +364,10 @@ class TestApplyTemplate:
         conflicts = templates.apply_template(template_dir, target_dir, prefix="TEST")
 
         # Only the target directory should exist, no files copied
-        assert list(target_dir.iterdir()) == [], (
+        assert not list(target_dir.iterdir()), (
             "expected no files to be copied from empty template"
         )
-        assert conflicts == [], "expected no conflicts from empty template"
+        assert not conflicts, "expected no conflicts from empty template"
 
     def test_multiple_conflicts(self, tmp_path: Path) -> None:
         """Test that multiple conflicts are all reported."""

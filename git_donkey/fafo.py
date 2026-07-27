@@ -33,7 +33,7 @@ import dataclasses
 import logging
 import os
 import shutil
-import subprocess  # noqa: S404
+import subprocess  # ruff:ignore[suspicious-subprocess-import]  # drives Copier as the intended process boundary
 import sys
 from pathlib import Path
 
@@ -165,7 +165,7 @@ def _run_copier_interactive(
     try:
         # nosemgrep
         # Args are slug-validated and shell=False.
-        subprocess.run(  # noqa: S603
+        subprocess.run(  # ruff:ignore[subprocess-without-shell-equals-true]
             cmd,
             check=True,
             stdin=stdin,

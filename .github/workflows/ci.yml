@@ -28,7 +28,7 @@ jobs:
         run: |
           for tool in mbake ty pyscn; do uv tool install ${tool}; done
           # Pin Ruff so CI matches local runs; keep in sync with Makefile RUFF_VERSION.
-          uv tool install ruff==0.15.12
+          uv tool install ruff==0.15.22
           npm install -g markdownlint-cli2
 
       - name: Validate Makefile

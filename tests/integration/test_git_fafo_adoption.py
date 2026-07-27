@@ -46,7 +46,9 @@ def test_git_fafo_adopts_existing_zero_commit_repo_with_yes(
     assert exit_code == 0, "expected git-fafo to adopt the empty remote"
     assert (tmp_path / "demo-repo").is_dir(), "expected local repo directory"
     remote_repo = Repo(remote_path)
-    assert remote_repo.git.rev_list("--count", "main").strip() == "1"
+    assert remote_repo.git.rev_list("--count", "main").strip() == "1", (
+        "expected the adopted empty remote to hold a single scaffold commit on main"
+    )
 
 
 def test_git_fafo_adopts_existing_empty_initial_commit_with_yes(
@@ -68,7 +70,10 @@ def test_git_fafo_adopts_existing_empty_initial_commit_with_yes(
 
     assert exit_code == 0, "expected git-fafo to adopt the empty initial commit"
     remote_repo = Repo(remote_path)
-    assert remote_repo.git.rev_list("--count", "main").strip() == "1"
+    assert remote_repo.git.rev_list("--count", "main").strip() == "1", (
+        "expected main to still have exactly one commit after adopting the "
+        "empty initial commit"
+    )
 
 
 def test_git_fafo_rejects_existing_repo_without_confirmation(
@@ -85,7 +90,9 @@ def test_git_fafo_rejects_existing_repo_without_confirmation(
     with pytest.raises(SystemExit) as excinfo:
         fafo.run_git_fafo("demo-repo", token=auth_value)
 
-    assert excinfo.value.code == 1
+    assert excinfo.value.code == 1, (
+        "expected git-fafo to exit with code 1 when adoption is declined"
+    )
     assert not (tmp_path / "demo-repo").exists(), "expected no local scaffold"
 
 
@@ -118,7 +125,9 @@ def test_git_fafo_validates_remote_before_scaffolding(
             options=fafo._FafoOptions(yes=True),
         )
 
-    assert excinfo.value.code == 1
+    assert excinfo.value.code == 1, (
+        "expected git-fafo to exit with code 1 when the remote is non-empty"
+    )
     assert not (tmp_path / "demo-repo").exists(), "expected no local scaffold"
 
 
@@ -154,5 +163,7 @@ def test_git_fafo_rejects_remote_with_additional_refs(
             options=fafo._FafoOptions(yes=True),
         )
 
-    assert excinfo.value.code == 1
+    assert excinfo.value.code == 1, (
+        "expected git-fafo to exit with code 1 when the remote has extra refs"
+    )
     assert not (tmp_path / "demo-repo").exists(), "expected no local scaffold"
