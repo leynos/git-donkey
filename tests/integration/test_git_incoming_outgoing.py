@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import typing as typ
 
+import pytest
 from git import Repo
 
 from git_donkey import incoming_outgoing
@@ -11,8 +12,6 @@ from tests.integration.conftest import _configure_repo, _seed_repo, _setup_repo
 
 if typ.TYPE_CHECKING:
     from pathlib import Path
-
-    import pytest
 
 
 def _clone_remote(remote_path: Path, clone_path: Path) -> Repo:
@@ -27,26 +26,31 @@ def _set_main_upstream(repo: Repo) -> None:
     repo.git.branch("--set-upstream-to", "origin/main", "main")
 
 
-def _run_and_capture(  # noqa: PLR0917
+@pytest.fixture
+def run_and_capture(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
-    path: Path,
-    runner: typ.Callable[..., int],
-    ref: str | None = None,
-    *,
-    fetch: bool = True,
-) -> tuple[int, str, str]:
-    """Run a comparison workflow in ``path`` and return its captured output."""
-    monkeypatch.chdir(path)
-    exit_code = runner(ref, fetch=fetch)
-    captured = capsys.readouterr()
-    return exit_code, captured.out, captured.err
+) -> typ.Callable[..., tuple[int, str, str]]:
+    """Return a comparison runner that captures output in its repository."""
+
+    def _run(
+        path: Path,
+        runner: typ.Callable[..., int],
+        ref: str | None = None,
+        *,
+        fetch: bool = True,
+    ) -> tuple[int, str, str]:
+        monkeypatch.chdir(path)
+        exit_code = runner(ref, fetch=fetch)
+        captured = capsys.readouterr()
+        return exit_code, captured.out, captured.err
+
+    return _run
 
 
 def test_git_incoming_fetches_and_reports_remote_only_commit(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
+    run_and_capture: typ.Callable[..., tuple[int, str, str]],
 ) -> None:
     """git-incoming should report commits that would be pulled."""
     local_path, remote_path = _setup_repo(tmp_path)
@@ -57,9 +61,7 @@ def test_git_incoming_fetches_and_reports_remote_only_commit(
     _seed_repo(peer_repo, "remote.txt", "remote")
     peer_repo.remote("origin").push("main")
 
-    exit_code, out, err = _run_and_capture(
-        monkeypatch,
-        capsys,
+    exit_code, out, err = run_and_capture(
         local_path,
         incoming_outgoing.run_git_incoming,
     )
@@ -71,8 +73,7 @@ def test_git_incoming_fetches_and_reports_remote_only_commit(
 
 def test_git_incoming_no_changes_returns_one(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
+    run_and_capture: typ.Callable[..., tuple[int, str, str]],
 ) -> None:
     """git-incoming should return 1 when nothing would be pulled."""
     local_path, _remote_path = _setup_repo(tmp_path)
@@ -80,9 +81,7 @@ def test_git_incoming_no_changes_returns_one(
     _set_main_upstream(repo)
     repo.remote("origin").fetch()
 
-    exit_code, out, err = _run_and_capture(
-        monkeypatch,
-        capsys,
+    exit_code, out, err = run_and_capture(
         local_path,
         incoming_outgoing.run_git_incoming,
     )
@@ -94,8 +93,7 @@ def test_git_incoming_no_changes_returns_one(
 
 def test_git_outgoing_reports_local_only_commit(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
+    run_and_capture: typ.Callable[..., tuple[int, str, str]],
 ) -> None:
     """git-outgoing should report commits that would be pushed."""
     local_path, _remote_path = _setup_repo(tmp_path)
@@ -104,9 +102,7 @@ def test_git_outgoing_reports_local_only_commit(
     repo.remote("origin").fetch()
     _seed_repo(repo, "local.txt", "local")
 
-    exit_code, out, err = _run_and_capture(
-        monkeypatch,
-        capsys,
+    exit_code, out, err = run_and_capture(
         local_path,
         incoming_outgoing.run_git_outgoing,
         fetch=False,
@@ -119,8 +115,7 @@ def test_git_outgoing_reports_local_only_commit(
 
 def test_git_outgoing_no_changes_returns_one(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
+    run_and_capture: typ.Callable[..., tuple[int, str, str]],
 ) -> None:
     """git-outgoing should return 1 when nothing would be pushed."""
     local_path, _remote_path = _setup_repo(tmp_path)
@@ -128,9 +123,7 @@ def test_git_outgoing_no_changes_returns_one(
     _set_main_upstream(repo)
     repo.remote("origin").fetch()
 
-    exit_code, out, err = _run_and_capture(
-        monkeypatch,
-        capsys,
+    exit_code, out, err = run_and_capture(
         local_path,
         incoming_outgoing.run_git_outgoing,
         fetch=False,
@@ -143,15 +136,12 @@ def test_git_outgoing_no_changes_returns_one(
 
 def test_default_ref_requires_upstream(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
+    run_and_capture: typ.Callable[..., tuple[int, str, str]],
 ) -> None:
     """Default comparison should fail clearly when no upstream is configured."""
     local_path, _remote_path = _setup_repo(tmp_path)
 
-    exit_code, out, err = _run_and_capture(
-        monkeypatch,
-        capsys,
+    exit_code, out, err = run_and_capture(
         local_path,
         incoming_outgoing.run_git_incoming,
         fetch=False,
@@ -165,8 +155,7 @@ def test_default_ref_requires_upstream(
 
 def test_no_fetch_uses_current_remote_tracking_ref(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
+    run_and_capture: typ.Callable[..., tuple[int, str, str]],
 ) -> None:
     """--no-fetch should compare against the already-known tracking ref."""
     local_path, remote_path = _setup_repo(tmp_path)
@@ -178,9 +167,7 @@ def test_no_fetch_uses_current_remote_tracking_ref(
     _seed_repo(peer_repo, "remote.txt", "remote")
     peer_repo.remote("origin").push("main")
 
-    exit_code, out, err = _run_and_capture(
-        monkeypatch,
-        capsys,
+    exit_code, out, err = run_and_capture(
         local_path,
         incoming_outgoing.run_git_incoming,
         fetch=False,
@@ -193,8 +180,7 @@ def test_no_fetch_uses_current_remote_tracking_ref(
 
 def test_explicit_ref_does_not_require_upstream(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
+    run_and_capture: typ.Callable[..., tuple[int, str, str]],
 ) -> None:
     """An explicit comparison ref should work without branch upstream config."""
     local_path, remote_path = _setup_repo(tmp_path)
@@ -205,9 +191,7 @@ def test_explicit_ref_does_not_require_upstream(
     _seed_repo(peer_repo, "remote.txt", "remote")
     peer_repo.remote("origin").push("main")
 
-    exit_code, out, err = _run_and_capture(
-        monkeypatch,
-        capsys,
+    exit_code, out, err = run_and_capture(
         local_path,
         incoming_outgoing.run_git_incoming,
         "origin/main",
