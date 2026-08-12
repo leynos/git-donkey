@@ -102,6 +102,11 @@ Mercurial bundles, templates, phases, or bookmark comparison output.
   refactors. No separate refactor commit is needed because the implementation
   is contained in one focused module and the CLI additions follow existing
   wrapper patterns.
+- [x] (2026-08-12 00:00Z) Rebased onto `origin/main`, retained mainline
+  spelling-cache exclusions alongside the existing `.memdb/` exclusion, and
+  passed the Python format, test, type, and lint gates. Added the documented
+  external API literal `color` to the repository spelling overlay so the
+  Markdown validation gate accepts the style-guide example.
 
 ## Surprises & discoveries
 
@@ -344,7 +349,7 @@ captured `/tmp/*-git-donkey-incoming-outgoing-commands.out` logs, then rerun
 only the focused tests. Do not proceed to full gates until the focused tests
 pass.
 
-## Artifacts and notes
+## Artefacts and notes
 
 The Mercurial help pages establish these behaviours to preserve:
 

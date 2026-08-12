@@ -109,7 +109,6 @@ suggests close matches.
 git track feature/foo
 ```
 
-
 ## git incoming and git outgoing
 
 Preview branch movement before pulling or pushing. These commands intentionally

@@ -32,7 +32,6 @@ locale = "en-gb"
 extend-ignore-re = [
     "(?s)```.*?```",
     "\\brust-analyzer\\b",
-    "`[^`\\n]+`",
 ]
 
 [default.extend-words]
@@ -307,6 +306,7 @@ extend-ignore-re = [
 "colonizers" = "colonizers"
 "colonizes" = "colonizes"
 "colonizing" = "colonizing"
+"color" = "color"
 "colourisable" = "colourizable"
 "colourisation" = "colourization"
 "colourisations" = "colourizations"
