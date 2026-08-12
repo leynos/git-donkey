@@ -307,6 +307,7 @@ extend-ignore-re = [
 "colonizers" = "colonizers"
 "colonizes" = "colonizes"
 "colonizing" = "colonizing"
+"color" = "color"
 "colourisable" = "colourizable"
 "colourisation" = "colourization"
 "colourisations" = "colourizations"
