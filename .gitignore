@@ -216,3 +216,7 @@ target/
 
 # Vim swap files
 *.swp
+.vtcode/
+.claude/
+*.swo
+*~
