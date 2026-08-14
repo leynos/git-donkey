@@ -11,7 +11,7 @@ branches, and repository scaffolding—let the donkey do the heavy lifting.
 
 ## What does it do?
 
-git-donkey gives you five powerful Git subcommands:
+git-donkey gives you Git subcommands for branch-based work:
 
 - **`git donkey`** – Creates linked worktrees at
   `../{repo}.worktrees/{branch}` so you can work on multiple branches without
@@ -20,6 +20,12 @@ git-donkey gives you five powerful Git subcommands:
 
 - **`git track`** – Fetch and switch to (or create) tracking branches in one
   command. No more "did I create this branch yet?" confusion.
+
+- **`git incoming`** / **`git in`** – Preview upstream commits that would be
+  pulled into the current branch.
+
+- **`git outgoing`** / **`git out`** – Preview local commits that would be
+  pushed to the current branch's upstream.
 
 - **`git fafo`** – Scaffold and publish a new GitHub repository from your
   `agent-template` projects. Find out what happens when you want to start a new
@@ -41,6 +47,11 @@ git donkey feature/awesome-stuff
 
 # Track a remote branch
 git track feature/from-teammate
+
+
+# Preview pull and push candidates
+git incoming
+git outgoing
 
 # Scaffold a new GitHub repo from a template
 git fafo my-new-project python

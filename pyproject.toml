@@ -21,6 +21,10 @@ git-track = "git_donkey.cli:git_track"
 git-fafo = "git_donkey.cli:git_fafo"
 git-plonk = "git_donkey.cli:git_plonk"
 git-donkey-template = "git_donkey.cli:git_donkey_template"
+git-incoming = "git_donkey.cli:git_incoming"
+git-in = "git_donkey.cli:git_in"
+git-outgoing = "git_donkey.cli:git_outgoing"
+git-out = "git_donkey.cli:git_out"
 
 [dependency-groups]
 dev = [

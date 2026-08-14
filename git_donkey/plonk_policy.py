@@ -17,7 +17,9 @@ _ROADMAP_BRANCH_PATTERN = re.compile(r"^(?:(\w+)-)?(\d+)-(\d+)-(\d+)(\w+)?-(?:(\
 class CompletionCandidate(typ.Protocol):
     """Minimal candidate shape required by completion policy."""
 
-    marker: str
+    @property
+    def marker(self) -> str:
+        """Return the completion marker used to identify the candidate."""
 
 
 def _marker_body(marker: str) -> str:
