@@ -113,6 +113,11 @@ development dependency and as a continuous integration tool, so keep
 `RUFF_VERSION`, the `ruff==` entry in `pyproject.toml`, and the
 `uv tool install ruff==` step in `.github/workflows/ci.yml` in step.
 
+The `typecheck` target adds `scripts` to the type checker's module search path,
+because that directory holds PEP 723 single-file helpers that import each other
+by module name. Keep the path scoped to the target rather than changing
+application import paths.
+
 ## Lint workflow
 
 `make lint` runs six checks in order. The `lint` target invokes them as:
