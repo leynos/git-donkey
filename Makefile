@@ -3,10 +3,13 @@ NIXIE ?= nixie
 MDFORMAT_ALL ?= mdformat-all
 # Pin Ruff so local and CI runs agree; keep in sync with .github/workflows/ci.yml.
 RUFF_VERSION ?= 0.15.12
+SKYLOS_VERSION ?= 4.33.2
 TYPOS_VERSION ?= 1.48.0
 TOOLS = $(MDFORMAT_ALL) ty $(MDLINT) uv
 VENV_TOOLS = pytest
 UV_ENV = UV_CACHE_DIR=.uv-cache UV_TOOL_DIR=.uv-tools
+SKYLOS = $(UV_ENV) uv tool run --from 'skylos==$(SKYLOS_VERSION)' skylos \
+	--config-file pyproject.toml
 
 .PHONY: help all clean build build-release lint fmt check-fmt \
         markdownlint nixie spelling spelling-helper-test test typecheck ruff \
@@ -75,6 +78,8 @@ lint: ruff ## Run linters
 	ruff check
 	$(UV_ENV) uv run interrogate --fail-under 100 git_donkey
 	pyscn check git_donkey tests --skip-clones
+	$(SKYLOS) git_donkey --category dead_code --gate --format concise \
+		--no-upload --no-provenance --no-grep-verify
 
 typecheck: build ty ## Run typechecking
 	ty --version

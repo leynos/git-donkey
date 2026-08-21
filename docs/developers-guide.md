@@ -90,6 +90,20 @@ Keep `RUFF_VERSION`, the helper script, and continuous integration tool
 versions in sync. The helper exists, so the Make target stays short enough for
 Makefile linting while keeping the version check easy to read and reuse.
 
+## Dead-code detection
+
+`make lint` runs Skylos `4.33.2` after the existing Ruff, docstring, and
+static-analysis checks. The production-only scan covers `git_donkey`, reports
+only dead-code findings, does not upload results or collect provenance, and
+fails the local gate and continuous integration when it finds an unexplained
+symbol.
+
+Treat every finding as dead code until its caller is verified. Remove genuine
+dead code. When a dynamic runtime boundary makes a finding a false positive,
+record the symbol in `[tool.skylos.whitelist].names` and a matching explanation
+in `[tool.skylos.whitelist.documented]` in `pyproject.toml`. Do not add
+speculative, bulk, or unexplained allow-list entries.
+
 ## Test infrastructure
 
 The root `conftest.py` provides GitHub API stubs shared by unit and integration

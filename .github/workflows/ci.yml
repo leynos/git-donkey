@@ -43,7 +43,7 @@ jobs:
       - name: Check spelling
         run: make spelling
 
-      - name: Run ruff
+      - name: Run lint and dead-code detection
         run: make lint
 
       - name: Run typechecker
