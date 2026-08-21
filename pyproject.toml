@@ -338,6 +338,13 @@ filterwarnings = [
 [tool.uv]
 package = true
 
+[tool.skylos.gate]
+strict = true
+
+[tool.skylos.whitelist]
+names = []
+
+[tool.skylos.whitelist.documented]
 
 [build-system]
 requires = ["hatchling"]

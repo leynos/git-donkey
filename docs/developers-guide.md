@@ -80,6 +80,20 @@ structured logging later:
 - `mode`, `worktree`, `marker`, `candidate_count`, `completed_count`, and
   `removed_count` provide diagnostic context for plonk cleanup decisions.
 
+## Dead-code detection
+
+`make lint` runs Skylos `4.33.2` after the existing Ruff, docstring, and
+static-analysis checks. The production-only scan covers `git_donkey`, reports
+only dead-code findings, does not upload results or collect provenance, and
+fails the local gate and continuous integration when it finds an unexplained
+symbol.
+
+Treat every finding as dead code until its caller is verified. Remove genuine
+dead code. When a dynamic runtime boundary makes a finding a false positive,
+record the symbol in `[tool.skylos.whitelist].names` and a matching explanation
+in `[tool.skylos.whitelist.documented]` in `pyproject.toml`. Do not add
+speculative, bulk, or unexplained allow-list entries.
+
 ## Tool pinning
 
 The `Makefile` pins Ruff with `RUFF_VERSION` and ty with `TY_VERSION`, and

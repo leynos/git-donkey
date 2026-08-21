@@ -11,6 +11,7 @@ RUFF ?= $(UV_ENV) uv tool run ruff@$(RUFF_VERSION)
 # releases, so an unpinned ty makes CI fail on errors that never appear locally.
 TY_VERSION ?= 0.0.79
 TY ?= $(UV_ENV) uv tool run ty@$(TY_VERSION)
+SKYLOS_VERSION ?= 4.33.2
 TYPOS_VERSION ?= 1.48.0
 TOOLS = $(MDFORMAT_ALL) $(MDLINT) uv
 VENV_TOOLS = pytest
@@ -29,6 +30,8 @@ PYLINT = $(UV_ENV) uv run pylint -j $(PYLINT_JOBS)
 PYLINT_BUILTIN = $(PYLINT)
 # The df12-python-lints plugin pass keeps its own config.
 PYLINT_DF12 = $(PYLINT) --rcfile=.pylintrc-df12.toml
+SKYLOS = $(UV_ENV) uv tool run --from 'skylos==$(SKYLOS_VERSION)' skylos \
+	--config-file pyproject.toml
 
 .PHONY: help all clean build build-release lint fmt check-fmt \
         markdownlint nixie spelling spelling-helper-test test typecheck \
@@ -102,6 +105,8 @@ lint: uv ## Run linters
 	# ambrleaks is a console script of the df12-python-lints dev dependency, so
 	# `uv run` finds it in the synced venv; it is not a separate distribution.
 	$(UV_ENV) uv run ambrleaks tests
+	$(SKYLOS) git_donkey --category dead_code --gate --format concise \
+		--no-upload --no-provenance --no-grep-verify
 
 typecheck: build uv ## Run typechecking
 	$(TY) --version
