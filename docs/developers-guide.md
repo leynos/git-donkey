@@ -90,6 +90,14 @@ Keep `RUFF_VERSION`, the helper script, and continuous integration tool
 versions in sync. The helper exists, so the Make target stays short enough for
 Makefile linting while keeping the version check easy to read and reuse.
 
+## Ty pinning
+
+The `typecheck` target provisions Ty at `TY_VERSION`, so local runs and
+continuous integration use the same analyser release. It includes `scripts` as
+an additional module search path because the standalone spelling-policy script
+imports adjacent repository modules. Keep this path scoped to the target rather
+than modifying application import paths.
+
 ## Dead-code detection
 
 `make lint` runs Skylos `4.33.2` after the existing Ruff, docstring, and

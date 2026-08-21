@@ -4,12 +4,14 @@ MDFORMAT_ALL ?= mdformat-all
 # Pin Ruff so local and CI runs agree; keep in sync with .github/workflows/ci.yml.
 RUFF_VERSION ?= 0.15.12
 SKYLOS_VERSION ?= 4.33.2
+TY_VERSION ?= 0.0.73
 TYPOS_VERSION ?= 1.48.0
-TOOLS = $(MDFORMAT_ALL) ty $(MDLINT) uv
+TOOLS = $(MDFORMAT_ALL) $(MDLINT) uv
 VENV_TOOLS = pytest
 UV_ENV = UV_CACHE_DIR=.uv-cache UV_TOOL_DIR=.uv-tools
 SKYLOS = $(UV_ENV) uv tool run --from 'skylos==$(SKYLOS_VERSION)' skylos \
 	--config-file pyproject.toml
+TY = $(UV_ENV) uv tool run ty==$(TY_VERSION)
 
 .PHONY: help all clean build build-release lint fmt check-fmt \
         markdownlint nixie spelling spelling-helper-test test typecheck ruff \
@@ -81,9 +83,9 @@ lint: ruff ## Run linters
 	$(SKYLOS) git_donkey --category dead_code --gate --format concise \
 		--no-upload --no-provenance --no-grep-verify
 
-typecheck: build ty ## Run typechecking
-	ty --version
-	ty check
+typecheck: build ## Run typechecking
+	$(TY) --version
+	$(TY) check --extra-search-path scripts
 
 markdownlint: spelling $(MDLINT) ## Lint Markdown files and enforce spelling
 	$(MDLINT) '**/*.md'
