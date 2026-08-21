@@ -108,9 +108,15 @@ symbol.
 
 Treat every finding as dead code until its caller is verified. Remove genuine
 dead code. When a dynamic runtime boundary makes a finding a false positive,
-record the symbol in `[tool.skylos.whitelist].names` and a matching explanation
-in `[tool.skylos.whitelist.documented]` in `pyproject.toml`. Do not add
-speculative, bulk, or unexplained allow-list entries.
+run:
+
+```shell
+make skylos-allow NAME=symbol REASON="Verified runtime caller"
+```
+
+The helper refuses empty values and records the symbol and explanation in
+`[tool.skylos.whitelist]` in `pyproject.toml`. Do not add speculative, bulk, or
+unexplained allow-list entries.
 
 ## Test infrastructure
 

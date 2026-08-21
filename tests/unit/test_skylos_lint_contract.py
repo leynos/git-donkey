@@ -41,3 +41,21 @@ def test_skylos_allow_list_starts_empty() -> None:
 
     skylos = project_config["tool"]["skylos"]
     assert skylos["whitelist"]["names"] == []
+
+
+def test_skylos_allow_requires_name_and_reason() -> None:
+    """Keep named Skylos exceptions explicit and explained."""
+    makefile = (REPOSITORY_ROOT / "Makefile").read_text(encoding="utf-8")
+
+    required_fragments = (
+        "skylos-allow: ## Document one named Skylos exception, not an entry point",
+        "skylos-allow: export SKYLOS_NAME = $(value NAME)",
+        "skylos-allow: export SKYLOS_REASON = $(value REASON)",
+        'test -n "$${SKYLOS_NAME}"',
+        'test -n "$${SKYLOS_REASON}"',
+        "NAME is required for a named whitelist exception",
+        "REASON is required for a named whitelist exception",
+        '$(SKYLOS) whitelist "$${SKYLOS_NAME}" --reason "$${SKYLOS_REASON}"',
+    )
+
+    assert all(fragment in makefile for fragment in required_fragments)
