@@ -6,8 +6,13 @@ MDFORMAT_ALL ?= mdformat-all
 # uv means the pinned version is used regardless of what is on PATH.
 RUFF_VERSION ?= 0.15.22
 RUFF ?= $(UV_ENV) uv tool run ruff@$(RUFF_VERSION)
+# Pin ty likewise. This is the sole ty version declaration: CI runs
+# `make typecheck` and installs no separate ty. Diagnostics differ between ty
+# releases, so an unpinned ty makes CI fail on errors that never appear locally.
+TY_VERSION ?= 0.0.63
+TY ?= $(UV_ENV) uv tool run ty@$(TY_VERSION)
 TYPOS_VERSION ?= 1.48.0
-TOOLS = $(MDFORMAT_ALL) ty $(MDLINT) uv
+TOOLS = $(MDFORMAT_ALL) $(MDLINT) uv
 VENV_TOOLS = pytest
 UV_ENV = UV_CACHE_DIR=.uv-cache UV_TOOL_DIR=.uv-tools
 # Pylint targets shared by both passes.
@@ -90,9 +95,9 @@ lint: uv build ## Run linters
 	$(PYLINT_DF12) $(PYLINT_TARGETS)
 	$(UV_ENV) uv run ambrleaks tests
 
-typecheck: build ty ## Run typechecking
-	ty --version
-	ty check
+typecheck: build uv ## Run typechecking
+	$(TY) --version
+	$(TY) check
 
 markdownlint: spelling $(MDLINT) ## Lint Markdown files and enforce spelling
 	$(MDLINT) '**/*.md'

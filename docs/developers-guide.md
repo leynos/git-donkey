@@ -80,16 +80,24 @@ structured logging later:
 - `mode`, `worktree`, `marker`, `candidate_count`, `completed_count`, and
   `removed_count` provide diagnostic context for plonk cleanup decisions.
 
-## Ruff pinning
+## Tool pinning
 
-The `Makefile` pins Ruff with `RUFF_VERSION` and invokes it through the `RUFF`
-variable, which runs `uv tool run ruff@$(RUFF_VERSION)`. Every Ruff invocation
-therefore uses the pinned version regardless of which `ruff`, if any, is on
-`PATH`, so local runs cannot silently diverge from continuous integration.
+The `Makefile` pins Ruff with `RUFF_VERSION` and ty with `TY_VERSION`, and
+invokes each through the `RUFF` and `TY` variables, which run
+`uv tool run ruff@$(RUFF_VERSION)` and `uv tool run ty@$(TY_VERSION)`. Every
+invocation therefore uses the pinned version regardless of which `ruff` or `ty`,
+if any, is on `PATH`, so local runs cannot silently diverge from continuous
+integration.
 
-Keep `RUFF_VERSION`, the `ruff==` development dependency in `pyproject.toml`,
-and the continuous integration tool version in sync. Rule sets differ between
-Ruff releases, so a mismatch causes version-skew lint failures.
+Pin both deliberately. Rule sets differ between Ruff releases and diagnostics
+differ between ty releases, so an unpinned tool reports problems in one
+environment that never appear in the other.
+
+`TY_VERSION` is the sole ty version declaration: continuous integration runs
+`make typecheck` and installs no separate ty. Ruff is also installed as a
+development dependency and as a continuous integration tool, so keep
+`RUFF_VERSION`, the `ruff==` entry in `pyproject.toml`, and the
+`uv tool install ruff==` step in `.github/workflows/ci.yml` in step.
 
 ## Test infrastructure
 
