@@ -11,7 +11,11 @@ accepted = []
 [words.corrections]
 
 [patterns]
-ignore = []
+# The shared dictionary no longer blanket-ignores inline code spans, so
+# deliberate US spellings quoted as external API names need naming here.
+# documentation-style-guide.md cites `color` as the canonical example of
+# keeping US spelling for an external API.
+ignore = ["`color`"]
 
 [files]
 exclude = []
