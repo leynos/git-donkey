@@ -103,7 +103,7 @@ def test_remote_ref_parser_classifies_heads_and_tags(
     assert parsed_tags == tags, "parser must return tags, excluding peeled tag aliases"
 
 
-@dataclasses.dataclass
+@dataclasses.dataclass(slots=True)
 class _FakeGit:
     """Small plumbum-like Git command fake for adoption properties."""
 

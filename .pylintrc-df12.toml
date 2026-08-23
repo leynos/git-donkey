@@ -37,6 +37,7 @@ enable = [
     "typecheck-suppression-without-explanation",
     "prefer-snapshot-assertion",
     "prefer-snapshot-substring",
+    "prefer-slots-for-dataclass",
     "prefer-type-statement",
     "redundant-future-annotations",
 ]

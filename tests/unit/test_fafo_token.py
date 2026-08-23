@@ -24,7 +24,7 @@ if typ.TYPE_CHECKING:
     from pathlib import Path
 
 
-@dataclasses.dataclass
+@dataclasses.dataclass(slots=True)
 class _StubAuthInfo:
     """Container for stub device-flow metadata."""
 
@@ -46,7 +46,7 @@ def _stub_auth_info() -> _StubAuthInfo:
     )
 
 
-@dataclasses.dataclass
+@dataclasses.dataclass(slots=True)
 class _StubAuthenticator:
     """Stub authenticator that records device-flow calls."""
 

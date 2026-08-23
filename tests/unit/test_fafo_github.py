@@ -25,7 +25,7 @@ if typ.TYPE_CHECKING:
     from conftest import StubGitHub, StubUser
 
 
-@dataclasses.dataclass
+@dataclasses.dataclass(slots=True)
 class _StubResponse:
     """Stub API response payload for repository creation errors."""
 
@@ -173,7 +173,7 @@ def test_create_remote_repository_returns_existing_repo(
 ) -> None:
     """Existing repositories should be returned for adoption handling."""
 
-    @dataclasses.dataclass
+    @dataclasses.dataclass(slots=True)
     class _StubGitHub:
         login: str
 

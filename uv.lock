@@ -299,7 +299,7 @@ wheels = [
 [[package]]
 name = "df12-python-lints"
 version = "0.1.0"
-source = { git = "https://github.com/leynos/df12-python-lints?rev=v0.1.0#755b26f5792f71b37f3a9e656aef714ed98b2c3b" }
+source = { git = "https://github.com/leynos/df12-python-lints?rev=v0.2.0#9c835f35b0f1690597ade799c9c6a30bc5922959" }
 dependencies = [
     { name = "pylint" },
 ]
@@ -464,7 +464,7 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "df12-python-lints", git = "https://github.com/leynos/df12-python-lints?rev=v0.1.0" },
+    { name = "df12-python-lints", git = "https://github.com/leynos/df12-python-lints?rev=v0.2.0" },
     { name = "hypothesis" },
     { name = "interrogate", specifier = ">=1.7.0" },
     { name = "pylint", specifier = ">=3.3" },

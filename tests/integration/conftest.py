@@ -15,7 +15,7 @@ import pytest
 from git import Repo
 
 
-@dataclasses.dataclass(frozen=True)
+@dataclasses.dataclass(frozen=True, slots=True)
 class StubCommands:
     """Filesystem locations for generated command stubs."""
 

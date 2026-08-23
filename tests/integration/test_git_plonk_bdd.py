@@ -26,7 +26,7 @@ from git_donkey import cli, donkey, plonk
 from tests.integration.conftest import _setup_repo
 
 
-@dataclasses.dataclass(frozen=True)
+@dataclasses.dataclass(frozen=True, slots=True)
 class PlonkScenario:
     """Repository state shared by BDD steps."""
 
