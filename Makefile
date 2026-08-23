@@ -93,6 +93,8 @@ lint: uv build ## Run linters
 	pyscn check git_donkey tests --skip-clones
 	$(PYLINT_PYPY) $(PYLINT_TARGETS)
 	$(PYLINT_DF12) $(PYLINT_TARGETS)
+	# ambrleaks is a console script of the df12-python-lints dev dependency, so
+	# `uv run` finds it in the synced venv; it is not a separate distribution.
 	$(UV_ENV) uv run ambrleaks tests
 
 typecheck: build uv ## Run typechecking
