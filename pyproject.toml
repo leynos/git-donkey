@@ -34,7 +34,7 @@ dev = [
     "pytest-bdd>=8.1.0,<9",
     "syrupy>=5.5.3,<6",
     "pylint>=3.3",
-    "df12-python-lints @ git+https://github.com/leynos/df12-python-lints@v0.1.0",
+    "df12-python-lints @ git+https://github.com/leynos/df12-python-lints@v0.2.0",
 ]
 
 [tool.ruff]
