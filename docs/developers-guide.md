@@ -82,13 +82,14 @@ structured logging later:
 
 ## Ruff pinning
 
-The `Makefile` pins Ruff with `RUFF_VERSION`. The `ruff` target first verifies
-that the `ruff` executable exists, then calls
-`scripts/check-ruff-version.sh "$(RUFF_VERSION)"`.
+The `Makefile` pins Ruff with `RUFF_VERSION` and invokes it through the `RUFF`
+variable, which runs `uv tool run ruff@$(RUFF_VERSION)`. Every Ruff invocation
+therefore uses the pinned version regardless of which `ruff`, if any, is on
+`PATH`, so local runs cannot silently diverge from continuous integration.
 
-Keep `RUFF_VERSION`, the helper script, and continuous integration tool
-versions in sync. The helper exists, so the Make target stays short enough for
-Makefile linting while keeping the version check easy to read and reuse.
+Keep `RUFF_VERSION`, the `ruff==` development dependency in `pyproject.toml`,
+and the continuous integration tool version in sync. Rule sets differ between
+Ruff releases, so a mismatch causes version-skew lint failures.
 
 ## Test infrastructure
 
