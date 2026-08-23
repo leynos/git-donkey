@@ -48,10 +48,15 @@ class Dictionary:
     excluded_files: tuple[str, ...] = ()
 
 
+def _is_string_list(value: object) -> typ.TypeGuard[list[str]]:
+    """Return whether ``value`` is a list containing only strings."""
+    return isinstance(value, list) and all(isinstance(item, str) for item in value)
+
+
 def _string_list(table: cabc.Mapping[str, object], key: str) -> tuple[str, ...]:
     """Read and validate a list of strings from a TOML table."""
     value = table.get(key, [])
-    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+    if not _is_string_list(value):
         message = f"{key!r} must be a list of strings"
         raise TypeError(message)
     return tuple(sorted(set(value)))
