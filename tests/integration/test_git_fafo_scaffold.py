@@ -45,7 +45,7 @@ def test_git_fafo_existing_repo_early_return(
     exit_code = fafo.run_git_fafo("demo-repo", "python", token=auth_value)
 
     assert exit_code == 1, "expected git-fafo to return error for existing path"
-    assert called == {}, "expected no git-fafo commands to run"
+    assert not called, "expected no git-fafo commands to run"
     assert "You did that one already!" in capsys.readouterr().err, (
         "expected early-return message on stderr"
     )

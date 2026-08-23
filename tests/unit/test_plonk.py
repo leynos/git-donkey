@@ -9,6 +9,7 @@ Git repositories.
 
 from __future__ import annotations
 
+import re
 import typing as typ
 from pathlib import Path
 from types import SimpleNamespace
@@ -17,11 +18,38 @@ import pytest
 from git import Repo
 from hypothesis import given
 from hypothesis import strategies as st
+from syrupy.matchers import path_type
 
 from git_donkey import cli, plonk, plonk_policy
 
 if typ.TYPE_CHECKING:
     from syrupy.assertion import SnapshotAssertion
+
+
+def _redact_worktree_paths(data: str, _: object) -> str:
+    """Rewrite absolute git-donkey worktree mounts to a relative placeholder.
+
+    Parameters
+    ----------
+    data : str
+        The rendered summary text captured by the snapshot.
+    _ : object
+        The syrupy path match, unused by this replacer.
+
+    Returns
+    -------
+    str
+        ``data`` with the ``/repo.worktrees`` mount prefix replaced by a
+        ``<worktrees>`` placeholder so recorded snapshots contain no absolute
+        POSIX paths for ``ambrleaks`` to flag.
+    """
+    return re.sub(r"/repo\.worktrees\b", "<worktrees>", data)
+
+
+# Redact absolute worktree paths at record time so snapshots stay leak-free.
+_WORKTREE_PATH_MATCHER = path_type(
+    mapping={"": (str,)}, replacer=_redact_worktree_paths
+)
 
 
 _ROADMAP_WORDS = st.text(
@@ -413,7 +441,9 @@ def test_dry_run_modes_never_mutate_and_report_mode_specific_plans(
     )
 
 
-def test_dry_run_summary_reports_planned_actions() -> None:
+def test_dry_run_summary_reports_planned_actions(
+    snapshot: SnapshotAssertion,
+) -> None:
     """Dry-run summaries should name planned work instead of completed removals."""
     result = plonk._PlonkResult(
         mode=plonk._PlonkMode.HARD,
@@ -422,13 +452,9 @@ def test_dry_run_summary_reports_planned_actions() -> None:
         removed_branches=("issue-123-fix",),
     )
 
-    assert plonk._render_summary(result) == (
-        "git-plonk: mode=hard dry-run\n"
-        "Planned worktree removals:\n"
-        "- /repo.worktrees/issue-123-fix\n"
-        "Planned branch deletions:\n"
-        "- issue-123-fix"
-    ), "expected dry-run summary to report planned actions"
+    assert plonk._render_summary(result) == snapshot(matcher=_WORKTREE_PATH_MATCHER), (
+        "expected dry-run summary to report planned actions"
+    )
 
 
 def test_soft_summary_reports_nothing_to_clean_after_inspection() -> None:
@@ -464,6 +490,6 @@ def test_summary_rendering_matches_snapshot(snapshot: SnapshotAssertion) -> None
         cleaned_paths=(Path("/repo.worktrees/issue-123-fix/target"),),
     )
 
-    assert plonk._render_summary(result) == snapshot, (
+    assert plonk._render_summary(result) == snapshot(matcher=_WORKTREE_PATH_MATCHER), (
         "expected summary rendering to match snapshot"
     )

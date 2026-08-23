@@ -92,7 +92,7 @@ def _parse_worktree_porcelain(repo: Repo) -> list[dict[str, object]]:
     stanzas: list[dict[str, object]] = []
     current: dict[str, object] = {}
     for part in parts:
-        if part == "":
+        if not part:
             if current:
                 stanzas.append(current)
                 current = {}
@@ -233,6 +233,11 @@ def validate_slug(value: str, *, label: str, prefix: str) -> str:
     -------
     str
         The validated input value.
+
+    Raises
+    ------
+    SystemExit
+        If ``value`` contains characters outside the allowed slug set.
 
     """
     if _SLUG_PATTERN.fullmatch(value):
