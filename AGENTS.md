@@ -102,9 +102,12 @@ When implementing changes, adhere to the following testing procedures:
     - **Testing:** Passes all relevant unit and behavioural tests according to
       the guidelines above (run `make test` to verify).
     - **Linting:** Passes `make lint`, including Skylos dead-code detection.
-      Remove confirmed dead code. For a verified false positive, use
-      `make skylos-allow NAME=symbol REASON="Runtime caller"` to add the
-      reasoned allow-list entry.
+      Remove confirmed dead code. For an implicit runtime caller, first add a
+      narrowly typed Skylos entry-point rule with its caller-specific reason.
+      Only when that cannot model a verified false positive, use
+      `make skylos-allow SYMBOL=symbol REASON="Runtime caller"` to add the
+      reasoned allow-list entry. Do not use `NAME`: WSL injects it with the
+      hostname.
     - **Formatting:** Adheres to formatting standards (run `make check-fmt` to
       verify, use `make fmt` to apply formatting).
     - **Typechecking:** Passes type checking (`make typecheck`).

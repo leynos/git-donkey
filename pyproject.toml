@@ -25,6 +25,7 @@ git-donkey-template = "git_donkey.cli:git_donkey_template"
 [dependency-groups]
 dev = [
     "pytest",
+    "PyYAML>=6.0.3,<7",
     "hypothesis",
     "ruff",
     "pyright",

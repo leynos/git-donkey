@@ -9,8 +9,12 @@ TYPOS_VERSION ?= 1.48.0
 TOOLS = $(MDFORMAT_ALL) $(MDLINT) uv
 VENV_TOOLS = pytest
 UV_ENV = UV_CACHE_DIR=.uv-cache UV_TOOL_DIR=.uv-tools
-SKYLOS = $(UV_ENV) uv tool run --from 'skylos==$(SKYLOS_VERSION)' skylos \
-	--config-file pyproject.toml
+# Skylos parses source using its own runtime AST. Python 3.14 prevents phantom
+# dead-code findings when source uses syntax unavailable to an older runtime.
+SKYLOS_CLI = $(UV_ENV) uv tool run --python 3.14 --from 'skylos==$(SKYLOS_VERSION)' skylos
+SKYLOS = $(SKYLOS_CLI) --config-file pyproject.toml
+SKYLOS_PRODUCTION_TARGETS ?= git_donkey
+SKYLOS_EXCLUDE_FOLDERS ?= tests
 TY = $(UV_ENV) uv tool run ty==$(TY_VERSION)
 
 .PHONY: help all clean build build-release lint fmt check-fmt \
@@ -81,15 +85,16 @@ lint: ruff ## Run linters
 	ruff check
 	$(UV_ENV) uv run interrogate --fail-under 100 git_donkey
 	pyscn check git_donkey tests --skip-clones
-	$(SKYLOS) git_donkey --category dead_code --gate --format concise \
+	$(SKYLOS) $(SKYLOS_PRODUCTION_TARGETS) --exclude $(SKYLOS_EXCLUDE_FOLDERS) \
+		--category dead_code --gate --format concise \
 		--no-upload --no-provenance --no-grep-verify
 
-skylos-allow: export SKYLOS_NAME = $(value NAME)
+skylos-allow: export SKYLOS_SYMBOL = $(value SYMBOL)
 skylos-allow: export SKYLOS_REASON = $(value REASON)
 skylos-allow: ## Document one named Skylos exception, not an entry point
-	@test -n "$${SKYLOS_NAME}" || { printf "Error: NAME is required for a named whitelist exception\n" >&2; exit 2; }
+	@test -n "$${SKYLOS_SYMBOL}" || { printf "Error: SYMBOL is required for a named whitelist exception\n" >&2; exit 2; }
 	@test -n "$${SKYLOS_REASON}" || { printf "Error: REASON is required for a named whitelist exception\n" >&2; exit 2; }
-	$(SKYLOS) whitelist "$${SKYLOS_NAME}" --reason "$${SKYLOS_REASON}"
+	$(SKYLOS_CLI) whitelist "$${SKYLOS_SYMBOL}" --reason "$${SKYLOS_REASON}"
 
 typecheck: build ## Run typechecking
 	$(TY) --version

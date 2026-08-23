@@ -100,23 +100,49 @@ than modifying application import paths.
 
 ## Dead-code detection
 
-`make lint` runs Skylos `4.33.2` after the existing Ruff, docstring, and
-static-analysis checks. The production-only scan covers `git_donkey`, reports
+`make lint` has four Python lint tiers, which run in this order:
+
+1. Ruff performs fast source and docstring-style checks.
+2. `interrogate` requires complete docstring coverage.
+3. `pyscn` applies static analysis to application and test code.
+4. Skylos performs strict production dead-code detection.
+
+Skylos `4.33.2` scans only `git_donkey`, explicitly excludes `tests`, reports
 only dead-code findings, does not upload results or collect provenance, and
-fails the local gate and continuous integration when it finds an unexplained
-symbol.
+blocks local linting and continuous integration on unexplained code. Skylos
+parses source with its own runtime Abstract Syntax Tree (AST), so its
+command-only CLI macro pins Python 3.14. The pin prevents newer Python syntax
+from producing phantom dead-code findings. The separate `$(SKYLOS)` macro adds
+scan-only options such as `--config-file` for the lint target.
 
 Treat every finding as dead code until its caller is verified. Remove genuine
-dead code. When a dynamic runtime boundary makes a finding a false positive,
-run:
+dead code. For a framework callback, protocol implementation, or another
+implicit runtime caller, first add a narrow typed entry-point rule in
+`[tool.skylos.dead_code]` with the fully qualified symbol and a caller-specific
+reason. Only when no entry-point rule can model a verified false positive, run:
 
 ```shell
-make skylos-allow NAME=symbol REASON="Verified runtime caller"
+make skylos-allow SYMBOL=symbol REASON="Verified runtime caller"
 ```
 
-The helper refuses empty values and records the symbol and explanation in
-`[tool.skylos.whitelist]` in `pyproject.toml`. Do not add speculative, bulk, or
-unexplained allow-list entries.
+The helper requires both values, invokes `skylos whitelist` before its reason,
+and records the symbol and explanation in `[tool.skylos.whitelist]` in
+`pyproject.toml`. Use `SYMBOL`, not `NAME`: Windows Subsystem for Linux (WSL)
+injects `NAME` with the hostname. Do not add speculative, bulk, or unexplained
+allow-list entries.
+
+`tests/unit/test_skylos_lint_contract.py` parses the Makefile with Makeutil and
+checks the Skylos and continuous-integration boundaries. Before running the
+full test suite locally, install the same pinned parser used by CI:
+
+```shell
+rustup toolchain install nightly-2026-05-28 --profile minimal
+RUSTFLAGS="-Zpolonius=next" cargo +nightly-2026-05-28 install \
+  --git https://github.com/leynos/makeutil \
+  --rev 29fc5a1634ffbaa18a773eed9dff1b2838a45d9c \
+  --locked --force makeutil
+make test
+```
 
 ## Test infrastructure
 
