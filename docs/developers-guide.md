@@ -125,11 +125,12 @@ reason. Only when no entry-point rule can model a verified false positive, run:
 make skylos-allow SYMBOL=symbol REASON="Verified runtime caller"
 ```
 
-The helper requires both values, invokes `skylos whitelist` before its reason,
-and records the symbol and explanation in `[tool.skylos.whitelist]` in
-`pyproject.toml`. Use `SYMBOL`, not `NAME`: Windows Subsystem for Linux (WSL)
-injects `NAME` with the hostname. Do not add speculative, bulk, or unexplained
-allow-list entries.
+The helper requires both values to contain non-whitespace text, invokes
+`skylos whitelist` before its reason, and records the symbol and explanation in
+`[tool.skylos.whitelist]` in `pyproject.toml`. It rejects a missing or
+whitespace-only value with exit status 2. Use `SYMBOL`, not `NAME`: Windows
+Subsystem for Linux (WSL) injects `NAME` with the hostname. Do not add
+speculative, bulk, or unexplained allow-list entries.
 
 `tests/unit/test_skylos_lint_contract.py` parses the Makefile with Makeutil and
 checks the Skylos and continuous-integration boundaries. Before running the

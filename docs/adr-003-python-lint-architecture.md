@@ -49,6 +49,8 @@ phantom dead-code finding.
 When an implicit runtime caller is verified, a typed Skylos entry-point rule is
 preferred. A documented allow-list exception is permitted only where that rule
 cannot model the boundary, and it must include a caller-specific reason.
+`make skylos-allow` accepts only non-whitespace `SYMBOL` and `REASON` values,
+returning exit status 2 before Skylos runs when either value is absent.
 
 ## Consequences
 
