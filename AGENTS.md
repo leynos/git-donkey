@@ -107,7 +107,8 @@ When implementing changes, adhere to the following testing procedures:
       Only when that cannot model a verified false positive, use
       `make skylos-allow SYMBOL=symbol REASON="Runtime caller"` to add the
       reasoned allow-list entry. Do not use `NAME`: WSL injects it with the
-      hostname.
+      hostname. Both `SYMBOL` and `REASON` must contain non-whitespace text;
+      whitespace-only values are rejected with exit status 2.
     - **Formatting:** Adheres to formatting standards (run `make check-fmt` to
       verify, use `make fmt` to apply formatting).
     - **Typechecking:** Passes type checking (`make typecheck`).
