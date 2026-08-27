@@ -3,13 +3,25 @@ NIXIE ?= nixie
 MDFORMAT_ALL ?= mdformat-all
 # Pin Ruff so local and CI runs agree; keep in sync with .github/workflows/ci.yml.
 RUFF_VERSION ?= 0.15.12
+SKYLOS_VERSION ?= 4.33.2
+TY_VERSION ?= 0.0.73
 TYPOS_VERSION ?= 1.48.0
-TOOLS = $(MDFORMAT_ALL) ty $(MDLINT) uv
+TOOLS = $(MDFORMAT_ALL) $(MDLINT) uv
 VENV_TOOLS = pytest
 UV_ENV = UV_CACHE_DIR=.uv-cache UV_TOOL_DIR=.uv-tools
+# Skylos parses source using its own runtime AST. Python 3.14 prevents phantom
+# dead-code findings when source uses syntax unavailable to an older runtime.
+SKYLOS_CLI = $(UV_ENV) uv tool run --python 3.14 --from 'skylos==$(SKYLOS_VERSION)' skylos
+SKYLOS = $(SKYLOS_CLI) --config-file pyproject.toml
+SKYLOS_PRODUCTION_TARGETS ?= git_donkey
+SKYLOS_EXCLUDE_FOLDERS ?= tests
+SKYLOS_WHITELIST_LOCK ?= .skylos-whitelist.lock
+TY = $(UV_ENV) uv tool run ty==$(TY_VERSION)
 
 .PHONY: help all clean build build-release lint fmt check-fmt \
-        markdownlint nixie spelling spelling-helper-test test typecheck ruff \
+        markdownlint nixie spelling spelling-helper-test skylos-allow test typecheck \
+        makeutil \
+        ruff \
         $(TOOLS) $(VENV_TOOLS)
 .PHONY: pytest test
 
@@ -62,6 +74,9 @@ ruff: ## Verify Ruff is installed and pinned to $(RUFF_VERSION)
 	$(call ensure_tool,ruff)
 	@scripts/check-ruff-version.sh "$(RUFF_VERSION)"
 
+makeutil: ## Verify the Makefile parser required by the contract tests
+	$(call ensure_tool,makeutil)
+
 fmt: ruff $(MDFORMAT_ALL) ## Format sources
 	ruff format
 	ruff check --select I --fix
@@ -75,10 +90,20 @@ lint: ruff ## Run linters
 	ruff check
 	$(UV_ENV) uv run interrogate --fail-under 100 git_donkey
 	pyscn check git_donkey tests --skip-clones
+	$(SKYLOS) $(SKYLOS_PRODUCTION_TARGETS) --exclude $(SKYLOS_EXCLUDE_FOLDERS) \
+		--category dead_code --gate --format concise \
+		--no-upload --no-provenance --no-grep-verify
 
-typecheck: build ty ## Run typechecking
-	ty --version
-	ty check
+skylos-allow: export SKYLOS_SYMBOL = $(value SYMBOL)
+skylos-allow: export SKYLOS_REASON = $(value REASON)
+skylos-allow: ## Document one named Skylos exception, not an entry point
+	@case "$${SKYLOS_SYMBOL}" in *[![:space:]]*) ;; *) printf "Error: SYMBOL is required for a named whitelist exception\n" >&2; exit 2;; esac
+	@case "$${SKYLOS_REASON}" in *[![:space:]]*) ;; *) printf "Error: REASON is required for a named whitelist exception\n" >&2; exit 2;; esac
+	flock "$(SKYLOS_WHITELIST_LOCK)" $(SKYLOS_CLI) whitelist "$${SKYLOS_SYMBOL}" --reason "$${SKYLOS_REASON}"
+
+typecheck: build ## Run typechecking
+	$(TY) --version
+	$(TY) check --extra-search-path scripts
 
 markdownlint: spelling $(MDLINT) ## Lint Markdown files and enforce spelling
 	$(MDLINT) '**/*.md'
@@ -109,7 +134,7 @@ nixie: ## Validate Mermaid diagrams
 	$(call ensure_tool,nixie)
 	$(NIXIE) --no-sandbox
 
-test: build uv $(VENV_TOOLS) ## Run tests
+test: build uv $(VENV_TOOLS) makeutil ## Run tests
 	$(UV_ENV) uv run pytest -v -n auto
 
 help: ## Show available targets

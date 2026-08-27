@@ -288,7 +288,6 @@ Then implement `git_donkey.plonk` with:
 - `_GitWorktreeAdapter`, containing GitPython-backed history, worktree removal,
   and local branch deletion.
 - `_FilesystemCleanupAdapter`, containing generated-directory removal.
-- `_remove_soft_targets(worktree_path: Path) -> list[Path]`.
 - `_render_summary(result: _PlonkResult) -> str`.
 - `run_git_plonk(*, soft: bool = False, hard: bool = False) -> int`.
 
