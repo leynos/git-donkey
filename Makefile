@@ -36,9 +36,11 @@ SKYLOS_CLI = $(UV_ENV) uv tool run --python 3.14 --from 'skylos==$(SKYLOS_VERSIO
 SKYLOS = $(SKYLOS_CLI) --config-file pyproject.toml
 SKYLOS_PRODUCTION_TARGETS ?= git_donkey
 SKYLOS_EXCLUDE_FOLDERS ?= tests
+SKYLOS_WHITELIST_LOCK ?= .skylos-whitelist.lock
 
 .PHONY: help all clean build build-release lint fmt check-fmt \
         markdownlint nixie spelling spelling-helper-test skylos-allow test typecheck \
+        makeutil \
         $(TOOLS) $(VENV_TOOLS)
 .PHONY: pytest test
 
@@ -87,6 +89,9 @@ $(VENV_TOOLS): ## Verify required CLI tools in venv
 	$(call ensure_tool_venv,$@)
 endif
 
+makeutil: ## Verify the Makefile parser required by the contract tests
+	$(call ensure_tool,makeutil)
+
 fmt: uv $(MDFORMAT_ALL) ## Format sources
 	$(RUFF) format
 	$(RUFF) check --select I --fix
@@ -118,7 +123,7 @@ skylos-allow: export SKYLOS_REASON = $(value REASON)
 skylos-allow: ## Document one named Skylos exception, not an entry point
 	@case "$${SKYLOS_SYMBOL}" in *[![:space:]]*) ;; *) printf "Error: SYMBOL is required for a named whitelist exception\n" >&2; exit 2;; esac
 	@case "$${SKYLOS_REASON}" in *[![:space:]]*) ;; *) printf "Error: REASON is required for a named whitelist exception\n" >&2; exit 2;; esac
-	$(SKYLOS_CLI) whitelist "$${SKYLOS_SYMBOL}" --reason "$${SKYLOS_REASON}"
+	flock "$(SKYLOS_WHITELIST_LOCK)" $(SKYLOS_CLI) whitelist "$${SKYLOS_SYMBOL}" --reason "$${SKYLOS_REASON}"
 
 typecheck: build uv ## Run typechecking
 	$(TY) --version
@@ -158,7 +163,7 @@ nixie: ## Validate Mermaid diagrams
 	$(call ensure_tool,nixie)
 	$(NIXIE) --no-sandbox
 
-test: build uv $(VENV_TOOLS) ## Run tests
+test: build uv $(VENV_TOOLS) makeutil ## Run tests
 	$(UV_ENV) uv run pytest -v -n auto
 
 help: ## Show available targets
