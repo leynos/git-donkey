@@ -46,6 +46,59 @@ _MAKEUTIL_INSTALL_TOKENS: typ.Final = (
     "--force",
     "makeutil",
 )
+_SKYLOS_CLI_TOKENS: typ.Final = (
+    "$(UV_ENV)",
+    "uv",
+    "tool",
+    "run",
+    "--python",
+    "3.14",
+    "--from",
+    "skylos==$(SKYLOS_VERSION)",
+    "skylos",
+)
+_SKYLOS_SCAN_TOKENS: typ.Final = (
+    "$(SKYLOS_CLI)",
+    "--config-file",
+    "pyproject.toml",
+)
+_SKYLOS_LINT_TOKENS: typ.Final = (
+    "$(SKYLOS)",
+    "$(SKYLOS_PRODUCTION_TARGETS)",
+    "--exclude",
+    "$(SKYLOS_EXCLUDE_FOLDERS)",
+    "--category",
+    "dead_code",
+    "--gate",
+    "--format",
+    "concise",
+    "--no-upload",
+    "--no-provenance",
+    "--no-grep-verify",
+)
+_SKYLOS_WHITELIST_TOKENS: typ.Final = (
+    "flock",
+    "$(SKYLOS_WHITELIST_LOCK)",
+    "$(SKYLOS_CLI)",
+    "whitelist",
+    "$${SKYLOS_SYMBOL}",
+    "--reason",
+    "$${SKYLOS_REASON}",
+)
+_SKYLOS_LINT_COMMAND_PREFIX: typ.Final = ("$(SKYLOS)",)
+_SKYLOS_WHITELIST_COMMAND_PREFIX: typ.Final = ("flock",)
+_SKYLOS_VERSION_TOKENS: typ.Final = ("4.33.2",)
+_SKYLOS_PRODUCTION_TARGET_TOKENS: typ.Final = ("git_donkey",)
+_SKYLOS_EXCLUDE_FOLDER_TOKENS: typ.Final = ("tests",)
+_SKYLOS_WHITELIST_LOCK: typ.Final = ".skylos-whitelist.lock"
+_SKYLOS_WHITELIST_LOCK_TOKENS: typ.Final = (_SKYLOS_WHITELIST_LOCK,)
+_TEST_PREREQUISITES: typ.Final = ("build", "uv", "$(VENV_TOOLS)", "makeutil")
+_FULL_SUITE_WORKFLOW_JOBS: typ.Final = frozenset((
+    (".github/workflows/ci.yml", "lint-test"),
+))
+_EXPECTED_SKYLOS_WHITELIST_NAMES: typ.Final = frozenset[str]()
+_EXPECTED_SKYLOS_DOCUMENTED_WHITELIST_NAMES: typ.Final = frozenset[str]()
+_EXPECTED_SKYLOS_ENTRYPOINT_NAMES: typ.Final = frozenset[str]()
 _SHELL_ARGUMENT_TEXT: typ.Final = st.builds(
     lambda prefix, content, suffix: f"{prefix}{content}{suffix}",
     st.text(alphabet=" \t", max_size=4),
@@ -144,6 +197,14 @@ def _recipe_tokens(target: str) -> tuple[tuple[str, ...], ...]:
     )
 
 
+def _rule_prerequisites(target: str) -> tuple[str, ...]:
+    """Return parsed prerequisites for ``target``."""
+    return _text_sequence(
+        _sole_recipe_rule(target).get("prerequisites"),
+        subject=f"{target} prerequisites",
+    )
+
+
 def _workflow_job(workflow_path: str, job_name: str) -> dict[str, object]:
     """Return a named GitHub Actions job."""
     workflow = yaml.safe_load((REPOSITORY_ROOT / workflow_path).read_text())
@@ -166,6 +227,44 @@ def _sole_workflow_step(
         f"{step_name!r} step, found {len(matches)}"
     )
     return matches[0]
+
+
+def _step_invokes_full_suite(step: dict[str, object]) -> bool:
+    """Return whether a workflow step invokes the full pytest suite."""
+    uses = step.get("uses")
+    run = step.get("run")
+    return (isinstance(uses, str) and "generate-coverage" in uses) or (
+        isinstance(run, str) and ("make test" in run or "pytest" in run)
+    )
+
+
+def _full_suite_workflow_jobs() -> frozenset[tuple[str, str]]:
+    """Return every workflow job that invokes the repository's full pytest suite."""
+    jobs_with_full_suites: set[tuple[str, str]] = set()
+    workflow_directory = REPOSITORY_ROOT / ".github" / "workflows"
+    for workflow_file in workflow_directory.glob("*.yml"):
+        workflow = _mapping(
+            yaml.safe_load(workflow_file.read_text()),
+            subject=f"{workflow_file} workflow",
+        )
+        jobs = _mapping(workflow.get("jobs"), subject=f"{workflow_file} jobs")
+        for job_name, job in jobs.items():
+            if not isinstance(job_name, str):
+                continue
+            job_mapping = _mapping(job, subject=f"{workflow_file} job {job_name!r}")
+            raw_steps = job_mapping.get("steps")
+            if not isinstance(raw_steps, list):
+                continue
+            steps = _objects(
+                raw_steps, subject=f"{workflow_file} job {job_name!r} steps"
+            )
+            invokes_full_suite = any(_step_invokes_full_suite(step) for step in steps)
+            if invokes_full_suite:
+                jobs_with_full_suites.add((
+                    str(workflow_file.relative_to(REPOSITORY_ROOT)),
+                    job_name,
+                ))
+    return frozenset(jobs_with_full_suites)
 
 
 def _run_skylos_allow(*arguments: str) -> subprocess.CompletedProcess[str]:
@@ -214,70 +313,63 @@ def _assert_makeutil_installation(command: object, *, contract: str) -> None:
 
 def test_lint_recipe_runs_the_production_dead_code_gate() -> None:
     """``make lint`` must run the strict production-only Skylos scan."""
-    assert _variable_tokens("SKYLOS_VERSION") == ("4.33.2",), (
+    assert _variable_tokens("SKYLOS_VERSION") == _SKYLOS_VERSION_TOKENS, (
         "Skylos version contract must pin 4.33.2"
     )
-    assert _variable_tokens("SKYLOS_PRODUCTION_TARGETS") == ("git_donkey",), (
-        "Skylos production-target contract must scan git_donkey"
-    )
-    assert _variable_tokens("SKYLOS_EXCLUDE_FOLDERS") == ("tests",), (
-        "Skylos exclusion contract must omit tests"
-    )
+    assert (
+        _variable_tokens("SKYLOS_PRODUCTION_TARGETS")
+        == _SKYLOS_PRODUCTION_TARGET_TOKENS
+    ), "Skylos production-target contract must scan git_donkey"
+    assert (
+        _variable_tokens("SKYLOS_EXCLUDE_FOLDERS") == _SKYLOS_EXCLUDE_FOLDER_TOKENS
+    ), "Skylos exclusion contract must omit tests"
     skylos_commands = [
-        command for command in _recipe_tokens("lint") if command[:1] == ("$(SKYLOS)",)
+        command
+        for command in _recipe_tokens("lint")
+        if command[:1] == _SKYLOS_LINT_COMMAND_PREFIX
     ]
 
-    assert skylos_commands == [
-        (
-            "$(SKYLOS)",
-            "$(SKYLOS_PRODUCTION_TARGETS)",
-            "--exclude",
-            "$(SKYLOS_EXCLUDE_FOLDERS)",
-            "--category",
-            "dead_code",
-            "--gate",
-            "--format",
-            "concise",
-            "--no-upload",
-            "--no-provenance",
-            "--no-grep-verify",
-        )
-    ], "Skylos lint command must strictly scan only production dead code"
+    assert skylos_commands == [_SKYLOS_LINT_TOKENS], (
+        "Skylos lint command must strictly scan only production dead code"
+    )
 
 
 def test_whitelist_target_uses_the_command_only_skylos_cli() -> None:
     """``skylos whitelist`` must precede its symbol and scan-only options."""
-    assert _variable_tokens("SKYLOS_CLI") == (
-        "$(UV_ENV)",
-        "uv",
-        "tool",
-        "run",
-        "--python",
-        "3.14",
-        "--from",
-        "skylos==$(SKYLOS_VERSION)",
-        "skylos",
-    ), "Skylos CLI must pin Python 3.14 and the configured Skylos release"
-    assert _variable_tokens("SKYLOS") == (
-        "$(SKYLOS_CLI)",
-        "--config-file",
-        "pyproject.toml",
-    ), "Skylos scan macro must add only the scan configuration file"
+    assert _variable_tokens("SKYLOS_CLI") == _SKYLOS_CLI_TOKENS, (
+        "Skylos CLI must pin Python 3.14 and the configured Skylos release"
+    )
+    assert _variable_tokens("SKYLOS") == _SKYLOS_SCAN_TOKENS, (
+        "Skylos scan macro must add only the scan configuration file"
+    )
+    assert _variable_tokens("SKYLOS_WHITELIST_LOCK") == _SKYLOS_WHITELIST_LOCK_TOKENS, (
+        "Skylos whitelist lock contract must use the ignored local lock file"
+    )
 
     whitelist_commands = [
         command
         for command in _recipe_tokens("skylos-allow")
-        if command[:1] == ("$(SKYLOS_CLI)",)
+        if command[:1] == _SKYLOS_WHITELIST_COMMAND_PREFIX
     ]
-    assert whitelist_commands == [
-        (
-            "$(SKYLOS_CLI)",
-            "whitelist",
-            "$${SKYLOS_SYMBOL}",
-            "--reason",
-            "$${SKYLOS_REASON}",
-        )
-    ], "Skylos whitelist command must dispatch before its reason option"
+    assert whitelist_commands == [_SKYLOS_WHITELIST_TOKENS], (
+        "Skylos whitelist command must lock and dispatch before its reason option"
+    )
+
+
+def test_test_target_requires_the_makefile_parser() -> None:
+    """``make test`` must verify Makeutil before contract tests run."""
+    assert _rule_prerequisites("test") == _TEST_PREREQUISITES, (
+        "test target must require the pinned Makefile parser alongside its "
+        "existing build and virtual-environment prerequisites"
+    )
+
+
+def test_whitelist_lock_is_ignored() -> None:
+    """The local whitelist lock must not be committed as repository state."""
+    ignored_paths = frozenset((REPOSITORY_ROOT / ".gitignore").read_text().splitlines())
+    assert _SKYLOS_WHITELIST_LOCK in ignored_paths, (
+        "Skylos whitelist lock contract must ignore the local flock path"
+    )
 
 
 @hyp.settings(max_examples=25, deadline=None)
@@ -335,15 +427,19 @@ Path(os.environ[\"SKYLOS_ARGUMENTS_PATH\"]).write_text(
         recorder_path.chmod(0o755)
         environment = _skylos_allow_environment(f"SYMBOL={symbol}", f"REASON={reason}")
         environment["SKYLOS_ARGUMENTS_PATH"] = str(arguments_path)
+        lock_path = temporary_path / "skylos-whitelist.lock"
         completed = subprocess.run(  # noqa: S603 - fixed Make target and recorder.
             _make_command(
                 "--no-print-directory",
+                "-f",
+                str(REPOSITORY_ROOT / "Makefile"),
                 f"SKYLOS_CLI={recorder_path}",
+                f"SKYLOS_WHITELIST_LOCK={lock_path}",
                 "skylos-allow",
             ),
             capture_output=True,
             check=False,
-            cwd=REPOSITORY_ROOT,
+            cwd=temporary_path,
             env=environment,
             text=True,
         )
@@ -378,42 +474,57 @@ def test_skylos_configuration_is_strict_with_no_unverified_exceptions() -> None:
     documented = _mapping(
         whitelist.get("documented"), subject="documented Skylos whitelist"
     )
+    dead_code = _mapping(
+        skylos.get("dead_code", {}), subject="Skylos dead-code configuration"
+    )
+    entrypoints = _objects(
+        dead_code.get("entrypoints", []), subject="Skylos typed entry points"
+    )
+    entrypoint_names = frozenset(entrypoint.get("name") for entrypoint in entrypoints)
 
     assert gate.get("strict") is True, (
         "Skylos gate configuration must enable strict mode"
     )
-    assert whitelist.get("names") == [], (
-        "Skylos whitelist must remain empty without verified false positives"
+    assert set(_text_sequence(whitelist.get("names"), subject="Skylos whitelist")) == (
+        _EXPECTED_SKYLOS_WHITELIST_NAMES
+    ), "Skylos whitelist names must match the consciously approved exception set"
+    assert frozenset(documented) == _EXPECTED_SKYLOS_DOCUMENTED_WHITELIST_NAMES, (
+        "Skylos documented whitelist must match the consciously approved exception set"
     )
-    assert documented == {}, (
-        "Skylos documented whitelist must remain empty without verified false positives"
+    assert all(isinstance(name, str) for name in entrypoint_names), (
+        "Skylos typed entry points must identify every approved symbol by name"
     )
-
-
-def test_coverage_ci_installs_the_pinned_makefile_parser() -> None:
-    """The isolated full-suite coverage job must install Makeutil independently."""
-    workflow_path = ".github/workflows/ci.yml"
-    job_name = "lint-test"
-    coverage_job = _workflow_job(workflow_path, job_name)
-    environment = _mapping(
-        coverage_job.get("env"), subject=f"{workflow_path} Makeutil environment"
-    )
-    coverage_step = _sole_workflow_step(
-        workflow_path, job_name, "Run tests with coverage"
-    )
-    parser_step = _sole_workflow_step(
-        workflow_path, job_name, "Install Makefile parser"
+    assert entrypoint_names == _EXPECTED_SKYLOS_ENTRYPOINT_NAMES, (
+        "Skylos typed entry points must match the consciously approved runtime "
+        "caller set"
     )
 
-    assert environment.get("MAKEUTIL_REVISION") == _MAKEUTIL_REVISION, (
-        "coverage Makeutil revision contract must stay pinned"
+
+def test_full_suite_ci_jobs_install_the_pinned_makefile_parser() -> None:
+    """Every isolated full-suite job must install Makeutil independently."""
+    full_suite_jobs = _full_suite_workflow_jobs()
+    assert full_suite_jobs == _FULL_SUITE_WORKFLOW_JOBS, (
+        "full-suite CI contract must enumerate every workflow job that invokes "
+        "pytest or coverage"
     )
-    assert environment.get("MAKEUTIL_TOOLCHAIN") == _MAKEUTIL_TOOLCHAIN, (
-        "coverage Makeutil toolchain contract must stay pinned"
-    )
-    assert isinstance(coverage_step.get("uses"), str), (
-        "coverage job contract must run its full pytest suite through an action"
-    )
-    _assert_makeutil_installation(
-        parser_step.get("run"), contract="coverage Makeutil-install contract"
-    )
+
+    for workflow_path, job_name in full_suite_jobs:
+        coverage_job = _workflow_job(workflow_path, job_name)
+        environment = _mapping(
+            coverage_job.get("env"),
+            subject=f"{workflow_path} {job_name} Makeutil environment",
+        )
+        parser_step = _sole_workflow_step(
+            workflow_path, job_name, "Install Makefile parser"
+        )
+
+        assert environment.get("MAKEUTIL_REVISION") == _MAKEUTIL_REVISION, (
+            f"{workflow_path} {job_name} Makeutil revision contract must stay pinned"
+        )
+        assert environment.get("MAKEUTIL_TOOLCHAIN") == _MAKEUTIL_TOOLCHAIN, (
+            f"{workflow_path} {job_name} Makeutil toolchain contract must stay pinned"
+        )
+        _assert_makeutil_installation(
+            parser_step.get("run"),
+            contract=f"{workflow_path} {job_name} Makeutil-install contract",
+        )

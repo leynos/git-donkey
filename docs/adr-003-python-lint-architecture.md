@@ -50,7 +50,10 @@ When an implicit runtime caller is verified, a typed Skylos entry-point rule is
 preferred. A documented allow-list exception is permitted only where that rule
 cannot model the boundary, and it must include a caller-specific reason.
 `make skylos-allow` accepts only non-whitespace `SYMBOL` and `REASON` values,
-returning exit status 2 before Skylos runs when either value is absent.
+returning exit status 2 before Skylos runs when either value is absent. It
+holds the ignored repository-local `.skylos-whitelist.lock` with `flock` across
+Skylos's read-modify-write update, so concurrent documented exceptions cannot
+overwrite one another.
 
 ## Consequences
 
@@ -59,5 +62,7 @@ returning exit status 2 before Skylos runs when either value is absent.
 - Test-only references cannot suppress a production finding.
 - The Skylos and Makeutil versions are explicit contracts that require a
   deliberate update.
+- Concurrent documented-exception updates serialize through the local lock
+  file, which is not committed.
 - Contributors must investigate every finding instead of applying broad
   allow-list entries.

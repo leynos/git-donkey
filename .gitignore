@@ -101,6 +101,7 @@ ipython_config.py
 #uv.lock
 .uv-cache/
 .uv-tools/
+.skylos-whitelist.lock
 .memdb/
 
 # poetry

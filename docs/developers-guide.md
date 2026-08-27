@@ -130,11 +130,15 @@ The helper requires both values to contain non-whitespace text, invokes
 `[tool.skylos.whitelist]` in `pyproject.toml`. It rejects a missing or
 whitespace-only value with exit status 2. Use `SYMBOL`, not `NAME`: Windows
 Subsystem for Linux (WSL) injects `NAME` with the hostname. Do not add
-speculative, bulk, or unexplained allow-list entries.
+speculative, bulk, or unexplained allow-list entries. The helper holds the
+ignored repository-local `.skylos-whitelist.lock` with `flock` while Skylos
+performs its read-modify-write update, preventing concurrent contributors from
+losing a verified exception.
 
 `tests/unit/test_skylos_lint_contract.py` parses the Makefile with Makeutil and
-checks the Skylos and continuous-integration boundaries. Before running the
-full test suite locally, install the same pinned parser used by CI:
+checks the Skylos and continuous-integration boundaries. `make test` verifies
+that `makeutil` is present before invoking the suite. Before running the full
+test suite locally, install the same pinned parser used by CI:
 
 ```shell
 rustup toolchain install nightly-2026-05-28 --profile minimal
