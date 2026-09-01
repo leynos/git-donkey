@@ -78,7 +78,7 @@ lint: ruff ## Run linters
 
 typecheck: build ty ## Run typechecking
 	ty --version
-PYTHONPATH=scripts ty check
+	PYTHONPATH=scripts ty check
 
 markdownlint: spelling $(MDLINT) ## Lint Markdown files and enforce spelling
 	$(MDLINT) '**/*.md'
