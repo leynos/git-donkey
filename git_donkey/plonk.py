@@ -47,7 +47,7 @@ class _PlonkMode(enum.StrEnum):
 
 
 @dataclasses.dataclass(frozen=True)
-class _PlonkCandidate:
+class _PlonkCandidate(plonk_policy.CompletionCandidate):
     """A linked worktree eligible for completion-marker cleanup."""
 
     branch_name: str
