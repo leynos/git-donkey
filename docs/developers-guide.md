@@ -109,3 +109,11 @@ than Git setup.
 `tests/unit/test_fafo_error_messages.py` pins complete user-facing error
 messages. Add new cases there when a new `git-fafo` conflict or credential
 failure path is introduced.
+
+## GitHub Actions runners
+
+Repository-owned Linux jobs use the uncached shared Namespace profile
+`namespace-profile-default` (Ubuntu 22.04, amd64, 4 vCPU, 16 GB). The profile
+has no cache volume. The reusable wheel-building workflow keeps its matrix of
+GitHub-hosted Linux, Windows, and macOS runners because it owns native
+platform and architecture selection; callers cannot replace that selection.
