@@ -117,3 +117,10 @@ Repository-owned Linux jobs use the uncached shared Namespace profile
 has no cache volume. The reusable wheel-building workflow keeps its matrix of
 GitHub-hosted Linux, Windows, and macOS runners because it owns native
 platform and architecture selection; callers cannot replace that selection.
+
+The `typecheck` target runs `PYTHONPATH=scripts ty check` through the pinned
+`ty` tool so the rollout scripts' imports are checked. The pure
+`git_donkey.plonk_policy.CompletionCandidate` protocol defines the `marker:
+str` contract implemented by cleanup candidates. `.github/actionlint.yaml`
+registers the `namespace-profile-default` and
+`namespace-profile-default-arm64` labels used by repository workflows.
