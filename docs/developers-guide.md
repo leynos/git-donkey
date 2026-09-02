@@ -109,3 +109,22 @@ than Git setup.
 `tests/unit/test_fafo_error_messages.py` pins complete user-facing error
 messages. Add new cases there when a new `git-fafo` conflict or credential
 failure path is introduced.
+
+## GitHub Actions runners
+
+The runner boundary is recorded in
+[`docs/github-actions-runners.md`](github-actions-runners.md).
+
+Repository-owned Linux jobs use the uncached shared Namespace profile
+`namespace-profile-default` (Ubuntu 22.04, amd64, 4 vCPU, 16 GB). The profile
+has no cache volume. The reusable wheel-building workflow keeps its matrix of
+GitHub-hosted Linux, Windows, and macOS runners because it owns native platform
+and architecture selection; callers cannot replace that selection.
+
+The `typecheck` target runs `PYTHONPATH=scripts ty check` through the `ty` tool
+so the rollout scripts' imports are checked. The pure
+`git_donkey.plonk_policy.CompletionCandidate` protocol defines the
+`marker: str` contract implemented by cleanup candidates.
+`.github/actionlint.yaml` registers the `namespace-profile-default` and
+`namespace-profile-default-arm64` labels for workflow linting; current
+repository-owned workflows use only the amd64 label.

@@ -7,7 +7,9 @@ on:
 
 jobs:
   lint-test:
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-default
+    permissions:
+      contents: read
     env:
       # Surface the secret as an env var so the CodeScene gate can test it:
       # GitHub Actions does not allow `secrets.*` in step-level `if:`.
