@@ -53,7 +53,12 @@ def test_lint_test_job_limits_token_permissions() -> None:
     )
     job = lines[start:end]
     permissions_start = job.index("    permissions:")
-    permissions = job[permissions_start + 1 : permissions_start + 2]
+    permissions_end = next(
+        index
+        for index in range(permissions_start + 1, len(job))
+        if job[index].startswith("    ") and not job[index].startswith("      ")
+    )
+    permissions = job[permissions_start + 1 : permissions_end]
     assert permissions == ["      contents: read"]
 
 
