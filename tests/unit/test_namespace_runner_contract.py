@@ -75,7 +75,7 @@ def test_reusable_wheel_build_keeps_matrix_runner() -> None:
         encoding="utf-8"
     )
     assert "    runs-on: ${{ matrix.os }}" in workflow, (
-        "the reusable wheel build must retain its caller-selected runner matrix"
+        "the reusable wheel build must retain its fixed multi-platform runner matrix"
     )
 
 

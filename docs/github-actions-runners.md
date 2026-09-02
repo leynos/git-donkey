@@ -10,9 +10,10 @@ repository-owned Linux jobs. The profile is Ubuntu 22.04 on amd64 with 4 vCPU
 and 16 GB of memory, and deliberately has no repository cache volume during the
 pilot.
 
-Keep the reusable wheel-building workflow's caller-selected matrix. Its Linux,
-Windows, macOS, and architecture-specific runners are part of the native wheel
-build contract and must not be replaced by the shared Linux profile.
+Keep the reusable wheel-building workflow's fixed GitHub-hosted multi-platform
+matrix. It owns the Linux, Windows, macOS, and architecture-specific runners
+as part of the native wheel build contract; callers provide only its declared
+inputs, and must not replace the matrix with the shared Linux profile.
 
 Declare only the permissions required by each workflow. The CI lint-and-test
 job therefore grants `contents: read`; the release workflow retains
@@ -27,6 +28,6 @@ label is registered for workflows that adopt it later.
 
 The shared profile gives repository-owned Linux jobs a consistent execution
 environment while avoiding a repository-specific cache volume during the pilot.
-The wheel matrix remains caller-selected because native extension builds need
+The reusable workflow owns its wheel matrix because native extension builds need
 platform and architecture-specific runners that the shared amd64 profile cannot
-provide.
+provide. Callers provide only the workflow's declared inputs.
