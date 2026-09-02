@@ -35,6 +35,28 @@ def test_repository_owned_linux_job_uses_namespace_runner(
     assert "    runs-on: namespace-profile-default" in lines[start:end]
 
 
+def test_lint_test_job_limits_token_permissions() -> None:
+    """Keep the CI job's token read-only."""
+    lines = (
+        (_REPO_ROOT / ".github" / "workflows" / "ci.yml")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    )
+    start = lines.index("  lint-test:")
+    end = next(
+        (
+            index
+            for index in range(start + 1, len(lines))
+            if lines[index].startswith("  ") and not lines[index].startswith("    ")
+        ),
+        len(lines),
+    )
+    job = lines[start:end]
+    permissions_start = job.index("    permissions:")
+    permissions = job[permissions_start + 1 : permissions_start + 2]
+    assert permissions == ["      contents: read"]
+
+
 def test_reusable_wheel_build_keeps_matrix_runner() -> None:
     """Keep native wheel platform selection in the reusable matrix."""
     workflow = (_REPO_ROOT / ".github" / "workflows" / "build-wheels.yml").read_text(
@@ -56,3 +78,9 @@ def test_typecheck_recipe_runs_the_configured_environment() -> None:
     start = lines.index("typecheck: build ty ## Run typechecking")
     recipe = lines[start : start + 3]
     assert "\tPYTHONPATH=scripts ty check" in recipe
+
+
+def test_spelling_policy_checks_inline_code() -> None:
+    """Keep inline code subject to the spelling policy."""
+    config = (_REPO_ROOT / "typos.toml").read_text(encoding="utf-8")
+    assert "`[^`\\n]+`" not in config
