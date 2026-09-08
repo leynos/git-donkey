@@ -1,7 +1,7 @@
 git-track
 =========
 Fetch and switch to a tracking branch
-------------------------------------
+-------------------------------------
 
 :Manual section: 1
 :Manual group: Git-donkey manual

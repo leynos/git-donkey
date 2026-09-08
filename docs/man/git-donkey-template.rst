@@ -1,7 +1,7 @@
 git-donkey-template
 ===================
 Locate and create a repository's template overlay directory
-----------------------------------------------------------
+-----------------------------------------------------------
 
 :Manual section: 1
 :Manual group: Git-donkey manual

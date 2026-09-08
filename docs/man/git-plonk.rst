@@ -1,7 +1,7 @@
 git-plonk
 =========
 Clean up git-donkey worktrees
-----------------------------
+-----------------------------
 
 :Manual section: 1
 :Manual group: Git-donkey manual

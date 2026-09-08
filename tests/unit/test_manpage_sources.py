@@ -96,6 +96,8 @@ def test_manual_has_standard_sections(command: str) -> None:
     """Keep each generated page useful as a standalone reference."""
     source = (_ROOT / f"docs/man/{command}.rst").read_text(encoding="utf-8")
     assert source.startswith(f"{command}\n{'=' * len(command)}\n")
+    lines = source.splitlines()
+    assert len(lines[3]) >= len(lines[2])
     assert ":Manual section: 1" in source
     for heading in ("SYNOPSIS", "DESCRIPTION", "OPTIONS", "EXAMPLES", "SEE ALSO"):
         assert f"\n{heading}\n" in source

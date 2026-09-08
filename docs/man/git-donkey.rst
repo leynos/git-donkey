@@ -1,7 +1,7 @@
 git-donkey
 ==========
 Create linked Git worktrees
---------------------------
+---------------------------
 
 :Manual section: 1
 :Manual group: Git-donkey manual

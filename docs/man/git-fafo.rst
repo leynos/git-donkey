@@ -1,7 +1,7 @@
 git-fafo
 ========
 Scaffold and publish a GitHub repository
---------------------------------------
+----------------------------------------
 
 :Manual section: 1
 :Manual group: Git-donkey manual
