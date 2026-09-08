@@ -18,6 +18,11 @@ directory. Both the hook plugin and Docutils are build-system requirements,
 not runtime dependencies. The hook runs for wheel builds, including editable
 wheels. No generator runs while an installer unpacks a previously built wheel.
 
+Both working and output directories are restricted to `docs/man/`, with hook
+cleanup disabled. Even an empty artifact pattern list can trigger directory
+traversal in the plugin; scanning the repository root can race with uv deleting
+temporary build-cache entries.
+
 `docutils.conf` makes warnings fatal, selects UTF-8 input and output, disables
 wall-clock datestamps, and disables raw content and file insertion. This keeps
 malformed manual sources from silently producing incomplete pages and prevents
@@ -83,7 +88,8 @@ An installation test uses `uv tool install` with temporary tool and XDG
 directories, checks installed page bytes, and confirms that uninstallation
 removes the environment's pages. It also checks that installation never creates
 the user-manpath directory. The subprocesses run offline against the cache
-populated by `make build`; tool installation permits wheels only and disables
+populated in `.uv-cache` by `make build`, not an outer `UV_CACHE_DIR` supplied
+by an action; tool installation permits wheels only and disables
 Python downloads.
 
 [^1]: [Hatchling wheel shared data](https://hatch.pypa.io/latest/plugins/builder/wheel/).

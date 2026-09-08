@@ -46,6 +46,9 @@ def test_build_commands_generate_every_manual() -> None:
     ]
     (script,) = hook["scripts"]
     assert script["work_dir"] == "docs/man"
+    assert script["out_dir"] == "docs/man"
+    assert script["clean_artifacts"] is False
+    assert script["clean_out_dir"] is False
     assert script["artifacts"] == []
     commands = {tuple(shlex.split(command)) for command in script["commands"]}
     assert commands == {
@@ -116,7 +119,8 @@ def test_manual_has_standard_sections(command: str) -> None:
     ),
 )
 def test_manual_covers_command_specific_behaviour(
-    command: str, required_text: str
+    command: str,
+    required_text: str,
 ) -> None:
     """Preserve important options and configuration in the installed reference."""
     source = (_ROOT / f"docs/man/{command}.rst").read_text(encoding="utf-8")

@@ -411,6 +411,10 @@ build-backend = "hatchling.build"
 # Only shared-data exports them; build-script artifacts would duplicate them.
 [[tool.hatch.build.targets.wheel.hooks.build-scripts.scripts]]
 work_dir = "docs/man"
+# Keep artifact traversal away from concurrently changing .uv-cache contents.
+out_dir = "docs/man"
+clean_artifacts = false
+clean_out_dir = false
 artifacts = []
 commands = [
     "rst2man --config=docutils.conf --output=git-donkey.1 git-donkey.rst",

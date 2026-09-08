@@ -70,7 +70,8 @@ def _copy_sources(destination: Path) -> Path:
 
 def _environment(root: Path) -> dict[str, str]:
     """Isolate user-facing paths while reusing dependencies cached by make build."""
-    cache = Path(os.environ.get("UV_CACHE_DIR", ".uv-cache")).resolve()
+    # Makefile UV_ENV overrides the setup-uv action's outer cache setting.
+    cache = _ROOT / ".uv-cache"
     return os.environ | {
         "UV_CACHE_DIR": str(cache),
         "UV_TOOL_DIR": str(root / "tools"),
@@ -84,7 +85,9 @@ def _environment(root: Path) -> dict[str, str]:
 
 
 def _run_uv(
-    arguments: tuple[str, ...], cwd: Path, environment: dict[str, str]
+    arguments: tuple[str, ...],
+    cwd: Path,
+    environment: dict[str, str],
 ) -> subprocess.CompletedProcess[str]:
     """Run the required uv executable without shell parsing or network access."""
     executable = shutil.which("uv")
