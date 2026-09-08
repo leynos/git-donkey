@@ -1,7 +1,7 @@
 """Implement the git-donkey worktree workflow.
 
-Provides the workflow for managing linked worktrees for feature branches with
-automatic base-branch synchronisation.
+New branches use the principal remote's default branch unless a base is supplied.
+Existing base checkouts are only updated when a pull mode is explicitly enabled.
 
 Usage
 -----
@@ -9,7 +9,7 @@ Run with::
 
     git-donkey feature/my-branch
 
-Key utilities include worktree creation, base branch resolution, pull/rebase
+Key utilities include worktree creation, base branch resolution, optional pull
 helpers, and upstream tracking.
 """
 
@@ -17,12 +17,23 @@ from __future__ import annotations
 
 import dataclasses
 import os
+import typing as typ
 from pathlib import Path
 
 from git import Git, GitCommandError, Repo
 
 from git_donkey import donkey_worktrees, helpers, templates
 from git_donkey.helpers import _GIT_DONKEY_PREFIX as _GIT_DONKEY_PREFIX
+
+type _PullMode = typ.Literal["--rebase", "--ff-only"]
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class _PullOptions:
+    """Explicit, mutually exclusive base-checkout update options."""
+
+    pull_rebase: bool = False
+    pull_ff: bool = False
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -35,33 +46,102 @@ class _DonkeyContext:
     worktrees_root: Path
 
 
-def choose_base_branch(saved_cwd_branch: str, origin_arg: str | None) -> str:
-    """Choose the base branch for a new worktree.
+def choose_base_branch(saved_cwd_branch: str, origin_arg: str) -> str:
+    """Resolve an explicitly supplied base branch.
 
     Parameters
     ----------
     saved_cwd_branch : str
         The branch checked out in the current working directory.
-    origin_arg : str | None
-        The origin argument provided by the user.
+    origin_arg : str
+        The explicit base argument, or '.' for the current branch.
 
     Returns
     -------
     str
-        The resolved base branch.
+        The resolved explicit base branch. Implicit remote-default discovery
+        is performed separately by the workflow.
 
     """
-    if origin_arg is None:
-        return "main"
     if origin_arg == ".":
         return saved_cwd_branch
     return origin_arg
 
 
-def _pull_rebase_in_worktree(worktree_dir: Path, remote: str, branch: str) -> None:
-    """Pull and rebase the specified branch inside a worktree."""
+def _advertised_default_branch(advertisement: str) -> str | None:
+    """Extract the branch targeted by HEAD from ls-remote --symref output."""
+    for line in advertisement.splitlines():
+        match line.split():
+            case ["ref:", ref, "HEAD"] if ref.startswith("refs/heads/"):
+                return ref.removeprefix("refs/heads/")
+    return None
+
+
+def _remote_default_base(context: _DonkeyContext) -> str:
+    """Discover and fetch the principal remote's advertised default branch."""
+    try:
+        advertisement = context.repo_home.git.ls_remote(
+            "--symref", context.remote, "HEAD"
+        )
+    except GitCommandError as exc:
+        helpers._die(
+            _GIT_DONKEY_PREFIX,
+            f"cannot discover the default branch on '{context.remote}': {exc}",
+            1,
+        )
+    branch = _advertised_default_branch(advertisement)
+    if branch is None:
+        helpers._die(
+            _GIT_DONKEY_PREFIX,
+            f"remote '{context.remote}' does not advertise a default branch; "
+            "specify a base branch explicitly",
+            1,
+        )
+
+    remote_ref = f"refs/remotes/{context.remote}/{branch}"
+    # A narrow fetch configuration may omit the advertised default branch.
+    # Fetch it explicitly rather than trusting a stale local remote/HEAD alias.
+    try:
+        context.repo_home.git.fetch(
+            context.remote, f"+refs/heads/{branch}:{remote_ref}"
+        )
+    except GitCommandError as exc:
+        helpers._die(
+            _GIT_DONKEY_PREFIX,
+            f"cannot fetch default branch '{context.remote}/{branch}': {exc}",
+            1,
+        )
+    return remote_ref
+
+
+def _pull_mode(options: _PullOptions, *, no_pull: bool) -> _PullMode | None:
+    """Validate the pull flags before repository discovery or mutation."""
+    if sum((options.pull_rebase, options.pull_ff, no_pull)) > 1:
+        helpers._die(
+            _GIT_DONKEY_PREFIX,
+            "--pull-rebase, --pull-ff, and --no-pull are mutually exclusive",
+            2,
+        )
+    if options.pull_rebase:
+        return "--rebase"
+    if options.pull_ff:
+        return "--ff-only"
+    return None
+
+
+def _pull_in_worktree(
+    worktree_dir: Path,
+    remote: str,
+    branch: str,
+    mode: _PullMode,
+) -> None:
+    """Pull the selected branch using an explicit integration strategy."""
     git = Git(str(worktree_dir))
-    git.pull("--rebase", remote, branch)
+    if mode == "--ff-only":
+        # Override pull.rebase as well as pull.ff; never rebase or merge here.
+        git.pull("--no-rebase", "--ff-only", remote, branch)
+    else:
+        git.pull("--rebase", remote, branch)
 
 
 def _ahead_behind(repo: Repo, base: str, compare_ref: str) -> tuple[int, int]:
@@ -110,58 +190,56 @@ def _update_base_branch_in_worktree(
     *,
     base_branch: str,
     prefix: str,
+    pull_mode: _PullMode,
 ) -> None:
-    """Update the base branch by pulling with rebase in its worktree."""
+    """Update only the worktree that actually holds the selected base branch."""
     worktree = context.branch_to_worktree.get(base_branch)
-    if worktree is not None:
-        helpers._eprint(f"Updating existing worktree at: {worktree}")
-        try:
-            _pull_rebase_in_worktree(worktree, context.remote, base_branch)
-        except GitCommandError as exc:
-            helpers._die(prefix, f"update failed (pull --rebase): {exc}", 1)
-        return
-
-    helpers._eprint(f"Updating main worktree for branch: {base_branch}")
-    try:
-        _pull_rebase_in_worktree(
-            Path(context.repo_home.working_tree_dir or "."),
-            context.remote,
-            base_branch,
+    if worktree is None:
+        helpers._die(
+            prefix,
+            f"cannot pull '{base_branch}': it is not checked out in a worktree; "
+            "check out that base explicitly or omit the pull option",
+            1,
         )
+    helpers._eprint(f"Updating existing worktree at: {worktree}")
+    try:
+        _pull_in_worktree(worktree, context.remote, base_branch, pull_mode)
     except GitCommandError as exc:
-        helpers._die(prefix, f"update failed (pull --rebase): {exc}", 1)
+        helpers._die(prefix, f"update failed (pull {pull_mode}): {exc}", 1)
 
 
 def _maybe_update_base_branch(
     context: _DonkeyContext,
     *,
     base_branch: str,
-    no_pull: bool,
+    pull_mode: _PullMode | None,
     prefix: str,
 ) -> None:
-    """Conditionally update the base branch if behind and user confirms."""
-    if no_pull:
+    """Update an opted-in, behind local base only after confirmation."""
+    if pull_mode is None:
         return
 
+    local_branch = base_branch.removeprefix(f"refs/remotes/{context.remote}/")
     behind = _base_branch_behind_count(
         context,
-        base_branch=base_branch,
+        base_branch=local_branch,
         prefix=prefix,
     )
     if behind <= 0:
         return
 
     if not helpers._prompt_yes_no(
-        f"Base branch '{base_branch}' is behind "
-        f"'{context.remote}/{base_branch}' by {behind} commit(s). Pull --rebase "
-        "it first?"
+        f"Base branch '{local_branch}' is behind "
+        f"'{context.remote}/{local_branch}' by {behind} commit(s). Pull "
+        f"{pull_mode} it first?"
     ):
         return
 
     _update_base_branch_in_worktree(
         context,
-        base_branch=base_branch,
+        base_branch=local_branch,
         prefix=prefix,
+        pull_mode=pull_mode,
     )
 
 
@@ -227,6 +305,7 @@ def run_git_donkey(
     origin_branch: str | None = None,
     *,
     no_pull: bool = False,
+    options: _PullOptions = _PullOptions(),
 ) -> int:
     """Run the git-donkey workflow.
 
@@ -235,9 +314,14 @@ def run_git_donkey(
     branch_name : str
         Branch name for the new worktree.
     origin_branch : str | None
-        Base branch (default: main). Use '.' for the CWD branch.
+        Explicit base branch, or '.' for the CWD branch. When omitted, use
+        the fetched default branch on the first configured remote.
     no_pull : bool
-        If True, do not prompt to pull --rebase the base branch.
+        Backwards-compatible explicit no-pull flag. Cannot be combined with
+        an enabled pull option.
+    options : _PullOptions
+        Optional pull strategy. Pulling is disabled by default. An enabled
+        strategy retains the confirmation prompt for a behind local base.
 
     Returns
     -------
@@ -245,13 +329,18 @@ def run_git_donkey(
         The desired process exit code.
 
     """
+    pull_mode = _pull_mode(options, no_pull=no_pull)
     context, saved_cwd_branch = _load_donkey_context()
-    base_branch = choose_base_branch(saved_cwd_branch, origin_branch)
+    base_branch = (
+        _remote_default_base(context)
+        if origin_branch is None
+        else choose_base_branch(saved_cwd_branch, origin_branch)
+    )
 
     _maybe_update_base_branch(
         context,
         base_branch=base_branch,
-        no_pull=no_pull,
+        pull_mode=pull_mode,
         prefix=_GIT_DONKEY_PREFIX,
     )
 

@@ -17,34 +17,71 @@ these as `git <subcommand>` when `git-<subcommand>` is available on the `PATH`.
 
 ## git donkey
 
-Create a linked worktree at `../{repo}.worktrees/{branch}`, branching from
-`main` by default, a named base branch, or the branch checked out in the
-current working directory. The command prefers the `origin` remote and falls
-back to the first remote when `origin` is absent, reuses an existing local or
-remote branch when present, and prompts to pull --rebase the base branch if it
-is behind (unless `--no-pull` is set). If the worktree path already exists or
-the branch is already checked out elsewhere, the command exits with a ⚔️
-conflict message. If the base branch has no remote counterpart, the behind
-check is skipped.
+Create a linked worktree at `../{repo}.worktrees/{branch}`. When no base is
+specified, the command discovers the default branch advertised by the
+principal remote and creates the new branch from its fetched remote commit.
+The principal remote is the first configured remote, preserving the existing
+selection rule. The default branch need not be named `main`, and the remote
+need not be named `origin`.
+
+The command fetches remote references but does not pull, rebase, or prompt to
+update a local base by default. Unpublished local commits and uncommitted
+changes in the primary checkout are not used as the implicit base. An
+unavailable remote default produces an error asking for an explicit base;
+the command never silently falls back to local `main`.
+
+A named base still selects that branch. `.` selects the branch checked out in
+the calling working directory, including when called from a linked worktree.
+Existing local or remote feature branches are reused with their existing
+tracking rules; the base is used only when creating a new branch. If the
+worktree path already exists or the branch is already checked out elsewhere,
+the command exits with a ⚔️ conflict message.
 
 ```shell
-# Create a new worktree for feature/foo from main
+# Create from the principal remote's default branch without updating checkouts
 
 git donkey feature/foo
 
-# Use the current branch as the base for the new worktree
+# Use the calling worktree's local branch, including its local commits
 
 git donkey feature/foo .
 
-# Create from a specific base branch without prompting for pull --rebase
+# Create from a specific base without pulling it
 
-git donkey feature/foo release/1.2 --no-pull
+git donkey feature/foo release/1.2
+
+# Enable the existing confirmation workflow for pull plus rebase
+
+git donkey feature/foo release/1.2 --pull-rebase
+
+# Enable the same workflow, permitting only a fast-forward update
+
+git donkey feature/foo release/1.2 --pull-ff
 ```
 
 Options:
 
-- `--no-pull` skips prompting to pull the base branch if it is behind the
-  remote.
+- `--pull-rebase` enables a prompt to run `git pull --rebase` when the local
+  base is behind its remote counterpart.
+- `--pull-ff` enables that prompt using `git pull --no-rebase --ff-only`.
+  Divergent histories fail rather than being merged or rebased, regardless of
+  configured pull preferences.
+- `--no-pull` remains supported for compatibility and explicitly selects the
+  new default behaviour. Fetching remote references still occurs.
+
+These three options are mutually exclusive. A declined prompt, or a
+non-interactive terminal, skips the update as before. A local-only base has
+no remote update to perform. An approved update runs only in the worktree
+holding the selected local base; if that branch is not checked out, the
+command fails rather than updating an unrelated primary-checkout branch.
+
+With an omitted base, an enabled pull option may update the corresponding
+local default branch, but the new feature branch still starts at the remote
+commit. Supply the local base explicitly, or use `.`, to include local
+commits after an approved update.
+
+The [default-base and pull-mode design](default-base-and-pull-modes.md)
+records the discovery, preservation, and verification contracts.
 
 ### Template Overlays
 

@@ -36,8 +36,12 @@ git-donkey gives you five powerful Git subcommands:
 ## Quick start
 
 ```shell
-# Create a worktree for feature/awesome-stuff from main
+# Create a worktree from the principal remote's default branch
+# Existing checkouts are not pulled or rebased by default.
 git donkey feature/awesome-stuff
+
+# Opt in to a fast-forward-only update of an explicit local base
+git donkey feature/from-main main --pull-ff
 
 # Track a remote branch
 git track feature/from-teammate
