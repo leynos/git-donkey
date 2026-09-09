@@ -26,6 +26,14 @@ if typ.TYPE_CHECKING:
     from syrupy.assertion import SnapshotAssertion
 
 
+# History messages consumed before the streaming scan stops: one per candidate
+# marker, so the trailing "Unneeded late history" message is never pulled.
+_EXPECTED_CONSUMED_HISTORY_MESSAGES = 2
+
+# ``argparse`` exit status for a command-line usage error.
+_USAGE_ERROR_EXIT_CODE = 2
+
+
 def _redact_worktree_paths(data: str, _: object) -> str:
     """Rewrite absolute git-donkey worktree mounts to a relative placeholder.
 
@@ -188,7 +196,7 @@ def test_completed_candidates_streams_history_until_markers_match() -> None:
         "issue-123-fix",
         "issue-456-fix",
     ], "expected streaming scan to stop after all markers match"
-    assert consumed_messages == 2, (
+    assert consumed_messages == _EXPECTED_CONSUMED_HISTORY_MESSAGES, (
         "expected history scan to stop after all markers match"
     )
 
@@ -198,7 +206,9 @@ def test_plonk_cli_rejects_soft_and_hard_together() -> None:
     with pytest.raises(SystemExit) as exc_info:
         cli._plonk_app(["--soft", "--hard"])
 
-    assert exc_info.value.code == 2, "expected conflicting flags to be usage error"
+    assert exc_info.value.code == _USAGE_ERROR_EXIT_CODE, (
+        "expected conflicting flags to be usage error"
+    )
 
 
 def test_plonk_cli_passes_dry_run_flag(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -329,11 +339,13 @@ class _FailingGitAdapter:
         assert ref == "main", "expected configured trunk ref"
         yield self._marker
 
-    def remove_worktree(self, worktree_path: Path) -> None:
+    @staticmethod
+    def remove_worktree(worktree_path: Path) -> None:
         """Fail the test unconditionally — dry runs must not remove worktrees."""
         pytest.fail(f"dry run should not remove worktree {worktree_path}")
 
-    def delete_branch(self, branch_name: str) -> None:
+    @staticmethod
+    def delete_branch(branch_name: str) -> None:
         """Fail the test unconditionally — dry runs must not delete branches."""
         pytest.fail(f"dry run should not delete branch {branch_name}")
 

@@ -16,6 +16,10 @@ from git import Repo
 
 from git_donkey import helpers, slugs, templates
 
+# Number of template files that collide with pre-existing target files in the
+# multiple-conflict scenario.
+_EXPECTED_CONFLICT_COUNT = 2
+
 
 @pytest.fixture
 def mock_template_base_dir(tmp_path: Path) -> typ.Generator[Path]:
@@ -29,7 +33,8 @@ def mock_template_base_dir(tmp_path: Path) -> typ.Generator[Path]:
 class TestGetTemplateBaseDir:
     """Test _get_template_base_dir function."""
 
-    def test_returns_path(self) -> None:
+    @staticmethod
+    def test_returns_path() -> None:
         """Test that the function returns a Path object."""
         result = templates._get_template_base_dir()
         assert isinstance(result, Path), "expected result to be a Path object"
@@ -44,14 +49,16 @@ class TestGetTemplateBaseDir:
 class TestGetRepoUrl:
     """Test _get_repo_url function."""
 
-    def test_no_remotes(self) -> None:
+    @staticmethod
+    def test_no_remotes() -> None:
         """Test that None is returned when repo has no remotes."""
         mock_repo = mock.Mock(spec=Repo)
         mock_repo.remotes = []
         result = templates._get_repo_url(mock_repo)
         assert result is None, "expected None when repo has no remotes"
 
-    def test_with_remote(self) -> None:
+    @staticmethod
+    def test_with_remote() -> None:
         """Test that URL is returned when repo has remotes."""
         mock_remote = mock.Mock()
         mock_remote.name = "origin"
@@ -63,7 +70,8 @@ class TestGetRepoUrl:
             "expected remote URL to be returned"
         )
 
-    def test_multiple_remotes_without_origin_raises(self) -> None:
+    @staticmethod
+    def test_multiple_remotes_without_origin_raises() -> None:
         """Test that multiple remotes without origin raises ValueError."""
         mock_remote1 = mock.Mock()
         mock_remote1.name = "upstream"
@@ -76,7 +84,8 @@ class TestGetRepoUrl:
         with pytest.raises(ValueError, match="origin"):
             templates._get_repo_url(mock_repo)
 
-    def test_multiple_remotes_prefers_origin(self) -> None:
+    @staticmethod
+    def test_multiple_remotes_prefers_origin() -> None:
         """Test that origin remote is preferred over other remotes."""
         mock_remote1 = mock.Mock()
         mock_remote1.name = "upstream"
@@ -95,14 +104,16 @@ class TestGetRepoUrl:
 class TestGetTemplateDirPath:
     """Test get_template_dir_path function."""
 
-    def test_no_remotes_returns_none(self) -> None:
+    @staticmethod
+    def test_no_remotes_returns_none() -> None:
         """Test that None is returned when repo has no remotes."""
         mock_repo = mock.Mock(spec=Repo)
         mock_repo.remotes = []
         result = templates.get_template_dir_path(mock_repo)
         assert result is None, "expected None when repo has no remotes"
 
-    def test_multiple_remotes_without_origin_raises(self) -> None:
+    @staticmethod
+    def test_multiple_remotes_without_origin_raises() -> None:
         """Test that multiple remotes without origin raises ValueError."""
         mock_remote1 = mock.Mock()
         mock_remote1.name = "upstream"
@@ -116,7 +127,8 @@ class TestGetTemplateDirPath:
         with pytest.raises(ValueError, match="origin"):
             templates.get_template_dir_path(mock_repo)
 
-    def test_with_remote_returns_path(self, mock_template_base_dir: Path) -> None:
+    @staticmethod
+    def test_with_remote_returns_path(mock_template_base_dir: Path) -> None:
         """Test that path is returned when repo has remote."""
         mock_remote = mock.Mock()
         mock_remote.name = "origin"
@@ -134,14 +146,16 @@ class TestGetTemplateDirPath:
 class TestGetTemplateDir:
     """Test get_template_dir function."""
 
-    def test_no_remotes_returns_none(self) -> None:
+    @staticmethod
+    def test_no_remotes_returns_none() -> None:
         """Test that None is returned when repo has no remotes."""
         mock_repo = mock.Mock(spec=Repo)
         mock_repo.remotes = []
         result = templates.get_template_dir(mock_repo)
         assert result is None, "expected None when repo has no remotes"
 
-    def test_multiple_remotes_without_origin_raises(self) -> None:
+    @staticmethod
+    def test_multiple_remotes_without_origin_raises() -> None:
         """Test that multiple remotes without origin raises ValueError."""
         mock_remote1 = mock.Mock()
         mock_remote1.name = "upstream"
@@ -155,9 +169,8 @@ class TestGetTemplateDir:
         with pytest.raises(ValueError, match="origin"):
             templates.get_template_dir(mock_repo)
 
-    def test_template_dir_not_exists_returns_none(
-        self, mock_template_base_dir: Path
-    ) -> None:
+    @staticmethod
+    def test_template_dir_not_exists_returns_none(mock_template_base_dir: Path) -> None:
         """Test that None is returned when template directory doesn't exist."""
         mock_remote = mock.Mock()
         mock_remote.name = "origin"
@@ -168,9 +181,8 @@ class TestGetTemplateDir:
         result = templates.get_template_dir(mock_repo)
         assert result is None, "expected None when template directory does not exist"
 
-    def test_template_dir_exists_returns_path(
-        self, mock_template_base_dir: Path
-    ) -> None:
+    @staticmethod
+    def test_template_dir_exists_returns_path(mock_template_base_dir: Path) -> None:
         """Test that path is returned when template directory exists."""
         mock_remote = mock.Mock()
         mock_remote.name = "origin"
@@ -188,9 +200,8 @@ class TestGetTemplateDir:
             "expected template directory path when it exists"
         )
 
-    def test_template_path_is_file_returns_none(
-        self, mock_template_base_dir: Path
-    ) -> None:
+    @staticmethod
+    def test_template_path_is_file_returns_none(mock_template_base_dir: Path) -> None:
         """Test that None is returned when template path is a file, not a directory."""
         mock_remote = mock.Mock()
         mock_remote.name = "origin"
@@ -212,7 +223,8 @@ class TestGetTemplateDir:
 class TestApplyTemplate:
     """Test apply_template function."""
 
-    def test_template_dir_not_exists_raises(self, tmp_path: Path) -> None:
+    @staticmethod
+    def test_template_dir_not_exists_raises(tmp_path: Path) -> None:
         """Test that ValueError is raised when template directory doesn't exist."""
         template_dir = tmp_path / "nonexistent"
         target_dir = tmp_path / "target"
@@ -221,7 +233,8 @@ class TestApplyTemplate:
         with pytest.raises(ValueError, match="does not exist"):
             templates.apply_template(template_dir, target_dir, prefix="TEST")
 
-    def test_template_path_is_file_raises(self, tmp_path: Path) -> None:
+    @staticmethod
+    def test_template_path_is_file_raises(tmp_path: Path) -> None:
         """Test that ValueError is raised when template path is a file."""
         template_file = tmp_path / "template"
         template_file.write_text("not a directory")
@@ -231,7 +244,8 @@ class TestApplyTemplate:
         with pytest.raises(ValueError, match="not a directory"):
             templates.apply_template(template_file, target_dir, prefix="TEST")
 
-    def test_copy_single_file(self, tmp_path: Path) -> None:
+    @staticmethod
+    def test_copy_single_file(tmp_path: Path) -> None:
         """Test copying a single file from template to target."""
         template_dir = tmp_path / "template"
         template_dir.mkdir()
@@ -248,7 +262,8 @@ class TestApplyTemplate:
         )
         assert not conflicts, "expected no conflicts for new file"
 
-    def test_copy_nested_files(self, tmp_path: Path) -> None:
+    @staticmethod
+    def test_copy_nested_files(tmp_path: Path) -> None:
         """Test copying nested directory structure."""
         template_dir = tmp_path / "template"
         template_dir.mkdir()
@@ -270,8 +285,9 @@ class TestApplyTemplate:
         )
         assert not conflicts, "expected no conflicts for nested files"
 
+    @staticmethod
     def test_overwrites_existing_files(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Test that existing files are overwritten and conflicts are reported."""
         template_dir = tmp_path / "template"
@@ -313,7 +329,8 @@ class TestApplyTemplate:
             "expected warning to mention overwriting"
         )
 
-    def test_creates_parent_directories(self, tmp_path: Path) -> None:
+    @staticmethod
+    def test_creates_parent_directories(tmp_path: Path) -> None:
         """Test that parent directories are created as needed."""
         template_dir = tmp_path / "template"
         template_dir.mkdir()
@@ -330,7 +347,8 @@ class TestApplyTemplate:
         )
         assert not conflicts, "expected no conflicts when creating directories"
 
-    def test_preserves_file_metadata(self, tmp_path: Path) -> None:
+    @staticmethod
+    def test_preserves_file_metadata(tmp_path: Path) -> None:
         """Test that file metadata (timestamps) are preserved."""
         template_dir = tmp_path / "template"
         template_dir.mkdir()
@@ -353,7 +371,8 @@ class TestApplyTemplate:
             original_stat.st_mtime, rel=0, abs=1
         ), "expected modification time to be preserved"
 
-    def test_empty_template_directory(self, tmp_path: Path) -> None:
+    @staticmethod
+    def test_empty_template_directory(tmp_path: Path) -> None:
         """Test that empty template directory results in no files copied."""
         template_dir = tmp_path / "template"
         template_dir.mkdir()
@@ -369,7 +388,8 @@ class TestApplyTemplate:
         )
         assert not conflicts, "expected no conflicts from empty template"
 
-    def test_multiple_conflicts(self, tmp_path: Path) -> None:
+    @staticmethod
+    def test_multiple_conflicts(tmp_path: Path) -> None:
         """Test that multiple conflicts are all reported."""
         template_dir = tmp_path / "template"
         template_dir.mkdir()
@@ -383,7 +403,9 @@ class TestApplyTemplate:
 
         conflicts = templates.apply_template(template_dir, target_dir, prefix="TEST")
 
-        assert len(conflicts) == 2, "expected two conflicts to be reported"
+        assert len(conflicts) == _EXPECTED_CONFLICT_COUNT, (
+            "expected two conflicts to be reported"
+        )
         assert Path("file1.txt") in conflicts, (
             "expected file1.txt to be reported as conflict"
         )
@@ -391,8 +413,9 @@ class TestApplyTemplate:
             "expected file2.txt to be reported as conflict"
         )
 
+    @staticmethod
     def test_skips_directory_collision(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Test that template file is skipped when target is a directory."""
         template_dir = tmp_path / "template"

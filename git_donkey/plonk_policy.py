@@ -33,7 +33,32 @@ def _marker_pattern(marker: str) -> re.Pattern[str]:
 
 
 def completion_marker_for_branch(branch_name: str) -> str | None:
-    """Return the completion marker implied by ``branch_name``, if recognized."""
+    """Return the completion marker implied by ``branch_name``, if recognized.
+
+    Issue branches map to a GitHub issue reference. Roadmap branches map to a
+    dotted reference assembled from the optional namespace, the version
+    triple with its optional patch suffix, and the optional task number.
+
+    Parameters
+    ----------
+    branch_name : str
+        Local branch name to classify.
+
+    Returns
+    -------
+    str | None
+        The parenthesised completion marker, or ``None`` when ``branch_name``
+        follows neither the issue nor the roadmap convention.
+
+    Examples
+    --------
+    >>> completion_marker_for_branch("issue-123-fix-bug")
+    '(#123)'
+    >>> completion_marker_for_branch("road-1-2-3a-4-finished-task")
+    '(road.1.2.3a.4)'
+    >>> completion_marker_for_branch("feature/unstructured") is None
+    True
+    """
     issue_match = _ISSUE_BRANCH_PATTERN.match(branch_name)
     if issue_match:
         return f"(#{issue_match.group(1)})"
@@ -53,7 +78,32 @@ def completion_marker_for_branch(branch_name: str) -> str | None:
 
 
 def has_completion_marker(messages: typ.Iterable[str], marker: str) -> bool:
-    """Return whether any commit message contains ``marker`` or its dotted form."""
+    """Return whether any commit message contains ``marker`` or its dotted form.
+
+    Parameters
+    ----------
+    messages : typ.Iterable[str]
+        Commit messages to scan. Consumed lazily and only until a match is
+        found.
+    marker : str
+        Parenthesised completion marker, as returned by
+        :func:`completion_marker_for_branch`.
+
+    Returns
+    -------
+    bool
+        ``True`` when a message contains ``marker`` exactly or in its dotted
+        form, otherwise ``False``.
+
+    Examples
+    --------
+    >>> has_completion_marker(["Merge pull request (#123)"], "(#123)")
+    True
+    >>> has_completion_marker(["Merge pull request (#123.)"], "(#123)")
+    True
+    >>> has_completion_marker(["Unrelated work"], "(#123)")
+    False
+    """
     marker_pattern = _marker_pattern(marker)
     return any(marker_pattern.search(message) is not None for message in messages)
 
@@ -62,7 +112,24 @@ def completed_candidates[CandidateT: CompletionCandidate](
     candidates: typ.Iterable[CandidateT],
     messages: typ.Iterable[str],
 ) -> list[CandidateT]:
-    """Return candidates whose completion markers appear in commit history."""
+    """Return candidates whose completion markers appear in commit history.
+
+    Scanning stops as soon as every candidate marker has been seen, so a long
+    history is not read in full when the matches appear early.
+
+    Parameters
+    ----------
+    candidates : typ.Iterable[CandidateT]
+        Candidates to filter. Each must expose a ``marker`` attribute.
+    messages : typ.Iterable[str]
+        Commit messages to scan, consumed lazily.
+
+    Returns
+    -------
+    list[CandidateT]
+        The candidates whose markers appear in ``messages``, in the order the
+        candidates were supplied. Empty when ``candidates`` is empty.
+    """
     candidate_list = list(candidates)
     candidates_by_marker = {
         _marker_body(candidate.marker): candidate for candidate in candidate_list

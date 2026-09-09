@@ -25,6 +25,9 @@ from pytest_bdd import given, scenarios, then, when
 from git_donkey import cli, donkey, plonk
 from tests.integration.conftest import _setup_repo
 
+# Cyclopts exits with this code when mutually exclusive flags are supplied.
+_USAGE_ERROR_EXIT_CODE = 2
+
 
 @dataclasses.dataclass(frozen=True, slots=True)
 class PlonkScenario:
@@ -287,7 +290,9 @@ def completed_branch_is_deleted(scenario: PlonkScenario) -> None:
 @then("git plonk exits with a usage error")
 def git_plonk_exits_with_usage_error(plonk_exit: int | str | None) -> None:
     """Assert conflicting cleanup modes fail as a usage error."""
-    assert plonk_exit == 2, "expected conflicting plonk modes to exit with code 2"
+    assert plonk_exit == _USAGE_ERROR_EXIT_CODE, (
+        "expected conflicting plonk modes to exit with a usage error"
+    )
 
 
 def _assert_dry_run_header(mode: str, plonk_output: str) -> None:
