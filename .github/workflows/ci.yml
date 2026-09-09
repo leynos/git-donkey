@@ -30,7 +30,7 @@ jobs:
           # through uv, so that pin is the single source of truth.
           for tool in mbake pyscn; do uv tool install ${tool}; done
           # Pin Ruff so CI matches local runs; keep in sync with Makefile RUFF_VERSION.
-          uv tool install ruff==0.15.22
+          uv tool install ruff==0.16.6
           npm install -g markdownlint-cli2
 
       - name: Validate Makefile

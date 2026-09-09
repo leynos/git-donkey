@@ -26,7 +26,7 @@ git-donkey-template = "git_donkey.cli:git_donkey_template"
 dev = [
     "pytest",
     "hypothesis",
-    "ruff==0.15.22",
+    "ruff==0.16.6",
     "pyright",
     "pytest-timeout",
     "pytest-xdist",

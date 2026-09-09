@@ -4,12 +4,12 @@ MDFORMAT_ALL ?= mdformat-all
 # Pin Ruff so local and CI runs agree; keep in sync with the ruff== dev
 # dependency in pyproject.toml and .github/workflows/ci.yml. Invoking it through
 # uv means the pinned version is used regardless of what is on PATH.
-RUFF_VERSION ?= 0.15.22
+RUFF_VERSION ?= 0.16.6
 RUFF ?= $(UV_ENV) uv tool run ruff@$(RUFF_VERSION)
 # Pin ty likewise. This is the sole ty version declaration: CI runs
 # `make typecheck` and installs no separate ty. Diagnostics differ between ty
 # releases, so an unpinned ty makes CI fail on errors that never appear locally.
-TY_VERSION ?= 0.0.63
+TY_VERSION ?= 0.0.79
 TY ?= $(UV_ENV) uv tool run ty@$(TY_VERSION)
 TYPOS_VERSION ?= 1.48.0
 TOOLS = $(MDFORMAT_ALL) $(MDLINT) uv
@@ -105,7 +105,9 @@ lint: uv ## Run linters
 
 typecheck: build uv ## Run typechecking
 	$(TY) --version
-	$(TY) check
+	# scripts/ holds PEP 723 single-file helpers that import each other by
+	# module name; ty needs them on the search path to resolve those imports.
+	$(TY) check --extra-search-path scripts
 
 markdownlint: spelling $(MDLINT) ## Lint Markdown files and enforce spelling
 	$(MDLINT) '**/*.md'
@@ -121,7 +123,10 @@ spelling-helper-test: ## Validate the shared spelling-policy integration
 		--target-version py313 --check scripts/generate_typos_config.py \
 		scripts/typos_rollout.py scripts/typos_rollout_cache.py \
 		scripts/tests/test_typos_rollout.py
-	@$(RUFF) check --isolated \
+	# --extend-select S310: these helpers open URLs, and their `noqa: S310`
+	# directives carry the justification for doing so. Ruff's default set omits
+	# S310, which would leave those suppressions unused rather than earned.
+	@$(RUFF) check --isolated --extend-select S310 \
 		--target-version py313 scripts/generate_typos_config.py \
 		scripts/typos_rollout.py scripts/typos_rollout_cache.py \
 		scripts/tests/test_typos_rollout.py
