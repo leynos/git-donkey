@@ -157,10 +157,9 @@ max-locals = 10
 [tool.interrogate]
 ignore-overloaded-functions = true
 
-# This [tool.pylint] table configures the built-in Pylint pass, which runs
-# under the PyPy shim (see the Makefile) for speed. The df12-python-lints
-# plugin needs CPython and the project's 3.13 syntax, so it runs separately
-# under CPython with its own config in .pylintrc-df12.toml.
+# This [tool.pylint] table configures the built-in Pylint pass. It and the
+# df12-python-lints plugin pass (configured in .pylintrc-df12.toml) both run
+# under the project virtual-env's CPython; see the Makefile.
 [tool.pylint.main]
 # The shared spelling-rollout helpers keep their own pinned Ruff and coverage
 # policy; exclude them here as they are excluded from Ruff.
@@ -173,9 +172,9 @@ ignore = [
 # Expand directory targets like git_donkey and tests even when a target is not
 # a package.
 recursive = true
-# Managed PyPy currently ships 3.11 while the project targets 3.13 syntax;
-# keep PyPy-backed Pylint useful on the files it can parse.
-py-version = "3.11"
+# Match the project's supported baseline (requires-python = ">=3.13") so the
+# version-gated checks reason about the oldest interpreter we support.
+py-version = "3.13"
 # Keep Pylint's module-size check active without forcing an unrelated module
 # split while introducing the second-tier lint gate.
 max-module-lines = 800
@@ -195,12 +194,7 @@ max-positional-arguments = 5
 
 [tool.pylint."messages control"]
 # Keep this Pylint pass focused on the explicitly selected messages.
-disable = [
-    "all",
-    # Managed PyPy is currently 3.11 while the project targets Python 3.13
-    # syntax; keep PyPy-backed Pylint useful on files it can parse.
-    "syntax-error",
-]
+disable = ["all"]
 enable = [
     # Logging format safety.
     "logging-format-interpolation",

@@ -1,9 +1,9 @@
 # Pylint configuration for the df12-python-lints house-style checkers.
 #
-# These checkers ship as a Pylint plugin that must import under CPython and
-# parse the project's Python 3.13 syntax, so this pass runs under CPython
-# (`uv run pylint --rcfile=.pylintrc-df12.toml`) rather than the PyPy shim used
-# for the built-in messages configured in pyproject.toml.
+# These checkers ship as a Pylint plugin that must be importable and able to
+# parse the project's own syntax, so this pass runs under the project
+# virtual-env's CPython (`uv run pylint --rcfile=.pylintrc-df12.toml`),
+# separately from the built-in messages configured in pyproject.toml.
 [tool.pylint.main]
 # Load only the df12 house-style checkers for this pass.
 load-plugins = ["df12_python_lints"]
