@@ -115,6 +115,13 @@ def get_template_dir_path(repo: Repo) -> Path | None:
     Path | None
         The template directory path, or None if the repository has no remote.
 
+    Raises
+    ------
+    ValueError
+        Propagated from :func:`_get_repo_url` when the repository has multiple
+        remotes and none is named ``origin``, so no unambiguous remote can be
+        chosen.
+
     """
     repo_url = _get_repo_url(repo)
     if repo_url is None:
@@ -136,6 +143,13 @@ def get_template_dir(repo: Repo) -> Path | None:
     -------
     Path | None
         The template directory path if it exists, otherwise None.
+
+    Raises
+    ------
+    ValueError
+        Propagated from :func:`_get_repo_url` when the repository has multiple
+        remotes and none is named ``origin``, so no unambiguous remote can be
+        chosen.
 
     """
     template_dir = get_template_dir_path(repo)

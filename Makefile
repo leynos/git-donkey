@@ -89,7 +89,11 @@ check-fmt: uv ## Verify formatting
 	$(RUFF) format --check
 	# mdformat-all doesn't currently do checking
 
-lint: uv build ## Run linters
+# No `build` prerequisite: CI runs `make build` as an explicit setup step, and
+# every venv-backed command below goes through `uv run`, which syncs the
+# project environment on demand. That keeps CI to a single synchronisation
+# while leaving `make lint` usable from a clean checkout.
+lint: uv ## Run linters
 	$(RUFF) check
 	$(UV_ENV) uv run interrogate --fail-under 100 git_donkey
 	pyscn check git_donkey tests --skip-clones

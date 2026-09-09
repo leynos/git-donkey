@@ -104,6 +104,13 @@ select = [
 extend-ignore = [
     "incorrect-blank-line-before-class",  # Conflicts with D211; prefer enforcing no blank line before class docstring.
     "multi-line-summary-second-line",  # Conflicts with D212; keep summary on the first line.
+    # Conflicts with this project's public-API convention. The rule wants
+    # exceptions a function does not raise *directly* removed from its
+    # docstring, but a propagated exception is still part of the caller-visible
+    # contract: donkey.py and template_cmd.py both catch the ValueError that
+    # templates.py propagates out of _get_repo_url. Under-documentation, the
+    # dangerous direction, is still caught by DOC501.
+    "docstring-extraneous-exception",
 ]
 
 [tool.ruff.lint.per-file-ignores]
