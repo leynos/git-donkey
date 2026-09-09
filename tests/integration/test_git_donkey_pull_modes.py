@@ -44,8 +44,7 @@ def test_pull_rebase_preserves_local_commits_on_explicit_base(
 
     assert repo.head.commit.hexsha != old_tip
     assert (
-        repo.git.merge_base("main", "origin/main")
-        == repo.commit("origin/main").hexsha
+        repo.git.merge_base("main", "origin/main") == repo.commit("origin/main").hexsha
     )
     assert repo.git.show("main:local.txt") == "local change"
     assert repo.git.show("main:upstream.txt") == "upstream change"

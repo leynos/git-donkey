@@ -65,6 +65,45 @@ def test_git_donkey_applies_template_overlay(
     ), "expected settings.json content to match template"
 
 
+def test_git_donkey_reports_template_overlay_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """git-donkey should report a failed overlay and keep the new worktree."""
+    local_path, remote_path = _setup_repo(tmp_path)
+
+    template_base = tmp_path / "templates"
+    template_dir = template_base / slugs.slug_dash_adler32(remote_path.as_posix())
+    template_dir.mkdir(parents=True)
+    monkeypatch.setattr(templates, "_get_template_base_dir", lambda: template_base)
+
+    def _fail_apply(*_args: object, **_kwargs: object) -> list[Path]:
+        """Simulate a filesystem failure while copying the overlay."""
+        msg = "simulated overlay failure"
+        raise OSError(msg)
+
+    monkeypatch.setattr(templates, "apply_template", _fail_apply)
+
+    monkeypatch.chdir(local_path)
+    exit_code = donkey.run_git_donkey("feature/overlay-failure", no_pull=True)
+
+    assert exit_code == 1, "expected git-donkey to report the overlay failure"
+    stderr = capsys.readouterr().err
+    assert "Error applying template overlay from" in stderr, (
+        "expected the overlay error to be reported"
+    )
+    assert "Worktree created but template overlay failed" in stderr, (
+        "expected the retained worktree to be reported"
+    )
+
+    worktree_root = local_path.parent / f"{local_path.name}.worktrees"
+    worktree_path = worktree_root / "feature/overlay-failure"
+    assert worktree_path.exists(), (
+        "expected the created worktree to be retained after the overlay failure"
+    )
+
+
 def test_git_donkey_without_template_succeeds(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

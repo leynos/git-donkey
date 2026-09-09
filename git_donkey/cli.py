@@ -50,7 +50,7 @@ def _donkey_cli(
     options: typ.Annotated[
         donkey._PullOptions,
         Parameter(name="*"),
-    ] = donkey._PullOptions(),
+    ] = donkey._DEFAULT_PULL_OPTIONS,
 ) -> None:
     """CLI wrapper for git-donkey."""
     raise SystemExit(

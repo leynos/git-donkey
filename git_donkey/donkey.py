@@ -18,12 +18,14 @@ from __future__ import annotations
 import dataclasses
 import os
 import typing as typ
-from pathlib import Path
 
 from git import Git, GitCommandError, Repo
 
 from git_donkey import donkey_worktrees, helpers, templates
 from git_donkey.helpers import _GIT_DONKEY_PREFIX as _GIT_DONKEY_PREFIX
+
+if typ.TYPE_CHECKING:
+    from pathlib import Path
 
 type _PullMode = typ.Literal["--rebase", "--ff-only"]
 
@@ -34,6 +36,9 @@ class _PullOptions:
 
     pull_rebase: bool = False
     pull_ff: bool = False
+
+
+_DEFAULT_PULL_OPTIONS = _PullOptions()
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -299,13 +304,43 @@ def _load_donkey_context() -> tuple[_DonkeyContext, str]:
     )
     return context, saved_cwd_branch
 
+def _apply_template_overlay(context: _DonkeyContext, target_path: Path) -> bool:
+    """Apply the repository's template overlay, returning False on failure.
 
+    A missing overlay, or a repository whose template directory cannot be
+    selected, is not a failure.
+    """
+    try:
+        template_dir = templates.get_template_dir(context.repo_home)
+    except ValueError as exc:
+        helpers._eprint(f"{_GIT_DONKEY_PREFIX}: {exc}")
+        return True
+    if template_dir is None:
+        return True
+
+    helpers._eprint(f"Applying template overlay from: {template_dir}")
+    try:
+        templates.apply_template(
+            template_dir,
+            target_path,
+            prefix=_GIT_DONKEY_PREFIX,
+        )
+    except OSError as e:
+        helpers._eprint(
+            f"{_GIT_DONKEY_PREFIX}: Error applying template overlay from "
+            f"{template_dir}: {e}"
+        )
+        helpers._eprint(
+            f"{_GIT_DONKEY_PREFIX}: Worktree created but template overlay failed"
+        )
+        return False
+    return True
 def run_git_donkey(
     branch_name: str,
     origin_branch: str | None = None,
     *,
     no_pull: bool = False,
-    options: _PullOptions = _PullOptions(),
+    options: _PullOptions = _DEFAULT_PULL_OPTIONS,
 ) -> int:
     """Run the git-donkey workflow.
 
@@ -354,29 +389,8 @@ def run_git_donkey(
         target_path=target_path,
     )
 
-    # Apply template overlay if available
-    try:
-        template_dir = templates.get_template_dir(context.repo_home)
-    except ValueError as exc:
-        helpers._eprint(f"{_GIT_DONKEY_PREFIX}: {exc}")
-        template_dir = None
-    if template_dir is not None:
-        helpers._eprint(f"Applying template overlay from: {template_dir}")
-        try:
-            templates.apply_template(
-                template_dir,
-                target_path,
-                prefix=_GIT_DONKEY_PREFIX,
-            )
-        except OSError as e:
-            helpers._eprint(
-                f"{_GIT_DONKEY_PREFIX}: Error applying template overlay from "
-                f"{template_dir}: {e}"
-            )
-            helpers._eprint(
-                f"{_GIT_DONKEY_PREFIX}: Worktree created but template overlay failed"
-            )
-            return 1
+    if not _apply_template_overlay(context, target_path):
+        return 1
 
     print(f"🫏 Worktree created: {target_path}")
     return 0

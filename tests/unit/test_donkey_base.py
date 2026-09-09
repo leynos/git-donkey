@@ -50,7 +50,7 @@ def test_pull_mode_is_explicit(
 
 
 @pytest.mark.parametrize(
-    ("options", "no_pull"),
+    "pull_case",
     [
         (donkey._PullOptions(pull_rebase=True, pull_ff=True), False),
         (donkey._PullOptions(pull_rebase=True), True),
@@ -61,11 +61,10 @@ def test_conflicting_pull_options_fail_before_repository_access(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
-    options: donkey._PullOptions,
-    *,
-    no_pull: bool,
+    pull_case: tuple[donkey._PullOptions, bool],
 ) -> None:
     """Conflicting flags are usage errors, even outside a repository."""
+    options, no_pull = pull_case
     monkeypatch.chdir(tmp_path)
     with pytest.raises(SystemExit) as excinfo:
         donkey.run_git_donkey("feature/test", options=options, no_pull=no_pull)

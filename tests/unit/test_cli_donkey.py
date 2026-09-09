@@ -72,9 +72,10 @@ def test_donkey_cli_rejects_conflicting_pull_flags(
     """Contradictory CLI flags fail before discovery or filesystem changes."""
     monkeypatch.chdir(tmp_path)
     with pytest.raises(SystemExit) as excinfo:
-        typ.cast("cabc.Callable[[list[str]], None]", cli._donkey_app)(
-            ["feature/test", *flags]
-        )
+        typ.cast("cabc.Callable[[list[str]], None]", cli._donkey_app)([
+            "feature/test",
+            *flags,
+        ])
     assert excinfo.value.code == 2
     assert "mutually exclusive" in capsys.readouterr().err
     assert not list(tmp_path.iterdir())

@@ -62,8 +62,7 @@ def test_default_uses_remote_tip_without_changing_dirty_local_base(
     assert (local_path / "README.md").read_text() == "unstaged change"
     assert (local_path / "untracked.txt").read_text() == "untracked change"
     assert (
-        _worktree_repo(local_path, "feature/default").head.commit.hexsha
-        == remote_tip
+        _worktree_repo(local_path, "feature/default").head.commit.hexsha == remote_tip
     )
     assert (
         _worktree_repo(local_path, "feature/default").active_branch.tracking_branch()
@@ -157,7 +156,7 @@ def test_principal_remote_keeps_existing_first_configured_rule(
     repo = Repo(local_path)
     repo.git.remote("rename", "origin", "upstream")
     other_remote = Repo.init(tmp_path / "other.git", bare=True)
-    repo.create_remote("origin", other_remote.git_dir)
+    repo.create_remote("origin", str(other_remote.git_dir))
     monkeypatch.chdir(local_path)
 
     assert donkey.run_git_donkey("feature/principal") == 0
