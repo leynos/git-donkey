@@ -125,8 +125,16 @@ def git_track() -> None:
     _track_app()
 
 
-def _run_comparison_cli(
-    runner: typ.Callable[..., int],
+class _ComparisonRunner(typ.Protocol):
+    """Callable surface shared by the incoming and outgoing runners."""
+
+    def __call__(self, ref: str | None = None, *, fetch: bool = True) -> int:
+        """Run one comparison and return its exit code."""
+        ...
+
+
+def _run_incoming_outgoing_cli(
+    runner: _ComparisonRunner,
     ref: str | None,
     *,
     no_fetch: bool,
@@ -151,7 +159,7 @@ def _incoming_cli(
     no_fetch: bool = False,
 ) -> None:
     """CLI wrapper for git-incoming."""
-    _run_comparison_cli(
+    _run_incoming_outgoing_cli(
         incoming_outgoing.run_git_incoming,
         ref,
         no_fetch=no_fetch,
@@ -159,12 +167,37 @@ def _incoming_cli(
 
 
 def git_incoming() -> None:
-    """Console entrypoint for git-incoming."""
+    """Console entrypoint for ``git-incoming``.
+
+    Registered in ``pyproject.toml`` as the ``git-incoming`` console script.
+    Parses arguments with Cyclopts through the shared ``git incoming`` app and
+    delegates to ``incoming_outgoing.run_git_incoming``.
+
+    Examples
+    --------
+    ::
+
+        $ git-incoming origin/main
+        abc1234 Fix parser edge case
+
+    """
     _incoming_app()
 
 
 def git_in() -> None:
-    """Console entrypoint for git-in."""
+    """Console entrypoint for ``git-in``, an alias of ``git-incoming``.
+
+    Registered in ``pyproject.toml`` as the ``git-in`` console script. Shares
+    the ``git incoming`` Cyclopts app with ``git_incoming`` and therefore
+    behaves identically.
+
+    Examples
+    --------
+    ::
+
+        $ git-in --no-fetch
+
+    """
     _incoming_app()
 
 
@@ -184,7 +217,7 @@ def _outgoing_cli(
     no_fetch: bool = False,
 ) -> None:
     """CLI wrapper for git-outgoing."""
-    _run_comparison_cli(
+    _run_incoming_outgoing_cli(
         incoming_outgoing.run_git_outgoing,
         ref,
         no_fetch=no_fetch,
@@ -192,12 +225,37 @@ def _outgoing_cli(
 
 
 def git_outgoing() -> None:
-    """Console entrypoint for git-outgoing."""
+    """Console entrypoint for ``git-outgoing``.
+
+    Registered in ``pyproject.toml`` as the ``git-outgoing`` console script.
+    Parses arguments with Cyclopts through the shared ``git outgoing`` app and
+    delegates to ``incoming_outgoing.run_git_outgoing``.
+
+    Examples
+    --------
+    ::
+
+        $ git-outgoing origin/main
+        abc1234 Local commit
+
+    """
     _outgoing_app()
 
 
 def git_out() -> None:
-    """Console entrypoint for git-out."""
+    """Console entrypoint for ``git-out``, an alias of ``git-outgoing``.
+
+    Registered in ``pyproject.toml`` as the ``git-out`` console script. Shares
+    the ``git outgoing`` Cyclopts app with ``git_outgoing`` and therefore
+    behaves identically.
+
+    Examples
+    --------
+    ::
+
+        $ git-out --no-fetch
+
+    """
     _outgoing_app()
 
 

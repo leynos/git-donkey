@@ -2,32 +2,142 @@
 
 from __future__ import annotations
 
+import contextlib
+import dataclasses
+import io
 import typing as typ
+
+import pytest
+from git import GitCommandError
+from hypothesis import given
+from hypothesis import strategies as st
 
 from git_donkey import incoming_outgoing
 
-if typ.TYPE_CHECKING:
-    import pytest
+_COMMIT_ID = st.from_regex(r"[0-9a-f]{7}", fullmatch=True)
+_LOG_COMMAND = "log"
+_REV_PARSE_COMMAND = "rev-parse"
 
 
 class _FakeGit:
     """Minimal ``repo.git`` double for comparison-range tests."""
 
-    def __init__(self, log_output: str) -> None:
+    def __init__(
+        self,
+        log_output: str,
+        *,
+        upstream: str | None = "origin/main",
+        fail_log: bool = False,
+    ) -> None:
         self.log_output = log_output
+        self.upstream = upstream
+        self.fail_log = fail_log
         self.calls: list[tuple[str, ...]] = []
 
     def log(self, *args: str) -> str:
         """Record log arguments and return the configured output."""
         self.calls.append(args)
+        if self.fail_log:
+            raise GitCommandError(_LOG_COMMAND, 128)
         return self.log_output
+
+    def rev_parse(self, *args: str) -> str:
+        """Return the configured upstream, or report a missing upstream."""
+        if self.upstream is None:
+            raise GitCommandError(_REV_PARSE_COMMAND, 128)
+        return self.upstream
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class _FakeRemote:
+    """Minimal ``repo.remotes`` entry exposing a remote name."""
+
+    name: str
 
 
 class _FakeRepo:
     """Minimal repository double with a ``git`` command surface."""
 
-    def __init__(self, log_output: str) -> None:
-        self.git = _FakeGit(log_output)
+    def __init__(
+        self,
+        log_output: str,
+        *,
+        upstream: str | None = "origin/main",
+        fail_log: bool = False,
+        remotes: tuple[str, ...] = ("origin",),
+    ) -> None:
+        self.git = _FakeGit(log_output, upstream=upstream, fail_log=fail_log)
+        self.remotes = [_FakeRemote(name) for name in remotes]
+
+
+class _ModelGit:
+    """``repo.git`` double that models ref reachability as commit sets."""
+
+    def __init__(self, reachable: dict[str, set[str]]) -> None:
+        self.reachable = reachable
+
+    def log(self, *args: str) -> str:
+        """Return commits in the include ref and not in the exclude ref."""
+        _, _, include_ref, _, exclude_ref = args
+        unique = sorted(self.reachable[include_ref] - self.reachable[exclude_ref])
+        return "\n".join(unique)
+
+
+class _ModelRepo:
+    """Repository double whose ``git`` models a bounded commit graph."""
+
+    def __init__(self, reachable: dict[str, set[str]]) -> None:
+        self.git = _ModelGit(reachable)
+        self.remotes = [_FakeRemote("origin")]
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class _ComparisonHarness:
+    """Bound comparison runner plus the remotes it has fetched."""
+
+    run: typ.Callable[..., tuple[int, str, str]]
+    fetches: list[str]
+
+
+@pytest.fixture
+def comparison(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> _ComparisonHarness:
+    """Return a fake-repository comparison runner and its fetch recorder."""
+    fetches: list[str] = []
+
+    def _fetch(repo: object, remote: str, prefix: str) -> None:
+        """Record the remote that a comparison fetched."""
+        fetches.append(remote)
+
+    def _run(
+        repo: _FakeRepo,
+        runner: typ.Callable[..., int],
+        *,
+        ref: str | None = "origin/main",
+        fetch: bool = True,
+    ) -> tuple[int, str, str]:
+        """Run one comparison against ``repo`` and capture its output."""
+        monkeypatch.setattr(
+            incoming_outgoing.helpers,
+            "_find_repo",
+            lambda _prefix: repo,
+        )
+        monkeypatch.setattr(incoming_outgoing.helpers, "_fetch_remote", _fetch)
+        fetches.clear()
+        exit_code = runner(ref, fetch=fetch)
+        captured = capsys.readouterr()
+        return exit_code, captured.out, captured.err
+
+    return _ComparisonHarness(run=_run, fetches=fetches)
+
+
+def _format_commits(commits: set[str]) -> str:
+    """Return the ``git log`` output expected for ``commits``."""
+    if not commits:
+        return ""
+    return "\n".join(sorted(commits)) + "\n"
 
 
 def test_commits_unique_to_ref_prints_log_lines(
@@ -42,8 +152,10 @@ def test_commits_unique_to_ref_prints_log_lines(
         exclude_ref="HEAD",
     )
 
-    assert has_commits is True
-    assert capsys.readouterr().out == "abc1234 Remote commit\n"
+    assert has_commits is True, "non-empty log output must report commits"
+    assert capsys.readouterr().out == "abc1234 Remote commit\n", (
+        "comparison output must be printed verbatim"
+    )
     assert repo.git.calls == [
         (
             "--oneline",
@@ -52,7 +164,7 @@ def test_commits_unique_to_ref_prints_log_lines(
             "--not",
             "HEAD",
         )
-    ]
+    ], "incoming comparisons must include the ref and exclude HEAD"
 
 
 def test_commits_unique_to_ref_handles_empty_log(
@@ -67,5 +179,189 @@ def test_commits_unique_to_ref_handles_empty_log(
         exclude_ref="origin/main",
     )
 
-    assert has_commits is False
-    assert capsys.readouterr().out == ""
+    assert has_commits is False, "empty log output must report no commits"
+    assert capsys.readouterr().out == "", "empty comparisons must print nothing"
+
+
+def test_run_git_incoming_reports_missing_upstream(
+    comparison: _ComparisonHarness,
+) -> None:
+    """A missing upstream should exit 2 and explain how to configure one."""
+    repo = _FakeRepo("", upstream=None)
+
+    exit_code, out, err = comparison.run(
+        repo,
+        incoming_outgoing.run_git_incoming,
+        ref=None,
+    )
+
+    assert exit_code == 2, "a missing upstream must exit 2"
+    assert out == "", "a missing upstream must print no commits"
+    assert "no upstream branch configured" in err
+    assert "pass a ref" in err
+
+
+def test_run_git_incoming_fetches_remote_backed_ref(
+    comparison: _ComparisonHarness,
+) -> None:
+    """Remote-backed comparison refs should fetch their remote by default."""
+    repo = _FakeRepo("abc1234 Remote commit")
+
+    exit_code, out, err = comparison.run(repo, incoming_outgoing.run_git_incoming)
+
+    assert exit_code == 0, "matching commits must exit 0"
+    assert out == "abc1234 Remote commit\n", "the fetched commit must be printed"
+    assert err == "", "a successful comparison must not write to stderr"
+    assert comparison.fetches == ["origin"], "remote-backed refs must fetch origin"
+
+
+def test_run_git_incoming_fetches_canonical_remote_ref(
+    comparison: _ComparisonHarness,
+) -> None:
+    """Canonical remote-tracking refs should fetch their owning remote."""
+    repo = _FakeRepo("abc1234 Remote commit")
+
+    exit_code, _, _ = comparison.run(
+        repo,
+        incoming_outgoing.run_git_incoming,
+        ref="refs/remotes/origin/main",
+    )
+
+    assert exit_code == 0, "canonical refs must compare successfully"
+    assert comparison.fetches == ["origin"], (
+        "canonical refs/remotes refs must fetch their owning remote"
+    )
+
+
+def test_run_git_incoming_skips_fetch_for_local_ref(
+    comparison: _ComparisonHarness,
+) -> None:
+    """Local comparison refs should not trigger a fetch."""
+    repo = _FakeRepo("")
+
+    exit_code, _, _ = comparison.run(
+        repo,
+        incoming_outgoing.run_git_incoming,
+        ref="main",
+    )
+
+    assert exit_code == 1, "an empty comparison must exit 1"
+    assert comparison.fetches == [], "local refs must not fetch a remote"
+
+
+def test_run_git_incoming_no_fetch_skips_remote(
+    comparison: _ComparisonHarness,
+) -> None:
+    """--no-fetch should compare without contacting the remote."""
+    repo = _FakeRepo("")
+
+    exit_code, _, _ = comparison.run(
+        repo,
+        incoming_outgoing.run_git_incoming,
+        fetch=False,
+    )
+
+    assert exit_code == 1, "an empty comparison must exit 1"
+    assert comparison.fetches == [], "--no-fetch must not contact the remote"
+
+
+def test_run_git_outgoing_compares_head_against_ref(
+    comparison: _ComparisonHarness,
+) -> None:
+    """Outgoing comparisons should include HEAD and exclude the comparison ref."""
+    repo = _FakeRepo("abc1234 Local commit")
+
+    exit_code, out, err = comparison.run(repo, incoming_outgoing.run_git_outgoing)
+
+    assert exit_code == 0, "local-only commits must exit 0"
+    assert out == "abc1234 Local commit\n", "the local-only commit must be printed"
+    assert err == "", "a successful comparison must not write to stderr"
+    assert repo.git.calls == [
+        ("--oneline", "--decorate", "HEAD", "--not", "origin/main")
+    ], "outgoing comparisons must include HEAD and exclude the ref"
+
+
+def test_run_git_incoming_reports_comparison_failure(
+    comparison: _ComparisonHarness,
+) -> None:
+    """A failed ``git log`` should exit 2 with a diagnostic."""
+    repo = _FakeRepo("", fail_log=True)
+
+    exit_code, out, err = comparison.run(repo, incoming_outgoing.run_git_incoming)
+
+    assert exit_code == 2, "a failed comparison must exit 2"
+    assert out == "", "a failed comparison must print no commits"
+    assert "comparison failed" in err
+
+
+def test_run_git_incoming_reports_fetch_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A failed fetch should exit 2 instead of masquerading as no commits."""
+
+    def _fail_fetch(repo: object, remote: str, prefix: str) -> None:
+        """Simulate the shared fetch helper's failure exit."""
+        raise SystemExit(1)
+
+    repo = _FakeRepo("")
+    monkeypatch.setattr(
+        incoming_outgoing.helpers,
+        "_find_repo",
+        lambda _prefix: repo,
+    )
+    monkeypatch.setattr(incoming_outgoing.helpers, "_fetch_remote", _fail_fetch)
+
+    exit_code = incoming_outgoing.run_git_incoming()
+
+    assert exit_code == 2, "a failed fetch must exit 2, not 1"
+    assert capsys.readouterr().out == "", "a failed fetch must print no commits"
+
+
+@given(
+    head_commits=st.sets(_COMMIT_ID, max_size=4),
+    remote_commits=st.sets(_COMMIT_ID, max_size=4),
+)
+def test_incoming_and_outgoing_mirror_reachability_model(
+    head_commits: set[str],
+    remote_commits: set[str],
+) -> None:
+    """Both directions should print the model's directional set difference."""
+    repo = _ModelRepo({"HEAD": head_commits, "origin/main": remote_commits})
+    output = io.StringIO()
+
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        monkeypatch.setattr(
+            incoming_outgoing.helpers,
+            "_find_repo",
+            lambda _prefix: repo,
+        )
+        with contextlib.redirect_stdout(output):
+            incoming_code = incoming_outgoing.run_git_incoming(
+                "origin/main",
+                fetch=False,
+            )
+            incoming_out = output.getvalue()
+            output.seek(0)
+            output.truncate()
+            outgoing_code = incoming_outgoing.run_git_outgoing(
+                "origin/main",
+                fetch=False,
+            )
+            outgoing_out = output.getvalue()
+
+    expected_incoming = remote_commits - head_commits
+    expected_outgoing = head_commits - remote_commits
+
+    assert incoming_out == _format_commits(expected_incoming), (
+        "incoming must print commits reachable from the ref and not HEAD"
+    )
+    assert incoming_code == (0 if expected_incoming else 1), (
+        "incoming must exit 0 when commits are printed and 1 otherwise"
+    )
+    assert outgoing_out == _format_commits(expected_outgoing), (
+        "outgoing must print commits reachable from HEAD and not the ref"
+    )
+    assert outgoing_code == (0 if expected_outgoing else 1), (
+        "outgoing must exit 0 when commits are printed and 1 otherwise"
+    )

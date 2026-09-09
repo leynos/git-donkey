@@ -200,3 +200,48 @@ def test_explicit_ref_does_not_require_upstream(
     assert exit_code == 0
     assert "Seed commit" in out
     assert err == ""
+
+
+def test_canonical_ref_fetches_owning_remote(
+    tmp_path: Path,
+    run_and_capture: typ.Callable[..., tuple[int, str, str]],
+) -> None:
+    """A canonical refs/remotes ref should fetch its owning remote first."""
+    local_path, remote_path = _setup_repo(tmp_path)
+    local_repo = Repo(local_path)
+    _set_main_upstream(local_repo)
+    local_repo.remote("origin").fetch()
+
+    peer_repo = _clone_remote(remote_path, tmp_path / "peer")
+    _seed_repo(peer_repo, "remote.txt", "remote")
+    peer_repo.remote("origin").push("main")
+
+    exit_code, out, err = run_and_capture(
+        local_path,
+        incoming_outgoing.run_git_incoming,
+        "refs/remotes/origin/main",
+    )
+
+    assert exit_code == 0, "canonical refs must fetch and report new commits"
+    assert "Seed commit" in out
+    assert err == ""
+
+
+def test_fetch_failure_returns_two(
+    tmp_path: Path,
+    run_and_capture: typ.Callable[..., tuple[int, str, str]],
+) -> None:
+    """A failed fetch should exit 2 rather than report an empty comparison."""
+    local_path, _remote_path = _setup_repo(tmp_path)
+    repo = Repo(local_path)
+    _set_main_upstream(repo)
+    repo.git.remote("set-url", "origin", (tmp_path / "missing.git").as_posix())
+
+    exit_code, out, err = run_and_capture(
+        local_path,
+        incoming_outgoing.run_git_incoming,
+    )
+
+    assert exit_code == 2, "a failed fetch must exit 2, not 1"
+    assert out == ""
+    assert "fetch failed" in err
