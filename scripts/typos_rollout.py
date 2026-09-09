@@ -48,7 +48,7 @@ class Dictionary:
     excluded_files: tuple[str, ...] = ()
 
 
-def _is_string_list(value: object) -> typ.TypeGuard[list[str]]:
+def _is_string_list(value: object) -> typ.TypeIs[list[str]]:
     """Return whether ``value`` is a list containing only strings."""
     return isinstance(value, list) and all(isinstance(item, str) for item in value)
 

@@ -135,6 +135,19 @@ a tenth of the machine's cores with a floor of two, keeping the pass parallel
 on small continuous integration runners while leaving headroom on large shared
 machines.
 
+Running `make lint` requires `uv` and `pyscn` on `PATH`; the Makefile's
+`TOOLS` list and `ensure_tool` check fail early with a clear message if
+`uv` is missing. `pyscn` is the one lint tool `uv` does not provide, so
+continuous integration installs it with `uv tool install pyscn`.
+Everything else needs no separate installation: Ruff runs via
+`uv tool run` at a pinned version, while interrogate, both Pylint
+passes, and ambrleaks run via `uv run` from the project virtual
+environment. The project requires Python 3.13 or newer, but `uv`
+provisions a suitable CPython interpreter for the virtual environment,
+so contributors need no matching system Python. No Node.js tooling is
+needed for `make lint`; that belongs to the separate `markdownlint` and
+`nixie` targets.
+
 ### Development dependencies
 
 The `[dependency-groups] dev` table in `pyproject.toml` provides `pylint`

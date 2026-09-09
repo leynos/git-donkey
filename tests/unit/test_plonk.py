@@ -10,6 +10,7 @@ Git repositories.
 from __future__ import annotations
 
 import re
+import tempfile
 import typing as typ
 from pathlib import Path
 from types import SimpleNamespace
@@ -47,11 +48,12 @@ def _redact_worktree_paths(data: str, _: object) -> str:
     Returns
     -------
     str
-        ``data`` with the ``/repo.worktrees`` mount prefix replaced by a
-        ``<worktrees>`` placeholder so recorded snapshots contain no absolute
-        POSIX paths for ``ambrleaks`` to flag.
+        ``data`` with each absolute worktree mount, including every ancestor
+        segment above ``repo.worktrees``, replaced by a ``<worktrees>``
+        placeholder so recorded snapshots contain no absolute POSIX paths for
+        ``ambrleaks`` to flag.
     """
-    return re.sub(r"/repo\.worktrees\b", "<worktrees>", data)
+    return re.sub(r"(?:/[^/\s]+)*/repo\.worktrees\b", "<worktrees>", data)
 
 
 # Redact absolute worktree paths at record time so snapshots stay leak-free.
@@ -65,6 +67,31 @@ _ROADMAP_WORDS = st.text(
     min_size=1,
     max_size=8,
 )
+
+
+def test_redact_worktree_paths_strips_nested_ancestor() -> None:
+    """Redaction should drop the whole absolute prefix, not just the mount."""
+    # Derive the temporary root rather than hardcoding "/tmp": a literal would
+    # trip flake8-bandit's hardcoded-temp-file check for no benefit, since the
+    # path is only ever treated as text.
+    temp_root = tempfile.gettempdir()
+    redacted = _redact_worktree_paths(f"{temp_root}/run/repo.worktrees/branch", None)
+
+    assert redacted.startswith("<worktrees>"), (
+        "expected redaction to replace the absolute ancestor prefix"
+    )
+    assert temp_root not in redacted, (
+        "expected no absolute ancestor segment to survive redaction"
+    )
+
+
+def test_redact_worktree_paths_keeps_rooted_mount_stable() -> None:
+    """A mount with no ancestor should redact exactly as it did before."""
+    redacted = _redact_worktree_paths("- /repo.worktrees/issue-123-fix", None)
+
+    assert redacted == "- <worktrees>/issue-123-fix", (
+        "expected rooted worktree mounts to keep their existing redaction"
+    )
 
 
 def test_issue_branch_marker_matches_issue_reference() -> None:
