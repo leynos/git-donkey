@@ -274,7 +274,8 @@ Return codes follow Mercurial's documented behaviour for these commands:
 - `0` means matching incoming or outgoing commits were found and printed.
 - `1` means no matching commits were found.
 - `2` means the command could not run, such as when no upstream is configured
-  and no explicit ref was provided.
+  and no explicit ref was provided, or when the fetch or comparison failed, so
+  automation never mistakes a fetch failure for "no changes".
 
 ## git fafo
 

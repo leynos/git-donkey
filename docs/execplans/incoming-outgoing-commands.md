@@ -107,6 +107,21 @@ Mercurial bundles, templates, phases, or bookmark comparison output.
   passed the Python format, test, type, and lint gates. Added the documented
   external API literal `color` to the repository spelling overlay so the
   Markdown validation gate accepts the style-guide example.
+- [x] (2026-09-09 00:00Z) Recovered the incoming and outgoing integration
+  tests: three tests failed because `_clone_remote` cloned a bare remote whose
+  default `HEAD` did not point at `main`; the helper now clones the explicit
+  `main` branch (commit 22ba620, "Stabilize incoming outgoing clone helper").
+- [x] (2026-09-09 00:00Z) Actioned review feedback on the comparison workflow:
+  fetch failures are translated to exit code `2` at the workflow boundary
+  because the shared `helpers._fetch_remote` exits `1`, which this workflow
+  reserves for an empty comparison; canonical `refs/remotes/<remote>/...` refs
+  now resolve to their owning remote so the default fetch runs; and
+  `git_donkey/cli.py` gained a `_ComparisonRunner` protocol and a shared
+  `_run_incoming_outgoing_cli` helper with protocol `...` bodies and expanded
+  public docstrings. Added substantive unit tests for the runners (missing
+  upstream, fetch selection, both directions, `GitCommandError`, and fetch
+  failure) plus a Hypothesis property test asserting directional set-difference
+  symmetry and `0`/`1` exit-code consistency.
 
 ## Surprises & discoveries
 
@@ -154,7 +169,9 @@ Mercurial bundles, templates, phases, or bookmark comparison output.
   flag. Rationale: Mercurial examples show brief and patch-oriented output, but
   the core value is identifying candidate commits. The concise log is
   observable, familiar to Git users, and easy to validate. Date/Author:
-  2026-07-01, Codex.
+  2026-07-01, Codex. Superseded by the decision below (2026-09-09):
+  merge-inclusion flags were not implemented; this branch ships only
+  `--no-fetch`.
 - Decision: Keep the first implementation to the planned `--no-fetch` option
   and do not add merge-inclusion or formatting flags in this branch. Rationale:
   the accepted observable behaviour does not require a flag matrix, and keeping
@@ -265,7 +282,7 @@ change and must preserve the tests added in Stage B.
 Run commands from the repository root:
 
 ```shell
-cd /home/leynos/.lody/repos/github---leynos---git-donkey/worktrees/de30dcf0-099d-48c0-a955-a807f568fe37
+cd "$(git rev-parse --show-toplevel)"
 ```
 
 Create red tests, then run the focused test file:

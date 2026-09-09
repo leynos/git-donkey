@@ -6,7 +6,7 @@ schema = 1
 stems = []
 
 [words]
-accepted = ["color"]
+accepted = []
 
 [words.corrections]
 
@@ -15,7 +15,9 @@ accepted = ["color"]
 # deliberate US spellings quoted as external API names need naming here.
 # documentation-style-guide.md cites `color` as the canonical example of
 # keeping US spelling for an external API.
-ignore = ["`color`"]
+# Abbreviated commit hashes cited in docs, which start with a digit and would
+# otherwise be split into spurious words (for example, `22ba620` -> `ba`).
+ignore = ["`color`", "\\b[0-9][0-9a-f]{6,39}\\b"]
 
 [files]
 exclude = []

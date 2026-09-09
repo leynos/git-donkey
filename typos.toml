@@ -31,6 +31,7 @@ extend-exclude = [
 locale = "en-gb"
 extend-ignore-re = [
     "(?s)```.*?```",
+    "\\b[0-9][0-9a-f]{6,39}\\b",
     "\\brust-analyzer\\b",
     "`color`",
 ]
@@ -307,7 +308,6 @@ extend-ignore-re = [
 "colonizers" = "colonizers"
 "colonizes" = "colonizes"
 "colonizing" = "colonizing"
-"color" = "color"
 "colourisable" = "colourizable"
 "colourisation" = "colourization"
 "colourisations" = "colourizations"
