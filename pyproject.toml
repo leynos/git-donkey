@@ -165,6 +165,14 @@ max-args = 4
 max-bool-expr = 2
 max-locals = 10
 
+[tool.ty.environment]
+# The estate typos-rollout scripts import each other as top-level modules and
+# `scripts/` is not a package, so the directory belongs on the module search
+# path. Editors honour this setting; the `typecheck` target also passes
+# `--extra-search-path scripts` because ty does not apply config-sourced extra
+# paths when it resolves the PEP 723 script as a standalone program.
+extra-paths = ["scripts"]
+
 [tool.interrogate]
 ignore-overloaded-functions = true
 

@@ -17,6 +17,10 @@ _ROADMAP_BRANCH_PATTERN = re.compile(r"^(?:(\w+)-)?(\d+)-(\d+)-(\d+)(\w+)?-(?:(\
 class CompletionCandidate(typ.Protocol):
     """Minimal candidate shape required by completion policy."""
 
+    # A read-only property states the contract precisely: the policy only ever
+    # reads ``marker``, so immutable candidates such as frozen dataclasses
+    # satisfy it. A plain ``marker: str`` declaration would require a writable
+    # attribute and exclude them.
     @property
     def marker(self) -> str:
         """Completion marker naming the work this candidate finishes."""
