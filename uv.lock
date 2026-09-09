@@ -467,7 +467,7 @@ dev = [
     { name = "df12-python-lints", git = "https://github.com/leynos/df12-python-lints?rev=v0.2.0" },
     { name = "hypothesis" },
     { name = "interrogate", specifier = ">=1.7.0" },
-    { name = "pylint", specifier = ">=3.3" },
+    { name = "pylint", specifier = ">=4.0,<5" },
     { name = "pyright" },
     { name = "pytest" },
     { name = "pytest-bdd", specifier = ">=8.1.0,<9" },

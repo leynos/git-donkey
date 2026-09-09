@@ -33,7 +33,7 @@ dev = [
     "interrogate>=1.7.0",
     "pytest-bdd>=8.1.0,<9",
     "syrupy>=5.5.3,<6",
-    "pylint>=3.3",
+    "pylint>=4.0,<5",
     "df12-python-lints @ git+https://github.com/leynos/df12-python-lints@v0.2.0",
 ]
 
