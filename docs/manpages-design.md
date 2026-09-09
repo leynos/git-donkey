@@ -19,7 +19,7 @@ not runtime dependencies. The hook runs for wheel builds, including editable
 wheels. No generator runs while an installer unpacks a previously built wheel.
 
 Both working and output directories are restricted to `docs/man/`, with hook
-cleanup disabled. Even an empty artifact pattern list can trigger directory
+cleanup disabled. Even an empty artefact pattern list can trigger directory
 traversal in the plugin; scanning the repository root can race with uv deleting
 temporary build-cache entries.
 
@@ -32,7 +32,7 @@ Hatchling's `shared-data` mapping places each generated page in
 `<distribution>.data/data/share/man/man1/`.[^1] Explicit file mappings prevent
 source documents or stale, unrelated pages from entering the installed manual
 directory. The build hook does not also register these files as ordinary
-artifacts, which would put duplicate copies in the wheel's importable payload.
+artefacts, which would put duplicate copies in the wheel's importable payload.
 
 Generated `.1` files are ignored by Git and explicitly excluded from source
 distributions. Source distributions retain the `.rst` sources, Docutils
@@ -84,13 +84,14 @@ and `RECORD` hashes, and rebuild a wheel independently from the source archive.
 They start with stale generated files to check that generation replaces them.
 Missing or malformed sources must fail the build rather than reuse stale pages.
 
-An installation test uses `uv tool install` with temporary tool and XDG
-directories, checks installed page bytes, and confirms that uninstallation
-removes the environment's pages. It also checks that installation never creates
-the user-manpath directory. The subprocesses run offline against the cache
-populated in `.uv-cache` by `make build`, not an outer `UV_CACHE_DIR` supplied
-by an action; tool installation permits wheels only and disables
-Python downloads.
+An installation test creates an isolated environment, installs the wheel with
+`uv pip install --no-deps`, checks the installed page bytes, and confirms that
+uninstallation removes them. It also checks that installation never creates the
+user-manpath directory. Placement does not depend on the runtime dependency
+graph, and that graph cannot be resolved offline: `loctocat` requires `halo`,
+whose only published wheel targets Python 2. The subprocesses run offline
+against the cache populated in `.uv-cache` by `make build`, not an outer
+`UV_CACHE_DIR` supplied by an action, and Python downloads are disabled.
 
 [^1]: [Hatchling wheel shared data](https://hatch.pypa.io/latest/plugins/builder/wheel/).
 [^2]: [Docutils manpage writer](https://docutils.sourceforge.io/docs/user/manpage.html).

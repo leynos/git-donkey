@@ -90,7 +90,7 @@ def test_generation_is_strict_and_does_not_insert_files() -> None:
 
 @pytest.mark.parametrize(
     "command",
-    ("git-donkey", "git-track", "git-fafo", "git-plonk", "git-donkey-template"),
+    ["git-donkey", "git-track", "git-fafo", "git-plonk", "git-donkey-template"],
 )
 def test_manual_has_standard_sections(command: str) -> None:
     """Keep each generated page useful as a standalone reference."""
@@ -107,7 +107,7 @@ def test_manual_has_standard_sections(command: str) -> None:
 
 @pytest.mark.parametrize(
     ("command", "required_text"),
-    (
+    [
         ("git-donkey", "--no-pull"),
         ("git-donkey", "ORIGIN_BRANCH"),
         ("git-track", "BRANCH"),
@@ -118,7 +118,7 @@ def test_manual_has_standard_sections(command: str) -> None:
         ("git-plonk", "--hard"),
         ("git-plonk", "--dry-run"),
         ("git-donkey-template", "XDG_DATA_HOME"),
-    ),
+    ],
 )
 def test_manual_covers_command_specific_behaviour(
     command: str,
@@ -131,13 +131,13 @@ def test_manual_covers_command_specific_behaviour(
 
 @pytest.mark.parametrize(
     ("command", "wrapper"),
-    (
+    [
         ("git-donkey", "_donkey_cli"),
         ("git-track", "_track_cli"),
         ("git-fafo", "_fafo_cli"),
         ("git-plonk", "_plonk_cli"),
         ("git-donkey-template", "_template_cli"),
-    ),
+    ],
 )
 def test_manual_covers_cli_parameters(command: str, wrapper: str) -> None:
     """Detect argument and primary-option drift without importing workflows."""

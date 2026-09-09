@@ -9,7 +9,6 @@ import hashlib
 import io
 import os
 import shutil
-import subprocess
 import sys
 import tarfile
 import tomllib
@@ -17,6 +16,7 @@ import zipfile
 from pathlib import Path, PurePosixPath
 
 import pytest
+from plumbum import local
 
 _ROOT = Path(__file__).resolve().parents[2]
 pytestmark = pytest.mark.timeout(180)
@@ -69,13 +69,11 @@ def _copy_sources(destination: Path) -> Path:
 
 
 def _environment(root: Path) -> dict[str, str]:
-    """Isolate user-facing paths while reusing dependencies cached by make build."""
+    """Isolate user-facing paths and reuse the build cache populated by make build."""
     # Makefile UV_ENV overrides the setup-uv action's outer cache setting.
     cache = _ROOT / ".uv-cache"
     return os.environ | {
         "UV_CACHE_DIR": str(cache),
-        "UV_TOOL_DIR": str(root / "tools"),
-        "UV_TOOL_BIN_DIR": str(root / "bin"),
         "UV_PYTHON_DOWNLOADS": "never",
         "UV_LINK_MODE": "copy",
         "XDG_DATA_HOME": str(root / "xdg-data"),
@@ -84,28 +82,57 @@ def _environment(root: Path) -> dict[str, str]:
     }
 
 
+def _venv_python(environment: Path) -> Path:
+    """Return the interpreter inside an isolated installation environment."""
+    return environment / "bin/python"
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class CommandResult:
+    """Capture an external command's exit status and output.
+
+    Attributes
+    ----------
+    returncode : int
+        Exit status reported by the process.
+    stdout : str
+        Captured standard output.
+    stderr : str
+        Captured standard error.
+
+    """
+
+    returncode: int
+    stdout: str
+    stderr: str
+
+    @property
+    def output(self) -> str:
+        """Return combined output so diagnostics survive a failed assertion."""
+        return self.stdout + self.stderr
+
+
 def _run_uv(
     arguments: tuple[str, ...],
     cwd: Path,
     environment: dict[str, str],
-) -> subprocess.CompletedProcess[str]:
+) -> CommandResult:
     """Run the required uv executable without shell parsing or network access."""
     executable = shutil.which("uv")
     assert executable is not None, "uv is required for packaging integration tests"
-    return subprocess.run(  # noqa: S603 - fixed uv commands and test-owned paths
-        (executable, "--offline", *arguments),
+    returncode, stdout, stderr = local[executable].run(
+        ("--offline", *arguments),
+        retcode=None,
         cwd=cwd,
         env=environment,
-        capture_output=True,
-        text=True,
-        check=False,
         timeout=120,
     )
+    return CommandResult(returncode, stdout, stderr)
 
 
-def _assert_success(result: subprocess.CompletedProcess[str]) -> None:
+def _assert_success(result: CommandResult) -> None:
     """Include build diagnostics in a failed test rather than hide stderr."""
-    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.returncode == 0, result.output
 
 
 def _manuals(wheel: Path) -> dict[str, bytes]:
@@ -207,41 +234,53 @@ def test_sdist_contains_sources_not_generated_pages(
     assert _manuals(distributions.rebuilt_wheel) == _manuals(distributions.wheel)
 
 
-def test_uv_tool_installs_and_removes_environment_manpages(
+def test_install_places_and_removes_environment_manpages(
     distributions: DistributionBuild,
 ) -> None:
-    """Install through uv tool without promoting files into the user manpath."""
+    """Install without promoting files into the user manpath."""
+    environment = distributions.root / "environment"
+    _assert_success(
+        _run_uv(
+            ("venv", "--python", sys.executable, str(environment)),
+            distributions.root,
+            distributions.environment,
+        )
+    )
+    interpreter = _venv_python(environment)
+    # Page placement does not depend on the runtime dependency graph, and that
+    # graph cannot be resolved offline: loctocat requires halo, whose only
+    # published wheel targets Python 2.
     _assert_success(
         _run_uv(
             (
-                "tool",
+                "pip",
                 "install",
-                "--no-build",
+                "--no-deps",
                 "--python",
-                sys.executable,
+                str(interpreter),
                 str(distributions.wheel),
             ),
             distributions.root,
             distributions.environment,
         )
     )
-    installed = distributions.root / "tools/git-donkey/share/man/man1"
+    installed = environment / "share/man/man1"
     assert {path.name: path.read_bytes() for path in installed.glob("*.1")} == _manuals(
         distributions.wheel
     )
     assert not (distributions.root / "xdg-data/man").exists()
     _assert_success(
         _run_uv(
-            ("tool", "uninstall", "git-donkey"),
+            ("pip", "uninstall", "--python", str(interpreter), "git-donkey"),
             distributions.root,
             distributions.environment,
         )
     )
-    assert not installed.exists()
+    assert not list(installed.glob("*.1"))
     assert not (distributions.root / "xdg-data/man").exists()
 
 
-@pytest.mark.parametrize("failure", ("missing", "malformed"))
+@pytest.mark.parametrize("failure", ["missing", "malformed"])
 def test_broken_manual_source_fails_the_build(tmp_path: Path, failure: str) -> None:
     """Refuse missing or malformed sources instead of shipping stale pages."""
     source = _copy_sources(tmp_path / "source")
@@ -258,5 +297,5 @@ def test_broken_manual_source_fails_the_build(tmp_path: Path, failure: str) -> N
         _environment(tmp_path),
     )
     assert result.returncode != 0
-    assert "git-donkey.rst" in result.stdout + result.stderr
+    assert "git-donkey.rst" in result.output
     assert not list((source / "dist").glob("*.whl"))
