@@ -1,5 +1,28 @@
 # Default bases and explicit pull modes
 
+For screen readers: The following flowchart shows how `git donkey` validates
+its options, selects a base branch, optionally updates that base, and creates
+the new worktree.
+
+```mermaid
+flowchart TD
+    Start["git donkey invocation"] --> Validate["_pull_mode"]
+    Validate -->|conflicting options| Error["fail before repository access"]
+    Validate -->|valid options| Base{base supplied?}
+    Base -->|no| Default["_remote_default_base"]
+    Default --> Advertise["ls_remote(--symref, HEAD)"]
+    Advertise --> Fetch["fetch default branch refspec"]
+    Fetch --> RemoteBase["fully qualified remote-tracking ref"]
+    Base -->|yes| Explicit["choose_base_branch"]
+    RemoteBase --> Update["optional confirmed base update"]
+    Explicit --> Update
+    Update --> Resolve["commit(base).hexsha"]
+    Resolve --> Create["worktree add(--no-track)"]
+    Create --> Done["new feature worktree"]
+```
+
+_Figure 1: git-donkey base selection and worktree creation flow._
+
 ## Decision
 
 An omitted `git donkey` base means the fetched default branch on the principal
