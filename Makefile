@@ -17,10 +17,11 @@ VENV_TOOLS = pytest
 UV_ENV = UV_CACHE_DIR=.uv-cache UV_TOOL_DIR=.uv-tools
 # Pylint targets shared by both passes.
 PYLINT_TARGETS ?= git_donkey scripts tests
-# Spend a tenth of the available cores (at least one) on Pylint, leaving room
-# for the other agents and builds sharing this machine.
-PYLINT_JOBS ?= $(shell n=$$(nproc 2>/dev/null || echo 1); \
-        echo $$(( n / 10 > 0 ? n / 10 : 1 )))
+# Spend a tenth of the available cores on Pylint, leaving room for the other
+# agents and builds sharing this machine. The floor of two keeps the pass
+# parallel on small CI runners, whose core count never reaches the tenth.
+PYLINT_JOBS ?= $(shell n=$$(nproc 2>/dev/null || echo 2); \
+        echo $$(( n / 10 > 2 ? n / 10 : 2 )))
 # Both passes run under the project virtual-env's CPython so they parse the
 # project's own syntax and can import the df12-python-lints plugin.
 PYLINT = $(UV_ENV) uv run pylint -j $(PYLINT_JOBS)
