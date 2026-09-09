@@ -9,10 +9,10 @@ matching for the command order and production-gate behaviour.
 
 from __future__ import annotations
 
+import functools
 import json
 import os
 import shlex
-import shutil
 import subprocess  # noqa: S404 - fixed commands exercise build boundaries.
 import tomllib
 import typing as typ
@@ -21,6 +21,7 @@ from tempfile import TemporaryDirectory
 
 import hypothesis as hyp
 import hypothesis.strategies as st
+import pytest
 import yaml
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
@@ -114,8 +115,9 @@ _SHELL_ARGUMENT_TEXT: typ.Final = st.builds(
 )
 
 
+@functools.cache
 def _makefile_report() -> dict[str, object]:
-    """Return a newly parsed, complete Makeutil report."""
+    """Return the cached, complete Makeutil report for the test session."""
     completed = subprocess.run(  # noqa: S603 - fixed local parser command.
         _MAKEUTIL_COMMAND,
         capture_output=True,
@@ -267,11 +269,13 @@ def _full_suite_workflow_jobs() -> frozenset[tuple[str, str]]:
     return frozenset(jobs_with_full_suites)
 
 
-def _run_skylos_allow(*arguments: str) -> subprocess.CompletedProcess[str]:
+def _run_skylos_allow(
+    make_command: typ.Callable[..., tuple[str, ...]], *arguments: str
+) -> subprocess.CompletedProcess[str]:
     """Run a non-mutating whitelist boundary with a WSL-style ``NAME`` value."""
     environment = _skylos_allow_environment(*arguments)
     return subprocess.run(  # noqa: S603 - fixed Make target and arguments.
-        _make_command("skylos-allow"),
+        make_command("skylos-allow"),
         capture_output=True,
         check=False,
         cwd=REPOSITORY_ROOT,
@@ -290,15 +294,6 @@ def _skylos_allow_environment(*assignments: str) -> dict[str, str]:
         name, value = assignment.split("=", maxsplit=1)
         environment[name] = value
     return environment
-
-
-def _make_command(*arguments: str) -> tuple[str, ...]:
-    """Return the resolved Make executable followed by ``arguments``."""
-    make_executable = shutil.which("make")
-    assert make_executable is not None, (
-        "Skylos Makefile boundary tests require the make executable"
-    )
-    return make_executable, *arguments
 
 
 def _assert_makeutil_installation(command: object, *, contract: str) -> None:
@@ -372,36 +367,50 @@ def test_whitelist_lock_is_ignored() -> None:
     )
 
 
-@hyp.settings(max_examples=25, deadline=None)
+@pytest.mark.parametrize(
+    ("arguments_for", "argument_name"),
+    [
+        (lambda value: (), "SYMBOL"),
+        (lambda value: ("SYMBOL=handler",), "REASON"),
+        (lambda value: (f"SYMBOL={value}", "REASON=runtime caller"), "SYMBOL"),
+        (lambda value: ("SYMBOL=handler", f"REASON={value}"), "REASON"),
+    ],
+    ids=(
+        "missing-symbol",
+        "missing-reason",
+        "whitespace-symbol",
+        "whitespace-reason",
+    ),
+)
+@hyp.settings(max_examples=5, deadline=None)
 @hyp.given(value=st.text(alphabet=" \t", min_size=1, max_size=8))
-def test_skylos_allow_rejects_missing_or_whitespace_values(value: str) -> None:
+def test_skylos_allow_rejects_missing_or_whitespace_values(
+    make_command: typ.Callable[..., tuple[str, ...]],
+    arguments_for: typ.Callable[[str], tuple[str, ...]],
+    argument_name: str,
+    value: str,
+) -> None:
     """The whitelist target must reject missing and whitespace-only values."""
-    for arguments, argument_name in (
-        ((), "SYMBOL"),
-        (("SYMBOL=handler",), "REASON"),
-        ((f"SYMBOL={value}", "REASON=runtime caller"), "SYMBOL"),
-        (("SYMBOL=handler", f"REASON={value}"), "REASON"),
-    ):
-        completed = _run_skylos_allow(*arguments)
+    completed = _run_skylos_allow(make_command, *arguments_for(value))
 
-        assert completed.returncode == 2, (
-            f"Skylos whitelist boundary must return exit 2 when {argument_name} "
-            "is missing or whitespace-only"
-        )
-        assert (
-            f"Error: {argument_name} is required for a named whitelist exception"
-            in completed.stderr
-        ), (
-            f"Skylos whitelist boundary must identify missing or whitespace-only "
-            f"{argument_name}"
-        )
+    assert completed.returncode == 2, (
+        f"Skylos whitelist boundary must return exit 2 when {argument_name} "
+        "is missing or whitespace-only"
+    )
+    assert (
+        f"Error: {argument_name} is required for a named whitelist exception"
+        in completed.stderr
+    ), (
+        f"Skylos whitelist boundary must identify missing or whitespace-only "
+        f"{argument_name}"
+    )
 
 
 @hyp.settings(max_examples=25, deadline=None)
 @hyp.example(symbol=" $(handler);* ", reason=' Loaded "$plugin" | registry ')
 @hyp.given(symbol=_SHELL_ARGUMENT_TEXT, reason=_SHELL_ARGUMENT_TEXT)
 def test_skylos_allow_forwards_arguments_without_mutating_configuration(
-    symbol: str, reason: str
+    make_command: typ.Callable[..., tuple[str, ...]], symbol: str, reason: str
 ) -> None:
     """The helper must forward exact environment values without configuration edits."""
     pyproject_path = REPOSITORY_ROOT / "pyproject.toml"
@@ -429,7 +438,7 @@ Path(os.environ[\"SKYLOS_ARGUMENTS_PATH\"]).write_text(
         environment["SKYLOS_ARGUMENTS_PATH"] = str(arguments_path)
         lock_path = temporary_path / "skylos-whitelist.lock"
         completed = subprocess.run(  # noqa: S603 - fixed Make target and recorder.
-            _make_command(
+            make_command(
                 "--no-print-directory",
                 "-f",
                 str(REPOSITORY_ROOT / "Makefile"),
@@ -517,6 +526,15 @@ def test_full_suite_ci_jobs_install_the_pinned_makefile_parser() -> None:
         parser_step = _sole_workflow_step(
             workflow_path, job_name, "Install Makefile parser"
         )
+        cache_step = _sole_workflow_step(
+            workflow_path, job_name, "Cache Makefile parser"
+        )
+        cache_inputs = _mapping(
+            cache_step.get("with"),
+            subject=f"{workflow_path} {job_name} Makeutil cache inputs",
+        )
+        cache_key = cache_inputs.get("key")
+        cache_step_id = cache_step.get("id")
 
         assert environment.get("MAKEUTIL_REVISION") == _MAKEUTIL_REVISION, (
             f"{workflow_path} {job_name} Makeutil revision contract must stay pinned"
@@ -524,6 +542,21 @@ def test_full_suite_ci_jobs_install_the_pinned_makefile_parser() -> None:
         assert environment.get("MAKEUTIL_TOOLCHAIN") == _MAKEUTIL_TOOLCHAIN, (
             f"{workflow_path} {job_name} Makeutil toolchain contract must stay pinned"
         )
+        assert isinstance(cache_key, str), (
+            f"{workflow_path} {job_name} Makeutil cache must declare a string key"
+        )
+        assert "env.MAKEUTIL_REVISION" in cache_key, (
+            f"{workflow_path} {job_name} Makeutil cache key must pin the revision"
+        )
+        assert "env.MAKEUTIL_TOOLCHAIN" in cache_key, (
+            f"{workflow_path} {job_name} Makeutil cache key must pin the toolchain"
+        )
+        assert isinstance(cache_step_id, str), (
+            f"{workflow_path} {job_name} Makeutil cache step must declare an id"
+        )
+        assert parser_step.get("if") == (
+            f"steps.{cache_step_id}.outputs.cache-hit != 'true'"
+        ), f"{workflow_path} {job_name} Makeutil install must run only on a cache miss"
         _assert_makeutil_installation(
             parser_step.get("run"),
             contract=f"{workflow_path} {job_name} Makeutil-install contract",

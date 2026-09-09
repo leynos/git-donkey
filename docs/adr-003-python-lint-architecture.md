@@ -2,8 +2,8 @@
 
 ## Status
 
-Accepted on 2026-08-23. `make lint` runs complementary Python lint checks in a
-fixed order, with Skylos last as the blocking production dead-code detector.
+Accepted. `make lint` runs complementary Python lint checks in a fixed order,
+with Skylos last as the blocking production dead-code detector.
 
 ## Date
 

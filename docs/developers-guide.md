@@ -46,6 +46,12 @@ infrastructure mutation:
   generated-directory cleanup, Git worktree removal, local branch deletion,
   dry-run planning, and user-facing summaries.
 
+`git_donkey.plonk_policy.completed_candidates` is generic over its candidate
+type: it accepts any iterable whose items expose a read-only `marker`
+property returning `str`, returns the matching candidates unchanged, and
+never mutates the candidates it receives. `git_donkey.plonk` therefore
+passes its worktree candidates directly.
+
 The plonk workflow deliberately reads completion history from the canonical
 trunk ref. This allows `git plonk` to be invoked from a linked topic worktree
 while still using the trunk history that contains issue or roadmap merge
@@ -84,13 +90,13 @@ structured logging later:
 
 `make lint` runs Skylos `4.33.2` as its final check, after the checks
 enumerated under [Lint workflow](#lint-workflow). Skylos scans only
-`git_donkey`, explicitly excludes `tests`, reports
-only dead-code findings, does not upload results or collect provenance, and
-blocks local linting and continuous integration on unexplained code. Skylos
-parses source with its own runtime Abstract Syntax Tree (AST), so its
-command-only CLI macro pins Python 3.14. The pin prevents newer Python syntax
-from producing phantom dead-code findings. The separate `$(SKYLOS)` macro adds
-scan-only options such as `--config-file` for the lint target.
+`git_donkey`, explicitly excludes `tests`, reports only dead-code findings,
+does not upload results or collect provenance, and blocks local linting and
+continuous integration on unexplained code. Skylos parses source with its own
+runtime Abstract Syntax Tree (AST), so its command-only CLI macro pins Python
+3.14. The pin prevents newer Python syntax from producing phantom dead-code
+findings. The separate `$(SKYLOS)` macro adds scan-only options such as
+`--config-file` for the lint target.
 
 Treat every finding as dead code until its caller is verified. Remove genuine
 dead code. For a framework callback, protocol implementation, or another
