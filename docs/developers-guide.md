@@ -288,7 +288,7 @@ environment that never appear in the other.
 `make typecheck` and installs no separate ty. Ruff is also installed as a
 development dependency and as a continuous integration tool, so keep
 `RUFF_VERSION`, the `ruff==` entry in `pyproject.toml`, and the
-`uv tool install ruff==` step in `.github/workflows/ci.yml` in step.
+`uv tool install ruff==` step in `.github/workflows/ci.yml` in sync.
 
 The `typecheck` target adds `scripts` to the type checker's module search path,
 because that directory holds PEP 723 single-file helpers that import each other
