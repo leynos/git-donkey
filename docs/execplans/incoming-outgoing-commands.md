@@ -256,6 +256,14 @@ Mercurial bundles, templates, phases, or bookmark comparison output.
   `git-incoming`/`git-in` to `_incoming_cli` and `git-outgoing`/`git-out` to
   `_outgoing_cli`). The manpage contract tests pass. `docs/users-guide.md` now
   names all nine manuals and lists the four new installed page paths.
+- [x] (2026-09-11 00:00Z) All six gates passed on the rebased branch
+  (`make check-fmt`, `make test` with 318 tests, `make typecheck`,
+  `make lint`, `make markdownlint`, and `make nixie`), the round was committed,
+  and the branch was force-pushed with lease. The manpage packaging
+  integration test resolves its build requirements from `.uv-cache` with the
+  network disabled, so it must run through `make test`, whose `build`
+  prerequisite populates that cache. Running pytest on that file directly
+  fails with a cache-miss message that imitates a manual-source failure.
 
 ## Surprises & discoveries
 
