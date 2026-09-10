@@ -108,7 +108,7 @@ class CommandResult:
 
     @property
     def output(self) -> str:
-        """Return combined output so diagnostics survive a failed assertion."""
+        """Combined output, so diagnostics survive a failed assertion."""
         return self.stdout + self.stderr
 
 
