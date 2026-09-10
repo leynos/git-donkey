@@ -187,9 +187,10 @@ def _base_branch_behind_count(
 ) -> int:
     """Return how many commits the base branch is behind its remote counterpart.
 
-    A base with no local branch has nothing to update. Creating a tracking
-    branch to measure it would leave behind a branch that no worktree holds and
-    that this command cannot pull into.
+    A base that exists only locally has no remote counterpart to measure
+    against, and a base with no local branch has nothing to update. Creating a
+    tracking branch to measure the latter would leave behind a branch that no
+    worktree holds and that this command cannot pull into.
 
     Parameters
     ----------
@@ -205,7 +206,8 @@ def _base_branch_behind_count(
     -------
     int
         The number of commits the local base branch is behind its remote
-        counterpart, or zero when no local branch holds the base.
+        counterpart, or zero when there is nothing to compare: the base exists
+        only locally, or only on the remote.
 
     Raises
     ------
