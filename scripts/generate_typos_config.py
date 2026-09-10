@@ -1,14 +1,14 @@
 #!/usr/bin/env -S uv run python
+# /// script
+# requires-python = ">=3.13"
+# dependencies = []
+# ///
 """Generate ``typos.toml`` from the shared en-GB-oxendict dictionary.
 
 The shared dictionary is refreshed into an untracked repository-local cache
 only when the authoritative copy is newer. A valid cache remains usable when
 the network is unavailable, and ``typos.local.toml`` supplies the narrow
 repository-specific policy that must not weaken the estate-wide base.
-
-This module imports ``typos_rollout`` from its own directory, so it carries no
-PEP 723 inline metadata: a declared environment would not resolve that sibling
-module. Run it through the project environment, as the spelling target does.
 """
 
 import tomllib
