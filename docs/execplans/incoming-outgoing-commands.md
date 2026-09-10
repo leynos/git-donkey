@@ -167,6 +167,14 @@ Mercurial bundles, templates, phases, or bookmark comparison output.
   docstrings (`unnecessary-ellipsis`). All six gates pass and the branch was
   force-pushed with lease (remote `https://github.com/leynos/git-donkey.git`,
   PR `https://github.com/leynos/git-donkey/pull/18`).
+- [x] (2026-09-10 00:00Z) Extracted only the optional remote fetch from
+  `_run_comparison` into `_fetch_comparison_remote`, which reports whether the
+  comparison may proceed, so the fetch guard, its two records, and the
+  failed-fetch exit code `2` now sit in one place. Added direct unit tests for
+  the helper: the `--no-fetch` and unnamed-remote skips, the fetch record and
+  its structured fields, and the failure record for a fetch that exits. All six
+  gates pass, including the first complete `make lint` run to reach the df12
+  and ambrleaks stages.
 
 ## Surprises & discoveries
 
@@ -516,4 +524,5 @@ sequence, and the validation gates required before code changes can be
 accepted. Revised 2026-09-10 to record the policy and workflow layering,
 structured comparison logging, assertion messages across the incoming and
 outgoing tests, and scoping of the Mercurial exit-code attribution to codes `0`
-and `1`.
+and `1`. Revised again on 2026-09-10 to record the remote-fetch extraction from
+`_run_comparison` and the direct unit tests that now cover it.
