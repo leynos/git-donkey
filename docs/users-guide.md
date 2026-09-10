@@ -15,7 +15,6 @@ these as `git <subcommand>` when `git-<subcommand>` is available on the `PATH`.
 - `git donkey-template` (`git-donkey-template`) displays and creates the
   template directory for the current repository.
 
-
 ## Installation and manual pages
 
 Install the commands and their manual pages into an isolated uv tool

@@ -15,11 +15,7 @@ _ROADMAP_BRANCH_PATTERN = re.compile(r"^(?:(\w+)-)?(\d+)-(\d+)-(\d+)(\w+)?-(?:(\
 
 
 class CompletionCandidate(typ.Protocol):
-    """Minimal candidate shape required by completion policy.
-
-    The marker is read-only so immutable candidates, such as frozen
-    dataclasses, satisfy the protocol.
-    """
+    """Minimal candidate shape required by completion policy."""
 
     # A read-only property states the contract precisely: the policy only ever
     # reads ``marker``, so immutable candidates such as frozen dataclasses
