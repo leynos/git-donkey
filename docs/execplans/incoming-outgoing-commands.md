@@ -141,6 +141,32 @@ Mercurial bundles, templates, phases, or bookmark comparison output.
   that no `assert` statement lacks a message, and scoped the Mercurial
   exit-code attribution to codes `0` and `1` here and in the users' guide,
   documenting `2` as git-donkey's own code for a command that could not run.
+- [x] (2026-09-10 00:00Z) Rebased onto `origin/main` at 5a69015 ("Adopt pylint
+  and df12 lints alongside ruff"), replaying thirteen commits. Resolved
+  three-way conflicts in `git_donkey/plonk_policy.py` (adopted main's
+  `CompletionCandidate` property form with its noun-phrase docstring), in
+  `typos.local.toml` (kept main's pattern-based ignores for inline-code `color`
+  and digit-leading abbreviated commit hashes), and in
+  `docs/developers-guide.md` (kept both main's tooling sections and this
+  branch's module-boundaries section). Regenerated `typos.toml` with
+  `scripts/generate_typos_config.py` rather than hand-merging it. The reported
+  `ty` failure (`unresolved-import` for `typos_rollout`) came from the
+  branch's older `Makefile`, which lacked `--extra-search-path scripts`;
+  main's `Makefile` and CI workflow were adopted unchanged, after which
+  `make typecheck` passed on ty 0.0.79 with no diagnostics. Took `uv.lock` from
+  main and verified it with `uv lock --check`.
+- [x] (2026-09-10 00:00Z) Adapted this branch's own code to main's stricter
+  gates: named the "command could not run" exit code in both incoming and
+  outgoing test modules (ruff `magic-value-comparison`); turned emptiness
+  assertions into truthiness checks and added failure messages to the CLI
+  wrapper assertions (pylint
+  `use-implicit-booleaness-not-comparison-to-string` and the df12
+  `assert-missing-message`); read `pyproject.toml` with an explicit encoding
+  in the alias test (`unspecified-encoding`); and reduced the protocol method
+  bodies in `git_donkey/incoming_outgoing.py` and `git_donkey/cli.py` to their
+  docstrings (`unnecessary-ellipsis`). All six gates pass and the branch was
+  force-pushed with lease (remote `https://github.com/leynos/git-donkey.git`,
+  PR `https://github.com/leynos/git-donkey/pull/18`).
 
 ## Surprises & discoveries
 
@@ -170,6 +196,13 @@ Mercurial bundles, templates, phases, or bookmark comparison output.
   the protocol expected a `.git` member. Impact: the comparison helper now
   accepts only the small `git.log` command surface, and production casts
   `repo.git` at the boundary where GitPython is dynamic.
+- Observation: The weave merge driver silently dropped the
+  `CompletionCandidate` class docstring while replaying the `plonk_policy.py`
+  conflict, even though both the ours and theirs stages carried it. Evidence:
+  stage inspection showed the docstring in the ours and theirs versions but
+  absent from the merged file. Impact: conflict resolutions here should be
+  checked stage by stage with `git show :1:/:2:/:3:` rather than by
+  reading the merged file alone.
 
 ## Decision log
 
@@ -209,6 +242,12 @@ Mercurial bundles, templates, phases, or bookmark comparison output.
   (`fix/remote-default-base-opt-in-pull`), and the commands are already
   documented in `docs/users-guide.md` and signposted from `README.md`.
   Date/Author: 2026-09-10, Claude.
+- Decision: On rebase, take `Makefile`, `.github/workflows/ci.yml`, and
+  `uv.lock` from main unchanged, and regenerate `typos.toml` with
+  `scripts/generate_typos_config.py` instead of hand-merging generated files.
+  Rationale: this branch never modified those files, so main's tooling applies
+  wholesale, and regeneration keeps the shared dictionary and the local overlay
+  consistent. Date/Author: 2026-09-10, Claude.
 
 ## Outcomes & retrospective
 
