@@ -80,15 +80,104 @@ structured logging later:
 - `mode`, `worktree`, `marker`, `candidate_count`, `completed_count`, and
   `removed_count` provide diagnostic context for plonk cleanup decisions.
 
-## Ruff pinning
+## Tool pinning
 
-The `Makefile` pins Ruff with `RUFF_VERSION`. The `ruff` target first verifies
-that the `ruff` executable exists, then calls
-`scripts/check-ruff-version.sh "$(RUFF_VERSION)"`.
+The `Makefile` pins Ruff with `RUFF_VERSION` and ty with `TY_VERSION`, and
+invokes each through the `RUFF` and `TY` variables, which run
+`uv tool run ruff@$(RUFF_VERSION)` and `uv tool run ty@$(TY_VERSION)`. Every
+invocation therefore uses the pinned version regardless of which `ruff` or `ty`,
+if any, is on `PATH`, so local runs cannot silently diverge from continuous
+integration.
 
-Keep `RUFF_VERSION`, the helper script, and continuous integration tool
-versions in sync. The helper exists, so the Make target stays short enough for
-Makefile linting while keeping the version check easy to read and reuse.
+Pin both deliberately. Rule sets differ between Ruff releases and diagnostics
+differ between ty releases, so an unpinned tool reports problems in one
+environment that never appear in the other.
+
+`TY_VERSION` is the sole ty version declaration: continuous integration runs
+`make typecheck` and installs no separate ty. Ruff is also installed as a
+development dependency and as a continuous integration tool, so keep
+`RUFF_VERSION`, the `ruff==` entry in `pyproject.toml`, and the
+`uv tool install ruff==` step in `.github/workflows/ci.yml` in step.
+
+## Lint workflow
+
+`make lint` runs six checks in order. The `lint` target invokes them as:
+
+```make
+$(RUFF) check
+$(UV_ENV) uv run interrogate --fail-under 100 git_donkey
+pyscn check git_donkey tests --skip-clones
+$(PYLINT_BUILTIN) $(PYLINT_TARGETS)
+$(PYLINT_DF12) $(PYLINT_TARGETS)
+$(UV_ENV) uv run ambrleaks tests
+```
+
+Taking each in turn:
+
+- **Ruff** expands to `uv tool run ruff@$(RUFF_VERSION) check`, and is
+  configured by `[tool.ruff]` in `pyproject.toml`.
+- **interrogate** enforces 100% docstring coverage across the package.
+- **pyscn** runs complexity and dead-code analysis. It is a `PATH` tool that
+  continuous integration installs with `uv tool install pyscn`; it is not a
+  development dependency.
+- **The built-in Pylint pass** expands to `uv run pylint` with `-j` and the
+  shared targets, and is configured by the `[tool.pylint.*]` tables in
+  `pyproject.toml`.
+- **The df12-python-lints Pylint pass** adds `--rcfile=.pylintrc-df12.toml`,
+  and is configured by that file.
+- **ambrleaks** scans syrupy `.ambr` snapshot files for unredacted values such
+  as absolute paths, hex strings, UUIDs, and e-mail addresses.
+
+The two Pylint passes share `PYLINT_TARGETS`, which defaults to
+`git_donkey scripts tests`, so both always analyse the same files. It is
+declared with `?=` and can be overridden on the command line. `PYLINT_JOBS` is
+a tenth of the machine's cores with a floor of two, keeping the pass parallel
+on small continuous integration runners while leaving headroom on large shared
+machines.
+
+Running `make lint` requires `uv` and `pyscn` on `PATH`; the Makefile's
+`TOOLS` list and `ensure_tool` check fail early with a clear message if
+`uv` is missing. `pyscn` is the one lint tool `uv` does not provide, so
+continuous integration installs it with `uv tool install pyscn`.
+Everything else needs no separate installation: Ruff runs via
+`uv tool run` at a pinned version, while interrogate, both Pylint
+passes, and ambrleaks run via `uv run` from the project virtual
+environment. The project requires Python 3.13 or newer, but `uv`
+provisions a suitable CPython interpreter for the virtual environment,
+so contributors need no matching system Python. No Node.js tooling is
+needed for `make lint`; that belongs to the separate `markdownlint` and
+`nixie` targets.
+
+### Development dependencies
+
+The `[dependency-groups] dev` table in `pyproject.toml` provides `pylint`
+(constrained to `>=4.0,<5`), `df12-python-lints` (pinned to the `v0.2.0` git
+tag), `interrogate`, and `ruff`. The command `uv sync --group dev` installs
+them into `.venv`, and `make build` runs exactly that.
+
+`ambrleaks` is not a separate distribution. It is a console script entry point
+of `df12-python-lints`, which is why `uv run` finds it once the development
+group is installed.
+
+The `lint` target deliberately does not depend on `build`. Continuous
+integration runs `make build` as an explicit setup step, and every command in
+`lint` that needs the virtual environment goes through `uv run`, which
+synchronizes the project environment on demand. Continuous integration
+therefore synchronizes exactly once, and `make lint` still works from a clean
+checkout with no `.venv`.
+
+### Why two Pylint passes
+
+Pylint accepts a single configuration per invocation and a single
+enable/disable message set, so two independently curated message sets cannot
+share one run. Both passes start from a blanket disable and then enable an
+explicit allowlist: the built-in allowlist tracks upstream Pylint messages,
+while the df12 allowlist tracks the plugin's house-style checkers.
+
+Separating them means the plugin is loaded only in the pass that needs it, and
+editing one allowlist cannot silently change the other. Both passes run under
+the same CPython interpreter from the project virtual environment, so they
+analyse identical syntax.
 
 ## Test infrastructure
 

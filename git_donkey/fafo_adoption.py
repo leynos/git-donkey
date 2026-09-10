@@ -28,11 +28,9 @@ class _GitCommand(typ.Protocol):
 
     def __getitem__(self, args: object) -> _GitCommand:
         """Return a command with additional arguments bound."""
-        ...
 
     def __call__(self) -> str:
         """Run the command and return stdout."""
-        ...
 
 
 @dataclasses.dataclass(frozen=True, slots=True)

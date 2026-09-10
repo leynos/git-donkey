@@ -25,7 +25,7 @@ if typ.TYPE_CHECKING:
     from conftest import StubGitHub, StubUser
 
 
-@dataclasses.dataclass
+@dataclasses.dataclass(slots=True)
 class _StubResponse:
     """Stub API response payload for repository creation errors."""
 
@@ -58,6 +58,11 @@ def _patch_github_login(
     monkeypatch.setattr(fafo.github3, "login", _fake_login)
 
 
+def _stub_token() -> str:
+    """Return a placeholder GitHub token; the stubbed login ignores its value."""
+    return "example-value"
+
+
 def _create_repo_with_login(
     monkeypatch: pytest.MonkeyPatch,
     *,
@@ -70,27 +75,35 @@ def _create_repo_with_login(
     return fafo._create_remote_repository(token=token, repo_name=repo_name)
 
 
+@dataclasses.dataclass(frozen=True, slots=True)
+class _FailureExpectation:
+    """A stubbed login handler and the error it should provoke."""
+
+    login_handler: cabc.Callable[[str], object]
+    message: str
+    normalize: bool = False
+
+
 def _assert_create_repo_failure(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
-    *,
-    login_handler: cabc.Callable[[str], object],
-    expected_message: str,
-    normalize: bool = False,
+    expectation: _FailureExpectation,
 ) -> None:
     """Assert that repository creation fails with the expected message."""
     with pytest.raises(SystemExit) as excinfo:
         _create_repo_with_login(
             monkeypatch,
-            token="example-value",  # noqa: S106  FIXME: test constant, not a real secret
+            token=_stub_token(),
             repo_name="demo-repo",
-            login_handler=login_handler,
+            login_handler=expectation.login_handler,
         )
 
     assert excinfo.value.code == 1, "Expected SystemExit(1) on repo creation errors."
     err = capsys.readouterr().err
-    haystack = err.lower() if normalize else err
-    assert expected_message in haystack, "Expected repository creation error message."
+    haystack = err.lower() if expectation.normalize else err
+    assert expectation.message in haystack, (
+        "Expected repository creation error message."
+    )
 
 
 def test_create_remote_repository_uses_github3_login(
@@ -135,8 +148,10 @@ def test_create_remote_repository_auth_failure_exits_with_error(
     _assert_create_repo_failure(
         monkeypatch,
         capsys,
-        login_handler=_login_handler,
-        expected_message="GitHub authentication failed",
+        _FailureExpectation(
+            login_handler=_login_handler,
+            message="GitHub authentication failed",
+        ),
     )
 
 
@@ -157,8 +172,10 @@ def test_create_remote_repository_missing_user_login_exits_with_error(
     _assert_create_repo_failure(
         monkeypatch,
         capsys,
-        login_handler=_login_handler,
-        expected_message="could not determine GitHub username",
+        _FailureExpectation(
+            login_handler=_login_handler,
+            message="could not determine GitHub username",
+        ),
     )
 
 
@@ -168,7 +185,7 @@ def test_create_remote_repository_returns_existing_repo(
 ) -> None:
     """Existing repositories should be returned for adoption handling."""
 
-    @dataclasses.dataclass
+    @dataclasses.dataclass(slots=True)
     class _StubGitHub:
         login: str
 
@@ -184,13 +201,15 @@ def test_create_remote_repository_returns_existing_repo(
 
     remote = _create_repo_with_login(
         monkeypatch,
-        token="example-value",  # noqa: S106  FIXME: test constant, not a real secret
+        token=_stub_token(),
         repo_name="demo-repo",
         login_handler=_login_handler,
     )
 
-    assert remote.owner == "octocat"
-    assert remote.already_exists
+    assert remote.owner == "octocat", "remote owner should match the login handler user"
+    assert remote.already_exists, (
+        "existing repository should be flagged as pre-existing"
+    )
 
 
 def test_confirm_adopt_existing_repository_prompts(
@@ -212,8 +231,10 @@ def test_confirm_adopt_existing_repository_prompts(
         yes=False,
     )
 
-    assert "octocat/demo-repo" in str(recorded["question"])
-    assert recorded["default"] is False
+    assert "octocat/demo-repo" in str(recorded["question"]), (
+        "adoption prompt should name the owner/repo being adopted"
+    )
+    assert recorded["default"] is False, "adoption prompt should default to declining"
 
 
 def test_confirm_adopt_existing_repository_uses_yes(

@@ -89,10 +89,13 @@ def test_fafo_cli_passes_scaffold_options(
         typ.cast("cabc.Callable[[list[str]], None]", cli._fafo_app)(argv)
 
     assert excinfo.value.code == 0, "git-fafo CLI should exit successfully"
-    assert recorded == {
+    expected_call = {
         "repo_name": "demo-repo",
         "language": expected.language,
         "token": auth_value,
         "trust": expected.trust,
         "yes": expected.yes,
-    }, "git-fafo CLI should pass parsed scaffold options to run_git_fafo"
+    }
+    assert recorded == expected_call, (
+        "git-fafo CLI should pass parsed scaffold options to run_git_fafo"
+    )

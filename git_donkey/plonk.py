@@ -46,7 +46,7 @@ class _PlonkMode(enum.StrEnum):
     HARD = "hard"
 
 
-@dataclasses.dataclass(frozen=True)
+@dataclasses.dataclass(frozen=True, slots=True)
 class _PlonkCandidate:
     """A linked worktree eligible for completion-marker cleanup."""
 
@@ -55,7 +55,7 @@ class _PlonkCandidate:
     marker: str
 
 
-@dataclasses.dataclass(frozen=True)
+@dataclasses.dataclass(frozen=True, slots=True)
 class _PlonkResult:
     """Summary of filesystem and Git state removed by a git-plonk run."""
 
@@ -67,7 +67,7 @@ class _PlonkResult:
     cleaned_paths: tuple[Path, ...] = ()
 
 
-@dataclasses.dataclass(frozen=True)
+@dataclasses.dataclass(frozen=True, slots=True)
 class _PlonkContext:
     """Resolved repository state used by one git-plonk run."""
 
@@ -78,7 +78,7 @@ class _PlonkContext:
     invoking_worktree: Path | None
 
 
-@dataclasses.dataclass(frozen=True)
+@dataclasses.dataclass(frozen=True, slots=True)
 class _SoftPlonkContext:
     """Resolved repository state used by a soft git-plonk run."""
 
@@ -86,7 +86,7 @@ class _SoftPlonkContext:
     worktrees_root: Path
 
 
-@dataclasses.dataclass(frozen=True)
+@dataclasses.dataclass(frozen=True, slots=True)
 class _GitWorktreeAdapter:
     """GitPython-backed adapter for history and worktree mutation."""
 

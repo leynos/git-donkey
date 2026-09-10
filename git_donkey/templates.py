@@ -118,7 +118,9 @@ def get_template_dir_path(repo: Repo) -> Path | None:
     Raises
     ------
     ValueError
-        If multiple remotes exist but none is named ``origin``.
+        Propagated from :func:`_get_repo_url` when the repository has multiple
+        remotes and none is named ``origin``, so no unambiguous remote can be
+        chosen.
 
     """
     repo_url = _get_repo_url(repo)
@@ -145,7 +147,9 @@ def get_template_dir(repo: Repo) -> Path | None:
     Raises
     ------
     ValueError
-        If multiple remotes exist but none is named ``origin``.
+        Propagated from :func:`_get_repo_url` when the repository has multiple
+        remotes and none is named ``origin``, so no unambiguous remote can be
+        chosen.
 
     """
     template_dir = get_template_dir_path(repo)

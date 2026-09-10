@@ -1,15 +1,37 @@
 MDLINT ?= markdownlint-cli2
 NIXIE ?= nixie
 MDFORMAT_ALL ?= mdformat-all
-# Pin Ruff so local and CI runs agree; keep in sync with .github/workflows/ci.yml.
-RUFF_VERSION ?= 0.15.12
+# Pin Ruff so local and CI runs agree; keep in sync with the ruff== dev
+# dependency in pyproject.toml and .github/workflows/ci.yml. Invoking it through
+# uv means the pinned version is used regardless of what is on PATH.
+RUFF_VERSION ?= 0.16.6
+RUFF ?= $(UV_ENV) uv tool run ruff@$(RUFF_VERSION)
+# Pin ty likewise. This is the sole ty version declaration: CI runs
+# `make typecheck` and installs no separate ty. Diagnostics differ between ty
+# releases, so an unpinned ty makes CI fail on errors that never appear locally.
+TY_VERSION ?= 0.0.79
+TY ?= $(UV_ENV) uv tool run ty@$(TY_VERSION)
 TYPOS_VERSION ?= 1.48.0
-TOOLS = $(MDFORMAT_ALL) ty $(MDLINT) uv
+TOOLS = $(MDFORMAT_ALL) $(MDLINT) uv
 VENV_TOOLS = pytest
 UV_ENV = UV_CACHE_DIR=.uv-cache UV_TOOL_DIR=.uv-tools
+# Pylint targets shared by both passes.
+PYLINT_TARGETS ?= git_donkey scripts tests
+# Spend a tenth of the available cores on Pylint, leaving room for the other
+# agents and builds sharing this machine. The floor of two keeps the pass
+# parallel on small CI runners, whose core count never reaches the tenth.
+PYLINT_JOBS ?= $(shell n=$$(nproc 2>/dev/null || echo 2); \
+        echo $$(( n / 10 > 2 ? n / 10 : 2 )))
+# Both passes run under the project virtual-env's CPython so they parse the
+# project's own syntax and can import the df12-python-lints plugin.
+PYLINT = $(UV_ENV) uv run pylint -j $(PYLINT_JOBS)
+# The built-in pass reads the [tool.pylint] config in pyproject.toml.
+PYLINT_BUILTIN = $(PYLINT)
+# The df12-python-lints plugin pass keeps its own config.
+PYLINT_DF12 = $(PYLINT) --rcfile=.pylintrc-df12.toml
 
 .PHONY: help all clean build build-release lint fmt check-fmt \
-        markdownlint nixie spelling spelling-helper-test test typecheck ruff \
+        markdownlint nixie spelling spelling-helper-test test typecheck \
         $(TOOLS) $(VENV_TOOLS)
 .PHONY: pytest test
 
@@ -58,27 +80,34 @@ $(VENV_TOOLS): ## Verify required CLI tools in venv
 	$(call ensure_tool_venv,$@)
 endif
 
-ruff: ## Verify Ruff is installed and pinned to $(RUFF_VERSION)
-	$(call ensure_tool,ruff)
-	@scripts/check-ruff-version.sh "$(RUFF_VERSION)"
-
-fmt: ruff $(MDFORMAT_ALL) ## Format sources
-	ruff format
-	ruff check --select I --fix
+fmt: uv $(MDFORMAT_ALL) ## Format sources
+	$(RUFF) format
+	$(RUFF) check --select I --fix
 	$(MDFORMAT_ALL)
 
-check-fmt: ruff ## Verify formatting
-	ruff format --check
+check-fmt: uv ## Verify formatting
+	$(RUFF) format --check
 	# mdformat-all doesn't currently do checking
 
-lint: ruff ## Run linters
-	ruff check
+# No `build` prerequisite: CI runs `make build` as an explicit setup step, and
+# every venv-backed command below goes through `uv run`, which syncs the
+# project environment on demand. That keeps CI to a single synchronisation
+# while leaving `make lint` usable from a clean checkout.
+lint: uv ## Run linters
+	$(RUFF) check
 	$(UV_ENV) uv run interrogate --fail-under 100 git_donkey
 	pyscn check git_donkey tests --skip-clones
+	$(PYLINT_BUILTIN) $(PYLINT_TARGETS)
+	$(PYLINT_DF12) $(PYLINT_TARGETS)
+	# ambrleaks is a console script of the df12-python-lints dev dependency, so
+	# `uv run` finds it in the synced venv; it is not a separate distribution.
+	$(UV_ENV) uv run ambrleaks tests
 
-typecheck: build ty ## Run typechecking
-	ty --version
-	ty check
+typecheck: build uv ## Run typechecking
+	$(TY) --version
+	# scripts/ holds PEP 723 single-file helpers that import each other by
+	# module name; ty needs them on the search path to resolve those imports.
+	$(TY) check --extra-search-path scripts
 
 markdownlint: spelling $(MDLINT) ## Lint Markdown files and enforce spelling
 	$(MDLINT) '**/*.md'
@@ -90,11 +119,14 @@ spelling: spelling-helper-test ## Enforce en-GB-oxendict spelling in Markdown pr
 		--config typos.toml --force-exclude
 
 spelling-helper-test: ## Validate the shared spelling-policy integration
-	@$(UV_ENV) uv tool run ruff@$(RUFF_VERSION) format --isolated \
+	@$(RUFF) format --isolated \
 		--target-version py313 --check scripts/generate_typos_config.py \
 		scripts/typos_rollout.py scripts/typos_rollout_cache.py \
 		scripts/tests/test_typos_rollout.py
-	@$(UV_ENV) uv tool run ruff@$(RUFF_VERSION) check --isolated \
+	# --extend-select S310: these helpers open URLs, and their `noqa: S310`
+	# directives carry the justification for doing so. Ruff's default set omits
+	# S310, which would leave those suppressions unused rather than earned.
+	@$(RUFF) check --isolated --extend-select S310 \
 		--target-version py313 scripts/generate_typos_config.py \
 		scripts/typos_rollout.py scripts/typos_rollout_cache.py \
 		scripts/tests/test_typos_rollout.py

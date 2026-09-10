@@ -9,6 +9,8 @@ Git repositories.
 
 from __future__ import annotations
 
+import re
+import tempfile
 import typing as typ
 from pathlib import Path
 from types import SimpleNamespace
@@ -17,6 +19,7 @@ import pytest
 from git import Repo
 from hypothesis import given
 from hypothesis import strategies as st
+from syrupy.matchers import path_type
 
 from git_donkey import cli, plonk, plonk_policy
 
@@ -24,11 +27,71 @@ if typ.TYPE_CHECKING:
     from syrupy.assertion import SnapshotAssertion
 
 
+# History messages consumed before the streaming scan stops: one per candidate
+# marker, so the trailing "Unneeded late history" message is never pulled.
+_EXPECTED_CONSUMED_HISTORY_MESSAGES = 2
+
+# ``argparse`` exit status for a command-line usage error.
+_USAGE_ERROR_EXIT_CODE = 2
+
+
+def _redact_worktree_paths(data: str, _: object) -> str:
+    """Rewrite absolute git-donkey worktree mounts to a relative placeholder.
+
+    Parameters
+    ----------
+    data : str
+        The rendered summary text captured by the snapshot.
+    _ : object
+        The syrupy path match, unused by this replacer.
+
+    Returns
+    -------
+    str
+        ``data`` with each absolute worktree mount, including every ancestor
+        segment above ``repo.worktrees``, replaced by a ``<worktrees>``
+        placeholder so recorded snapshots contain no absolute POSIX paths for
+        ``ambrleaks`` to flag.
+    """
+    return re.sub(r"(?:/[^/\s]+)*/repo\.worktrees\b", "<worktrees>", data)
+
+
+# Redact absolute worktree paths at record time so snapshots stay leak-free.
+_WORKTREE_PATH_MATCHER = path_type(
+    mapping={"": (str,)}, replacer=_redact_worktree_paths
+)
+
+
 _ROADMAP_WORDS = st.text(
     alphabet="abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
     min_size=1,
     max_size=8,
 )
+
+
+def test_redact_worktree_paths_strips_nested_ancestor() -> None:
+    """Redaction should drop the whole absolute prefix, not just the mount."""
+    # Derive the temporary root rather than hardcoding "/tmp": a literal would
+    # trip flake8-bandit's hardcoded-temp-file check for no benefit, since the
+    # path is only ever treated as text.
+    temp_root = tempfile.gettempdir()
+    redacted = _redact_worktree_paths(f"{temp_root}/run/repo.worktrees/branch", None)
+
+    assert redacted.startswith("<worktrees>"), (
+        "expected redaction to replace the absolute ancestor prefix"
+    )
+    assert temp_root not in redacted, (
+        "expected no absolute ancestor segment to survive redaction"
+    )
+
+
+def test_redact_worktree_paths_keeps_rooted_mount_stable() -> None:
+    """A mount with no ancestor should redact exactly as it did before."""
+    redacted = _redact_worktree_paths("- /repo.worktrees/issue-123-fix", None)
+
+    assert redacted == "- <worktrees>/issue-123-fix", (
+        "expected rooted worktree mounts to keep their existing redaction"
+    )
 
 
 def test_issue_branch_marker_matches_issue_reference() -> None:
@@ -160,7 +223,7 @@ def test_completed_candidates_streams_history_until_markers_match() -> None:
         "issue-123-fix",
         "issue-456-fix",
     ], "expected streaming scan to stop after all markers match"
-    assert consumed_messages == 2, (
+    assert consumed_messages == _EXPECTED_CONSUMED_HISTORY_MESSAGES, (
         "expected history scan to stop after all markers match"
     )
 
@@ -170,7 +233,9 @@ def test_plonk_cli_rejects_soft_and_hard_together() -> None:
     with pytest.raises(SystemExit) as exc_info:
         cli._plonk_app(["--soft", "--hard"])
 
-    assert exc_info.value.code == 2, "expected conflicting flags to be usage error"
+    assert exc_info.value.code == _USAGE_ERROR_EXIT_CODE, (
+        "expected conflicting flags to be usage error"
+    )
 
 
 def test_plonk_cli_passes_dry_run_flag(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -301,11 +366,13 @@ class _FailingGitAdapter:
         assert ref == "main", "expected configured trunk ref"
         yield self._marker
 
-    def remove_worktree(self, worktree_path: Path) -> None:
+    @staticmethod
+    def remove_worktree(worktree_path: Path) -> None:
         """Fail the test unconditionally — dry runs must not remove worktrees."""
         pytest.fail(f"dry run should not remove worktree {worktree_path}")
 
-    def delete_branch(self, branch_name: str) -> None:
+    @staticmethod
+    def delete_branch(branch_name: str) -> None:
         """Fail the test unconditionally — dry runs must not delete branches."""
         pytest.fail(f"dry run should not delete branch {branch_name}")
 
@@ -413,7 +480,9 @@ def test_dry_run_modes_never_mutate_and_report_mode_specific_plans(
     )
 
 
-def test_dry_run_summary_reports_planned_actions() -> None:
+def test_dry_run_summary_reports_planned_actions(
+    snapshot: SnapshotAssertion,
+) -> None:
     """Dry-run summaries should name planned work instead of completed removals."""
     result = plonk._PlonkResult(
         mode=plonk._PlonkMode.HARD,
@@ -422,13 +491,9 @@ def test_dry_run_summary_reports_planned_actions() -> None:
         removed_branches=("issue-123-fix",),
     )
 
-    assert plonk._render_summary(result) == (
-        "git-plonk: mode=hard dry-run\n"
-        "Planned worktree removals:\n"
-        "- /repo.worktrees/issue-123-fix\n"
-        "Planned branch deletions:\n"
-        "- issue-123-fix"
-    ), "expected dry-run summary to report planned actions"
+    assert plonk._render_summary(result) == snapshot(matcher=_WORKTREE_PATH_MATCHER), (
+        "expected dry-run summary to report planned actions"
+    )
 
 
 def test_soft_summary_reports_nothing_to_clean_after_inspection() -> None:
@@ -464,6 +529,6 @@ def test_summary_rendering_matches_snapshot(snapshot: SnapshotAssertion) -> None
         cleaned_paths=(Path("/repo.worktrees/issue-123-fix/target"),),
     )
 
-    assert plonk._render_summary(result) == snapshot, (
+    assert plonk._render_summary(result) == snapshot(matcher=_WORKTREE_PATH_MATCHER), (
         "expected summary rendering to match snapshot"
     )

@@ -19,11 +19,10 @@ import typing as typ
 from git import GitCommandError, Repo
 
 from git_donkey import helpers
+from git_donkey.helpers import _GIT_DONKEY_PREFIX as _GIT_DONKEY_PREFIX
 
 if typ.TYPE_CHECKING:
     from pathlib import Path
-
-_GIT_DONKEY_PREFIX = helpers._GIT_DONKEY_PREFIX
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -217,7 +216,28 @@ def create_worktree(
     context: _WorktreeContext,
     request: _WorktreeRequest,
 ) -> None:
-    """Create a new worktree for the specified branch."""
+    """Create a new worktree for the specified branch.
+
+    Prefers an existing local branch, then a remote branch for which a local
+    tracking branch is created, and otherwise branches from the base branch.
+
+    Parameters
+    ----------
+    context : _WorktreeContext
+        Resolved repository state: the owning repository, the remote used for
+        branch discovery, and the existing branch-to-worktree mapping consulted
+        for collisions.
+    request : _WorktreeRequest
+        The branch to check out, the base branch to create it from, and the
+        filesystem path for the new worktree.
+
+    Raises
+    ------
+    SystemExit
+        Propagated from the ``git_donkey.helpers`` exit helpers when the branch
+        is already checked out elsewhere, when the target path exists, or when
+        ``git worktree add`` fails.
+    """
     existing_worktree = context.branch_to_worktree.get(request.branch_name)
     if existing_worktree is not None:
         helpers._die_conflict(

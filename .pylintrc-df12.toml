@@ -1,0 +1,43 @@
+# Pylint configuration for the df12-python-lints house-style checkers.
+#
+# These checkers ship as a Pylint plugin that must be importable and able to
+# parse the project's own syntax, so this pass runs under the project
+# virtual-env's CPython (`uv run pylint --rcfile=.pylintrc-df12.toml`),
+# separately from the built-in messages configured in pyproject.toml.
+[tool.pylint.main]
+# Load only the df12 house-style checkers for this pass.
+load-plugins = ["df12_python_lints"]
+# The shared spelling-rollout helpers keep their own pinned Ruff and coverage
+# policy; exclude them here as they are excluded from Ruff.
+ignore = [
+    "generate_typos_config.py",
+    "typos_rollout.py",
+    "typos_rollout_cache.py",
+    "test_typos_rollout.py",
+]
+# Expand directory targets like git_donkey and tests even when a target is not
+# a package.
+recursive = true
+# Match the project's runtime baseline so the baseline-gated df12 checkers
+# (prefer-type-statement, redundant-future-annotations) reason about 3.13.
+py-version = "3.13"
+
+[tool.pylint."messages control"]
+# Keep this pass focused on the df12 house-style messages only; the built-in
+# Pylint messages are enabled by the separate pyproject.toml configuration.
+disable = ["all"]
+enable = [
+    "prefer-structural-pattern-matching",
+    "assert-missing-message",
+    "prefer-match-over-constant-chain",
+    "trivial-attribute-wrapper",
+    "trivial-alias-wrapper",
+    "reexport-by-assignment",
+    "lint-suppression-without-explanation",
+    "typecheck-suppression-without-explanation",
+    "prefer-snapshot-assertion",
+    "prefer-snapshot-substring",
+    "prefer-slots-for-dataclass",
+    "prefer-type-statement",
+    "redundant-future-annotations",
+]

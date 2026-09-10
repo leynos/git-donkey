@@ -111,7 +111,9 @@ def test_git_donkey_template_fails_outside_git_repo(
 
     # helpers._die should emit a clear error message on stderr
     captured = capsys.readouterr()
-    assert "git repository" in captured.err.lower()
+    assert "git repository" in captured.err.lower(), (
+        "stderr should report the missing Git repository"
+    )
 
 
 def test_git_donkey_template_fails_without_remote(
@@ -145,8 +147,10 @@ def test_git_donkey_template_fails_without_remote(
 
     # Assert that the error message indicates the missing-remote problem
     captured = capsys.readouterr()
-    assert "remote" in captured.err.lower()
-    assert "template" in captured.err.lower()
+    assert "remote" in captured.err.lower(), "stderr should report the missing remote"
+    assert "template" in captured.err.lower(), (
+        "stderr should mention the template command context"
+    )
 
 
 def test_git_donkey_template_fails_without_origin_remote(
@@ -183,4 +187,6 @@ def test_git_donkey_template_fails_without_origin_remote(
     assert exit_code != 0, "expected non-zero exit code when origin remote is missing"
 
     captured = capsys.readouterr()
-    assert "origin" in captured.err.lower()
+    assert "origin" in captured.err.lower(), (
+        "stderr should report the missing origin remote"
+    )

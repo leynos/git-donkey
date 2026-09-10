@@ -24,7 +24,7 @@ if typ.TYPE_CHECKING:
     import pytest
 
 
-@dataclasses.dataclass
+@dataclasses.dataclass(slots=True)
 class _ExistingRepoResponse:
     """Stub API response for an existing GitHub repository."""
 
@@ -38,14 +38,14 @@ class _ExistingRepoResponse:
         }
 
 
-@dataclasses.dataclass
+@dataclasses.dataclass(slots=True)
 class _ExistingRepoUser:
     """GitHub user stub for an existing repository."""
 
     login: str
 
 
-@dataclasses.dataclass
+@dataclasses.dataclass(slots=True)
 class _ExistingRepoGitHub:
     """GitHub stub that reports an existing repository."""
 
@@ -65,7 +65,7 @@ def _create_bare_remote(tmp_path: Path) -> Path:
     return remote_path
 
 
-@dataclasses.dataclass
+@dataclasses.dataclass(slots=True)
 class _SeedConfig:
     """Configuration for :func:`_seed_with_empty_initial`."""
 
