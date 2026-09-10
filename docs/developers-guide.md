@@ -398,3 +398,53 @@ than Git setup.
 `tests/unit/test_fafo_error_messages.py` pins complete user-facing error
 messages. Add new cases there when a new `git-fafo` conflict or credential
 failure path is introduced.
+
+## Manual pages
+
+Every console entrypoint has an authored reStructuredText source in `docs/man/`,
+and the wheel build generates that command's section-one manual from it. The
+`hatch-build-scripts` hook and Docutils are build-system requirements, not
+runtime dependencies: they are declared in `[build-system] requires` and must
+never appear in `[project] dependencies`. The
+[manpage packaging design](manpages-design.md) records the decision, and the
+[users' guide](users-guide.md) documents installation and how to read the
+installed pages.
+
+Generation is bounded to `docs/man/` with cleanup disabled, and
+`docs/man/docutils.conf` makes warnings fatal, selects UTF-8 input and output,
+and disables datestamps, generator metadata, raw content, and file insertion. A
+malformed source therefore fails the build rather than shipping an incomplete
+page or one that depends on the build host.
+
+The wheel's `shared-data` mapping puts each generated page under
+`share/man/man1/`. The source distribution instead keeps the `.rst` sources,
+the Docutils configuration, and the build configuration, and excludes the
+generated `.1` pages, so a rebuild regenerates them rather than reusing build
+outputs.
+
+A change to a console script's arguments or options must update
+`docs/man/<command>.rst` and the users' guide in the same change.
+`tests/unit/test_manpage_sources.py` resolves the command-line parameters
+from `git_donkey/cli.py` and fails when a manual omits one. It follows
+Cyclopts `Parameter(name="*")` spreads: the annotated type's fields, not the
+parameter's own name, are the options that the manual must document.
+`tests/integration/test_manpage_packaging.py` builds both distributions and
+checks the packaged and installed pages.
+
+Build a wheel and preview the generated page:
+
+```shell
+uv build --wheel
+man -l docs/man/git-donkey.1
+```
+
+Run the focused manual tests:
+
+```shell
+uv run pytest tests/unit/test_manpage_sources.py \
+  tests/integration/test_manpage_packaging.py
+```
+
+The packaging tests drive `uv` offline, so `make build` must run first to
+populate the cache they reuse. `make test` depends on `make build` and runs
+both manual test files as well.
