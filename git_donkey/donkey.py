@@ -88,33 +88,27 @@ def _advertised_default_branch(advertisement: str) -> str | None:
     return None
 
 
-def _fetch_remote_default_ref(context: _DonkeyContext) -> str:
-    """Fetch the principal remote's advertised default branch.
-
-    This is a command, not a query: it reads the remote's advertised ``HEAD``
-    and fetches the branch it names into that branch's fully qualified
-    remote-tracking ref. `_advertised_default_branch` holds the parsing half.
+def _discover_remote_default_branch(context: _DonkeyContext) -> str:
+    """Read the default branch name the principal remote advertises.
 
     Parameters
     ----------
     context : _DonkeyContext
-        Resolved repository state, including the repository and remote whose
-        advertised default branch is fetched.
+        Resolved repository state, including the remote whose advertised
+        default branch is read.
 
     Returns
     -------
     str
-        The fully qualified remote-tracking ref of the fetched default branch.
+        The branch name the remote advertises for its ``HEAD``.
 
     Raises
     ------
     SystemExit
-        If the remote does not advertise a default branch, or if the branch it
-        names cannot be fetched.
+        If the remote cannot be queried, or advertises no default branch.
 
     """
-    recorder = observability.get_recorder()
-    with recorder.span("remote_default_discovery"):
+    with observability.get_recorder().span("remote_default_discovery"):
         try:
             advertisement = context.repo_home.git.ls_remote(
                 "--symref", context.remote, "HEAD"
@@ -148,11 +142,35 @@ def _fetch_remote_default_ref(context: _DonkeyContext) -> str:
                 1,
             )
         _record(Observation(operation="remote_default_discovery", outcome="success"))
+    return branch
 
+
+def _fetch_default_branch_ref(context: _DonkeyContext, branch: str) -> str:
+    """Fetch ``branch`` from the principal remote into its tracking ref.
+
+    Parameters
+    ----------
+    context : _DonkeyContext
+        Resolved repository state, including the repository to fetch into and
+        the remote to fetch from.
+    branch : str
+        Branch name the remote advertises as its default.
+
+    Returns
+    -------
+    str
+        The fully qualified remote-tracking ref of the fetched branch.
+
+    Raises
+    ------
+    SystemExit
+        If the branch cannot be fetched.
+
+    """
     remote_ref = f"refs/remotes/{context.remote}/{branch}"
     # A narrow fetch configuration may omit the advertised default branch.
     # Fetch it explicitly rather than trusting a stale local remote/HEAD alias.
-    with recorder.span("default_branch_fetch"):
+    with observability.get_recorder().span("default_branch_fetch"):
         try:
             context.repo_home.git.fetch(
                 context.remote, f"+refs/heads/{branch}:{remote_ref}"
@@ -172,6 +190,36 @@ def _fetch_remote_default_ref(context: _DonkeyContext) -> str:
             )
         _record(Observation(operation="default_branch_fetch", outcome="success"))
     return remote_ref
+
+
+def _fetch_remote_default_ref(context: _DonkeyContext) -> str:
+    """Fetch the principal remote's advertised default branch.
+
+    This is a command, not a query: it discovers the branch the remote's
+    ``HEAD`` names and fetches it into that branch's fully qualified
+    remote-tracking ref. `_discover_remote_default_branch` reads the name and
+    `_fetch_default_branch_ref` performs the fetch.
+
+    Parameters
+    ----------
+    context : _DonkeyContext
+        Resolved repository state, including the repository and remote whose
+        advertised default branch is fetched.
+
+    Returns
+    -------
+    str
+        The fully qualified remote-tracking ref of the fetched default branch.
+
+    Raises
+    ------
+    SystemExit
+        If the remote does not advertise a default branch, or if the branch it
+        names cannot be fetched.
+
+    """
+    branch = _discover_remote_default_branch(context)
+    return _fetch_default_branch_ref(context, branch)
 
 
 def _pull_mode_label(pull_mode: _PullMode | None) -> observability.PullModeLabel:
