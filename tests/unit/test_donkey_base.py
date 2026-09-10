@@ -34,7 +34,9 @@ def test_advertised_default_branch(
     expected: str | None,
 ) -> None:
     """Only the advertised HEAD branch supplies an implicit base."""
-    assert donkey._advertised_default_branch(advertisement) == expected
+    assert donkey._advertised_default_branch(advertisement) == expected, (
+        "only a symbolic HEAD ref names the default branch"
+    )
 
 
 @pytest.mark.parametrize(
@@ -50,7 +52,9 @@ def test_pull_mode_is_explicit(
     expected: str | None,
 ) -> None:
     """Pulling has no default mode and each opt-in selects one strategy."""
-    assert donkey._pull_mode(options, no_pull=False) == expected
+    assert donkey._pull_mode(options, no_pull=False) == expected, (
+        "each option combination selects its documented mode"
+    )
 
 
 @pytest.mark.parametrize(
@@ -72,11 +76,19 @@ def test_conflicting_pull_options_fail_before_repository_access(
     monkeypatch.chdir(tmp_path)
     with pytest.raises(SystemExit) as excinfo:
         donkey.run_git_donkey("feature/test", options=options, no_pull=no_pull)
-    assert excinfo.value.code == _USAGE_ERROR_EXIT_CODE
-    assert "mutually exclusive" in capsys.readouterr().err
-    assert not list(tmp_path.iterdir())
+    assert excinfo.value.code == _USAGE_ERROR_EXIT_CODE, (
+        "conflicting options are a usage error"
+    )
+    assert "mutually exclusive" in capsys.readouterr().err, (
+        "the error names the conflicting options"
+    )
+    assert not list(tmp_path.iterdir()), (
+        "the failure happens before any filesystem change"
+    )
 
 
 def test_no_pull_remains_a_compatible_no_op() -> None:
     """The existing no-pull option retains the new non-pulling default."""
-    assert donkey._pull_mode(donkey._PullOptions(), no_pull=True) is None
+    assert donkey._pull_mode(donkey._PullOptions(), no_pull=True) is None, (
+        "an explicit no-pull retains the non-pulling default"
+    )

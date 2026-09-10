@@ -55,8 +55,10 @@ def test_donkey_cli_passes_pull_options(
     monkeypatch.setattr(donkey, "run_git_donkey", _fake_run)
     with pytest.raises(SystemExit) as excinfo:
         typ.cast("cabc.Callable[[list[str]], None]", cli._donkey_app)(argv)
-    assert excinfo.value.code == 0
-    assert recorded == ["feature/test", *expected]
+    assert excinfo.value.code == 0, "a valid invocation exits successfully"
+    assert recorded == ["feature/test", *expected], (
+        "the parser forwards the branch, base, no-pull flag, and pull options"
+    )
 
 
 @pytest.mark.parametrize(
@@ -80,6 +82,12 @@ def test_donkey_cli_rejects_conflicting_pull_flags(
             "feature/test",
             *flags,
         ])
-    assert excinfo.value.code == _USAGE_ERROR_EXIT_CODE
-    assert "mutually exclusive" in capsys.readouterr().err
-    assert not list(tmp_path.iterdir())
+    assert excinfo.value.code == _USAGE_ERROR_EXIT_CODE, (
+        "conflicting pull flags are a usage error"
+    )
+    assert "mutually exclusive" in capsys.readouterr().err, (
+        "the error names the offending options"
+    )
+    assert not list(tmp_path.iterdir()), (
+        "the failure happens before any filesystem change"
+    )

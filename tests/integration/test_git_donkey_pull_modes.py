@@ -40,15 +40,21 @@ def test_pull_rebase_preserves_local_commits_on_explicit_base(
             "feature/rebased", ".", options=donkey._PullOptions(pull_rebase=True)
         )
         == 0
-    )
+    ), "an accepted rebase pull creates the worktree"
 
-    assert repo.head.commit.hexsha != old_tip
+    assert repo.head.commit.hexsha != old_tip, "the rebase moves the local base forward"
     assert (
         repo.git.merge_base("main", "origin/main") == repo.commit("origin/main").hexsha
+    ), "the local base now contains the remote commit"
+    assert repo.git.show("main:local.txt") == "local change", (
+        "the local commit is replayed"
     )
-    assert repo.git.show("main:local.txt") == "local change"
-    assert repo.git.show("main:upstream.txt") == "upstream change"
-    assert repo.commit("feature/rebased").hexsha == repo.head.commit.hexsha
+    assert repo.git.show("main:upstream.txt") == "upstream change", (
+        "the remote commit is incorporated"
+    )
+    assert repo.commit("feature/rebased").hexsha == repo.head.commit.hexsha, (
+        "the new branch starts from the rebased base"
+    )
 
 
 def test_pull_ff_refuses_divergence_even_with_rebase_configured(
@@ -70,11 +76,17 @@ def test_pull_ff_refuses_divergence_even_with_rebase_configured(
             "feature/ff", ".", options=donkey._PullOptions(pull_ff=True)
         )
 
-    assert excinfo.value.code == 1
-    assert "pull --ff-only" in capsys.readouterr().err
-    assert repo.head.commit.hexsha == original_tip
-    assert "feature/ff" not in repo.heads
-    assert not repo.is_dirty(untracked_files=True)
+    assert excinfo.value.code == 1, "divergence under --ff-only is an error"
+    assert "pull --ff-only" in capsys.readouterr().err, (
+        "the error names the fast-forward-only mode"
+    )
+    assert repo.head.commit.hexsha == original_tip, (
+        "the diverged local base is left untouched"
+    )
+    assert "feature/ff" not in repo.heads, "no branch is created when the update fails"
+    assert not repo.is_dirty(untracked_files=True), (
+        "the failed attempt leaves the working tree clean"
+    )
 
 
 @pytest.mark.parametrize(
@@ -98,11 +110,17 @@ def test_opt_in_never_pulls_base_into_unrelated_primary_checkout(
     with pytest.raises(SystemExit) as excinfo:
         donkey.run_git_donkey("feature/unsafe", "main", options=options)
 
-    assert excinfo.value.code == 1
-    assert "not checked out in a worktree" in capsys.readouterr().err
-    assert repo.active_branch.name == "unrelated"
-    assert repo.head.commit.hexsha == original_tip
-    assert "feature/unsafe" not in repo.heads
+    assert excinfo.value.code == 1, "a base held by no worktree is an error"
+    assert "not checked out in a worktree" in capsys.readouterr().err, (
+        "the error explains the missing worktree"
+    )
+    assert repo.active_branch.name == "unrelated", (
+        "the primary checkout keeps its branch"
+    )
+    assert repo.head.commit.hexsha == original_tip, "the primary checkout is not moved"
+    assert "feature/unsafe" not in repo.heads, (
+        "no branch is created when the base is unowned"
+    )
 
 
 @pytest.mark.parametrize(
@@ -120,10 +138,14 @@ def test_declined_prompt_preserves_explicit_base(
     monkeypatch.chdir(repo.working_tree_dir or ".")
     monkeypatch.setattr(donkey.helpers, "_prompt_yes_no", lambda *_: False)
 
-    assert donkey.run_git_donkey("feature/declined", ".", options=options) == 0
+    assert donkey.run_git_donkey("feature/declined", ".", options=options) == 0, (
+        "declining the prompt still creates the worktree"
+    )
 
-    assert repo.head.commit.hexsha == original_tip
-    assert repo.commit("feature/declined").hexsha == original_tip
+    assert repo.head.commit.hexsha == original_tip, "the declined base is not updated"
+    assert repo.commit("feature/declined").hexsha == original_tip, (
+        "the new branch starts at the declined base"
+    )
 
 
 @pytest.mark.parametrize(
@@ -145,9 +167,17 @@ def test_pull_updates_linked_base_and_leaves_primary_alone(
     monkeypatch.chdir(repo.working_tree_dir or ".")
     monkeypatch.setattr(donkey.helpers, "_prompt_yes_no", lambda *_: True)
 
-    assert donkey.run_git_donkey("feature/linked", "main", options=options) == 0
+    assert donkey.run_git_donkey("feature/linked", "main", options=options) == 0, (
+        "the base is updated in its own worktree"
+    )
 
-    assert repo.active_branch.name == "unrelated"
-    assert repo.head.commit.hexsha == original_tip
-    assert Repo(base_path).head.commit.hexsha == repo.commit("origin/main").hexsha
-    assert repo.commit("feature/linked").hexsha == repo.commit("origin/main").hexsha
+    assert repo.active_branch.name == "unrelated", (
+        "the calling checkout keeps its branch"
+    )
+    assert repo.head.commit.hexsha == original_tip, "the calling checkout is not moved"
+    assert Repo(base_path).head.commit.hexsha == repo.commit("origin/main").hexsha, (
+        "the linked base worktree is updated"
+    )
+    assert repo.commit("feature/linked").hexsha == repo.commit("origin/main").hexsha, (
+        "the new branch starts from the updated base"
+    )

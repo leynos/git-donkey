@@ -14,7 +14,9 @@ from git_donkey import donkey, helpers
 @pytest.mark.parametrize("base", ["main", "release/1", "refs/remotes/upstream/trunk"])
 def test_choose_base_branch_preserves_explicit_base(base: str) -> None:
     """Explicit bases must not be replaced by the current branch."""
-    assert donkey.choose_base_branch("feature/demo", base) == base
+    assert donkey.choose_base_branch("feature/demo", base) == base, (
+        "an explicit base must not be replaced by the current branch"
+    )
 
 
 def test_choose_base_branch_uses_cwd_on_dot() -> None:

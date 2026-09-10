@@ -61,7 +61,9 @@ def test_git_donkey_allows_local_only_base_branch(
     assert Repo(worktree_path).active_branch.name == "feature/from-local", (
         "expected worktree branch name to match"
     )
-    assert Repo(worktree_path).head.commit == repo.head.commit
+    assert Repo(worktree_path).head.commit == repo.head.commit, (
+        "a local-only base supplies the new worktree's start point"
+    )
 
 
 @pytest.mark.parametrize(
@@ -89,10 +91,16 @@ def test_git_donkey_updates_base_branch_when_behind_remote(
 
     exit_code = donkey.run_git_donkey("feature/update", base, options=options)
 
-    assert exit_code == 0
-    assert repo.head.commit.hexsha == remote_tip
+    assert exit_code == 0, (
+        "an accepted prompt updates the base and creates the worktree"
+    )
+    assert repo.head.commit.hexsha == remote_tip, (
+        "the base checkout is fast-forwarded to the remote tip"
+    )
     worktree_path = local_path.parent / "local.worktrees" / "feature/update"
-    assert Repo(worktree_path).head.commit.hexsha == remote_tip
+    assert Repo(worktree_path).head.commit.hexsha == remote_tip, (
+        "the new worktree starts at the updated base"
+    )
 
 
 def test_git_donkey_sets_upstream_for_existing_branch(

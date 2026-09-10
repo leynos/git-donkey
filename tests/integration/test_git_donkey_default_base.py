@@ -54,20 +54,30 @@ def test_default_uses_remote_tip_without_changing_dirty_local_base(
     monkeypatch.chdir(local_path)
     monkeypatch.setattr(donkey.helpers, "_prompt_yes_no", _reject_prompt)
 
-    assert donkey.run_git_donkey("feature/default") == 0
+    assert donkey.run_git_donkey("feature/default") == 0, (
+        "worktree creation succeeds with an implicit base"
+    )
 
-    assert repo.head.commit.hexsha == local_tip
-    assert repo.active_branch.name == default_branch
-    assert repo.git.write_tree() == index_tree
-    assert (local_path / "README.md").read_text() == "unstaged change"
-    assert (local_path / "untracked.txt").read_text() == "untracked change"
+    assert repo.head.commit.hexsha == local_tip, (
+        "the primary checkout keeps its unpublished local commit"
+    )
+    assert repo.active_branch.name == default_branch, (
+        "the primary checkout keeps its branch"
+    )
+    assert repo.git.write_tree() == index_tree, "the staged index is unchanged"
+    assert (local_path / "README.md").read_text() == "unstaged change", (
+        "unstaged edits survive"
+    )
+    assert (local_path / "untracked.txt").read_text() == "untracked change", (
+        "untracked files survive"
+    )
     assert (
         _worktree_repo(local_path, "feature/default").head.commit.hexsha == remote_tip
-    )
+    ), "the new worktree starts at the remote tip"
     assert (
         _worktree_repo(local_path, "feature/default").active_branch.tracking_branch()
         is None
-    )
+    ), "the new branch does not track the remote default"
 
 
 def test_remote_head_is_rediscovered_with_a_narrow_fetch_refspec(
@@ -89,14 +99,16 @@ def test_remote_head_is_rediscovered_with_a_narrow_fetch_refspec(
     repo.git.config("remote.origin.fetch", "+refs/heads/main:refs/remotes/origin/main")
     monkeypatch.chdir(local_path)
 
-    assert donkey.run_git_donkey("feature/new-default") == 0
+    assert donkey.run_git_donkey("feature/new-default") == 0, (
+        "worktree creation succeeds despite the stale remote HEAD"
+    )
 
     assert (
         _worktree_repo(local_path, "feature/new-default").head.commit.hexsha
         == remote_tip
-    )
-    assert "trunk" not in repo.heads
-    assert repo.active_branch.name == "main"
+    ), "the newly advertised default supplies the base"
+    assert "trunk" not in repo.heads, "the stale local trunk branch is not recreated"
+    assert repo.active_branch.name == "main", "the primary checkout stays on its branch"
 
 
 def test_missing_advertised_default_requires_explicit_base(
@@ -114,15 +126,23 @@ def test_missing_advertised_default_requires_explicit_base(
     with pytest.raises(SystemExit) as excinfo:
         donkey.run_git_donkey("feature/missing")
 
-    assert excinfo.value.code == 1
-    assert "specify a base branch explicitly" in capsys.readouterr().err
-    assert "feature/missing" not in repo.heads
-    assert repo.head.commit.hexsha == original_tip
-    assert donkey.run_git_donkey("feature/explicit", ".") == 0
+    assert excinfo.value.code == 1, "a missing advertised default is an error"
+    assert "specify a base branch explicitly" in capsys.readouterr().err, (
+        "the error tells the user to name a base explicitly"
+    )
+    assert "feature/missing" not in repo.heads, (
+        "no branch is created when the default cannot be discovered"
+    )
+    assert repo.head.commit.hexsha == original_tip, (
+        "the primary checkout is left untouched"
+    )
+    assert donkey.run_git_donkey("feature/explicit", ".") == 0, (
+        "an explicit base still works"
+    )
     assert (
         _worktree_repo(local_path, "feature/explicit").head.commit.hexsha
         == original_tip
-    )
+    ), "the explicit base supplies the worktree's start point"
 
 
 def test_dot_uses_calling_linked_worktree_not_primary_checkout(
@@ -138,13 +158,15 @@ def test_dot_uses_calling_linked_worktree_not_primary_checkout(
     _seed_repo(caller, "caller.txt", "caller-only content")
     monkeypatch.chdir(caller_path)
 
-    assert donkey.run_git_donkey("feature/from-caller", ".") == 0
+    assert donkey.run_git_donkey("feature/from-caller", ".") == 0, (
+        "an explicit dot base still works"
+    )
 
     assert (
         _worktree_repo(local_path, "feature/from-caller").head.commit.hexsha
         == caller.head.commit.hexsha
-    )
-    assert repo.active_branch.name == "main"
+    ), "the calling worktree's branch supplies the base"
+    assert repo.active_branch.name == "main", "the primary checkout is untouched"
 
 
 def test_principal_remote_keeps_existing_first_configured_rule(
@@ -159,9 +181,11 @@ def test_principal_remote_keeps_existing_first_configured_rule(
     repo.create_remote("origin", str(other_remote.git_dir))
     monkeypatch.chdir(local_path)
 
-    assert donkey.run_git_donkey("feature/principal") == 0
+    assert donkey.run_git_donkey("feature/principal") == 0, (
+        "worktree creation succeeds with the remapped principal remote"
+    )
 
     assert (
         _worktree_repo(local_path, "feature/principal").head.commit.hexsha
         == repo.commit("refs/remotes/upstream/main").hexsha
-    )
+    ), "the first configured remote supplies the base"
