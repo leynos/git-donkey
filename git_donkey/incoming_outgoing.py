@@ -151,6 +151,43 @@ def _commits_unique_to(
     )
 
 
+def _fetch_comparison_remote(
+    request: _ComparisonRequest,
+    adapter: _ComparisonAdapter,
+    remote_name: str | None,
+) -> bool:
+    """Fetch the comparison remote, returning ``False`` when the fetch fails."""
+    if not request.fetch or remote_name is None:
+        return True
+
+    direction = request.direction
+    _LOGGER.info(
+        "Fetching comparison remote",
+        extra={
+            "operation": "fetch",
+            "direction": direction,
+            "remote": remote_name,
+        },
+    )
+    try:
+        adapter.fetch_remote(remote_name)
+    except SystemExit:
+        # The shared helper exits 1; this workflow reserves 1 for a
+        # successful comparison that found no commits, so a failed fetch
+        # must exit 2 like any other failure to run.
+        _LOGGER.warning(
+            "Comparison fetch failed",
+            extra={
+                "operation": "fetch",
+                "direction": direction,
+                "remote": remote_name,
+                "result": "failure",
+            },
+        )
+        return False
+    return True
+
+
 def _run_comparison(
     request: _ComparisonRequest,
     adapter: _ComparisonAdapter | None = None,
@@ -188,31 +225,8 @@ def _run_comparison(
         },
     )
 
-    if request.fetch and remote_name is not None:
-        _LOGGER.info(
-            "Fetching comparison remote",
-            extra={
-                "operation": "fetch",
-                "direction": direction,
-                "remote": remote_name,
-            },
-        )
-        try:
-            adapter.fetch_remote(remote_name)
-        except SystemExit:
-            # The shared helper exits 1; this workflow reserves 1 for a
-            # successful comparison that found no commits, so a failed fetch
-            # must exit 2 like any other failure to run.
-            _LOGGER.warning(
-                "Comparison fetch failed",
-                extra={
-                    "operation": "fetch",
-                    "direction": direction,
-                    "remote": remote_name,
-                    "result": "failure",
-                },
-            )
-            return 2
+    if not _fetch_comparison_remote(request, adapter, remote_name):
+        return 2
 
     try:
         output = _commits_unique_to(

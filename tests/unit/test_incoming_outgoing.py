@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import dataclasses
 import io
+import logging
 import typing as typ
 
 import pytest
@@ -95,6 +96,35 @@ class _ModelRepo:
         self.remotes = [_FakeRemote("origin")]
 
 
+class _FakeAdapter:
+    """Comparison adapter double that records fetches and can fail one."""
+
+    def __init__(self, *, fail_fetch: bool = False) -> None:
+        self.fetched: list[str] = []
+        self.fail_fetch = fail_fetch
+
+    @staticmethod
+    def log(*args: str) -> str:
+        """Return no comparison output."""
+        return ""
+
+    @staticmethod
+    def upstream_ref() -> str | None:
+        """Report no configured upstream."""
+        return None
+
+    @staticmethod
+    def remote_names() -> typ.Iterable[str]:
+        """Report the configured remote names."""
+        return ["origin"]
+
+    def fetch_remote(self, remote: str) -> None:
+        """Record the fetch, or raise the shared helper's failure exit."""
+        if self.fail_fetch:
+            raise SystemExit(1)
+        self.fetched.append(remote)
+
+
 @dataclasses.dataclass(frozen=True, slots=True)
 class _ComparisonHarness:
     """Bound comparison runner plus the remotes it has fetched."""
@@ -144,6 +174,19 @@ def _format_commits(commits: set[str]) -> str:
     return "\n".join(sorted(commits)) + "\n"
 
 
+def _comparison_request(
+    *,
+    fetch: bool = True,
+) -> incoming_outgoing._ComparisonRequest:
+    """Return an incoming comparison request with the given fetch setting."""
+    return incoming_outgoing._ComparisonRequest(
+        prefix="git-incoming",
+        direction="incoming",
+        ref="origin/main",
+        fetch=fetch,
+    )
+
+
 def test_commits_unique_to_ref_returns_log_lines() -> None:
     """Comparison queries should return concise ``git log`` lines."""
     repo = _FakeRepo("abc1234 Remote commit")
@@ -179,6 +222,92 @@ def test_commits_unique_to_ref_handles_empty_log() -> None:
     )
 
     assert not output, "an empty comparison range must return no commits"
+
+
+def test_fetch_comparison_remote_skips_when_disabled() -> None:
+    """A request that disables fetching must not contact the remote."""
+    adapter = _FakeAdapter()
+
+    fetched = incoming_outgoing._fetch_comparison_remote(
+        _comparison_request(fetch=False),
+        adapter,
+        "origin",
+    )
+
+    assert fetched, "a skipped fetch must report success"
+    assert not adapter.fetched, "fetch=False must not contact the remote"
+
+
+def test_fetch_comparison_remote_skips_unnamed_remote() -> None:
+    """A comparison ref owned by no configured remote must not be fetched."""
+    adapter = _FakeAdapter()
+
+    fetched = incoming_outgoing._fetch_comparison_remote(
+        _comparison_request(),
+        adapter,
+        None,
+    )
+
+    assert fetched, "a fetch with no remote to fetch must report success"
+    assert not adapter.fetched, "an unnamed remote must not be fetched"
+
+
+def test_fetch_comparison_remote_fetches_and_logs(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A remote-backed request must fetch the named remote and log it."""
+    adapter = _FakeAdapter()
+
+    with caplog.at_level(logging.INFO, logger=incoming_outgoing.__name__):
+        fetched = incoming_outgoing._fetch_comparison_remote(
+            _comparison_request(),
+            adapter,
+            "origin",
+        )
+
+    assert fetched, "a successful fetch must report success"
+    assert adapter.fetched == ["origin"], "the named remote must be fetched"
+    (record,) = caplog.records
+    assert record.levelno == logging.INFO, "the fetch must be logged at INFO"
+    assert record.getMessage() == "Fetching comparison remote", (
+        "the fetch must log the operation it performs"
+    )
+    fields = vars(record)
+    assert fields["operation"] == "fetch", "the fetch log must carry operation=fetch"
+    assert fields["direction"] == "incoming", (
+        "the fetch log must carry the comparison direction"
+    )
+    assert fields["remote"] == "origin", "the fetch log must carry the remote name"
+
+
+def test_fetch_comparison_remote_reports_failure(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A fetch that exits the process must report failure, not propagate."""
+    adapter = _FakeAdapter(fail_fetch=True)
+
+    with caplog.at_level(logging.INFO, logger=incoming_outgoing.__name__):
+        fetched = incoming_outgoing._fetch_comparison_remote(
+            _comparison_request(),
+            adapter,
+            "origin",
+        )
+
+    assert not fetched, "a failed fetch must report failure"
+    assert not adapter.fetched, "a failed fetch must record no completed fetch"
+    attempt, failure = caplog.records
+    assert attempt.levelno == logging.INFO, "the attempt must still be logged at INFO"
+    assert failure.levelno == logging.WARNING, "the failure must be logged at WARNING"
+    assert failure.getMessage() == "Comparison fetch failed", (
+        "the failure must log a diagnostic message"
+    )
+    fields = vars(failure)
+    assert fields["operation"] == "fetch", "the failure log must carry operation=fetch"
+    assert fields["direction"] == "incoming", (
+        "the failure log must carry the comparison direction"
+    )
+    assert fields["remote"] == "origin", "the failure log must carry the remote name"
+    assert fields["result"] == "failure", "the failure log must carry result=failure"
 
 
 def test_run_git_incoming_reports_missing_upstream(
