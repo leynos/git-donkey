@@ -194,13 +194,15 @@ def test_wheel_contains_complete_recorded_manpages(
 ) -> None:
     """Ship real roff pages, with hashes in RECORD and no misplaced copies."""
     manuals = _manuals(distributions.wheel)
-    assert set(manuals) == {f"{command}.1" for command in _commands()}
-    for content in manuals.values():
-        assert b".TH " in content
-        assert b".SH SYNOPSIS" in content
-        assert b".SH DESCRIPTION" in content
-        assert b"stale manual" not in content
-        assert b"\x1b" not in content
+    assert set(manuals) == {f"{command}.1" for command in _commands()}, (
+        f"wheel must ship one page per installed command: {sorted(manuals)}"
+    )
+    for name, content in manuals.items():
+        assert b".TH " in content, f"{name} must open with a roff title"
+        assert b".SH SYNOPSIS" in content, f"{name} must carry a synopsis section"
+        assert b".SH DESCRIPTION" in content, f"{name} must carry a description"
+        assert b"stale manual" not in content, f"generation left {name} stale"
+        assert b"\x1b" not in content, f"{name} must not carry terminal escapes"
     with zipfile.ZipFile(distributions.wheel) as archive:
         (record,) = (name for name in archive.namelist() if name.endswith("/RECORD"))
         records = {
@@ -208,15 +210,17 @@ def test_wheel_contains_complete_recorded_manpages(
             for row in csv.reader(io.StringIO(archive.read(record).decode()))
         }
         pages = [name for name in archive.namelist() if name.endswith(".1")]
-        assert len(pages) == len(manuals)
+        assert len(pages) == len(manuals), "wheel must carry one copy of each page"
         for name in pages:
-            assert ".data/data/share/man/man1/" in name
+            assert ".data/data/share/man/man1/" in name, (
+                f"{name} is outside the wheel data scheme"
+            )
             content = archive.read(name)
             digest = base64.urlsafe_b64encode(hashlib.sha256(content).digest())
             assert records[name] == [
                 "sha256=" + digest.rstrip(b"=").decode(),
                 str(len(content)),
-            ]
+            ], f"RECORD must hash the installed bytes of {name}"
 
 
 def test_sdist_contains_sources_not_generated_pages(
@@ -228,10 +232,16 @@ def test_sdist_contains_sources_not_generated_pages(
             PurePosixPath(*PurePosixPath(name).parts[1:]).as_posix()
             for name in archive.getnames()
         }
-    assert "docs/man/docutils.conf" in paths
-    assert {f"docs/man/{command}.rst" for command in _commands()} <= paths
-    assert not any(path.endswith(".1") for path in paths)
-    assert _manuals(distributions.rebuilt_wheel) == _manuals(distributions.wheel)
+    assert "docs/man/docutils.conf" in paths, "sdist must carry the generator config"
+    assert {f"docs/man/{command}.rst" for command in _commands()} <= paths, (
+        "sdist must carry every manual source"
+    )
+    assert not any(path.endswith(".1") for path in paths), (
+        "sdist must not ship generated pages"
+    )
+    assert _manuals(distributions.rebuilt_wheel) == _manuals(distributions.wheel), (
+        "rebuilding from the sdist must reproduce the pages byte for byte"
+    )
 
 
 def test_install_places_and_removes_environment_manpages(
@@ -267,8 +277,10 @@ def test_install_places_and_removes_environment_manpages(
     installed = environment / "share/man/man1"
     assert {path.name: path.read_bytes() for path in installed.glob("*.1")} == _manuals(
         distributions.wheel
+    ), "installed pages must match the wheel contents"
+    assert not (distributions.root / "xdg-data/man").exists(), (
+        "installing must not populate the user manpath"
     )
-    assert not (distributions.root / "xdg-data/man").exists()
     _assert_success(
         _run_uv(
             ("pip", "uninstall", "--python", str(interpreter), "git-donkey"),
@@ -276,8 +288,10 @@ def test_install_places_and_removes_environment_manpages(
             distributions.environment,
         )
     )
-    assert not list(installed.glob("*.1"))
-    assert not (distributions.root / "xdg-data/man").exists()
+    assert not list(installed.glob("*.1")), "uninstall must remove the pages"
+    assert not (distributions.root / "xdg-data/man").exists(), (
+        "uninstall must leave the user manpath untouched"
+    )
 
 
 @pytest.mark.parametrize("failure", ["missing", "malformed"])
@@ -296,6 +310,8 @@ def test_broken_manual_source_fails_the_build(tmp_path: Path, failure: str) -> N
         source,
         _environment(tmp_path),
     )
-    assert result.returncode != 0
-    assert "git-donkey.rst" in result.output
-    assert not list((source / "dist").glob("*.whl"))
+    assert result.returncode != 0, f"a {failure} source must fail the build"
+    assert "git-donkey.rst" in result.output, "build must name the offending source"
+    assert not list((source / "dist").glob("*.whl")), (
+        "a failed build must not publish a wheel"
+    )

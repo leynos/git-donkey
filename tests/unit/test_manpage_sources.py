@@ -206,13 +206,11 @@ def test_manual_has_standard_sections(command: str) -> None:
     assert len(lines[3]) >= len(lines[2]), (
         f"{command}.rst subtitle underline must cover its title: {lines[2:4]}"
     )
-    assert ":Manual section: 1" in source, (
-        f"{command}.rst must declare ':Manual section: 1'"
-    )
     for heading in ("SYNOPSIS", "DESCRIPTION", "OPTIONS", "EXAMPLES", "SEE ALSO"):
         assert f"\n{heading}\n" in source, f"{command}.rst must document {heading}"
-    assert "--help" in source, f"{command}.rst must document --help"
-    assert "--version" in source, f"{command}.rst must document --version"
+    required = (":Manual section: 1", "--help", "--version")
+    missing = [text for text in required if text not in source]
+    assert not missing, f"{command}.rst must declare: {missing}"
 
 
 @pytest.mark.parametrize(
