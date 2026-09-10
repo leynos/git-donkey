@@ -23,7 +23,12 @@ protocol over GitPython and the shared helpers in ``git_donkey.helpers``.
 Fetching, rendering, and exit-code mapping belong to the command boundary in
 ``_run_comparison`` and the ``_fetch_comparison_remote`` helper it calls, which
 also emit structured log records for comparison start, the fetch attempt and
-its outcome, and comparison completion.
+its outcome, and comparison completion. Those steps also report through
+``git_donkey.observability``: the fetch is timed as ``comparison_fetch`` and
+the comparison read as ``comparison``, each recording a bounded outcome
+through the process-wide recorder (``success``, ``failure``, or
+``not_requested`` for the fetch; ``found``, ``empty``, or ``failure`` for the
+comparison).
 
 The ``git_donkey.cli`` module exposes these workflows as Cyclopts apps and
 delegates to ``run_git_incoming`` and ``run_git_outgoing``.
@@ -55,7 +60,7 @@ import typing as typ
 
 from git import GitCommandError, Repo
 
-from git_donkey import helpers, incoming_outgoing_policy
+from git_donkey import helpers, incoming_outgoing_policy, observability
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -159,6 +164,12 @@ def _fetch_comparison_remote(
 ) -> bool:
     """Fetch the comparison remote, returning ``False`` when the fetch fails."""
     if not request.fetch or remote_name is None:
+        observability.get_recorder().record(
+            observability.Observation(
+                operation="comparison_fetch",
+                outcome="not_requested",
+            )
+        )
         return True
 
     direction = request.direction
@@ -171,7 +182,8 @@ def _fetch_comparison_remote(
         },
     )
     try:
-        adapter.fetch_remote(remote_name)
+        with observability.get_recorder().span("comparison_fetch"):
+            adapter.fetch_remote(remote_name)
     except SystemExit:
         # The shared helper exits 1; this workflow reserves 1 for a
         # successful comparison that found no commits, so a failed fetch
@@ -185,6 +197,13 @@ def _fetch_comparison_remote(
                 "result": "failure",
             },
         )
+        observability.get_recorder().record(
+            observability.Observation(
+                operation="comparison_fetch",
+                outcome="failure",
+                error_kind="git_command_error",
+            )
+        )
         return False
 
     _LOGGER.info(
@@ -195,6 +214,12 @@ def _fetch_comparison_remote(
             "remote": remote_name,
             "result": "success",
         },
+    )
+    observability.get_recorder().record(
+        observability.Observation(
+            operation="comparison_fetch",
+            outcome="success",
+        )
     )
     return True
 
@@ -240,11 +265,12 @@ def _run_comparison(
         return 2
 
     try:
-        output = _commits_unique_to(
-            adapter,
-            include_ref=include_ref,
-            exclude_ref=exclude_ref,
-        )
+        with observability.get_recorder().span("comparison"):
+            output = _commits_unique_to(
+                adapter,
+                include_ref=include_ref,
+                exclude_ref=exclude_ref,
+            )
     except GitCommandError as exc:
         _LOGGER.exception(
             "Comparison failed",
@@ -253,6 +279,13 @@ def _run_comparison(
                 "direction": direction,
                 "result": "failure",
             },
+        )
+        observability.get_recorder().record(
+            observability.Observation(
+                operation="comparison",
+                outcome="failure",
+                error_kind="git_command_error",
+            )
         )
         helpers._eprint(f"{prefix}: comparison failed: {exc}")
         return 2
@@ -269,6 +302,12 @@ def _run_comparison(
             "commit_count": commit_count,
             "result": "found" if commit_count else "empty",
         },
+    )
+    observability.get_recorder().record(
+        observability.Observation(
+            operation="comparison",
+            outcome="found" if commit_count else "empty",
+        )
     )
     return 0 if commit_count else 1
 

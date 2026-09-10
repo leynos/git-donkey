@@ -2,16 +2,19 @@
 
 from __future__ import annotations
 
+import sys
 import typing as typ
 
 import pytest
 from git import Repo
 
-from git_donkey import incoming_outgoing
+from git_donkey import cli, incoming_outgoing
 from tests.integration.conftest import _configure_repo, _seed_repo, _setup_repo
 
 if typ.TYPE_CHECKING:
     from pathlib import Path
+
+    from tests.observability_helpers import RecordingRecorder
 
 
 # git-donkey's own exit code for a command that could not run, as opposed to
@@ -232,6 +235,63 @@ def test_canonical_ref_fetches_owning_remote(
     assert exit_code == 0, "canonical refs must fetch and report new commits"
     assert "Seed commit" in out, "the fetched canonical ref must be reported"
     assert not err, "a successful comparison must not write to stderr"
+
+
+def test_git_incoming_entrypoint_reports_remote_only_commit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    recording_recorder: RecordingRecorder,
+) -> None:
+    """The git-incoming entrypoint should run the command boundary end to end."""
+    local_path, remote_path = _setup_repo(tmp_path)
+    local_repo = Repo(local_path)
+    local_repo.remote("origin").fetch()
+
+    peer_repo = _clone_remote(remote_path, tmp_path / "peer")
+    _seed_repo(peer_repo, "remote.txt", "remote")
+    peer_repo.remote("origin").push("main")
+
+    # No upstream is configured, so the exit code proves the explicit ref
+    # parsed from ``argv`` reached the runner.
+    monkeypatch.chdir(local_path)
+    monkeypatch.setattr(sys, "argv", ["git-incoming", "origin/main"])
+
+    with pytest.raises(SystemExit) as exit_info:
+        cli.git_incoming()
+
+    captured = capsys.readouterr()
+    assert exit_info.value.code == 0, "a remote-only commit must exit 0"
+    assert "Seed commit" in captured.out, (
+        "the entrypoint must print the remote-only commit"
+    )
+    assert not captured.err, "a successful comparison must not write to stderr"
+    assert [span.operation for span in recording_recorder.spans] == [
+        "comparison_fetch",
+        "comparison",
+    ], "the entrypoint must time the fetch and the comparison"
+
+
+def test_git_in_alias_entrypoint_reports_nothing_to_pull(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The git-in alias should run through the same command boundary."""
+    local_path, _remote_path = _setup_repo(tmp_path)
+
+    # The ref and the flag both come from ``argv``: an ignored argument list
+    # would fall back to the missing upstream and exit 2.
+    monkeypatch.chdir(local_path)
+    monkeypatch.setattr(sys, "argv", ["git-in", "main", "--no-fetch"])
+
+    with pytest.raises(SystemExit) as exit_info:
+        cli.git_in()
+
+    captured = capsys.readouterr()
+    assert exit_info.value.code == 1, "nothing to pull must exit 1"
+    assert not captured.out, "an empty comparison must print nothing"
+    assert not captured.err, "an empty comparison must not write to stderr"
 
 
 def test_fetch_failure_returns_two(

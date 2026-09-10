@@ -134,10 +134,14 @@ adapter with a no-op default. A record is an `Observation`: an `operation`, an
 - `template_overlay`: `unavailable` (with `selection_error` when the template
   directory cannot be selected), `started`, `success`, or `failure` with
   `os_error`.
+- `comparison_fetch`: `not_requested` when `--no-fetch` is used or the
+  comparison ref is a local ref owned by no remote, `success`, or `failure`
+  with `git_command_error`.
+- `comparison`: `found`, `empty`, or `failure` with `git_command_error`.
 
-Remote default discovery, the default-branch fetch, pull execution, and
-worktree creation are also timed; a span reports its operation name and
-duration only.
+Remote default discovery, the default-branch fetch, pull execution, worktree
+creation, the comparison fetch, and the comparison are also timed; a span
+reports its operation name and duration only.
 
 Every attribute comes from a fixed vocabulary, so records stay aggregatable.
 Branch names, filesystem paths, remote URLs, Git output, exception text, and

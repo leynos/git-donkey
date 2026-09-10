@@ -13,7 +13,10 @@ from git import GitCommandError
 from hypothesis import given
 from hypothesis import strategies as st
 
-from git_donkey import incoming_outgoing
+from git_donkey import incoming_outgoing, incoming_outgoing_policy
+
+if typ.TYPE_CHECKING:
+    from tests.observability_helpers import RecordingRecorder
 
 _COMMIT_ID = st.from_regex(r"[0-9a-f]{7}", fullmatch=True)
 _LOG_COMMAND = "log"
@@ -174,6 +177,18 @@ def _format_commits(commits: set[str]) -> str:
     return "\n".join(sorted(commits)) + "\n"
 
 
+def _comparison_records(
+    caplog: pytest.LogCaptureFixture,
+) -> tuple[logging.LogRecord, logging.LogRecord]:
+    """Return the captured comparison start and completion records."""
+    started, completed = [
+        record
+        for record in caplog.records
+        if getattr(record, "operation", None) == "compare"
+    ]
+    return started, completed
+
+
 def _comparison_request(
     *,
     fetch: bool = True,
@@ -185,6 +200,45 @@ def _comparison_request(
         ref="origin/main",
         fetch=fetch,
     )
+
+
+@pytest.mark.parametrize(
+    "remote_names",
+    [
+        ["team", "team/core"],
+        ["team/core", "team"],
+    ],
+)
+def test_remote_name_for_ref_prefers_longest_match(remote_names: list[str]) -> None:
+    """A nested remote must own the ref whatever the configured order."""
+    owner = incoming_outgoing_policy.remote_name_for_ref(
+        remote_names,
+        "team/core/main",
+    )
+
+    assert owner == "team/core", (
+        "the longest matching remote must own a nested remote ref"
+    )
+
+
+@pytest.mark.parametrize(
+    ("remote_names", "ref", "expected"),
+    [
+        (["origin"], "origin", "origin"),
+        (["origin"], "refs/remotes/origin/main", "origin"),
+        (["team", "team/core"], "team/core", "team/core"),
+        (["origin"], "main", None),
+    ],
+)
+def test_remote_name_for_ref_matches_exact_and_prefixed_names(
+    remote_names: list[str],
+    ref: str,
+    expected: str | None,
+) -> None:
+    """Exact names and slash-delimited prefixes keep selecting their remote."""
+    owner = incoming_outgoing_policy.remote_name_for_ref(remote_names, ref)
+
+    assert owner == expected, "the configured remote owning the ref must be returned"
 
 
 def test_commits_unique_to_ref_returns_log_lines() -> None:
@@ -399,6 +453,7 @@ def test_run_git_incoming_skips_fetch_for_local_ref(
 
 def test_run_git_incoming_no_fetch_skips_remote(
     comparison: _ComparisonHarness,
+    recording_recorder: RecordingRecorder,
 ) -> None:
     """--no-fetch should compare without contacting the remote."""
     repo = _FakeRepo("")
@@ -411,6 +466,9 @@ def test_run_git_incoming_no_fetch_skips_remote(
 
     assert exit_code == 1, "an empty comparison must exit 1"
     assert comparison.fetches == [], "--no-fetch must not contact the remote"
+    assert recording_recorder.outcomes("comparison_fetch") == ["not_requested"], (
+        "--no-fetch must report that the fetch was not requested"
+    )
 
 
 def test_run_git_outgoing_compares_head_against_ref(
@@ -429,10 +487,93 @@ def test_run_git_outgoing_compares_head_against_ref(
     ], "outgoing comparisons must include HEAD and exclude the ref"
 
 
+def test_run_git_incoming_logs_comparison_records(
+    comparison: _ComparisonHarness,
+    caplog: pytest.LogCaptureFixture,
+    recording_recorder: RecordingRecorder,
+) -> None:
+    """An incoming comparison must log and record its start and completion."""
+    caplog.set_level(logging.INFO, logger=incoming_outgoing.__name__)
+    repo = _FakeRepo("abc1234 Remote commit")
+
+    exit_code, _, _ = comparison.run(repo, incoming_outgoing.run_git_incoming)
+
+    assert exit_code == 0, "matching commits must exit 0"
+    started, completed = _comparison_records(caplog)
+    assert started.levelno == logging.INFO, "the comparison start must be INFO"
+    assert started.getMessage() == "Starting incoming comparison", (
+        "the start record must name the comparison direction"
+    )
+    fields = vars(started)
+    assert fields["operation"] == "compare", "the start record must carry operation"
+    assert fields["direction"] == "incoming", (
+        "the start record must carry the comparison direction"
+    )
+    assert fields["fetch_enabled"] is True, (
+        "the start record must report that fetching is enabled"
+    )
+    assert fields["ref"] == "origin/main", (
+        "the start record must carry the comparison ref"
+    )
+    assert completed.levelno == logging.INFO, "the completion record must be INFO"
+    assert completed.getMessage() == "Completed incoming comparison", (
+        "the completion record must name the comparison direction"
+    )
+    fields = vars(completed)
+    assert fields["commit_count"] == 1, (
+        "the completion record must count the commits it printed"
+    )
+    assert fields["result"] == "found", "a printed comparison must report found"
+    assert [span.operation for span in recording_recorder.spans] == [
+        "comparison_fetch",
+        "comparison",
+    ], "the fetch and the comparison must both be timed"
+    assert recording_recorder.outcomes("comparison_fetch") == ["success"], (
+        "a completed fetch must report success"
+    )
+    assert recording_recorder.outcomes("comparison") == ["found"], (
+        "a non-empty comparison must report that it found commits"
+    )
+
+
+def test_run_git_outgoing_logs_empty_comparison_record(
+    comparison: _ComparisonHarness,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """An outgoing comparison that finds nothing must log that outcome."""
+    caplog.set_level(logging.INFO, logger=incoming_outgoing.__name__)
+    repo = _FakeRepo("")
+
+    exit_code, _, _ = comparison.run(
+        repo,
+        incoming_outgoing.run_git_outgoing,
+        fetch=False,
+    )
+
+    assert exit_code == 1, "an empty comparison must exit 1"
+    started, completed = _comparison_records(caplog)
+    fields = vars(started)
+    assert fields["direction"] == "outgoing", (
+        "the start record must carry the outgoing direction"
+    )
+    assert fields["fetch_enabled"] is False, (
+        "the start record must report that fetching is disabled"
+    )
+    fields = vars(completed)
+    assert fields["direction"] == "outgoing", (
+        "the completion record must carry the outgoing direction"
+    )
+    assert fields["commit_count"] == 0, "an empty comparison must count no commits"
+    assert fields["result"] == "empty", "an empty comparison must report empty"
+
+
 def test_run_git_incoming_reports_comparison_failure(
     comparison: _ComparisonHarness,
+    caplog: pytest.LogCaptureFixture,
+    recording_recorder: RecordingRecorder,
 ) -> None:
-    """A failed ``git log`` should exit 2 with a diagnostic."""
+    """A failed ``git log`` should exit 2 with a diagnostic and a record."""
+    caplog.set_level(logging.INFO, logger=incoming_outgoing.__name__)
     repo = _FakeRepo("", fail_log=True)
 
     exit_code, out, err = comparison.run(repo, incoming_outgoing.run_git_incoming)
@@ -442,11 +583,30 @@ def test_run_git_incoming_reports_comparison_failure(
     assert "comparison failed" in err, (
         "a failed comparison must report the Git failure on stderr"
     )
+    failure = next(
+        record
+        for record in caplog.records
+        if getattr(record, "result", None) == "failure"
+    )
+    assert failure.levelno == logging.ERROR, "a failed comparison must log an error"
+    assert failure.getMessage() == "Comparison failed", (
+        "a failed comparison must log a diagnostic message"
+    )
+    assert vars(failure)["operation"] == "compare", (
+        "the failure record must carry operation=compare"
+    )
+    assert recording_recorder.outcomes("comparison") == ["failure"], (
+        "a failed comparison must report failure"
+    )
+    assert recording_recorder.error_kinds("comparison") == ["git_command_error"], (
+        "a failed comparison must report the class of failure"
+    )
 
 
 def test_run_git_incoming_reports_fetch_failure(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
+    recording_recorder: RecordingRecorder,
 ) -> None:
     """A failed fetch should exit 2 instead of masquerading as no commits."""
 
@@ -466,6 +626,15 @@ def test_run_git_incoming_reports_fetch_failure(
 
     assert exit_code == _COULD_NOT_RUN_EXIT_CODE, "a failed fetch must exit 2, not 1"
     assert not capsys.readouterr().out, "a failed fetch must print no commits"
+    assert recording_recorder.outcomes("comparison_fetch") == ["failure"], (
+        "a failed fetch must report failure"
+    )
+    assert recording_recorder.error_kinds("comparison_fetch") == [
+        "git_command_error"
+    ], "a failed fetch must report the class of failure"
+    assert recording_recorder.outcomes("comparison") == [], (
+        "a failed fetch must not report a completed comparison"
+    )
 
 
 @given(

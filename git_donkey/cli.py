@@ -145,8 +145,8 @@ def _run_incoming_outgoing_cli(
 _incoming_app = App(
     name="git incoming",
     help=(
-        "Fetch the comparison remote, then show commits present in the upstream "
-        "or explicit ref and absent from HEAD."
+        "Show commits present in the upstream or explicit ref and absent from "
+        "HEAD; only remote-backed refs are fetched by default."
     ),
 )
 
@@ -203,8 +203,8 @@ def git_in() -> None:
 _outgoing_app = App(
     name="git outgoing",
     help=(
-        "Fetch the comparison remote, then show commits present in HEAD and "
-        "absent from the upstream or explicit ref."
+        "Show commits present in HEAD and absent from the upstream or explicit "
+        "ref; only remote-backed refs are fetched by default."
     ),
 )
 

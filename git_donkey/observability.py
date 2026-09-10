@@ -24,8 +24,9 @@ becomes an ``extra`` field::
     )
 
 The timed operations are remote default discovery, default-branch fetch, pull
-execution, and worktree creation. A span reports the operation name and its
-duration only; outcomes are reported by :meth:`Recorder.record`.
+execution, worktree creation, comparison fetch, and comparison. A span reports
+the operation name and its duration only; outcomes are reported by
+:meth:`Recorder.record`.
 """
 
 from __future__ import annotations
@@ -47,6 +48,8 @@ type Operation = typ.Literal[
     "pull_execution",
     "worktree_creation",
     "template_overlay",
+    "comparison_fetch",
+    "comparison",
 ]
 """Fixed operation names a workflow step can report."""
 
@@ -60,6 +63,8 @@ type Outcome = typ.Literal[
     "not_requested",
     "not_behind",
     "unavailable",
+    "found",
+    "empty",
 ]
 """Fixed outcomes an operation can report."""
 
