@@ -140,21 +140,18 @@ def _format_commits(commits: set[str]) -> str:
     return "\n".join(sorted(commits)) + "\n"
 
 
-def test_commits_unique_to_ref_prints_log_lines(
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    """Comparison output should pass through concise ``git log`` lines."""
+def test_commits_unique_to_ref_returns_log_lines() -> None:
+    """Comparison queries should return concise ``git log`` lines."""
     repo = _FakeRepo("abc1234 Remote commit")
 
-    has_commits = incoming_outgoing._print_commits_unique_to(
+    output = incoming_outgoing._commits_unique_to(
         repo.git,
         include_ref="origin/main",
         exclude_ref="HEAD",
     )
 
-    assert has_commits is True, "non-empty log output must report commits"
-    assert capsys.readouterr().out == "abc1234 Remote commit\n", (
-        "comparison output must be printed verbatim"
+    assert output == "abc1234 Remote commit", (
+        "the query must return the log output for the comparison range"
     )
     assert repo.git.calls == [
         (
@@ -167,20 +164,17 @@ def test_commits_unique_to_ref_prints_log_lines(
     ], "incoming comparisons must include the ref and exclude HEAD"
 
 
-def test_commits_unique_to_ref_handles_empty_log(
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    """No comparison commits should produce no output."""
+def test_commits_unique_to_ref_handles_empty_log() -> None:
+    """No comparison commits should return no output."""
     repo = _FakeRepo("")
 
-    has_commits = incoming_outgoing._print_commits_unique_to(
+    output = incoming_outgoing._commits_unique_to(
         repo.git,
         include_ref="HEAD",
         exclude_ref="origin/main",
     )
 
-    assert has_commits is False, "empty log output must report no commits"
-    assert capsys.readouterr().out == "", "empty comparisons must print nothing"
+    assert output == "", "an empty comparison range must return no commits"
 
 
 def test_run_git_incoming_reports_missing_upstream(
@@ -197,8 +191,12 @@ def test_run_git_incoming_reports_missing_upstream(
 
     assert exit_code == 2, "a missing upstream must exit 2"
     assert out == "", "a missing upstream must print no commits"
-    assert "no upstream branch configured" in err
-    assert "pass a ref" in err
+    assert "no upstream branch configured" in err, (
+        "a missing upstream must explain that no upstream is configured"
+    )
+    assert "pass a ref" in err, (
+        "a missing upstream must suggest passing an explicit ref"
+    )
 
 
 def test_run_git_incoming_fetches_remote_backed_ref(
@@ -291,7 +289,9 @@ def test_run_git_incoming_reports_comparison_failure(
 
     assert exit_code == 2, "a failed comparison must exit 2"
     assert out == "", "a failed comparison must print no commits"
-    assert "comparison failed" in err
+    assert "comparison failed" in err, (
+        "a failed comparison must report the Git failure on stderr"
+    )
 
 
 def test_run_git_incoming_reports_fetch_failure(

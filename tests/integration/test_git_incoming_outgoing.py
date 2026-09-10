@@ -66,9 +66,9 @@ def test_git_incoming_fetches_and_reports_remote_only_commit(
         incoming_outgoing.run_git_incoming,
     )
 
-    assert exit_code == 0
-    assert "Seed commit" in out
-    assert err == ""
+    assert exit_code == 0, "a remote-only commit must exit 0"
+    assert "Seed commit" in out, "incoming must print the remote-only commit"
+    assert err == "", "a successful comparison must not write to stderr"
 
 
 def test_git_incoming_no_changes_returns_one(
@@ -86,9 +86,9 @@ def test_git_incoming_no_changes_returns_one(
         incoming_outgoing.run_git_incoming,
     )
 
-    assert exit_code == 1
-    assert out == ""
-    assert err == ""
+    assert exit_code == 1, "no incoming commits must exit 1"
+    assert out == "", "an empty incoming comparison must print nothing"
+    assert err == "", "an empty incoming comparison must not write to stderr"
 
 
 def test_git_outgoing_reports_local_only_commit(
@@ -108,9 +108,9 @@ def test_git_outgoing_reports_local_only_commit(
         fetch=False,
     )
 
-    assert exit_code == 0
-    assert "Seed commit" in out
-    assert err == ""
+    assert exit_code == 0, "a local-only commit must exit 0"
+    assert "Seed commit" in out, "outgoing must print the local-only commit"
+    assert err == "", "a successful comparison must not write to stderr"
 
 
 def test_git_outgoing_no_changes_returns_one(
@@ -129,9 +129,9 @@ def test_git_outgoing_no_changes_returns_one(
         fetch=False,
     )
 
-    assert exit_code == 1
-    assert out == ""
-    assert err == ""
+    assert exit_code == 1, "no outgoing commits must exit 1"
+    assert out == "", "an empty outgoing comparison must print nothing"
+    assert err == "", "an empty outgoing comparison must not write to stderr"
 
 
 def test_default_ref_requires_upstream(
@@ -147,10 +147,12 @@ def test_default_ref_requires_upstream(
         fetch=False,
     )
 
-    assert exit_code == 2
-    assert out == ""
-    assert "no upstream branch configured" in err
-    assert "pass a ref" in err
+    assert exit_code == 2, "a missing upstream must exit 2"
+    assert out == "", "a missing upstream must print nothing"
+    assert "no upstream branch configured" in err, (
+        "a missing upstream must explain the configuration error"
+    )
+    assert "pass a ref" in err, "a missing upstream must suggest passing a ref"
 
 
 def test_no_fetch_uses_current_remote_tracking_ref(
@@ -173,9 +175,9 @@ def test_no_fetch_uses_current_remote_tracking_ref(
         fetch=False,
     )
 
-    assert exit_code == 1
-    assert out == ""
-    assert err == ""
+    assert exit_code == 1, "--no-fetch must miss commits pushed since the fetch"
+    assert out == "", "an unchanged tracking ref must print nothing"
+    assert err == "", "a successful comparison must not write to stderr"
 
 
 def test_explicit_ref_does_not_require_upstream(
@@ -197,9 +199,9 @@ def test_explicit_ref_does_not_require_upstream(
         "origin/main",
     )
 
-    assert exit_code == 0
-    assert "Seed commit" in out
-    assert err == ""
+    assert exit_code == 0, "an explicit ref must compare successfully"
+    assert "Seed commit" in out, "incoming must print the remote-only commit"
+    assert err == "", "a successful comparison must not write to stderr"
 
 
 def test_canonical_ref_fetches_owning_remote(
@@ -223,8 +225,8 @@ def test_canonical_ref_fetches_owning_remote(
     )
 
     assert exit_code == 0, "canonical refs must fetch and report new commits"
-    assert "Seed commit" in out
-    assert err == ""
+    assert "Seed commit" in out, "the fetched canonical ref must be reported"
+    assert err == "", "a successful comparison must not write to stderr"
 
 
 def test_fetch_failure_returns_two(
@@ -243,5 +245,5 @@ def test_fetch_failure_returns_two(
     )
 
     assert exit_code == 2, "a failed fetch must exit 2, not 1"
-    assert out == ""
-    assert "fetch failed" in err
+    assert out == "", "a failed fetch must print no commits"
+    assert "fetch failed" in err, "a failed fetch must be reported on stderr"
