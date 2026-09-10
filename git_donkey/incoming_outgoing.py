@@ -21,9 +21,10 @@ pure comparison decisions, the ``_ComparisonAdapter`` protocol describes the
 Git surface the queries need, and ``_GitPythonComparison`` implements that
 protocol over GitPython and the shared helpers in ``git_donkey.helpers``.
 Fetching, rendering, and exit-code mapping belong to the command boundary in
-``_run_comparison`` and the ``_fetch_comparison_remote`` helper it calls, which
-also emit structured log records for comparison start, the fetch attempt and
-its outcome, and comparison completion. Those steps also report through
+``_run_comparison`` and the ``_fetch_comparison_remote`` and
+``_read_comparison`` helpers it calls, which also emit structured log records
+for comparison start, the fetch attempt and its outcome, and comparison
+completion. Those steps also report through
 ``git_donkey.observability``: the fetch is timed as ``comparison_fetch`` and
 the comparison read as ``comparison``, each recording a bounded outcome
 through the process-wide recorder (``success``, ``failure``, or
@@ -224,6 +225,63 @@ def _fetch_comparison_remote(
     return True
 
 
+def _read_comparison(
+    request: _ComparisonRequest,
+    git: _GitLog,
+    *,
+    include_ref: str,
+    exclude_ref: str,
+) -> int:
+    """Read the commits unique to ``include_ref`` and report the outcome."""
+    direction = request.direction
+    try:
+        with observability.get_recorder().span("comparison"):
+            output = _commits_unique_to(
+                git,
+                include_ref=include_ref,
+                exclude_ref=exclude_ref,
+            )
+    except GitCommandError as exc:
+        _LOGGER.exception(
+            "Comparison failed",
+            extra={
+                "operation": "compare",
+                "direction": direction,
+                "result": "failure",
+            },
+        )
+        observability.get_recorder().record(
+            observability.Observation(
+                operation="comparison",
+                outcome="failure",
+                error_kind="git_command_error",
+            )
+        )
+        helpers._eprint(f"{request.prefix}: comparison failed: {exc}")
+        return 2
+
+    if output:
+        print(output)
+    commit_count = len(output.splitlines())
+    _LOGGER.info(
+        "Completed %s comparison",
+        direction,
+        extra={
+            "operation": "compare",
+            "direction": direction,
+            "commit_count": commit_count,
+            "result": "found" if commit_count else "empty",
+        },
+    )
+    observability.get_recorder().record(
+        observability.Observation(
+            operation="comparison",
+            outcome="found" if commit_count else "empty",
+        )
+    )
+    return 0 if commit_count else 1
+
+
 def _run_comparison(
     request: _ComparisonRequest,
     adapter: _ComparisonAdapter | None = None,
@@ -264,52 +322,12 @@ def _run_comparison(
     if not _fetch_comparison_remote(request, adapter, remote_name):
         return 2
 
-    try:
-        with observability.get_recorder().span("comparison"):
-            output = _commits_unique_to(
-                adapter,
-                include_ref=include_ref,
-                exclude_ref=exclude_ref,
-            )
-    except GitCommandError as exc:
-        _LOGGER.exception(
-            "Comparison failed",
-            extra={
-                "operation": "compare",
-                "direction": direction,
-                "result": "failure",
-            },
-        )
-        observability.get_recorder().record(
-            observability.Observation(
-                operation="comparison",
-                outcome="failure",
-                error_kind="git_command_error",
-            )
-        )
-        helpers._eprint(f"{prefix}: comparison failed: {exc}")
-        return 2
-
-    if output:
-        print(output)
-    commit_count = len(output.splitlines())
-    _LOGGER.info(
-        "Completed %s comparison",
-        direction,
-        extra={
-            "operation": "compare",
-            "direction": direction,
-            "commit_count": commit_count,
-            "result": "found" if commit_count else "empty",
-        },
+    return _read_comparison(
+        request,
+        adapter,
+        include_ref=include_ref,
+        exclude_ref=exclude_ref,
     )
-    observability.get_recorder().record(
-        observability.Observation(
-            operation="comparison",
-            outcome="found" if commit_count else "empty",
-        )
-    )
-    return 0 if commit_count else 1
 
 
 def run_git_incoming(ref: str | None = None, *, fetch: bool = True) -> int:
