@@ -347,6 +347,54 @@ filterwarnings = [
 [tool.uv]
 package = true
 
+# The workflow reaches the recorder through observability.get_recorder(), so
+# a static call graph cannot follow it into the implementations. The recorder
+# is also installed from outside the package by embedders and the test suite.
+# Each rule names one symbol the workflow or an installer reaches that way,
+# together with the caller that reaches it. The approved set is pinned by
+# tests/unit/test_skylos_lint_contract.py.
+[tool.skylos.dead_code]
+
+[[tool.skylos.dead_code.entrypoints]]
+name = "NullRecorder.record"
+full_name = "git_donkey.observability.NullRecorder.record"
+reason = "Reached through the recorder observability.get_recorder() returns"
+
+[[tool.skylos.dead_code.entrypoints]]
+name = "NullRecorder.span"
+full_name = "git_donkey.observability.NullRecorder.span"
+reason = "Reached through the recorder observability.get_recorder() returns"
+
+[[tool.skylos.dead_code.entrypoints]]
+name = "observation"
+full_name = "git_donkey.observability.NullRecorder.record.*"
+reason = "NullRecorder.record discards the argument the Recorder protocol passes"
+
+[[tool.skylos.dead_code.entrypoints]]
+name = "operation"
+full_name = "git_donkey.observability.NullRecorder.span.*"
+reason = "NullRecorder.span discards the argument the Recorder protocol passes"
+
+[[tool.skylos.dead_code.entrypoints]]
+name = "LoggingRecorder"
+full_name = "git_donkey.observability.LoggingRecorder"
+reason = "Installed by embedders with observability.set_recorder()"
+
+[[tool.skylos.dead_code.entrypoints]]
+name = "LoggingRecorder.record"
+full_name = "git_donkey.observability.LoggingRecorder.record"
+reason = "Called on the recorder an embedder installs"
+
+[[tool.skylos.dead_code.entrypoints]]
+name = "LoggingRecorder.span"
+full_name = "git_donkey.observability.LoggingRecorder.span"
+reason = "Called on the recorder an embedder installs"
+
+[[tool.skylos.dead_code.entrypoints]]
+name = "set_recorder"
+full_name = "git_donkey.observability.set_recorder"
+reason = "Called by embedders and the test suite to install a recorder"
+
 [tool.skylos.gate]
 strict = true
 
