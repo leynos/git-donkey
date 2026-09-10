@@ -237,22 +237,30 @@ def test_manual_covers_command_specific_behaviour(
     assert required_text in source, f"{command}.rst must document {required_text}"
 
 
+def _is_star_name_keyword(keyword: ast.keyword) -> bool:
+    """Return whether one call keyword is ``name="*"``."""
+    return (
+        keyword.arg == "name"
+        and isinstance(keyword.value, ast.Constant)
+        and keyword.value.value == "*"
+    )
+
+
+def _is_star_parameter_call(node: ast.AST) -> bool:
+    """Return whether one node is a ``Parameter(name="*")`` call."""
+    return (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "Parameter"
+        and any(_is_star_name_keyword(keyword) for keyword in node.keywords)
+    )
+
+
 def _is_star_parameter(annotation: ast.expr | None) -> bool:
     """Return whether the annotation is a cyclopts ``Parameter(name="*")``."""
     if annotation is None:
         return False
-    return any(
-        isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Name)
-        and node.func.id == "Parameter"
-        and any(
-            keyword.arg == "name"
-            and isinstance(keyword.value, ast.Constant)
-            and keyword.value.value == "*"
-            for keyword in node.keywords
-        )
-        for node in ast.walk(annotation)
-    )
+    return any(_is_star_parameter_call(node) for node in ast.walk(annotation))
 
 
 def _spread_type_name(annotation: ast.expr | None) -> str | None:
