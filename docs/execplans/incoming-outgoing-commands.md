@@ -206,6 +206,10 @@ Mercurial bundles, templates, phases, or bookmark comparison output.
   start, completion (`found`/`empty`), and failure records are asserted with
   `caplog` for both runners. The console entrypoints `git-incoming` and
   `git-in` are now exercised against a real repository through `sys.argv`.
+  The instrumentation first pushed `_run_comparison` to 81 lines, past
+  CodeScene's large-method threshold of 70, so the comparison read, its
+  `comparison` span, its outcome records, and the exit-code mapping now live
+  in `_read_comparison`.
   Skipped with reasons: a per-repository inter-process lock (git already locks
   ref updates; the process holds no other shared mutable state), removing the
   justified per-file `assert` ignores for tests (main's policy, outside this
@@ -572,5 +576,6 @@ more on 2026-09-10 to record the rebase onto 111232a, the fetch completion
 record, and the comparison commands' migration-guide entry. Revised on
 2026-09-11 to record the second review round: longest-match remote selection,
 bounded recorder spans and outcomes for the comparison workflow, the
-comparison log-record tests, the console entrypoint integration tests, and the
-decision-record supersession of the migration-guide skip.
+comparison log-record tests, the console entrypoint integration tests, the
+decision-record supersession of the migration-guide skip, and the
+`_read_comparison` extraction the instrumentation required.
