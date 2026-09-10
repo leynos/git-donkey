@@ -68,6 +68,7 @@ def test_git_incoming_fetches_and_reports_remote_only_commit(
     peer_repo = _clone_remote(remote_path, tmp_path / "peer")
     _seed_repo(peer_repo, "remote.txt", "remote")
     peer_repo.remote("origin").push("main")
+    remote_commit = peer_repo.head.commit.hexsha[:7]
 
     exit_code, out, err = run_and_capture(
         local_path,
@@ -75,7 +76,7 @@ def test_git_incoming_fetches_and_reports_remote_only_commit(
     )
 
     assert exit_code == 0, "a remote-only commit must exit 0"
-    assert "Seed commit" in out, "incoming must print the remote-only commit"
+    assert remote_commit in out, "incoming must print the fetched remote-only commit"
     assert not err, "a successful comparison must not write to stderr"
 
 
@@ -109,6 +110,7 @@ def test_git_outgoing_reports_local_only_commit(
     _set_main_upstream(repo)
     repo.remote("origin").fetch()
     _seed_repo(repo, "local.txt", "local")
+    local_commit = repo.head.commit.hexsha[:7]
 
     exit_code, out, err = run_and_capture(
         local_path,
@@ -117,7 +119,7 @@ def test_git_outgoing_reports_local_only_commit(
     )
 
     assert exit_code == 0, "a local-only commit must exit 0"
-    assert "Seed commit" in out, "outgoing must print the local-only commit"
+    assert local_commit in out, "outgoing must print the local-only commit"
     assert not err, "a successful comparison must not write to stderr"
 
 
@@ -200,6 +202,7 @@ def test_explicit_ref_does_not_require_upstream(
     peer_repo = _clone_remote(remote_path, tmp_path / "peer")
     _seed_repo(peer_repo, "remote.txt", "remote")
     peer_repo.remote("origin").push("main")
+    remote_commit = peer_repo.head.commit.hexsha[:7]
 
     exit_code, out, err = run_and_capture(
         local_path,
@@ -208,7 +211,7 @@ def test_explicit_ref_does_not_require_upstream(
     )
 
     assert exit_code == 0, "an explicit ref must compare successfully"
-    assert "Seed commit" in out, "incoming must print the remote-only commit"
+    assert remote_commit in out, "incoming must print the remote-only commit"
     assert not err, "a successful comparison must not write to stderr"
 
 
@@ -225,6 +228,7 @@ def test_canonical_ref_fetches_owning_remote(
     peer_repo = _clone_remote(remote_path, tmp_path / "peer")
     _seed_repo(peer_repo, "remote.txt", "remote")
     peer_repo.remote("origin").push("main")
+    remote_commit = peer_repo.head.commit.hexsha[:7]
 
     exit_code, out, err = run_and_capture(
         local_path,
@@ -233,7 +237,7 @@ def test_canonical_ref_fetches_owning_remote(
     )
 
     assert exit_code == 0, "canonical refs must fetch and report new commits"
-    assert "Seed commit" in out, "the fetched canonical ref must be reported"
+    assert remote_commit in out, "the fetched canonical ref must be reported"
     assert not err, "a successful comparison must not write to stderr"
 
 
@@ -251,6 +255,7 @@ def test_git_incoming_entrypoint_reports_remote_only_commit(
     peer_repo = _clone_remote(remote_path, tmp_path / "peer")
     _seed_repo(peer_repo, "remote.txt", "remote")
     peer_repo.remote("origin").push("main")
+    remote_commit = peer_repo.head.commit.hexsha[:7]
 
     # No upstream is configured, so the exit code proves the explicit ref
     # parsed from ``argv`` reached the runner.
@@ -262,7 +267,7 @@ def test_git_incoming_entrypoint_reports_remote_only_commit(
 
     captured = capsys.readouterr()
     assert exit_info.value.code == 0, "a remote-only commit must exit 0"
-    assert "Seed commit" in captured.out, (
+    assert remote_commit in captured.out, (
         "the entrypoint must print the remote-only commit"
     )
     assert not captured.err, "a successful comparison must not write to stderr"

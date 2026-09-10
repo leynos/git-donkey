@@ -215,6 +215,18 @@ Mercurial bundles, templates, phases, or bookmark comparison output.
   justified per-file `assert` ignores for tests (main's policy, outside this
   diff), and widening the adapter's upstream lookup to separate "no upstream"
   from a failed read (both cases already exit 2 with the same diagnostic).
+- [x] (2026-09-11 00:00Z) Actioned the third review round. The five
+  integration assertions that identified the compared commit by the seeded
+  subject `"Seed commit"` now assert the printed short commit hash instead,
+  so none of them can pass on the baseline commit. Skipped with reasons:
+  exposing upstream-lookup fallibility through `_ComparisonAdapter` (the task
+  keeps the Git adapter boundary unchanged, and the missing-upstream and
+  failed-lookup cases already exit 2 with the same diagnostic and produce no
+  log or observability records; the misleading diagnostic for an
+  environmental `rev-parse` failure is tracked in issue #76), and adding a
+  metrics adapter for the comparison spans and outcomes (the project has no
+  metrics backend, so the developers' guide now names the recorder as the
+  integration point for one).
 
 ## Surprises & discoveries
 
@@ -578,4 +590,7 @@ record, and the comparison commands' migration-guide entry. Revised on
 bounded recorder spans and outcomes for the comparison workflow, the
 comparison log-record tests, the console entrypoint integration tests, the
 decision-record supersession of the migration-guide skip, and the
-`_read_comparison` extraction the instrumentation required.
+`_read_comparison` extraction the instrumentation required. Revised on
+2026-09-11 (third review round) to record the hash-based commit assertions in
+the integration tests, the upstream-lookup deferral with its follow-up issue,
+and the metrics integration-point note in the developers' guide.

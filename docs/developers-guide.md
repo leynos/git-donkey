@@ -154,6 +154,14 @@ routes records through the structured `extra` convention described under
 [Operational logging](#operational-logging) instead, and changes nothing else
 about how the command behaves.
 
+The project has no metrics backend, which is the same policy the remote
+adoption classifier records: bounded reason values are the integration point
+for future metrics rather than an ad hoc counter implementation. Here that
+integration point is `Recorder` itself, so a metrics backend implements the
+protocol and receives the bounded `operation` and `outcome` vocabulary plus
+span durations; `comparison_fetch` and `comparison` can then be counted and
+timed without changing the workflow.
+
 ## git-fafo module boundaries
 
 `git-fafo` is split across three modules, so infrastructure details stay out of
