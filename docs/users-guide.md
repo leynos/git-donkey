@@ -269,7 +269,8 @@ git incoming --no-fetch
 git outgoing origin/main --no-fetch
 ```
 
-Return codes follow Mercurial's documented behaviour for these commands:
+Return codes `0` and `1` follow Mercurial's documented behaviour for these
+commands, while `2` is git-donkey's own code for a command that could not run:
 
 - `0` means matching incoming or outgoing commits were found and printed.
 - `1` means no matching commits were found.

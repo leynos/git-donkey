@@ -209,11 +209,66 @@ directories.
 `syrupy` pins stable summary rendering. Hypothesis checks marker-shape
 invariants in the pure policy layer.
 
+
+## git-incoming and git-outgoing module boundaries
+
+`git-incoming` and `git-outgoing` answer the two questions a developer asks
+before syncing with a shared branch: which commits would arrive on a pull, and
+which would leave on a push. The implementation is split between pure
+comparison policy, a Git-facing workflow, and CLI delegation, so comparison
+rules stay testable without GitPython while the workflow owns Git work and
+user-visible behaviour:
+
+- `git_donkey.incoming_outgoing_policy` owns the pure comparison decisions.
+  `remote_name_for_ref()` returns the configured remote that owns a comparison
+  ref, handling both `origin/main` and canonical `refs/remotes/origin/main`
+  forms, and `comparison_range()` returns the include/exclude ref pair for a
+  direction. It contains no GitPython, filesystem, or process mutation and
+  mirrors the `plonk_policy` precedent.
+- `git_donkey.incoming_outgoing` owns Git work and user-visible behaviour.
+  Ref resolution (`_resolve_comparison_ref`) and commit lookup
+  (`_commits_unique_to`) are queries: they return data, a ref string or
+  `git log` output, without printing, fetching, or otherwise changing state.
+  `_run_comparison` is the command boundary: it owns repository discovery,
+  fetching, rendering to stdout or stderr, and exit-code mapping.
+
+`_run_comparison` accepts a frozen `_ComparisonRequest` value object carrying
+the prefix, direction, optional ref, and fetch flag, plus an optional injected
+adapter. The `_ComparisonAdapter` protocol describes the Git surface the
+queries need: `upstream_ref() -> str | None`, `remote_names()`,
+`fetch_remote(remote)`, and the inherited `log(*args) -> str`.
+`_GitPythonComparison` implements it over GitPython and delegates fetching to
+the shared `helpers._fetch_remote`. Tests drive the workflow with fakes that
+satisfy this protocol, so comparison behaviour is exercised without a real
+repository.
+
+`git_donkey.cli` is the console-script boundary. It defines Cyclopts `App`
+instances for `git incoming` and `git outgoing`, and delegates through a
+`_ComparisonRunner` protocol and the shared `_run_incoming_outgoing_cli` helper
+to the public runners `run_git_incoming(ref=None, *, fetch=True)` and
+`run_git_outgoing(ref=None, *, fetch=True)`. `pyproject.toml` registers four
+console scripts pointing at `git_donkey.cli`: `git-incoming`, the `git-in`
+alias, `git-outgoing`, and the `git-out` alias. Git discovers subcommands by
+executable name, so the aliases need their own scripts rather than argument
+aliases on the primary commands.
+
+Both runners return standard process exit codes:
+
+- `0` means matching commits were found and printed.
+- `1` means the comparison succeeded but found no matching commits; both
+  codes are the ones Mercurial documents.
+- `2` is git-donkey's own code for a command that could not run: no upstream
+  configured and no explicit ref, a failed fetch, or a failed comparison.
+
+The shared `helpers._fetch_remote` exits `1` on failure, so the workflow
+catches that `SystemExit` and remaps it to `2`; otherwise a fetch failure would
+masquerade as "no changes" rather than as a failed command.
+
 ## Operational logging
 
-`git-fafo` and `git-plonk` log decision boundaries without logging secrets.
-Stable fields are provided through `extra`, so callers can route records into
-structured logging later:
+`git-fafo`, `git-plonk`, and the `git incoming` and `git outgoing` workflows
+log decision boundaries without logging secrets. Stable fields are provided
+through `extra`, so callers can route records into structured logging later:
 
 - `token_source` records whether credentials came from the environment, cache,
   or device flow.
@@ -224,6 +279,12 @@ structured logging later:
   diagnostic context for repository decisions.
 - `mode`, `worktree`, `marker`, `candidate_count`, `completed_count`, and
   `removed_count` provide diagnostic context for plonk cleanup decisions.
+- Incoming and outgoing comparisons use `operation` (`compare` or `fetch`),
+  `direction` (`incoming` or `outgoing`), `fetch_enabled`, `ref`, `remote`,
+  `commit_count`, and `result` (`found`, `empty`, or `failure`). Records are
+  emitted at comparison start, fetch selection, fetch failure, and comparison
+  completion; failures are also reported with `_LOGGER.exception` (comparison
+  failure) and `_LOGGER.warning` (fetch failure).
 
 ## Dead-code detection
 

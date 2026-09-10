@@ -122,6 +122,25 @@ Mercurial bundles, templates, phases, or bookmark comparison output.
   upstream, fetch selection, both directions, `GitCommandError`, and fetch
   failure) plus a Hypothesis property test asserting directional set-difference
   symmetry and `0`/`1` exit-code consistency.
+- [x] (2026-09-10 00:00Z) Split the comparison workflow into layers: added the
+  pure `git_donkey/incoming_outgoing_policy.py` module, separated the query
+  functions (ref resolution and commit lookup return data without mutating
+  state) from the command boundary `_run_comparison`, which owns fetching,
+  rendering, and exit-code mapping, injected the four-method
+  `_ComparisonAdapter` protocol with the `_GitPythonComparison` GitPython
+  implementation so tests use fakes, and moved the command inputs into the
+  frozen `_ComparisonRequest` value object.
+- [x] (2026-09-10 00:00Z) Added structured logging to the comparison workflow:
+  records from `logging.getLogger(__name__)` carry stable `extra` fields at
+  comparison start, fetch selection, fetch failure, and comparison completion,
+  using `operation`, `direction`, `fetch_enabled`, `ref`, `remote`,
+  `commit_count`, and `result`.
+- [x] (2026-09-10 00:00Z) Added assertion messages to every assertion in
+  `tests/unit/test_incoming_outgoing.py` and
+  `tests/integration/test_git_incoming_outgoing.py`, verified with an AST check
+  that no `assert` statement lacks a message, and scoped the Mercurial
+  exit-code attribution to codes `0` and `1` here and in the users' guide,
+  documenting `2` as git-donkey's own code for a command that could not run.
 
 ## Surprises & discoveries
 
@@ -178,15 +197,28 @@ Mercurial bundles, templates, phases, or bookmark comparison output.
   the command small reduces risk while preserving the documented
   Mercurial-style commit direction and exit-code semantics. Date/Author:
   2026-07-01, Codex.
+- Decision: Keep the comparison workflow split between the pure policy module
+  `git_donkey.incoming_outgoing_policy` and the workflow module
+  `git_donkey.incoming_outgoing`, which owns Git work, rendering, and exit
+  codes, injecting a four-method `_ComparisonAdapter` protocol at the command
+  boundary instead of a full Git abstraction. Also skip a v0.2.0 migration
+  guide for this change. Rationale: the pure policy is testable in isolation
+  and the narrow adapter lets tests inject fakes without mocking GitPython
+  wholesale; the change is purely additive, the
+  `docs/v0-2-0-migration-guide.md` filename is owned by a sibling branch
+  (`fix/remote-default-base-opt-in-pull`), and the commands are already
+  documented in `docs/users-guide.md` and signposted from `README.md`.
+  Date/Author: 2026-09-10, Claude.
 
 ## Outcomes & retrospective
 
 This plan has been implemented. Users can now run `git incoming`, `git in`,
 `git outgoing`, or `git out` to preview branch commits that would be pulled
 from, or pushed to, the current branch upstream or an explicit comparison ref.
-The implementation preserves the planned Mercurial-style exit codes: `0` when
-matching commits are printed, `1` when no matching commits exist, and `2` for
-configuration or comparison errors.
+The implementation preserves Mercurial's documented exit codes `0` and `1`: `0`
+when matching commits are printed and `1` when no matching commits exist. Code
+`2` is git-donkey's own code for a command that could not run, covering
+configuration, fetch, or comparison errors.
 
 The main lesson is that GitPython's dynamic command facade is best isolated at
 small helper boundaries when the repository is checked with `ty`. Keeping the
@@ -427,6 +459,13 @@ git-outgoing = "git_donkey.cli:git_outgoing"
 git-out = "git_donkey.cli:git_out"
 ```
 
+The implemented internal split mirrors these registrations. The pure comparison
+policy lives in `git_donkey.incoming_outgoing_policy`, which decides which
+remote owns a comparison ref and which refs bound each direction; the workflow
+and its queries live in `git_donkey.incoming_outgoing`; and `git_donkey.cli`
+maps the four console scripts onto the two public runners, `run_git_incoming`
+and `run_git_outgoing`.
+
 No new external dependencies are planned. Use GitPython and Git's existing
 revision selection commands through `repo.git`.
 
@@ -434,4 +473,8 @@ revision selection commands through `repo.git`.
 
 Initial draft created on 2026-07-01. It defines the supported Git mapping for
 Mercurial-style incoming and outgoing commands, the test-first implementation
-sequence, and the validation gates required before code changes can be accepted.
+sequence, and the validation gates required before code changes can be
+accepted. Revised 2026-09-10 to record the policy and workflow layering,
+structured comparison logging, assertion messages across the incoming and
+outgoing tests, and scoping of the Mercurial exit-code attribution to codes `0`
+and `1`.
