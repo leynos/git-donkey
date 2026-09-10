@@ -180,7 +180,7 @@ def test_generation_is_strict_and_does_not_insert_files() -> None:
     assert general["exit-status-level"] == "warning", (
         f"docutils must fail on warnings: {general['exit-status-level']}"
     )
-    assert general["datestamp"] == "", (
+    assert not general["datestamp"], (
         f"manual pages must carry no build date: {general['datestamp']}"
     )
     assert not general.getboolean("generator"), "generator metadata must stay disabled"
