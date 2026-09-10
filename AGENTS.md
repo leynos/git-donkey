@@ -101,7 +101,16 @@ When implementing changes, adhere to the following testing procedures:
   - For Python files:
     - **Testing:** Passes all relevant unit and behavioural tests according to
       the guidelines above (run `make test` to verify).
-    - **Linting:** Passes lint checks (`make lint`).
+    - **Linting:** Passes `make lint`, including Skylos dead-code detection.
+      Remove confirmed dead code. For an implicit runtime caller, first add a
+      narrowly typed Skylos entry-point rule with its caller-specific reason.
+      Only when that cannot model a verified false positive, use
+      `make skylos-allow SYMBOL=symbol REASON="Runtime caller"` to add the
+      reasoned allow-list entry. Do not use `NAME`: WSL injects it with the
+      hostname. Both `SYMBOL` and `REASON` must contain non-whitespace text;
+      whitespace-only values are rejected with exit status 2. The helper holds
+      the ignored `.skylos-whitelist.lock` with `flock` while Skylos updates
+      `pyproject.toml`, so concurrent documented exceptions are not lost.
     - **Formatting:** Adheres to formatting standards (run `make check-fmt` to
       verify, use `make fmt` to apply formatting).
     - **Typechecking:** Passes type checking (`make typecheck`).

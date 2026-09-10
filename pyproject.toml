@@ -25,7 +25,8 @@ git-donkey-template = "git_donkey.cli:git_donkey_template"
 [dependency-groups]
 dev = [
     "pytest",
-    "hypothesis",
+    "PyYAML>=6.0.3,<7",
+    "hypothesis>=6.165.10,<7",
     "ruff==0.16.6",
     "pyright",
     "pytest-timeout",
@@ -338,6 +339,13 @@ filterwarnings = [
 [tool.uv]
 package = true
 
+[tool.skylos.gate]
+strict = true
+
+[tool.skylos.whitelist]
+names = []
+
+[tool.skylos.whitelist.documented]
 
 [build-system]
 requires = ["hatchling"]

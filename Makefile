@@ -11,6 +11,7 @@ RUFF ?= $(UV_ENV) uv tool run ruff@$(RUFF_VERSION)
 # releases, so an unpinned ty makes CI fail on errors that never appear locally.
 TY_VERSION ?= 0.0.79
 TY ?= $(UV_ENV) uv tool run ty@$(TY_VERSION)
+SKYLOS_VERSION ?= 4.33.2
 TYPOS_VERSION ?= 1.48.0
 TOOLS = $(MDFORMAT_ALL) $(MDLINT) uv
 VENV_TOOLS = pytest
@@ -29,9 +30,17 @@ PYLINT = $(UV_ENV) uv run pylint -j $(PYLINT_JOBS)
 PYLINT_BUILTIN = $(PYLINT)
 # The df12-python-lints plugin pass keeps its own config.
 PYLINT_DF12 = $(PYLINT) --rcfile=.pylintrc-df12.toml
+# Skylos parses source using its own runtime AST. Python 3.14 prevents phantom
+# dead-code findings when source uses syntax unavailable to an older runtime.
+SKYLOS_CLI = $(UV_ENV) uv tool run --python 3.14 --from 'skylos==$(SKYLOS_VERSION)' skylos
+SKYLOS = $(SKYLOS_CLI) --config-file pyproject.toml
+SKYLOS_PRODUCTION_TARGETS ?= git_donkey
+SKYLOS_EXCLUDE_FOLDERS ?= tests
+SKYLOS_WHITELIST_LOCK ?= .skylos-whitelist.lock
 
 .PHONY: help all clean build build-release lint fmt check-fmt \
-        markdownlint nixie spelling spelling-helper-test test typecheck \
+        markdownlint nixie spelling spelling-helper-test skylos-allow test typecheck \
+        makeutil \
         $(TOOLS) $(VENV_TOOLS)
 .PHONY: pytest test
 
@@ -80,6 +89,9 @@ $(VENV_TOOLS): ## Verify required CLI tools in venv
 	$(call ensure_tool_venv,$@)
 endif
 
+makeutil: ## Verify the Makefile parser required by the contract tests
+	$(call ensure_tool,makeutil)
+
 fmt: uv $(MDFORMAT_ALL) ## Format sources
 	$(RUFF) format
 	$(RUFF) check --select I --fix
@@ -102,6 +114,16 @@ lint: uv ## Run linters
 	# ambrleaks is a console script of the df12-python-lints dev dependency, so
 	# `uv run` finds it in the synced venv; it is not a separate distribution.
 	$(UV_ENV) uv run ambrleaks tests
+	$(SKYLOS) $(SKYLOS_PRODUCTION_TARGETS) --exclude $(SKYLOS_EXCLUDE_FOLDERS) \
+		--category dead_code --gate --format concise \
+		--no-upload --no-provenance --no-grep-verify
+
+skylos-allow: export SKYLOS_SYMBOL = $(value SYMBOL)
+skylos-allow: export SKYLOS_REASON = $(value REASON)
+skylos-allow: ## Document one named Skylos exception, not an entry point
+	@case "$${SKYLOS_SYMBOL}" in *[![:space:]]*) ;; *) printf "Error: SYMBOL is required for a named whitelist exception\n" >&2; exit 2;; esac
+	@case "$${SKYLOS_REASON}" in *[![:space:]]*) ;; *) printf "Error: REASON is required for a named whitelist exception\n" >&2; exit 2;; esac
+	flock "$(SKYLOS_WHITELIST_LOCK)" $(SKYLOS_CLI) whitelist "$${SKYLOS_SYMBOL}" --reason "$${SKYLOS_REASON}"
 
 typecheck: build uv ## Run typechecking
 	$(TY) --version
@@ -141,7 +163,7 @@ nixie: ## Validate Mermaid diagrams
 	$(call ensure_tool,nixie)
 	$(NIXIE) --no-sandbox
 
-test: build uv $(VENV_TOOLS) ## Run tests
+test: build uv $(VENV_TOOLS) makeutil ## Run tests
 	$(UV_ENV) uv run pytest -v -n auto
 
 help: ## Show available targets

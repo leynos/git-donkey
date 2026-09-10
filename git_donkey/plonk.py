@@ -170,11 +170,6 @@ def _completion_marker_for_branch(branch_name: str) -> str | None:
     return plonk_policy.completion_marker_for_branch(branch_name)
 
 
-def _has_completion_marker(messages: typ.Iterable[str], marker: str) -> bool:
-    """Return whether any commit message contains ``marker`` or its dotted form."""
-    return plonk_policy.has_completion_marker(messages, marker)
-
-
 def _completed_candidates(
     candidates: typ.Iterable[_PlonkCandidate],
     messages: typ.Iterable[str],
@@ -245,16 +240,6 @@ def _donkey_worktree_candidates(
             )
         )
     return candidates
-
-
-def _history_messages(repo: Repo) -> tuple[str, ...]:
-    """Return commit messages from canonical trunk history."""
-    return tuple(_GitWorktreeAdapter(repo).history_messages(_canonical_trunk_ref(repo)))
-
-
-def _remove_soft_targets(worktree_path: Path) -> list[Path]:
-    """Remove generated directories from ``worktree_path`` and return removals."""
-    return _FilesystemCleanupAdapter().remove_soft_targets(worktree_path)
 
 
 def _empty_summary_message(result: _PlonkResult) -> str:
