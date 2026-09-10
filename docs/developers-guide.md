@@ -117,6 +117,39 @@ The CLI wrapper passes `_PullOptions` through Cyclopts, which projects the
 dataclass fields onto the flags `--pull-rebase` and `--pull-ff` today. A new
 field therefore changes the command-line surface as well as the workflow.
 
+### Workflow observability
+
+The workflow reports what it did through `git_donkey.observability`, a small
+adapter with a no-op default. A record is an `Observation`: an `operation`, an
+`outcome`, and at most one label from `pull_mode`, `base_kind`, or
+`error_kind`.
+
+- `pull_mode_selection`: `not_requested`, `selected`, `rejected`.
+- `remote_default_discovery`: `success`, or `failure` with
+  `git_command_error` or `missing_advertised_default`.
+- `default_branch_fetch`: `success`, or `failure` with `git_command_error`.
+- `base_update`: `not_requested`, `not_behind`, `declined`, `started`,
+  `success`, or `failure` with `git_command_error` or `base_not_in_worktree`.
+- `worktree_creation`: `started`, `success`, or `failure`.
+- `template_overlay`: `unavailable` (with `selection_error` when the template
+  directory cannot be selected), `started`, `success`, or `failure` with
+  `os_error`.
+
+Remote default discovery, the default-branch fetch, pull execution, and
+worktree creation are also timed; a span reports its operation name and
+duration only.
+
+Every attribute comes from a fixed vocabulary, so records stay aggregatable.
+Branch names, filesystem paths, remote URLs, Git output, exception text, and
+template directory names are never recorded, because those values have
+unbounded cardinality or disclose local information.
+
+Records are not exported. `NullRecorder` is the default and discards them; the
+module starts no process and opens no connection. Installing `LoggingRecorder`
+routes records through the structured `extra` convention described under
+[Operational logging](#operational-logging) instead, and changes nothing else
+about how the command behaves.
+
 ## git-fafo module boundaries
 
 `git-fafo` is split across three modules, so infrastructure details stay out of

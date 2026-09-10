@@ -21,8 +21,9 @@ import typing as typ
 
 from git import Git, GitCommandError, Repo
 
-from git_donkey import donkey_worktrees, helpers, templates
+from git_donkey import donkey_worktrees, helpers, observability, templates
 from git_donkey.helpers import _GIT_DONKEY_PREFIX as _GIT_DONKEY_PREFIX
+from git_donkey.observability import Observation
 
 if typ.TYPE_CHECKING:
     from pathlib import Path
@@ -39,6 +40,11 @@ class _PullOptions:
 
 
 _DEFAULT_PULL_OPTIONS = _PullOptions()
+
+
+def _record(observation: Observation) -> None:
+    """Record one bounded workflow observation on the active recorder."""
+    observability.get_recorder().record(observation)
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -107,53 +113,110 @@ def _fetch_remote_default_ref(context: _DonkeyContext) -> str:
         names cannot be fetched.
 
     """
-    try:
-        advertisement = context.repo_home.git.ls_remote(
-            "--symref", context.remote, "HEAD"
-        )
-    except GitCommandError as exc:
-        helpers._die(
-            _GIT_DONKEY_PREFIX,
-            f"cannot discover the default branch on '{context.remote}': {exc}",
-            1,
-        )
-    branch = _advertised_default_branch(advertisement)
-    if branch is None:
-        helpers._die(
-            _GIT_DONKEY_PREFIX,
-            f"remote '{context.remote}' does not advertise a default branch; "
-            "specify a base branch explicitly",
-            1,
-        )
+    recorder = observability.get_recorder()
+    with recorder.span("remote_default_discovery"):
+        try:
+            advertisement = context.repo_home.git.ls_remote(
+                "--symref", context.remote, "HEAD"
+            )
+        except GitCommandError as exc:
+            _record(
+                Observation(
+                    operation="remote_default_discovery",
+                    outcome="failure",
+                    error_kind="git_command_error",
+                )
+            )
+            helpers._die(
+                _GIT_DONKEY_PREFIX,
+                f"cannot discover the default branch on '{context.remote}': {exc}",
+                1,
+            )
+        branch = _advertised_default_branch(advertisement)
+        if branch is None:
+            _record(
+                Observation(
+                    operation="remote_default_discovery",
+                    outcome="failure",
+                    error_kind="missing_advertised_default",
+                )
+            )
+            helpers._die(
+                _GIT_DONKEY_PREFIX,
+                f"remote '{context.remote}' does not advertise a default branch; "
+                "specify a base branch explicitly",
+                1,
+            )
+        _record(Observation(operation="remote_default_discovery", outcome="success"))
 
     remote_ref = f"refs/remotes/{context.remote}/{branch}"
     # A narrow fetch configuration may omit the advertised default branch.
     # Fetch it explicitly rather than trusting a stale local remote/HEAD alias.
-    try:
-        context.repo_home.git.fetch(
-            context.remote, f"+refs/heads/{branch}:{remote_ref}"
-        )
-    except GitCommandError as exc:
-        helpers._die(
-            _GIT_DONKEY_PREFIX,
-            f"cannot fetch default branch '{context.remote}/{branch}': {exc}",
-            1,
-        )
+    with recorder.span("default_branch_fetch"):
+        try:
+            context.repo_home.git.fetch(
+                context.remote, f"+refs/heads/{branch}:{remote_ref}"
+            )
+        except GitCommandError as exc:
+            _record(
+                Observation(
+                    operation="default_branch_fetch",
+                    outcome="failure",
+                    error_kind="git_command_error",
+                )
+            )
+            helpers._die(
+                _GIT_DONKEY_PREFIX,
+                f"cannot fetch default branch '{context.remote}/{branch}': {exc}",
+                1,
+            )
+        _record(Observation(operation="default_branch_fetch", outcome="success"))
     return remote_ref
+
+
+def _pull_mode_label(pull_mode: _PullMode | None) -> observability.PullModeLabel:
+    """Return the bounded record label for an internal pull-mode flag."""
+    match pull_mode:
+        case "--rebase":
+            return "rebase"
+        case "--ff-only":
+            return "ff_only"
+        case None:
+            return "none"
 
 
 def _pull_mode(options: _PullOptions, *, no_pull: bool) -> _PullMode | None:
     """Validate the pull flags before repository discovery or mutation."""
     if sum((options.pull_rebase, options.pull_ff, no_pull)) > 1:
+        _record(
+            Observation(
+                operation="pull_mode_selection", outcome="rejected", pull_mode="none"
+            )
+        )
         helpers._die(
             _GIT_DONKEY_PREFIX,
             "--pull-rebase, --pull-ff, and --no-pull are mutually exclusive",
             2,
         )
     if options.pull_rebase:
+        _record(
+            Observation(
+                operation="pull_mode_selection", outcome="selected", pull_mode="rebase"
+            )
+        )
         return "--rebase"
     if options.pull_ff:
+        _record(
+            Observation(
+                operation="pull_mode_selection", outcome="selected", pull_mode="ff_only"
+            )
+        )
         return "--ff-only"
+    _record(
+        Observation(
+            operation="pull_mode_selection", outcome="not_requested", pull_mode="none"
+        )
+    )
     return None
 
 
@@ -242,23 +305,61 @@ def _update_base_branch_in_worktree(
     context: _DonkeyContext,
     *,
     base_branch: str,
-    prefix: str,
     pull_mode: _PullMode,
+    base_kind: observability.BaseKind,
 ) -> None:
     """Update only the worktree that actually holds the selected base branch."""
+    label = _pull_mode_label(pull_mode)
     worktree = context.branch_to_worktree.get(base_branch)
     if worktree is None:
+        _record(
+            Observation(
+                operation="base_update",
+                outcome="failure",
+                pull_mode=label,
+                base_kind=base_kind,
+                error_kind="base_not_in_worktree",
+            )
+        )
         helpers._die(
-            prefix,
+            _GIT_DONKEY_PREFIX,
             f"cannot pull '{base_branch}': it is not checked out in a worktree; "
             "check out that base explicitly or omit the pull option",
             1,
         )
+    _record(
+        Observation(
+            operation="base_update",
+            outcome="started",
+            pull_mode=label,
+            base_kind=base_kind,
+        )
+    )
     helpers._eprint(f"Updating existing worktree at: {worktree}")
-    try:
-        _pull_in_worktree(worktree, context.remote, base_branch, pull_mode)
-    except GitCommandError as exc:
-        helpers._die(prefix, f"update failed (pull {pull_mode}): {exc}", 1)
+    with observability.get_recorder().span("pull_execution"):
+        try:
+            _pull_in_worktree(worktree, context.remote, base_branch, pull_mode)
+        except GitCommandError as exc:
+            _record(
+                Observation(
+                    operation="base_update",
+                    outcome="failure",
+                    pull_mode=label,
+                    base_kind=base_kind,
+                    error_kind="git_command_error",
+                )
+            )
+            helpers._die(
+                _GIT_DONKEY_PREFIX, f"update failed (pull {pull_mode}): {exc}", 1
+            )
+        _record(
+            Observation(
+                operation="base_update",
+                outcome="success",
+                pull_mode=label,
+                base_kind=base_kind,
+            )
+        )
 
 
 def _maybe_update_base_branch(
@@ -266,19 +367,36 @@ def _maybe_update_base_branch(
     *,
     base_branch: str,
     pull_mode: _PullMode | None,
-    prefix: str,
+    base_kind: observability.BaseKind,
 ) -> None:
     """Update an opted-in, behind local base only after confirmation."""
     if pull_mode is None:
+        _record(
+            Observation(
+                operation="base_update",
+                outcome="not_requested",
+                pull_mode="none",
+                base_kind=base_kind,
+            )
+        )
         return
 
+    label = _pull_mode_label(pull_mode)
     local_branch = base_branch.removeprefix(f"refs/remotes/{context.remote}/")
     behind = _base_branch_behind_count(
         context,
         base_branch=local_branch,
-        prefix=prefix,
+        prefix=_GIT_DONKEY_PREFIX,
     )
     if behind <= 0:
+        _record(
+            Observation(
+                operation="base_update",
+                outcome="not_behind",
+                pull_mode=label,
+                base_kind=base_kind,
+            )
+        )
         return
 
     if not helpers._prompt_yes_no(
@@ -286,13 +404,21 @@ def _maybe_update_base_branch(
         f"'{context.remote}/{local_branch}' by {behind} commit(s). Pull "
         f"{pull_mode} it first?"
     ):
+        _record(
+            Observation(
+                operation="base_update",
+                outcome="declined",
+                pull_mode=label,
+                base_kind=base_kind,
+            )
+        )
         return
 
     _update_base_branch_in_worktree(
         context,
         base_branch=local_branch,
-        prefix=prefix,
         pull_mode=pull_mode,
+        base_kind=base_kind,
     )
 
 
@@ -319,10 +445,25 @@ def _create_worktree(
         base_branch=base_branch,
         target_path=target_path,
     )
-    donkey_worktrees.create_worktree(
-        context=worktree_context,
-        request=request,
-    )
+    _record(Observation(operation="worktree_creation", outcome="started"))
+    with observability.get_recorder().span("worktree_creation"):
+        try:
+            donkey_worktrees.create_worktree(
+                context=worktree_context,
+                request=request,
+            )
+        except SystemExit:
+            # Creation reports conflicts and failed Git commands by exiting;
+            # record that outcome and preserve the exit for the caller.
+            _record(
+                Observation(
+                    operation="worktree_creation",
+                    outcome="failure",
+                    error_kind="worktree_creation_error",
+                )
+            )
+            raise
+        _record(Observation(operation="worktree_creation", outcome="success"))
 
 
 def _load_donkey_context() -> tuple[_DonkeyContext, str]:
@@ -377,11 +518,20 @@ def _apply_template_overlay(context: _DonkeyContext, target_path: Path) -> bool:
     try:
         template_dir = templates.get_template_dir(context.repo_home)
     except ValueError as exc:
+        _record(
+            Observation(
+                operation="template_overlay",
+                outcome="unavailable",
+                error_kind="selection_error",
+            )
+        )
         helpers._eprint(f"{_GIT_DONKEY_PREFIX}: {exc}")
         return True
     if template_dir is None:
+        _record(Observation(operation="template_overlay", outcome="unavailable"))
         return True
 
+    _record(Observation(operation="template_overlay", outcome="started"))
     helpers._eprint(f"Applying template overlay from: {template_dir}")
     try:
         templates.apply_template(
@@ -390,6 +540,13 @@ def _apply_template_overlay(context: _DonkeyContext, target_path: Path) -> bool:
             prefix=_GIT_DONKEY_PREFIX,
         )
     except OSError as e:
+        _record(
+            Observation(
+                operation="template_overlay",
+                outcome="failure",
+                error_kind="os_error",
+            )
+        )
         helpers._eprint(
             f"{_GIT_DONKEY_PREFIX}: Error applying template overlay from "
             f"{template_dir}: {e}"
@@ -398,6 +555,7 @@ def _apply_template_overlay(context: _DonkeyContext, target_path: Path) -> bool:
             f"{_GIT_DONKEY_PREFIX}: Worktree created but template overlay failed"
         )
         return False
+    _record(Observation(operation="template_overlay", outcome="success"))
     return True
 
 
@@ -432,6 +590,9 @@ def run_git_donkey(
     """
     pull_mode = _pull_mode(options, no_pull=no_pull)
     context, saved_cwd_branch = _load_donkey_context()
+    base_kind: observability.BaseKind = (
+        "implicit_remote_default" if origin_branch is None else "explicit"
+    )
     base_branch = (
         _fetch_remote_default_ref(context)
         if origin_branch is None
@@ -442,7 +603,7 @@ def run_git_donkey(
         context,
         base_branch=base_branch,
         pull_mode=pull_mode,
-        prefix=_GIT_DONKEY_PREFIX,
+        base_kind=base_kind,
     )
 
     context.worktrees_root.mkdir(parents=True, exist_ok=True)
