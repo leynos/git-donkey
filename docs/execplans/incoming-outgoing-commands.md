@@ -227,6 +227,35 @@ Mercurial bundles, templates, phases, or bookmark comparison output.
   metrics adapter for the comparison spans and outcomes (the project has no
   metrics backend, so the developers' guide now names the recorder as the
   integration point for one).
+- [x] (2026-09-11 00:00Z) Rebased onto `origin/main` (the PR's remote target)
+  with the repository's configured weave merge driver; every replayed commit
+  passed a per-commit structural guard (`compileall` plus TOML parsing), the
+  rebase finished with no manual conflict resolution, and the result is behind
+  `origin/main` by zero commits with this branch's commits replayed on top.
+  Post-rebase verification: the diff between the pre-rebase branch tip and
+  the post-rebase tip is exactly the set of files `origin/main` changed; the
+  three files touched by both sides (the incoming/outgoing integration test
+  `tests/integration/test_git_incoming_outgoing.py`,
+  `docs/developers-guide.md`, and this execplan) contain both sides' content;
+  and `sem diff` runs cleanly on the rebased range.
+- [x] (2026-09-11 00:00Z) Added manuals for the four new console scripts:
+  `docs/man/git-incoming.rst`, `docs/man/git-in.rst`,
+  `docs/man/git-outgoing.rst`, and `docs/man/git-out.rst`. Each follows the
+  house style: `:Manual section: 1`; the SYNOPSIS, DESCRIPTION, OPTIONS,
+  EXAMPLES, and SEE ALSO sections; the `0`/`1`/`2` exit-code contract with `2`
+  described as git-donkey's own "command could not run" code; and the `REF`,
+  `--no-fetch`, `-h, --help`, and `--version` options. Each page was validated
+  locally with `.venv/bin/rst2man --config=docutils.conf` under the strict
+  docutils configuration and rendered a prologue identical to the existing
+  `git-track` manual.
+- [x] (2026-09-11 00:00Z) Registered the manuals in the build and tests:
+  `pyproject.toml` gained four `rst2man` generator commands and four wheel
+  `shared-data` mappings, and `tests/unit/test_manpage_sources.py` gained the
+  four commands in its standard-sections, command-specific-behaviour
+  (`--no-fetch`), and CLI-parameter parametrizations (the last mapping
+  `git-incoming`/`git-in` to `_incoming_cli` and `git-outgoing`/`git-out` to
+  `_outgoing_cli`). The manpage contract tests pass. `docs/users-guide.md` now
+  names all nine manuals and lists the four new installed page paths.
 
 ## Surprises & discoveries
 
@@ -593,4 +622,8 @@ decision-record supersession of the migration-guide skip, and the
 `_read_comparison` extraction the instrumentation required. Revised on
 2026-09-11 (third review round) to record the hash-based commit assertions in
 the integration tests, the upstream-lookup deferral with its follow-up issue,
-and the metrics integration-point note in the developers' guide.
+and the metrics integration-point note in the developers' guide. Revised on
+2026-09-11 (rebase and manuals round) to record the rebase onto `origin/main`
+under the weave merge driver, the post-rebase verification, the four new
+console-script manuals and their local rendering check, and the build and
+manpage-test registrations.

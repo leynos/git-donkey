@@ -194,7 +194,17 @@ def test_generation_is_strict_and_does_not_insert_files() -> None:
 
 @pytest.mark.parametrize(
     "command",
-    ["git-donkey", "git-track", "git-fafo", "git-plonk", "git-donkey-template"],
+    [
+        "git-donkey",
+        "git-track",
+        "git-fafo",
+        "git-plonk",
+        "git-donkey-template",
+        "git-incoming",
+        "git-in",
+        "git-outgoing",
+        "git-out",
+    ],
 )
 def test_manual_has_standard_sections(command: str) -> None:
     """Keep each generated page useful as a standalone reference."""
@@ -226,6 +236,10 @@ def test_manual_has_standard_sections(command: str) -> None:
         ("git-plonk", "--hard"),
         ("git-plonk", "--dry-run"),
         ("git-donkey-template", "XDG_DATA_HOME"),
+        ("git-incoming", "--no-fetch"),
+        ("git-in", "--no-fetch"),
+        ("git-outgoing", "--no-fetch"),
+        ("git-out", "--no-fetch"),
     ],
 )
 def test_manual_covers_command_specific_behaviour(
@@ -319,6 +333,10 @@ def _option_names(command: str, argument: ast.arg) -> list[str]:
         ("git-fafo", "_fafo_cli"),
         ("git-plonk", "_plonk_cli"),
         ("git-donkey-template", "_template_cli"),
+        ("git-incoming", "_incoming_cli"),
+        ("git-in", "_incoming_cli"),
+        ("git-outgoing", "_outgoing_cli"),
+        ("git-out", "_outgoing_cli"),
     ],
 )
 def test_manual_covers_cli_parameters(command: str, wrapper: str) -> None:

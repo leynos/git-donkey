@@ -426,6 +426,10 @@ commands = [
     "rst2man --config=docutils.conf --output=git-fafo.1 git-fafo.rst",
     "rst2man --config=docutils.conf --output=git-plonk.1 git-plonk.rst",
     "rst2man --config=docutils.conf --output=git-donkey-template.1 git-donkey-template.rst",
+    "rst2man --config=docutils.conf --output=git-incoming.1 git-incoming.rst",
+    "rst2man --config=docutils.conf --output=git-in.1 git-in.rst",
+    "rst2man --config=docutils.conf --output=git-outgoing.1 git-outgoing.rst",
+    "rst2man --config=docutils.conf --output=git-out.1 git-out.rst",
 ]
 
 [tool.hatch.build.targets.wheel.shared-data]
@@ -434,6 +438,10 @@ commands = [
 "docs/man/git-fafo.1" = "share/man/man1/git-fafo.1"
 "docs/man/git-plonk.1" = "share/man/man1/git-plonk.1"
 "docs/man/git-donkey-template.1" = "share/man/man1/git-donkey-template.1"
+"docs/man/git-incoming.1" = "share/man/man1/git-incoming.1"
+"docs/man/git-in.1" = "share/man/man1/git-in.1"
+"docs/man/git-outgoing.1" = "share/man/man1/git-outgoing.1"
+"docs/man/git-out.1" = "share/man/man1/git-out.1"
 
 [tool.hatch.build.targets.sdist]
 # The default source selection includes docs/man/*.rst and docutils.conf.

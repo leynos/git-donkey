@@ -30,8 +30,9 @@ uv tool install git-donkey
 
 For an unreleased source checkout, run `uv tool install .` from the repository
 root instead. The wheel includes a section-one manual for every console script:
-`git-donkey(1)`, `git-track(1)`, `git-fafo(1)`, `git-plonk(1)`, and
-`git-donkey-template(1)`.
+`git-donkey(1)`, `git-track(1)`, `git-fafo(1)`, `git-plonk(1)`,
+`git-donkey-template(1)`, `git-incoming(1)`, `git-in(1)`, `git-outgoing(1)`, and
+`git-out(1)`.
 
 ### Installation layout
 
@@ -52,6 +53,10 @@ result is:
 <uv-tool-dir>/git-donkey/share/man/man1/git-fafo.1
 <uv-tool-dir>/git-donkey/share/man/man1/git-plonk.1
 <uv-tool-dir>/git-donkey/share/man/man1/git-donkey-template.1
+<uv-tool-dir>/git-donkey/share/man/man1/git-incoming.1
+<uv-tool-dir>/git-donkey/share/man/man1/git-in.1
+<uv-tool-dir>/git-donkey/share/man/man1/git-outgoing.1
+<uv-tool-dir>/git-donkey/share/man/man1/git-out.1
 ```
 
 Use `uv tool dir` to discover the tool directory rather than assume a
