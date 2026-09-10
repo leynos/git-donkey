@@ -81,7 +81,9 @@ commit. Supply the local base explicitly, or use `.`, to include local
 commits after an approved update.
 
 The [default-base and pull-mode design](default-base-and-pull-modes.md)
-records the discovery, preservation, and verification contracts.
+records the discovery, preservation, and verification contracts. The
+[0.2.0 migration guide](v0-2-0-migration-guide.md) documents the behaviour
+changes for users upgrading from 0.1.0.
 
 ### Template Overlays
 

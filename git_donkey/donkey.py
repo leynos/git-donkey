@@ -82,8 +82,13 @@ def _advertised_default_branch(advertisement: str) -> str | None:
     return None
 
 
-def _remote_default_base(context: _DonkeyContext) -> str:
-    """Discover and fetch the principal remote's advertised default branch."""
+def _fetch_remote_default_ref(context: _DonkeyContext) -> str:
+    """Fetch the principal remote's advertised default branch.
+
+    This is a command, not a query: it reads the remote's advertised ``HEAD``
+    and fetches the branch it names into that branch's fully qualified
+    remote-tracking ref. `_advertised_default_branch` holds the parsing half.
+    """
     try:
         advertisement = context.repo_home.git.ls_remote(
             "--symref", context.remote, "HEAD"
@@ -162,7 +167,12 @@ def _base_branch_behind_count(
     base_branch: str,
     prefix: str,
 ) -> int:
-    """Return how many commits the base branch is behind its remote counterpart."""
+    """Return how many commits the base branch is behind its remote counterpart.
+
+    A base with no local branch has nothing to update. Creating a tracking
+    branch to measure it would leave behind a branch that no worktree holds and
+    that this command cannot pull into.
+    """
     if not helpers._remote_branch_exists(
         context.repo_home, context.remote, base_branch
     ):
@@ -175,12 +185,8 @@ def _base_branch_behind_count(
             1,
         )
 
-    helpers._ensure_local_tracking_branch(
-        context.repo_home,
-        context.remote,
-        base_branch,
-        prefix,
-    )
+    if not helpers._local_branch_exists(context.repo_home, base_branch):
+        return 0
 
     _ahead, behind = _ahead_behind(
         context.repo_home,
@@ -304,6 +310,7 @@ def _load_donkey_context() -> tuple[_DonkeyContext, str]:
     )
     return context, saved_cwd_branch
 
+
 def _apply_template_overlay(context: _DonkeyContext, target_path: Path) -> bool:
     """Apply the repository's template overlay, returning False on failure.
 
@@ -335,6 +342,8 @@ def _apply_template_overlay(context: _DonkeyContext, target_path: Path) -> bool:
         )
         return False
     return True
+
+
 def run_git_donkey(
     branch_name: str,
     origin_branch: str | None = None,
@@ -367,7 +376,7 @@ def run_git_donkey(
     pull_mode = _pull_mode(options, no_pull=no_pull)
     context, saved_cwd_branch = _load_donkey_context()
     base_branch = (
-        _remote_default_base(context)
+        _fetch_remote_default_ref(context)
         if origin_branch is None
         else choose_base_branch(saved_cwd_branch, origin_branch)
     )

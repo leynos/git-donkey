@@ -9,7 +9,7 @@ flowchart TD
     Start["git donkey invocation"] --> Validate["_pull_mode"]
     Validate -->|conflicting options| Error["fail before repository access"]
     Validate -->|valid options| Base{base supplied?}
-    Base -->|no| Default["_remote_default_base"]
+    Base -->|no| Default["_fetch_remote_default_ref"]
     Default --> Advertise["ls_remote(--symref, HEAD)"]
     Advertise --> Fetch["fetch default branch refspec"]
     Fetch --> RemoteBase["fully qualified remote-tracking ref"]
