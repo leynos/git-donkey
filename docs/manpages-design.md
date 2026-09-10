@@ -14,8 +14,8 @@ must update the corresponding manual and `docs/users-guide.md` together.
 ## Build and installation boundaries
 
 `hatch-build-scripts` invokes `rst2man` for each source from the `docs/man/`
-directory. Both the hook plugin and Docutils are build-system requirements,
-not runtime dependencies. The hook runs for wheel builds, including editable
+directory. Both the hook plugin and Docutils are build-system requirements, not
+runtime dependencies. The hook runs for wheel builds, including editable
 wheels. No generator runs while an installer unpacks a previously built wheel.
 
 Both working and output directories are restricted to `docs/man/`, with hook
@@ -36,8 +36,8 @@ artefacts, which would put duplicate copies in the wheel's importable payload.
 
 Generated `.1` files are ignored by Git and explicitly excluded from source
 distributions. Source distributions retain the `.rst` sources, Docutils
-configuration, and build configuration. Building a wheel from an unpacked source
-distribution regenerates every page without requiring a Git checkout.
+configuration, and build configuration. Building a wheel from an unpacked
+source distribution regenerates every page without requiring a Git checkout.
 
 The installer owns placement under the Python environment's data prefix. For
 `uv tool install`, pages belong under

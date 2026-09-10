@@ -18,7 +18,8 @@ these as `git <subcommand>` when `git-<subcommand>` is available on the `PATH`.
 
 ## Installation and manual pages
 
-Install the commands and their manual pages into an isolated uv tool environment:
+Install the commands and their manual pages into an isolated uv tool
+environment:
 
 ```shell
 uv tool install git-donkey
@@ -28,7 +29,6 @@ For an unreleased source checkout, run `uv tool install .` from the repository
 root instead. The wheel includes a section-one manual for every console script:
 `git-donkey(1)`, `git-track(1)`, `git-fafo(1)`, `git-plonk(1)`, and
 `git-donkey-template(1)`.
-
 
 ### Installation layout
 
@@ -51,9 +51,8 @@ result is:
 <uv-tool-dir>/git-donkey/share/man/man1/git-donkey-template.1
 ```
 
-Use `uv tool dir` to discover the tool directory rather than assume a particular
-home-directory layout. This also respects a configured `UV_TOOL_DIR`.
-
+Use `uv tool dir` to discover the tool directory rather than assume a
+particular home-directory layout. This also respects a configured `UV_TOOL_DIR`.
 
 ### Reading the installed pages
 
@@ -69,9 +68,8 @@ Alternatively, select the tool environment's manual directory explicitly:
 man -M "$(uv tool dir)/git-donkey/share/man" git-plonk
 ```
 
-These commands require a manual-page viewer on the host. Building and installing
-the Python package do not require `man`, `groff`, or Pandoc.
-
+These commands require a manual-page viewer on the host. Building and
+installing the Python package do not require `man`, `groff`, or Pandoc.
 
 ### User-manpath discovery
 
