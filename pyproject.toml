@@ -404,5 +404,34 @@ names = []
 [tool.skylos.whitelist.documented]
 
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling", "hatch-build-scripts>=1.0.0,<2", "docutils>=0.22.4,<0.23"]
 build-backend = "hatchling.build"
+
+# Generate manuals in the isolated build environment, not at installation time.
+# Only shared-data exports them; build-script artifacts would duplicate them.
+[[tool.hatch.build.targets.wheel.hooks.build-scripts.scripts]]
+work_dir = "docs/man"
+# Keep artifact traversal away from concurrently changing .uv-cache contents.
+out_dir = "docs/man"
+clean_artifacts = false
+clean_out_dir = false
+artifacts = []
+commands = [
+    "rst2man --config=docutils.conf --output=git-donkey.1 git-donkey.rst",
+    "rst2man --config=docutils.conf --output=git-track.1 git-track.rst",
+    "rst2man --config=docutils.conf --output=git-fafo.1 git-fafo.rst",
+    "rst2man --config=docutils.conf --output=git-plonk.1 git-plonk.rst",
+    "rst2man --config=docutils.conf --output=git-donkey-template.1 git-donkey-template.rst",
+]
+
+[tool.hatch.build.targets.wheel.shared-data]
+"docs/man/git-donkey.1" = "share/man/man1/git-donkey.1"
+"docs/man/git-track.1" = "share/man/man1/git-track.1"
+"docs/man/git-fafo.1" = "share/man/man1/git-fafo.1"
+"docs/man/git-plonk.1" = "share/man/man1/git-plonk.1"
+"docs/man/git-donkey-template.1" = "share/man/man1/git-donkey-template.1"
+
+[tool.hatch.build.targets.sdist]
+# The default source selection includes docs/man/*.rst and docutils.conf.
+# A wheel rebuilt from the sdist must regenerate, not reuse, these outputs.
+exclude = ["/docs/man/*.1"]

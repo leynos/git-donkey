@@ -15,6 +15,80 @@ these as `git <subcommand>` when `git-<subcommand>` is available on the `PATH`.
 - `git donkey-template` (`git-donkey-template`) displays and creates the
   template directory for the current repository.
 
+## Installation and manual pages
+
+Install the commands and their manual pages into an isolated uv tool
+environment:
+
+```shell
+uv tool install git-donkey
+```
+
+For an unreleased source checkout, run `uv tool install .` from the repository
+root instead. The wheel includes a section-one manual for every console script:
+`git-donkey(1)`, `git-track(1)`, `git-fafo(1)`, `git-plonk(1)`, and
+`git-donkey-template(1)`.
+
+### Installation layout
+
+The build generates the pages from the reStructuredText sources in `docs/man/`
+and stores them in the wheel's standard data directory:
+
+```plaintext
+git_donkey-<version>.data/data/share/man/man1/<command>.1
+```
+
+A wheel installer places these files under the installation environment's data
+prefix, normally `<environment>/share/man/man1/`. For `uv tool install`, the
+result is:
+
+```plaintext
+<uv-tool-dir>/git-donkey/share/man/man1/git-donkey.1
+<uv-tool-dir>/git-donkey/share/man/man1/git-track.1
+<uv-tool-dir>/git-donkey/share/man/man1/git-fafo.1
+<uv-tool-dir>/git-donkey/share/man/man1/git-plonk.1
+<uv-tool-dir>/git-donkey/share/man/man1/git-donkey-template.1
+```
+
+Use `uv tool dir` to discover the tool directory rather than assume a
+particular home-directory layout. This also respects a configured `UV_TOOL_DIR`.
+
+### Reading the installed pages
+
+With man-db on Linux, read an installed page directly without creating symlinks:
+
+```shell
+man -l "$(uv tool dir)/git-donkey/share/man/man1/git-donkey.1"
+```
+
+Alternatively, select the tool environment's manual directory explicitly:
+
+```shell
+man -M "$(uv tool dir)/git-donkey/share/man" git-plonk
+```
+
+These commands require a manual-page viewer on the host. Building and
+installing the Python package do not require `man`, `groff`, or Pandoc.
+
+### User-manpath discovery
+
+The package installs pages inside its environment; it does not publish them to
+`$XDG_DATA_HOME/man`, modify `MANPATH`, or run a post-install hook. Therefore,
+`man git-donkey` alone may not find the installed page.
+
+User-manpath discovery and symlink management belong to the separate
+`uv-tools-manpage-discover` tool, which this package does not implement or
+install. Its intended destination is
+`${XDG_DATA_HOME:-$HOME/.local/share}/man/man1/`. Until that tool is available,
+use one of the explicit lookup commands above.
+
+`uv tool uninstall git-donkey` removes the tool environment and its manual
+pages. Any separately created user-manpath symlinks need separate lifecycle
+management.
+
+Contributor build and validation details appear in the
+[manpage packaging design](manpages-design.md).
+
 ## git donkey
 
 Create a linked worktree at `../{repo}.worktrees/{branch}`. When no base is
