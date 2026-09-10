@@ -255,8 +255,10 @@ def _is_star_parameter(annotation: ast.expr | None) -> bool:
     )
 
 
-def _spread_type_name(annotation: ast.expr) -> str | None:
+def _spread_type_name(annotation: ast.expr | None) -> str | None:
     """Return the type a cyclopts star parameter spreads over the options."""
+    if annotation is None:
+        return None
     for node in ast.walk(annotation):
         if not isinstance(node, ast.Subscript):
             continue
