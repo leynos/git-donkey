@@ -1,10 +1,11 @@
-"""Contract tests for Skylos dead-code detection in Make and CI.
+"""Contract tests for the Makefile and CI tooling gates.
 
 Skylos's scanner accepts ``--config-file`` before a scan path, whereas the
 standalone ``whitelist`` subcommand must immediately follow ``skylos``. Skylos
 also uses its own runtime AST, so Python 3.14 is part of the command contract.
 Makeutil supplies structured Makefile facts, avoiding fragile source-text
-matching for the command order and production-gate behaviour.
+matching for the command order, the production-gate behaviour, and the tool
+provisioning that the lint and type-check targets rely on.
 """
 
 from __future__ import annotations
@@ -24,10 +25,14 @@ import hypothesis.strategies as st
 import pytest
 import yaml
 
+if typ.TYPE_CHECKING:
+    import collections.abc as cabc
+
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 _MAKEUTIL_COMMAND: typ.Final = ("makeutil", "parse", "Makefile")
 _MAKEUTIL_REVISION: typ.Final = "29fc5a1634ffbaa18a773eed9dff1b2838a45d9c"
 _MAKEUTIL_TOOLCHAIN: typ.Final = "nightly-2026-05-28"
+_MAKEUTIL_BINARY_PATH: typ.Final = "~/.cargo/bin/makeutil"
 _MAKEUTIL_INSTALL_TOKENS: typ.Final = (
     "rustup",
     "toolchain",
@@ -215,6 +220,17 @@ def _workflow_job(workflow_path: str, job_name: str) -> dict[str, object]:
     return _mapping(jobs.get(job_name), subject=f"{workflow_path} job {job_name!r}")
 
 
+def _step_index(steps: list[dict[str, object]], step_name: str, *, subject: str) -> int:
+    """Return the position of the sole named step in a workflow job."""
+    matches = [
+        index for index, step in enumerate(steps) if step.get("name") == step_name
+    ]
+    assert len(matches) == 1, (
+        f"{subject} must have exactly one {step_name!r} step, found {len(matches)}"
+    )
+    return matches[0]
+
+
 def _sole_workflow_step(
     workflow_path: str, job_name: str, step_name: str
 ) -> dict[str, object]:
@@ -223,12 +239,8 @@ def _sole_workflow_step(
     steps = _objects(
         job.get("steps"), subject=f"{workflow_path} job {job_name!r} steps"
     )
-    matches = [step for step in steps if step.get("name") == step_name]
-    assert len(matches) == 1, (
-        f"{workflow_path} job {job_name!r} must have exactly one "
-        f"{step_name!r} step, found {len(matches)}"
-    )
-    return matches[0]
+    index = _step_index(steps, step_name, subject=f"{workflow_path} job {job_name!r}")
+    return steps[index]
 
 
 def _step_invokes_full_suite(step: dict[str, object]) -> bool:
@@ -269,8 +281,18 @@ def _full_suite_workflow_jobs() -> frozenset[tuple[str, str]]:
     return frozenset(jobs_with_full_suites)
 
 
+def _contract_full_suite_jobs() -> frozenset[tuple[str, str]]:
+    """Return the full-suite jobs, asserting the enumerated CI contract."""
+    full_suite_jobs = _full_suite_workflow_jobs()
+    assert full_suite_jobs == _FULL_SUITE_WORKFLOW_JOBS, (
+        "full-suite CI contract must enumerate every workflow job that invokes "
+        "pytest or coverage"
+    )
+    return full_suite_jobs
+
+
 def _run_skylos_allow(
-    make_command: typ.Callable[..., tuple[str, ...]], *arguments: str
+    make_command: cabc.Callable[..., tuple[str, ...]], *arguments: str
 ) -> subprocess.CompletedProcess[str]:
     """Run a non-mutating whitelist boundary with a WSL-style ``NAME`` value."""
     environment = _skylos_allow_environment(*arguments)
@@ -304,6 +326,26 @@ def _assert_makeutil_installation(command: object, *, contract: str) -> None:
     assert (
         tuple(shlex.split(command.replace("\\\n", ""))) == _MAKEUTIL_INSTALL_TOKENS
     ), f"{contract} must install the pinned Makeutil revision with Polonius"
+
+
+def _assert_makeutil_install_precedes_full_suite(
+    workflow_path: str, job_name: str
+) -> None:
+    """Assert a job installs Makeutil before the step that runs the full suite."""
+    subject = f"{workflow_path} {job_name}"
+    steps = _objects(
+        _workflow_job(workflow_path, job_name).get("steps"), subject=f"{subject} steps"
+    )
+    install_index = _step_index(steps, "Install Makefile parser", subject=subject)
+    suite_indexes = [
+        index for index, step in enumerate(steps) if _step_invokes_full_suite(step)
+    ]
+
+    assert suite_indexes, f"{subject} must invoke the full suite from a step"
+    assert install_index < min(suite_indexes), (
+        f"{subject} must install Makeutil before the full suite so its contract "
+        "tests can parse the Makefile"
+    )
 
 
 def test_lint_recipe_runs_the_production_dead_code_gate() -> None:
@@ -359,6 +401,49 @@ def test_test_target_requires_the_makefile_parser() -> None:
     )
 
 
+def test_makeutil_target_requires_the_parser_on_path(
+    make_command: cabc.Callable[..., tuple[str, ...]], tmp_path: Path
+) -> None:
+    """``make makeutil`` must report a missing parser instead of passing silently."""
+    environment = dict(os.environ)
+    environment["PATH"] = str(tmp_path)
+    environment["SHELL"] = "/bin/sh"
+
+    completed = subprocess.run(  # noqa: S603 - fixed Make target without a shell.
+        make_command("--no-print-directory", "makeutil"),
+        capture_output=True,
+        check=False,
+        cwd=REPOSITORY_ROOT,
+        env=environment,
+        text=True,
+    )
+
+    assert completed.returncode != 0, (
+        "make makeutil must fail when the parser is absent from PATH: "
+        f"{completed.stdout}"
+    )
+    assert "Error: 'makeutil' is required, but not installed" in completed.stderr, (
+        f"make makeutil must report the parser it requires: {completed.stderr}"
+    )
+
+
+def test_typecheck_provisions_ty_from_the_pinned_tool_run() -> None:
+    """Ty must come from the pinned tool run, never from an installed tool."""
+    tools = {token.lower() for token in _variable_tokens("TOOLS")}
+    typecheck_prerequisites = {
+        token.lower() for token in _rule_prerequisites("typecheck")
+    }
+
+    assert not {"ty", "$(ty)"} & tools, (
+        "TOOLS must not require a globally installed ty; the typecheck target "
+        "pins its release through TY_VERSION"
+    )
+    assert not {"ty", "$(ty)"} & typecheck_prerequisites, (
+        "typecheck must not depend on an installed ty prerequisite; the target "
+        "verifies the pinned release itself"
+    )
+
+
 def test_whitelist_lock_is_ignored() -> None:
     """The local whitelist lock must not be committed as repository state."""
     ignored_paths = frozenset((REPOSITORY_ROOT / ".gitignore").read_text().splitlines())
@@ -385,8 +470,8 @@ def test_whitelist_lock_is_ignored() -> None:
 @hyp.settings(max_examples=5, deadline=None)
 @hyp.given(value=st.text(alphabet=" \t", min_size=1, max_size=8))
 def test_skylos_allow_rejects_missing_or_whitespace_values(
-    make_command: typ.Callable[..., tuple[str, ...]],
-    arguments_for: typ.Callable[[str], tuple[str, ...]],
+    make_command: cabc.Callable[..., tuple[str, ...]],
+    arguments_for: cabc.Callable[[str], tuple[str, ...]],
     argument_name: str,
     value: str,
 ) -> None:
@@ -410,7 +495,7 @@ def test_skylos_allow_rejects_missing_or_whitespace_values(
 @hyp.example(symbol=" $(handler);* ", reason=' Loaded "$plugin" | registry ')
 @hyp.given(symbol=_SHELL_ARGUMENT_TEXT, reason=_SHELL_ARGUMENT_TEXT)
 def test_skylos_allow_forwards_arguments_without_mutating_configuration(
-    make_command: typ.Callable[..., tuple[str, ...]], symbol: str, reason: str
+    make_command: cabc.Callable[..., tuple[str, ...]], symbol: str, reason: str
 ) -> None:
     """The helper must forward exact environment values without configuration edits."""
     pyproject_path = REPOSITORY_ROOT / "pyproject.toml"
@@ -511,13 +596,7 @@ def test_skylos_configuration_is_strict_with_no_unverified_exceptions() -> None:
 
 def test_full_suite_ci_jobs_install_the_pinned_makefile_parser() -> None:
     """Every isolated full-suite job must install Makeutil independently."""
-    full_suite_jobs = _full_suite_workflow_jobs()
-    assert full_suite_jobs == _FULL_SUITE_WORKFLOW_JOBS, (
-        "full-suite CI contract must enumerate every workflow job that invokes "
-        "pytest or coverage"
-    )
-
-    for workflow_path, job_name in full_suite_jobs:
+    for workflow_path, job_name in _contract_full_suite_jobs():
         coverage_job = _workflow_job(workflow_path, job_name)
         environment = _mapping(
             coverage_job.get("env"),
@@ -551,6 +630,10 @@ def test_full_suite_ci_jobs_install_the_pinned_makefile_parser() -> None:
         assert "env.MAKEUTIL_TOOLCHAIN" in cache_key, (
             f"{workflow_path} {job_name} Makeutil cache key must pin the toolchain"
         )
+        assert cache_inputs.get("path") == _MAKEUTIL_BINARY_PATH, (
+            f"{workflow_path} {job_name} Makeutil cache must store the parser "
+            "binary the install step provides"
+        )
         assert isinstance(cache_step_id, str), (
             f"{workflow_path} {job_name} Makeutil cache step must declare an id"
         )
@@ -560,4 +643,19 @@ def test_full_suite_ci_jobs_install_the_pinned_makefile_parser() -> None:
         _assert_makeutil_installation(
             parser_step.get("run"),
             contract=f"{workflow_path} {job_name} Makeutil-install contract",
+        )
+        _assert_makeutil_install_precedes_full_suite(workflow_path, job_name)
+
+
+def test_full_suite_ci_jobs_grant_only_contents_read() -> None:
+    """Every isolated full-suite job must keep its workflow token read-only."""
+    for workflow_path, job_name in _contract_full_suite_jobs():
+        permissions = _mapping(
+            _workflow_job(workflow_path, job_name).get("permissions"),
+            subject=f"{workflow_path} {job_name} permissions",
+        )
+
+        assert permissions == {"contents": "read"}, (
+            f"{workflow_path} {job_name} must grant only contents: read so its "
+            "workflow token cannot write to the repository"
         )

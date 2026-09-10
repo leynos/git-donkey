@@ -6,12 +6,13 @@ import subprocess  # noqa: S404 - regression test executes make without a shell
 import typing as typ
 
 if typ.TYPE_CHECKING:
+    import collections.abc as cabc
     from pathlib import Path
 
 
 def test_make_typecheck_pins_ty_and_resolves_script_modules(
     repository_root: Path,
-    make_command: typ.Callable[..., tuple[str, ...]],
+    make_command: cabc.Callable[..., tuple[str, ...]],
 ) -> None:
     """Keep local type checking aligned with the CI module-resolution contract."""
     result = subprocess.run(  # noqa: S603 - test executes make without a shell

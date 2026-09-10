@@ -14,6 +14,12 @@ from pathlib import Path
 
 import pytest
 
+# ``typing`` gates the annotation-only ``collections.abc`` import below: a
+# module-level import used solely in annotations trips TC003, and the
+# from-import form is banned by the repository's import conventions.
+if typ.TYPE_CHECKING:
+    import collections.abc as cabc
+
 
 @pytest.fixture(scope="session")
 def repository_root() -> Path:
@@ -45,7 +51,7 @@ def make_executable() -> str:
 
 
 @pytest.fixture(scope="session")
-def make_command(make_executable: str) -> typ.Callable[..., tuple[str, ...]]:
+def make_command(make_executable: str) -> cabc.Callable[..., tuple[str, ...]]:
     """Return a factory that prefixes arguments with the make executable.
 
     Parameters
@@ -55,7 +61,7 @@ def make_command(make_executable: str) -> typ.Callable[..., tuple[str, ...]]:
 
     Returns
     -------
-    typing.Callable[..., tuple[str, ...]]
+    collections.abc.Callable[..., tuple[str, ...]]
         Factory returning the executable followed by the given arguments.
 
     """
