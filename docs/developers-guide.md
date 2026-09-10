@@ -209,7 +209,6 @@ directories.
 `syrupy` pins stable summary rendering. Hypothesis checks marker-shape
 invariants in the pure policy layer.
 
-
 ## git-incoming and git-outgoing module boundaries
 
 `git-incoming` and `git-outgoing` answer the two questions a developer asks
@@ -230,7 +229,10 @@ user-visible behaviour:
   (`_commits_unique_to`) are queries: they return data, a ref string or
   `git log` output, without printing, fetching, or otherwise changing state.
   `_run_comparison` is the command boundary: it owns repository discovery,
-  fetching, rendering to stdout or stderr, and exit-code mapping.
+  comparison-ref resolution, rendering to stdout or stderr, and exit-code
+  mapping. Its `_fetch_comparison_remote` helper owns the optional fetch: it
+  honours `--no-fetch`, fetches the remote owning the comparison ref, and
+  reports whether the comparison may proceed.
 
 `_run_comparison` accepts a frozen `_ComparisonRequest` value object carrying
 the prefix, direction, optional ref, and fetch flag, plus an optional injected
@@ -281,10 +283,12 @@ through `extra`, so callers can route records into structured logging later:
   `removed_count` provide diagnostic context for plonk cleanup decisions.
 - Incoming and outgoing comparisons use `operation` (`compare` or `fetch`),
   `direction` (`incoming` or `outgoing`), `fetch_enabled`, `ref`, `remote`,
-  `commit_count`, and `result` (`found`, `empty`, or `failure`). Records are
-  emitted at comparison start, fetch selection, fetch failure, and comparison
-  completion; failures are also reported with `_LOGGER.exception` (comparison
-  failure) and `_LOGGER.warning` (fetch failure).
+  `commit_count`, and `result` (`found`, `empty`, `success`, or `failure`).
+  Records are emitted at comparison start, fetch selection, fetch completion,
+  fetch failure, and comparison completion; a successful fetch is confirmed at
+  `INFO` once it returns, while failures are also reported with
+  `_LOGGER.exception` (comparison failure) and `_LOGGER.warning` (fetch
+  failure).
 
 ## Dead-code detection
 

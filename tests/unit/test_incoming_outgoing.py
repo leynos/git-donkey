@@ -255,7 +255,7 @@ def test_fetch_comparison_remote_skips_unnamed_remote() -> None:
 def test_fetch_comparison_remote_fetches_and_logs(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """A remote-backed request must fetch the named remote and log it."""
+    """A remote-backed request must fetch the remote and log both records."""
     adapter = _FakeAdapter()
 
     with caplog.at_level(logging.INFO, logger=incoming_outgoing.__name__):
@@ -267,17 +267,34 @@ def test_fetch_comparison_remote_fetches_and_logs(
 
     assert fetched, "a successful fetch must report success"
     assert adapter.fetched == ["origin"], "the named remote must be fetched"
-    (record,) = caplog.records
-    assert record.levelno == logging.INFO, "the fetch must be logged at INFO"
-    assert record.getMessage() == "Fetching comparison remote", (
+    selection, completion = caplog.records
+    assert selection.levelno == logging.INFO, (
+        "the fetch selection must be logged at INFO"
+    )
+    assert selection.getMessage() == "Fetching comparison remote", (
         "the fetch must log the operation it performs"
     )
-    fields = vars(record)
+    fields = vars(selection)
     assert fields["operation"] == "fetch", "the fetch log must carry operation=fetch"
     assert fields["direction"] == "incoming", (
         "the fetch log must carry the comparison direction"
     )
     assert fields["remote"] == "origin", "the fetch log must carry the remote name"
+    assert completion.levelno == logging.INFO, (
+        "the fetch completion must be logged at INFO"
+    )
+    assert completion.getMessage() == "Completed comparison fetch", (
+        "a successful fetch must log its completion"
+    )
+    fields = vars(completion)
+    assert fields["operation"] == "fetch", (
+        "the completion log must carry operation=fetch"
+    )
+    assert fields["direction"] == "incoming", (
+        "the completion log must carry the comparison direction"
+    )
+    assert fields["remote"] == "origin", "the completion log must carry the remote name"
+    assert fields["result"] == "success", "the completion log must carry result=success"
 
 
 def test_fetch_comparison_remote_reports_failure(

@@ -21,8 +21,9 @@ pure comparison decisions, the ``_ComparisonAdapter`` protocol describes the
 Git surface the queries need, and ``_GitPythonComparison`` implements that
 protocol over GitPython and the shared helpers in ``git_donkey.helpers``.
 Fetching, rendering, and exit-code mapping belong to the command boundary in
-``_run_comparison``, which also emits structured log records for comparison
-start, fetch, and completion.
+``_run_comparison`` and the ``_fetch_comparison_remote`` helper it calls, which
+also emit structured log records for comparison start, the fetch attempt and
+its outcome, and comparison completion.
 
 The ``git_donkey.cli`` module exposes these workflows as Cyclopts apps and
 delegates to ``run_git_incoming`` and ``run_git_outgoing``.
@@ -185,6 +186,16 @@ def _fetch_comparison_remote(
             },
         )
         return False
+
+    _LOGGER.info(
+        "Completed comparison fetch",
+        extra={
+            "operation": "fetch",
+            "direction": direction,
+            "remote": remote_name,
+            "result": "success",
+        },
+    )
     return True
 
 
