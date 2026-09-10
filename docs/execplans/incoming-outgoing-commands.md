@@ -175,6 +175,28 @@ Mercurial bundles, templates, phases, or bookmark comparison output.
   its structured fields, and the failure record for a fetch that exits. All six
   gates pass, including the first complete `make lint` run to reach the df12
   and ambrleaks stages.
+- [x] (2026-09-10 00:00Z) Rebased onto `origin/main` at 111232a ("Use the remote
+  default branch and make pulls opt-in"), which also brings in 756384e ("Adopt
+  Skylos dead-code detection"). No conflicts arose: `git range-diff` pairs
+  every replayed commit with its predecessor and shows only context shifts
+  from main's edited README and developers guide, so all branch patches are
+  intact.
+- [x] (2026-09-10 00:00Z) Added the fetch completion record the review asked
+  for: `_fetch_comparison_remote` now emits an `INFO` "Completed comparison
+  fetch" record carrying `operation`, `direction`, `remote`, and
+  `result=success` once the fetch returns, leaving the selection record and the
+  failure warning unchanged. The unit test asserts both records and their
+  fields, and the developers guide and module docstring state the completion
+  record.
+- [x] (2026-09-10 00:00Z) Documented the new commands in
+  `docs/v0-2-0-migration-guide.md`: the console aliases, the upstream default,
+  explicit refs, fetch-by-default for remote-backed refs, `--no-fetch`, and the
+  `0`/`1`/`2` exit codes, with a link to the users' guide, and listed the guide
+  in `docs/contents.md`.
+- [x] (2026-09-10 00:00Z) All six gates pass on the rebased branch, continuous
+  integration is green, the branch was force-pushed with lease
+  (`e41a148...d5c9243`), and a CodeRabbit review was queued with comenq
+  (identifier `7470f047`).
 
 ## Surprises & discoveries
 
@@ -525,4 +547,6 @@ accepted. Revised 2026-09-10 to record the policy and workflow layering,
 structured comparison logging, assertion messages across the incoming and
 outgoing tests, and scoping of the Mercurial exit-code attribution to codes `0`
 and `1`. Revised again on 2026-09-10 to record the remote-fetch extraction from
-`_run_comparison` and the direct unit tests that now cover it.
+`_run_comparison` and the direct unit tests that now cover it. Revised once
+more on 2026-09-10 to record the rebase onto 111232a, the fetch completion
+record, and the comparison commands' migration-guide entry.
