@@ -197,6 +197,20 @@ Mercurial bundles, templates, phases, or bookmark comparison output.
   integration is green, the branch was force-pushed with lease
   (`e41a148...d5c9243`), and a CodeRabbit review was queued with comenq
   (identifier `7470f047`).
+- [x] (2026-09-11 00:00Z) Actioned the second review round. The policy now
+  returns the longest matching remote, so a nested `team/core` wins over
+  `team` whatever the order of `remote_names`, with regression tests for both
+  orders and for exact-name and canonical-prefix matching. The fetch and the
+  comparison read are timed as `comparison_fetch` and `comparison` and report
+  bounded outcomes through `git_donkey.observability`, and the comparison
+  start, completion (`found`/`empty`), and failure records are asserted with
+  `caplog` for both runners. The console entrypoints `git-incoming` and
+  `git-in` are now exercised against a real repository through `sys.argv`.
+  Skipped with reasons: a per-repository inter-process lock (git already locks
+  ref updates; the process holds no other shared mutable state), removing the
+  justified per-file `assert` ignores for tests (main's policy, outside this
+  diff), and widening the adapter's upstream lookup to separate "no upstream"
+  from a failed read (both cases already exit 2 with the same diagnostic).
 
 ## Surprises & discoveries
 
@@ -271,7 +285,13 @@ Mercurial bundles, templates, phases, or bookmark comparison output.
   `docs/v0-2-0-migration-guide.md` filename is owned by a sibling branch
   (`fix/remote-default-base-opt-in-pull`), and the commands are already
   documented in `docs/users-guide.md` and signposted from `README.md`.
-  Date/Author: 2026-09-10, Claude.
+  Date/Author: 2026-09-10, Claude. Superseded in part (2026-09-10): the
+  migration-guide skip no longer applies, because this branch extends
+  `docs/v0-2-0-migration-guide.md` with a `New comparison commands`
+  section covering the console aliases, the upstream default, explicit
+  refs, fetch-by-default for remote-backed refs, `--no-fetch`, and the
+  `0`/`1`/`2` exit codes, and `docs/contents.md` indexes the guide. The
+  policy and adapter split above still stands.
 - Decision: On rebase, take `Makefile`, `.github/workflows/ci.yml`, and
   `uv.lock` from main unchanged, and regenerate `typos.toml` with
   `scripts/generate_typos_config.py` instead of hand-merging generated files.
@@ -549,4 +569,8 @@ outgoing tests, and scoping of the Mercurial exit-code attribution to codes `0`
 and `1`. Revised again on 2026-09-10 to record the remote-fetch extraction from
 `_run_comparison` and the direct unit tests that now cover it. Revised once
 more on 2026-09-10 to record the rebase onto 111232a, the fetch completion
-record, and the comparison commands' migration-guide entry.
+record, and the comparison commands' migration-guide entry. Revised on
+2026-09-11 to record the second review round: longest-match remote selection,
+bounded recorder spans and outcomes for the comparison workflow, the
+comparison log-record tests, the console entrypoint integration tests, and the
+decision-record supersession of the migration-guide skip.
