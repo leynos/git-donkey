@@ -67,7 +67,6 @@ class _GitLog(typ.Protocol):
 
     def log(self, *args: str) -> str:
         """Run ``git log`` with the provided arguments."""
-        ...
 
 
 class _ComparisonAdapter(_GitLog, typ.Protocol):
@@ -75,15 +74,12 @@ class _ComparisonAdapter(_GitLog, typ.Protocol):
 
     def upstream_ref(self) -> str | None:
         """Return the current branch upstream ref, or ``None`` when unset."""
-        ...
 
     def remote_names(self) -> typ.Iterable[str]:
         """Return the configured remote names."""
-        ...
 
     def fetch_remote(self, remote: str) -> None:
         """Fetch updates from ``remote``, reporting failures itself."""
-        ...
 
 
 @dataclasses.dataclass(frozen=True, slots=True)

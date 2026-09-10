@@ -35,8 +35,10 @@ def test_incoming_cli_passes_ref_and_no_fetch(monkeypatch: pytest.MonkeyPatch) -
             "--no-fetch",
         ])
 
-    assert excinfo.value.code == 0
-    assert recorded == {"ref": "origin/main", "fetch": False}
+    assert excinfo.value.code == 0, "a successful incoming run must exit 0"
+    assert recorded == {"ref": "origin/main", "fetch": False}, (
+        "the incoming CLI must pass the ref through and honour --no-fetch"
+    )
 
 
 def test_outgoing_cli_defaults_to_fetch(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -57,13 +59,15 @@ def test_outgoing_cli_defaults_to_fetch(monkeypatch: pytest.MonkeyPatch) -> None
     with pytest.raises(SystemExit) as excinfo:
         typ.cast("cabc.Callable[[list[str]], None]", cli._outgoing_app)([])
 
-    assert excinfo.value.code == 1
-    assert recorded == {"ref": None, "fetch": True}
+    assert excinfo.value.code == 1, "an empty outgoing comparison must exit 1"
+    assert recorded == {"ref": None, "fetch": True}, (
+        "the outgoing CLI must default to an upstream ref with fetching enabled"
+    )
 
 
 def test_pyproject_registers_incoming_outgoing_aliases() -> None:
     """Console scripts should expose the long and short Git subcommands."""
-    pyproject = tomllib.loads(Path("pyproject.toml").read_text())
+    pyproject = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
 
     assert (
         pyproject["project"]["scripts"]
@@ -74,4 +78,4 @@ def test_pyproject_registers_incoming_outgoing_aliases() -> None:
             "git-out": "git_donkey.cli:git_out",
         }
         == pyproject["project"]["scripts"]
-    )
+    ), "pyproject must register the incoming and outgoing console scripts"

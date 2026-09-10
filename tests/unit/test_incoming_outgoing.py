@@ -18,6 +18,10 @@ _COMMIT_ID = st.from_regex(r"[0-9a-f]{7}", fullmatch=True)
 _LOG_COMMAND = "log"
 _REV_PARSE_COMMAND = "rev-parse"
 
+# git-donkey's own exit code for a command that could not run, as opposed to
+# Mercurial's ``0`` (commits found) and ``1`` (comparison found nothing).
+_COULD_NOT_RUN_EXIT_CODE = 2
+
 
 class _FakeGit:
     """Minimal ``repo.git`` double for comparison-range tests."""
@@ -174,7 +178,7 @@ def test_commits_unique_to_ref_handles_empty_log() -> None:
         exclude_ref="origin/main",
     )
 
-    assert output == "", "an empty comparison range must return no commits"
+    assert not output, "an empty comparison range must return no commits"
 
 
 def test_run_git_incoming_reports_missing_upstream(
@@ -189,8 +193,8 @@ def test_run_git_incoming_reports_missing_upstream(
         ref=None,
     )
 
-    assert exit_code == 2, "a missing upstream must exit 2"
-    assert out == "", "a missing upstream must print no commits"
+    assert exit_code == _COULD_NOT_RUN_EXIT_CODE, "a missing upstream must exit 2"
+    assert not out, "a missing upstream must print no commits"
     assert "no upstream branch configured" in err, (
         "a missing upstream must explain that no upstream is configured"
     )
@@ -209,7 +213,7 @@ def test_run_git_incoming_fetches_remote_backed_ref(
 
     assert exit_code == 0, "matching commits must exit 0"
     assert out == "abc1234 Remote commit\n", "the fetched commit must be printed"
-    assert err == "", "a successful comparison must not write to stderr"
+    assert not err, "a successful comparison must not write to stderr"
     assert comparison.fetches == ["origin"], "remote-backed refs must fetch origin"
 
 
@@ -273,7 +277,7 @@ def test_run_git_outgoing_compares_head_against_ref(
 
     assert exit_code == 0, "local-only commits must exit 0"
     assert out == "abc1234 Local commit\n", "the local-only commit must be printed"
-    assert err == "", "a successful comparison must not write to stderr"
+    assert not err, "a successful comparison must not write to stderr"
     assert repo.git.calls == [
         ("--oneline", "--decorate", "HEAD", "--not", "origin/main")
     ], "outgoing comparisons must include HEAD and exclude the ref"
@@ -287,8 +291,8 @@ def test_run_git_incoming_reports_comparison_failure(
 
     exit_code, out, err = comparison.run(repo, incoming_outgoing.run_git_incoming)
 
-    assert exit_code == 2, "a failed comparison must exit 2"
-    assert out == "", "a failed comparison must print no commits"
+    assert exit_code == _COULD_NOT_RUN_EXIT_CODE, "a failed comparison must exit 2"
+    assert not out, "a failed comparison must print no commits"
     assert "comparison failed" in err, (
         "a failed comparison must report the Git failure on stderr"
     )
@@ -314,8 +318,8 @@ def test_run_git_incoming_reports_fetch_failure(
 
     exit_code = incoming_outgoing.run_git_incoming()
 
-    assert exit_code == 2, "a failed fetch must exit 2, not 1"
-    assert capsys.readouterr().out == "", "a failed fetch must print no commits"
+    assert exit_code == _COULD_NOT_RUN_EXIT_CODE, "a failed fetch must exit 2, not 1"
+    assert not capsys.readouterr().out, "a failed fetch must print no commits"
 
 
 @given(

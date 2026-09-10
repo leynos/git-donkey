@@ -14,6 +14,11 @@ if typ.TYPE_CHECKING:
     from pathlib import Path
 
 
+# git-donkey's own exit code for a command that could not run, as opposed to
+# Mercurial's ``0`` (commits found) and ``1`` (comparison found nothing).
+_COULD_NOT_RUN_EXIT_CODE = 2
+
+
 def _clone_remote(remote_path: Path, clone_path: Path) -> Repo:
     """Clone the bare test remote and configure an author identity."""
     repo = Repo.clone_from(remote_path.as_posix(), clone_path, branch="main")
@@ -68,7 +73,7 @@ def test_git_incoming_fetches_and_reports_remote_only_commit(
 
     assert exit_code == 0, "a remote-only commit must exit 0"
     assert "Seed commit" in out, "incoming must print the remote-only commit"
-    assert err == "", "a successful comparison must not write to stderr"
+    assert not err, "a successful comparison must not write to stderr"
 
 
 def test_git_incoming_no_changes_returns_one(
@@ -87,8 +92,8 @@ def test_git_incoming_no_changes_returns_one(
     )
 
     assert exit_code == 1, "no incoming commits must exit 1"
-    assert out == "", "an empty incoming comparison must print nothing"
-    assert err == "", "an empty incoming comparison must not write to stderr"
+    assert not out, "an empty incoming comparison must print nothing"
+    assert not err, "an empty incoming comparison must not write to stderr"
 
 
 def test_git_outgoing_reports_local_only_commit(
@@ -110,7 +115,7 @@ def test_git_outgoing_reports_local_only_commit(
 
     assert exit_code == 0, "a local-only commit must exit 0"
     assert "Seed commit" in out, "outgoing must print the local-only commit"
-    assert err == "", "a successful comparison must not write to stderr"
+    assert not err, "a successful comparison must not write to stderr"
 
 
 def test_git_outgoing_no_changes_returns_one(
@@ -130,8 +135,8 @@ def test_git_outgoing_no_changes_returns_one(
     )
 
     assert exit_code == 1, "no outgoing commits must exit 1"
-    assert out == "", "an empty outgoing comparison must print nothing"
-    assert err == "", "an empty outgoing comparison must not write to stderr"
+    assert not out, "an empty outgoing comparison must print nothing"
+    assert not err, "an empty outgoing comparison must not write to stderr"
 
 
 def test_default_ref_requires_upstream(
@@ -147,8 +152,8 @@ def test_default_ref_requires_upstream(
         fetch=False,
     )
 
-    assert exit_code == 2, "a missing upstream must exit 2"
-    assert out == "", "a missing upstream must print nothing"
+    assert exit_code == _COULD_NOT_RUN_EXIT_CODE, "a missing upstream must exit 2"
+    assert not out, "a missing upstream must print nothing"
     assert "no upstream branch configured" in err, (
         "a missing upstream must explain the configuration error"
     )
@@ -176,8 +181,8 @@ def test_no_fetch_uses_current_remote_tracking_ref(
     )
 
     assert exit_code == 1, "--no-fetch must miss commits pushed since the fetch"
-    assert out == "", "an unchanged tracking ref must print nothing"
-    assert err == "", "a successful comparison must not write to stderr"
+    assert not out, "an unchanged tracking ref must print nothing"
+    assert not err, "a successful comparison must not write to stderr"
 
 
 def test_explicit_ref_does_not_require_upstream(
@@ -201,7 +206,7 @@ def test_explicit_ref_does_not_require_upstream(
 
     assert exit_code == 0, "an explicit ref must compare successfully"
     assert "Seed commit" in out, "incoming must print the remote-only commit"
-    assert err == "", "a successful comparison must not write to stderr"
+    assert not err, "a successful comparison must not write to stderr"
 
 
 def test_canonical_ref_fetches_owning_remote(
@@ -226,7 +231,7 @@ def test_canonical_ref_fetches_owning_remote(
 
     assert exit_code == 0, "canonical refs must fetch and report new commits"
     assert "Seed commit" in out, "the fetched canonical ref must be reported"
-    assert err == "", "a successful comparison must not write to stderr"
+    assert not err, "a successful comparison must not write to stderr"
 
 
 def test_fetch_failure_returns_two(
@@ -244,6 +249,6 @@ def test_fetch_failure_returns_two(
         incoming_outgoing.run_git_incoming,
     )
 
-    assert exit_code == 2, "a failed fetch must exit 2, not 1"
-    assert out == "", "a failed fetch must print no commits"
+    assert exit_code == _COULD_NOT_RUN_EXIT_CODE, "a failed fetch must exit 2, not 1"
+    assert not out, "a failed fetch must print no commits"
     assert "fetch failed" in err, "a failed fetch must be reported on stderr"

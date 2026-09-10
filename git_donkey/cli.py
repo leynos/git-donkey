@@ -130,7 +130,6 @@ class _ComparisonRunner(typ.Protocol):
 
     def __call__(self, ref: str | None = None, *, fetch: bool = True) -> int:
         """Run one comparison and return its exit code."""
-        ...
 
 
 def _run_incoming_outgoing_cli(
