@@ -237,6 +237,70 @@ def test_manual_covers_command_specific_behaviour(
     assert required_text in source, f"{command}.rst must document {required_text}"
 
 
+def _is_star_parameter(annotation: ast.expr | None) -> bool:
+    """Return whether the annotation is a cyclopts ``Parameter(name="*")``."""
+    if annotation is None:
+        return False
+    return any(
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "Parameter"
+        and any(
+            keyword.arg == "name"
+            and isinstance(keyword.value, ast.Constant)
+            and keyword.value.value == "*"
+            for keyword in node.keywords
+        )
+        for node in ast.walk(annotation)
+    )
+
+
+def _spread_type_name(annotation: ast.expr) -> str | None:
+    """Return the type a cyclopts star parameter spreads over the options."""
+    for node in ast.walk(annotation):
+        if not isinstance(node, ast.Subscript):
+            continue
+        if not ast.unparse(node.value).endswith("Annotated"):
+            continue
+        elements = (
+            node.slice.elts if isinstance(node.slice, ast.Tuple) else [node.slice]
+        )
+        if elements:
+            return ast.unparse(elements[0]).rsplit(".", 1)[-1]
+    return None
+
+
+def _class_fields(type_name: str) -> list[str]:
+    """Return the annotated field names of a package class, if it exists."""
+    for path in sorted((_ROOT / "git_donkey").glob("*.py")):
+        module = ast.parse(path.read_text(encoding="utf-8"))
+        for node in module.body:
+            if isinstance(node, ast.ClassDef) and node.name == type_name:
+                return [
+                    statement.target.id
+                    for statement in node.body
+                    if isinstance(statement, ast.AnnAssign)
+                    and isinstance(statement.target, ast.Name)
+                ]
+    return []
+
+
+def _option_names(command: str, argument: ast.arg) -> list[str]:
+    """Return the option names one CLI parameter contributes to *command*."""
+    # A ``Parameter(name="*")`` annotation spreads the fields of the annotated
+    # type across the command line, so those field names -- not the parameter's
+    # own name -- are the options the manual must document.
+    if not _is_star_parameter(argument.annotation):
+        return [argument.arg]
+    type_name = _spread_type_name(argument.annotation) or ""
+    names = _class_fields(type_name)
+    assert names, (
+        f"{command}: cannot resolve the fields that --{argument.arg} spreads; "
+        "update this contract test if the cyclopts usage changed"
+    )
+    return names
+
+
 @pytest.mark.parametrize(
     ("command", "wrapper"),
     [
@@ -260,5 +324,6 @@ def test_manual_covers_cli_parameters(command: str, wrapper: str) -> None:
         name = argument.arg.upper()
         assert name in source, f"{command}.rst must document the {name} argument"
     for argument in function.args.kwonlyargs:
-        option = "--" + argument.arg.replace("_", "-")
-        assert option in source, f"{command}.rst must document {option}"
+        for name in _option_names(command, argument):
+            option = "--" + name.replace("_", "-")
+            assert option in source, f"{command}.rst must document {option}"
