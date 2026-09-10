@@ -13,6 +13,10 @@ if typ.TYPE_CHECKING:
     from pathlib import Path
 
 
+# Exit status reserved for a command-line usage error.
+_USAGE_ERROR_EXIT_CODE = 2
+
+
 @pytest.mark.parametrize(
     ("argv", "expected"),
     [
@@ -76,6 +80,6 @@ def test_donkey_cli_rejects_conflicting_pull_flags(
             "feature/test",
             *flags,
         ])
-    assert excinfo.value.code == 2
+    assert excinfo.value.code == _USAGE_ERROR_EXIT_CODE
     assert "mutually exclusive" in capsys.readouterr().err
     assert not list(tmp_path.iterdir())

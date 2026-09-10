@@ -11,7 +11,6 @@ local cache only when the authority is newer, and then applies the narrow
 repository policy in `typos.local.toml`. Edit the local policy and regenerate
 the configuration rather than changing generated entries by hand.
 
-
 ## git-donkey workflow
 
 `git_donkey.donkey.run_git_donkey()` is the workflow function behind the
@@ -29,7 +28,6 @@ overlay mechanics the workflow composes.
 The CLI wrapper maps `branch_name`, an optional `origin_branch`, `--no-pull`,
 and the fields of `_PullOptions` onto the workflow call, then raises
 `SystemExit` with the returned code.
-
 
 ### Workflow pipeline
 
@@ -58,7 +56,6 @@ one step that reports failure by returning `False`; `run_git_donkey()` then
 returns 1 after the helper prints the reason. A missing overlay, or a
 repository whose template directory cannot be selected, is not a failure.
 
-
 ### Pull options and modes
 
 `_PullOptions` is a frozen, slotted dataclass with the mutually exclusive
@@ -73,7 +70,6 @@ maps the flags onto that type and rejects conflicting combinations before any
 repository discovery or mutation, exiting 2 with the `git-donkey:` prefix.
 `no_pull` participates in the same mutual-exclusion check, so it stays valid
 on its own and conflicts with either pull flag.
-
 
 ### Pull invariants
 
@@ -93,7 +89,6 @@ on its own and conflicts with either pull flag.
   through `helpers._prompt_yes_no()` and skips the update when the answer is
   no or the terminal is non-interactive.
 
-
 ### Base resolution
 
 Explicit bases are resolved by `choose_base_branch()`, which returns the
@@ -109,7 +104,6 @@ Implicit discovery is deliberately a command rather than a query.
 parser for the advertisement and is tested on its own. Fetching explicitly
 matters because a narrow fetch configuration may omit the default branch, and
 a stale local `remote/HEAD` alias is not trusted.
-
 
 ### Adding a pull mode
 

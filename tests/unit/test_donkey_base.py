@@ -12,6 +12,10 @@ if typ.TYPE_CHECKING:
     from pathlib import Path
 
 
+# Exit status reserved for a command-line usage error.
+_USAGE_ERROR_EXIT_CODE = 2
+
+
 @pytest.mark.parametrize(
     ("advertisement", "expected"),
     [
@@ -68,7 +72,7 @@ def test_conflicting_pull_options_fail_before_repository_access(
     monkeypatch.chdir(tmp_path)
     with pytest.raises(SystemExit) as excinfo:
         donkey.run_git_donkey("feature/test", options=options, no_pull=no_pull)
-    assert excinfo.value.code == 2
+    assert excinfo.value.code == _USAGE_ERROR_EXIT_CODE
     assert "mutually exclusive" in capsys.readouterr().err
     assert not list(tmp_path.iterdir())
 

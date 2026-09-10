@@ -88,6 +88,24 @@ def _fetch_remote_default_ref(context: _DonkeyContext) -> str:
     This is a command, not a query: it reads the remote's advertised ``HEAD``
     and fetches the branch it names into that branch's fully qualified
     remote-tracking ref. `_advertised_default_branch` holds the parsing half.
+
+    Parameters
+    ----------
+    context : _DonkeyContext
+        Resolved repository state, including the repository and remote whose
+        advertised default branch is fetched.
+
+    Returns
+    -------
+    str
+        The fully qualified remote-tracking ref of the fetched default branch.
+
+    Raises
+    ------
+    SystemExit
+        If the remote does not advertise a default branch, or if the branch it
+        names cannot be fetched.
+
     """
     try:
         advertisement = context.repo_home.git.ls_remote(
@@ -172,6 +190,28 @@ def _base_branch_behind_count(
     A base with no local branch has nothing to update. Creating a tracking
     branch to measure it would leave behind a branch that no worktree holds and
     that this command cannot pull into.
+
+    Parameters
+    ----------
+    context : _DonkeyContext
+        Resolved repository state, including the repository and remote used to
+        compare the base branch.
+    base_branch : str
+        Local branch name to measure against its remote counterpart.
+    prefix : str
+        CLI name used for error messages.
+
+    Returns
+    -------
+    int
+        The number of commits the local base branch is behind its remote
+        counterpart, or zero when no local branch holds the base.
+
+    Raises
+    ------
+    SystemExit
+        If the base branch exists neither locally nor on the remote.
+
     """
     if not helpers._remote_branch_exists(
         context.repo_home, context.remote, base_branch
@@ -316,6 +356,21 @@ def _apply_template_overlay(context: _DonkeyContext, target_path: Path) -> bool:
 
     A missing overlay, or a repository whose template directory cannot be
     selected, is not a failure.
+
+    Parameters
+    ----------
+    context : _DonkeyContext
+        Resolved repository state, including the repository whose template
+        directory is consulted.
+    target_path : Path
+        Filesystem path of the newly created worktree.
+
+    Returns
+    -------
+    bool
+        ``True`` when the overlay is absent, skipped, or applied; ``False``
+        when applying it failed.
+
     """
     try:
         template_dir = templates.get_template_dir(context.repo_home)
