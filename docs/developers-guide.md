@@ -11,6 +11,145 @@ local cache only when the authority is newer, and then applies the narrow
 repository policy in `typos.local.toml`. Edit the local policy and regenerate
 the configuration rather than changing generated entries by hand.
 
+## git-donkey workflow
+
+`git_donkey.donkey.run_git_donkey()` is the workflow function behind the
+`git donkey` console script. The [users' guide](users-guide.md) documents the
+command from the outside, and the [default-base and pull-mode
+design](default-base-and-pull-modes.md) records the behavioural contract. This
+section describes the pipeline and the invariants a contributor must preserve
+when editing the workflow.
+
+The module split mirrors `git-fafo` and `git-plonk`: `git_donkey.cli` owns
+Cyclopts parsing, `git_donkey.donkey` owns the workflow, and
+`git_donkey.donkey_worktrees` and `git_donkey.templates` own the worktree and
+overlay mechanics the workflow composes.
+
+The CLI wrapper maps `branch_name`, an optional `origin_branch`, `--no-pull`,
+and the fields of `_PullOptions` onto the workflow call, then raises
+`SystemExit` with the returned code.
+
+### Workflow pipeline
+
+`run_git_donkey()` performs its steps in a fixed order:
+
+1. `_pull_mode()` validates the pull flags.
+2. `_load_donkey_context()` discovers the repository, resolves the principal
+   remote, fetches it, and builds a `_DonkeyContext` holding the home
+   repository, remote name, branch-to-worktree map, and worktrees root.
+3. The base is resolved with `_fetch_remote_default_ref()` when no base was
+   supplied, or `choose_base_branch()` when one was.
+4. `_maybe_update_base_branch()` derives the local branch name, then prompts
+   for and performs an opted-in update.
+5. The target path is derived under the worktrees root, and
+   `_create_worktree()` delegates to `git_donkey.donkey_worktrees`.
+6. `_apply_template_overlay()` copies template files into the new worktree.
+7. Success prints the worktree path and returns 0.
+
+Validation runs before repository discovery, so conflicting options cannot
+touch the repository. Base resolution and any opted-in update complete before
+the worktree is created. Failures route through `helpers._die()`, which writes
+a `git-donkey:`-prefixed message to stderr and raises `SystemExit`:
+conflicting pull flags and precondition failures exit 2, while fetch, pull,
+worktree, and filesystem failures exit 1. `_apply_template_overlay()` is the
+one step that reports failure by returning `False`; `run_git_donkey()` then
+returns 1 after the helper prints the reason. A missing overlay, or a
+repository whose template directory cannot be selected, is not a failure.
+
+### Pull options and modes
+
+`_PullOptions` is a frozen, slotted dataclass with the mutually exclusive
+`pull_rebase` and `pull_ff` booleans, both `False` by default.
+`_DEFAULT_PULL_OPTIONS` is a module-level instance used as the default argument
+of both `run_git_donkey()` and the CLI wrapper, so the two entry points share
+one immutable default rather than declaring their own.
+
+`_PullMode` is the `Literal["--rebase", "--ff-only"]` of the supported
+strategies, with `None` meaning no update. `_pull_mode(options, *, no_pull)`
+maps the flags onto that type and rejects conflicting combinations before any
+repository discovery or mutation, exiting 2 with the `git-donkey:` prefix.
+`no_pull` participates in the same mutual-exclusion check, so it stays valid
+on its own and conflicts with either pull flag.
+
+### Pull invariants
+
+- No update happens without an explicit mode: `_pull_mode()` returns `None`
+  unless `--pull-rebase` or `--pull-ff` is enabled, and
+  `_maybe_update_base_branch()` returns immediately for `None`.
+- An update runs only inside the worktree that holds the selected local base.
+  `_update_base_branch_in_worktree()` looks the branch up in the context's
+  branch-to-worktree map and exits 1 rather than pulling into an unrelated
+  checkout when no worktree holds it.
+- The behind count is a query. `_base_branch_behind_count()` must not create
+  a tracking branch to measure a base: that would leave a branch no worktree
+  holds and that this command cannot pull into. A base with no local branch
+  has nothing to update and counts as zero behind.
+- In the workflow, the prompt is the only path to
+  `_update_base_branch_in_worktree()`. `_maybe_update_base_branch()` prompts
+  through `helpers._prompt_yes_no()` and skips the update when the answer is
+  no or the terminal is non-interactive.
+
+### Base resolution
+
+Explicit bases are resolved by `choose_base_branch()`, which returns the
+argument unchanged except for `.`, which selects the branch checked out in the
+calling directory. That branch was captured during context loading by
+`helpers._get_checked_out_branch_name()`, so a detached HEAD fails before
+resolution.
+
+Implicit discovery is deliberately a command rather than a query.
+`_fetch_remote_default_ref()` reads the principal remote's advertised symbolic
+`HEAD` with `ls_remote --symref` and fetches the named branch into
+`refs/remotes/{remote}/{branch}`. `_advertised_default_branch()` is the pure
+parser for the advertisement and is tested on its own. Fetching explicitly
+matters because a narrow fetch configuration may omit the default branch, and
+a stale local `remote/HEAD` alias is not trusted.
+
+### Adding a pull mode
+
+1. Add a boolean field to `_PullOptions`.
+2. Extend the `_PullMode` literal with the new strategy's flag string.
+3. Map the field in `_pull_mode()`, adding it to the mutual-exclusion guard so
+   the check stays exhaustive.
+4. Extend `_pull_in_worktree()` with the matching `git pull` invocation.
+
+The CLI wrapper passes `_PullOptions` through Cyclopts, which projects the
+dataclass fields onto the flags `--pull-rebase` and `--pull-ff` today. A new
+field therefore changes the command-line surface as well as the workflow.
+
+### Workflow observability
+
+The workflow reports what it did through `git_donkey.observability`, a small
+adapter with a no-op default. A record is an `Observation`: an `operation`, an
+`outcome`, and at most one label from `pull_mode`, `base_kind`, or
+`error_kind`.
+
+- `pull_mode_selection`: `not_requested`, `selected`, `rejected`.
+- `remote_default_discovery`: `success`, or `failure` with
+  `git_command_error` or `missing_advertised_default`.
+- `default_branch_fetch`: `success`, or `failure` with `git_command_error`.
+- `base_update`: `not_requested`, `not_behind`, `declined`, `started`,
+  `success`, or `failure` with `git_command_error` or `base_not_in_worktree`.
+- `worktree_creation`: `started`, `success`, or `failure`.
+- `template_overlay`: `unavailable` (with `selection_error` when the template
+  directory cannot be selected), `started`, `success`, or `failure` with
+  `os_error`.
+
+Remote default discovery, the default-branch fetch, pull execution, and
+worktree creation are also timed; a span reports its operation name and
+duration only.
+
+Every attribute comes from a fixed vocabulary, so records stay aggregatable.
+Branch names, filesystem paths, remote URLs, Git output, exception text, and
+template directory names are never recorded, because those values have
+unbounded cardinality or disclose local information.
+
+Records are not exported. `NullRecorder` is the default and discards them; the
+module starts no process and opens no connection. Installing `LoggingRecorder`
+routes records through the structured `extra` convention described under
+[Operational logging](#operational-logging) instead, and changes nothing else
+about how the command behaves.
+
 ## git-fafo module boundaries
 
 `git-fafo` is split across three modules, so infrastructure details stay out of

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import typing as typ
 
+import pytest
 from git import Repo
 
 from git_donkey import donkey
@@ -16,8 +17,6 @@ from tests.integration.conftest import _seed_repo, _setup_repo
 
 if typ.TYPE_CHECKING:
     from pathlib import Path
-
-    import pytest
 
 
 def test_git_donkey_creates_new_worktree(
@@ -62,48 +61,45 @@ def test_git_donkey_allows_local_only_base_branch(
     assert Repo(worktree_path).active_branch.name == "feature/from-local", (
         "expected worktree branch name to match"
     )
+    assert Repo(worktree_path).head.commit == repo.head.commit, (
+        "a local-only base supplies the new worktree's start point"
+    )
 
 
+@pytest.mark.parametrize(
+    "options",
+    [donkey._PullOptions(pull_rebase=True), donkey._PullOptions(pull_ff=True)],
+)
+@pytest.mark.parametrize("base", [None, "."])
 def test_git_donkey_updates_base_branch_when_behind_remote(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    options: donkey._PullOptions,
+    base: str | None,
 ) -> None:
-    """git-donkey should update a behind base branch when the prompt is accepted."""
+    """An explicit mode and accepted prompt update the actual base checkout."""
     local_path, _remote_path = _setup_repo(tmp_path)
     repo = Repo(local_path)
 
-    repo.git.checkout("main")
     _seed_repo(repo, "upstream.txt", "upstream change")
     repo.remote("origin").push("main")
+    remote_tip = repo.head.commit.hexsha
     repo.git.reset("--hard", "HEAD~1")
 
     monkeypatch.chdir(local_path)
     monkeypatch.setattr(donkey.helpers, "_prompt_yes_no", lambda *_: True)
 
-    called: dict[str, object] = {}
+    exit_code = donkey.run_git_donkey("feature/update", base, options=options)
 
-    def _fake_update_base_branch_in_worktree(
-        context: donkey._DonkeyContext,
-        *,
-        base_branch: str,
-        prefix: str,
-    ) -> None:
-        called["context"] = context
-        called["base_branch"] = base_branch
-        called["prefix"] = prefix
-
-    monkeypatch.setattr(
-        donkey,
-        "_update_base_branch_in_worktree",
-        _fake_update_base_branch_in_worktree,
+    assert exit_code == 0, (
+        "an accepted prompt updates the base and creates the worktree"
     )
-
-    exit_code = donkey.run_git_donkey("feature/update", no_pull=False)
-
-    assert exit_code == 0, "expected git-donkey to exit successfully"
-    assert called["base_branch"] == "main", "expected main to be updated"
-    assert called["prefix"] == donkey._GIT_DONKEY_PREFIX, (
-        "expected git-donkey prefix in update call"
+    assert repo.head.commit.hexsha == remote_tip, (
+        "the base checkout is fast-forwarded to the remote tip"
+    )
+    worktree_path = local_path.parent / "local.worktrees" / "feature/update"
+    assert Repo(worktree_path).head.commit.hexsha == remote_tip, (
+        "the new worktree starts at the updated base"
     )
 
 

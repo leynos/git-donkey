@@ -2,15 +2,23 @@
 
 The unit and integration suites both need lightweight GitHub API doubles while
 keeping the real workflow modules importable. This root ``conftest`` provides
-the reusable user and repository stubs; integration-specific Git repository
-helpers live in ``tests.integration.conftest``.
+the reusable user and repository stubs and installs the recorder that captures
+workflow observability; integration-specific Git repository helpers live in
+``tests.integration.conftest``.
 """
 
 from __future__ import annotations
 
 import dataclasses
+import typing as typ
 
 import pytest
+
+from git_donkey import observability
+from tests.observability_helpers import RecordingRecorder
+
+if typ.TYPE_CHECKING:
+    import collections.abc as cabc
 
 
 @dataclasses.dataclass
@@ -80,3 +88,20 @@ def github_stubs() -> tuple[type[StubUser], type[StubGitHub]]:
 
     """
     return StubUser, StubGitHub
+
+
+@pytest.fixture
+def recording_recorder() -> cabc.Iterator[RecordingRecorder]:
+    """Capture the workflow observations a test provokes.
+
+    Yields
+    ------
+    RecordingRecorder
+        The installed recorder. The recorder that was installed beforehand is
+        restored when the test finishes.
+
+    """
+    recorder = RecordingRecorder()
+    previous = observability.set_recorder(recorder)
+    yield recorder
+    observability.set_recorder(previous)

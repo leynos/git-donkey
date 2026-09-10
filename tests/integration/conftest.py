@@ -73,7 +73,7 @@ def _setup_repo(tmp_path: Path) -> tuple[Path, Path]:
     remote_path = tmp_path / "remote.git"
     local_path = tmp_path / "local"
 
-    Repo.init(remote_path, bare=True)
+    remote_repo = Repo.init(remote_path, bare=True)
     local_repo = Repo.init(local_path)
     _configure_repo(local_repo)
     local_repo.create_remote("origin", remote_path.as_posix())
@@ -81,5 +81,6 @@ def _setup_repo(tmp_path: Path) -> tuple[Path, Path]:
     _seed_repo(local_repo, "README.md", "seed")
     local_repo.git.branch("-M", "main")
     local_repo.remote("origin").push("main")
+    remote_repo.git.symbolic_ref("HEAD", "refs/heads/main")
 
     return local_path, remote_path

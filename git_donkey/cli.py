@@ -33,9 +33,10 @@ _donkey_app = App(
     name="git donkey",
     help=(
         "Create a linked worktree at ../{repo}.worktrees/{branch}, branching from "
-        "main (default), a specified base branch, or '.' meaning the branch "
-        "currently checked out in the CWD. Uses the first remote and reuses "
-        "existing local/remote branches when present."
+        "the first remote's default branch, a specified base, or '.' meaning the "
+        "branch currently checked out in the CWD. Fetches remote refs without "
+        "pulling by default. --pull-rebase or --pull-ff enables a confirmation "
+        "prompt to update a behind local base. Reuses existing branches."
     ),
 )
 
@@ -46,6 +47,10 @@ def _donkey_cli(
     origin_branch: str | None = None,
     *,
     no_pull: bool = False,
+    options: typ.Annotated[
+        donkey._PullOptions,
+        Parameter(name="*"),
+    ] = donkey._DEFAULT_PULL_OPTIONS,
 ) -> None:
     """CLI wrapper for git-donkey."""
     raise SystemExit(
@@ -53,6 +58,7 @@ def _donkey_cli(
             branch_name,
             origin_branch,
             no_pull=no_pull,
+            options=options,
         )
     )
 

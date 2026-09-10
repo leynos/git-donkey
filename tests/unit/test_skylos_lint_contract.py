@@ -106,7 +106,18 @@ _FULL_SUITE_WORKFLOW_JOBS: typ.Final = frozenset((
 ))
 _EXPECTED_SKYLOS_WHITELIST_NAMES: typ.Final = frozenset[str]()
 _EXPECTED_SKYLOS_DOCUMENTED_WHITELIST_NAMES: typ.Final = frozenset[str]()
-_EXPECTED_SKYLOS_ENTRYPOINT_NAMES: typ.Final = frozenset[str]()
+# Every symbol the workflow or an embedder reaches through the recorder that
+# ``git_donkey.observability`` installs, which no static call graph follows.
+_EXPECTED_SKYLOS_ENTRYPOINT_NAMES: typ.Final = frozenset({
+    "LoggingRecorder",
+    "LoggingRecorder.record",
+    "LoggingRecorder.span",
+    "NullRecorder.record",
+    "NullRecorder.span",
+    "observation",
+    "operation",
+    "set_recorder",
+})
 _SHELL_ARGUMENT_TEXT: typ.Final = st.builds(
     lambda prefix, content, suffix: f"{prefix}{content}{suffix}",
     st.text(alphabet=" \t", max_size=4),
