@@ -47,10 +47,10 @@ infrastructure mutation:
   dry-run planning, and user-facing summaries.
 
 `git_donkey.plonk_policy.completed_candidates` is generic over its candidate
-type: it accepts any iterable whose items expose a read-only `marker`
-property returning `str`, returns the matching candidates unchanged, and
-never mutates the candidates it receives. `git_donkey.plonk` therefore
-passes its worktree candidates directly.
+type: it accepts any iterable whose items expose a read-only `marker` property
+returning `str`, returns the matching candidates unchanged, and never mutates
+the candidates it receives. `git_donkey.plonk` therefore passes its worktree
+candidates directly.
 
 The plonk workflow deliberately reads completion history from the canonical
 trunk ref. This allows `git plonk` to be invoked from a linked topic worktree
@@ -137,9 +137,9 @@ make test
 The `Makefile` pins Ruff with `RUFF_VERSION` and ty with `TY_VERSION`, and
 invokes each through the `RUFF` and `TY` variables, which run
 `uv tool run ruff@$(RUFF_VERSION)` and `uv tool run ty@$(TY_VERSION)`. Every
-invocation therefore uses the pinned version regardless of which `ruff` or `ty`,
-if any, is on `PATH`, so local runs cannot silently diverge from continuous
-integration.
+invocation therefore uses the pinned version regardless of which `ruff` or
+`ty`, if any, is on `PATH`, so local runs cannot silently diverge from
+continuous integration.
 
 Pin both deliberately. Rule sets differ between Ruff releases and diagnostics
 differ between ty releases, so an unpinned tool reports problems in one
@@ -198,18 +198,16 @@ a tenth of the machine's cores with a floor of two, keeping the pass parallel
 on small continuous integration runners while leaving headroom on large shared
 machines.
 
-Running `make lint` requires `uv` and `pyscn` on `PATH`; the Makefile's
-`TOOLS` list and `ensure_tool` check fail early with a clear message if
-`uv` is missing. `pyscn` is the one lint tool `uv` does not provide, so
-continuous integration installs it with `uv tool install pyscn`.
-Everything else needs no separate installation: Ruff and Skylos run via
-`uv tool run` at pinned versions, while interrogate, both Pylint
-passes, and ambrleaks run via `uv run` from the project virtual
-environment. The project requires Python 3.13 or newer, but `uv`
-provisions a suitable CPython interpreter for the virtual environment,
-so contributors need no matching system Python. No Node.js tooling is
-needed for `make lint`; that belongs to the separate `markdownlint` and
-`nixie` targets.
+Running `make lint` requires `uv` and `pyscn` on `PATH`; the Makefile's `TOOLS`
+list and `ensure_tool` check fail early with a clear message if `uv` is missing.
+`pyscn` is the one lint tool `uv` does not provide, so continuous integration
+installs it with `uv tool install pyscn`. Everything else needs no separate
+installation: Ruff and Skylos run via `uv tool run` at pinned versions, while
+interrogate, both Pylint passes, and ambrleaks run via `uv run` from the
+project virtual environment. The project requires Python 3.13 or newer, but
+`uv` provisions a suitable CPython interpreter for the virtual environment, so
+contributors need no matching system Python. No Node.js tooling is needed for
+`make lint`; that belongs to the separate `markdownlint` and `nixie` targets.
 
 ### Development dependencies
 

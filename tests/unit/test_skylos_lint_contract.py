@@ -14,7 +14,7 @@ import functools
 import json
 import os
 import shlex
-import subprocess  # noqa: S404 - fixed commands exercise build boundaries.
+import subprocess  # ruff: ignore[suspicious-subprocess-import] - fixed commands exercise build boundaries.
 import tomllib
 import typing as typ
 from pathlib import Path
@@ -98,6 +98,8 @@ _SKYLOS_PRODUCTION_TARGET_TOKENS: typ.Final = ("git_donkey",)
 _SKYLOS_EXCLUDE_FOLDER_TOKENS: typ.Final = ("tests",)
 _SKYLOS_WHITELIST_LOCK: typ.Final = ".skylos-whitelist.lock"
 _SKYLOS_WHITELIST_LOCK_TOKENS: typ.Final = (_SKYLOS_WHITELIST_LOCK,)
+# The whitelist target reserves exit status 2 for a missing or blank argument.
+_SKYLOS_ALLOW_USAGE_EXIT_STATUS: typ.Final = 2
 _TEST_PREREQUISITES: typ.Final = ("build", "uv", "$(VENV_TOOLS)", "makeutil")
 _FULL_SUITE_WORKFLOW_JOBS: typ.Final = frozenset((
     (".github/workflows/ci.yml", "lint-test"),
@@ -123,7 +125,7 @@ _SHELL_ARGUMENT_TEXT: typ.Final = st.builds(
 @functools.cache
 def _makefile_report() -> dict[str, object]:
     """Return the cached, complete Makeutil report for the test session."""
-    completed = subprocess.run(  # noqa: S603 - fixed local parser command.
+    completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] - fixed local parser command.
         _MAKEUTIL_COMMAND,
         capture_output=True,
         check=True,
@@ -296,7 +298,7 @@ def _run_skylos_allow(
 ) -> subprocess.CompletedProcess[str]:
     """Run a non-mutating whitelist boundary with a WSL-style ``NAME`` value."""
     environment = _skylos_allow_environment(*arguments)
-    return subprocess.run(  # noqa: S603 - fixed Make target and arguments.
+    return subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] - fixed Make target and arguments.
         make_command("skylos-allow"),
         capture_output=True,
         check=False,
@@ -409,7 +411,7 @@ def test_makeutil_target_requires_the_parser_on_path(
     environment["PATH"] = str(tmp_path)
     environment["SHELL"] = "/bin/sh"
 
-    completed = subprocess.run(  # noqa: S603 - fixed Make target without a shell.
+    completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] - fixed Make target without a shell.
         make_command("--no-print-directory", "makeutil"),
         capture_output=True,
         check=False,
@@ -478,9 +480,9 @@ def test_skylos_allow_rejects_missing_or_whitespace_values(
     """The whitelist target must reject missing and whitespace-only values."""
     completed = _run_skylos_allow(make_command, *arguments_for(value))
 
-    assert completed.returncode == 2, (
-        f"Skylos whitelist boundary must return exit 2 when {argument_name} "
-        "is missing or whitespace-only"
+    assert completed.returncode == _SKYLOS_ALLOW_USAGE_EXIT_STATUS, (
+        f"Skylos whitelist boundary must return exit {_SKYLOS_ALLOW_USAGE_EXIT_STATUS}"
+        f" when {argument_name} is missing or whitespace-only"
     )
     assert (
         f"Error: {argument_name} is required for a named whitelist exception"
@@ -522,7 +524,7 @@ Path(os.environ[\"SKYLOS_ARGUMENTS_PATH\"]).write_text(
         environment = _skylos_allow_environment(f"SYMBOL={symbol}", f"REASON={reason}")
         environment["SKYLOS_ARGUMENTS_PATH"] = str(arguments_path)
         lock_path = temporary_path / "skylos-whitelist.lock"
-        completed = subprocess.run(  # noqa: S603 - fixed Make target and recorder.
+        completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] - fixed Make target and recorder.
             make_command(
                 "--no-print-directory",
                 "-f",

@@ -12,10 +12,10 @@ with Skylos last as the blocking production dead-code detector.
 ## Context and Problem Statement
 
 `git-donkey` already combines Ruff, `interrogate`, `pyscn`, two Pylint passes,
-and `ambrleaks` in one local and continuous-integration lint target. Those tools
-cover fast source and style feedback, docstring completeness, static analysis,
-house-style checks, and snapshot leakage. They do not provide a strict
-production-only dead-code gate.
+and `ambrleaks` in one local and continuous-integration lint target. Those
+tools cover fast source and style feedback, docstring completeness, static
+analysis, house-style checks, and snapshot leakage. They do not provide a
+strict production-only dead-code gate.
 
 Skylos provides that final check, but its analysis is only reliable when its
 own runtime Abstract Syntax Tree (AST) understands the project's syntax. It

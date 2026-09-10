@@ -168,6 +168,8 @@ class _FilesystemCleanupAdapter:
 def _completion_marker_for_branch(branch_name: str) -> str | None:
     """Return the completion marker implied by ``branch_name``, if recognized."""
     return plonk_policy.completion_marker_for_branch(branch_name)
+
+
 def _completed_candidates(
     candidates: typ.Iterable[_PlonkCandidate],
     messages: typ.Iterable[str],
@@ -238,6 +240,8 @@ def _donkey_worktree_candidates(
             )
         )
     return candidates
+
+
 def _empty_summary_message(result: _PlonkResult) -> str:
     """Return the no-op summary line for ``result``."""
     if result.mode is _PlonkMode.SOFT and result.inspected_worktrees > 0:
