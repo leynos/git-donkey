@@ -10,6 +10,8 @@ import typing as typ
 from pathlib import Path
 
 import pytest
+from packaging.requirements import Requirement
+from packaging.utils import canonicalize_name
 
 _ROOT = Path(__file__).resolve().parents[2]
 
@@ -154,18 +156,26 @@ def test_build_commands_generate_every_manual() -> None:
     )
 
 
+def _requirement_names(requirements: list[str]) -> set[str]:
+    """Return the canonical distribution names of PEP 508 requirements."""
+    return {
+        canonicalize_name(Requirement(requirement).name) for requirement in requirements
+    }
+
+
 def test_generation_dependencies_are_build_only() -> None:
     """Do not add documentation tools to installed CLI dependencies."""
     config = _project_config()
     for dependency in ("docutils", "hatch-build-scripts"):
+        expected = canonicalize_name(dependency)
         requires = config["build-system"]["requires"]
-        assert any(requirement.startswith(dependency) for requirement in requires), (
+        assert expected in _requirement_names(requires), (
             f"build-system requires must declare {dependency}: {requires}"
         )
         dependencies = config["project"]["dependencies"]
-        assert not any(
-            requirement.startswith(dependency) for requirement in dependencies
-        ), f"runtime dependencies must exclude {dependency}: {dependencies}"
+        assert expected not in _requirement_names(dependencies), (
+            f"runtime dependencies must exclude {dependency}: {dependencies}"
+        )
 
 
 def test_generation_is_strict_and_does_not_insert_files() -> None:

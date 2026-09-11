@@ -180,8 +180,9 @@ while `2` is git-donkey's own code for a command that could not run:
 - `0` means matching commits were found and printed.
 - `1` means no matching commits were found.
 - `2` means the command could not run, such as when no upstream is configured
-  and no explicit ref was supplied, or when the fetch or comparison failed, so
-  automation never mistakes a fetch failure for "no changes".
+  and no explicit ref was supplied, a configured upstream cannot be resolved,
+  or when the fetch or comparison failed, so automation never mistakes a
+  fetch failure for "no changes".
 
 The [users' guide](users-guide.md#git-incoming-and-git-outgoing) documents the
 full command usage, including the console-script aliases.

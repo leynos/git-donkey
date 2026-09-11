@@ -52,7 +52,8 @@ git-donkey-specific code for a command that could not run:
 
 ``2``
     The command could not run: no upstream is configured and no ref was given,
-    the fetch failed, or the comparison failed.
+    a configured upstream cannot be resolved, the fetch failed, or the
+    comparison failed.
 
 OPTIONS
 =======

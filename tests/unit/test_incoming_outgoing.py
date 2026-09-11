@@ -63,6 +63,25 @@ class _FakeRemote:
     name: str
 
 
+class _FakeReference:
+    """Minimal ``repo.head.reference`` double."""
+
+    def __init__(self, *, tracking: bool) -> None:
+        self._tracking = tracking
+
+    def tracking_branch(self) -> _FakeRemote | None:
+        """Report a configured upstream as a non-``None`` tracking branch."""
+        return _FakeRemote("origin") if self._tracking else None
+
+
+class _FakeHead:
+    """Minimal ``repo.head`` double reporting a checked-out branch."""
+
+    def __init__(self, *, tracking: bool) -> None:
+        self.is_detached = False
+        self.reference = _FakeReference(tracking=tracking)
+
+
 class _FakeRepo:
     """Minimal repository double with a ``git`` command surface."""
 
@@ -76,6 +95,7 @@ class _FakeRepo:
     ) -> None:
         self.git = _FakeGit(log_output, upstream=upstream, fail_log=fail_log)
         self.remotes = [_FakeRemote(name) for name in remotes]
+        self.head = _FakeHead(tracking=upstream is not None)
 
 
 class _ModelGit:
@@ -128,11 +148,32 @@ class _FakeAdapter:
         self.fetched.append(remote)
 
 
+class _ComparisonRunner(typ.Protocol):
+    """Callable surface shared by the incoming and outgoing runners."""
+
+    def __call__(self, ref: str | None = None, *, fetch: bool = True) -> int:
+        """Run one comparison and return its process exit code."""
+
+
+class _HarnessRunner(typ.Protocol):
+    """Callable surface of the harness's fake-repository comparison helper."""
+
+    def __call__(
+        self,
+        repo: _FakeRepo,
+        runner: _ComparisonRunner,
+        *,
+        ref: str | None = "origin/main",
+        fetch: bool = True,
+    ) -> tuple[int, str, str]:
+        """Run ``runner`` against ``repo`` and return its exit code and output."""
+
+
 @dataclasses.dataclass(frozen=True, slots=True)
 class _ComparisonHarness:
     """Bound comparison runner plus the remotes it has fetched."""
 
-    run: typ.Callable[..., tuple[int, str, str]]
+    run: _HarnessRunner
     fetches: list[str]
 
 
@@ -150,7 +191,7 @@ def comparison(
 
     def _run(
         repo: _FakeRepo,
-        runner: typ.Callable[..., int],
+        runner: _ComparisonRunner,
         *,
         ref: str | None = "origin/main",
         fetch: bool = True,
@@ -179,14 +220,13 @@ def _format_commits(commits: set[str]) -> str:
 
 def _comparison_records(
     caplog: pytest.LogCaptureFixture,
-) -> tuple[logging.LogRecord, logging.LogRecord]:
-    """Return the captured comparison start and completion records."""
-    started, completed = [
+) -> list[logging.LogRecord]:
+    """Return the captured comparison records in emission order."""
+    return [
         record
         for record in caplog.records
         if getattr(record, "operation", None) == "compare"
     ]
-    return started, completed
 
 
 def _comparison_request(
@@ -383,8 +423,11 @@ def test_fetch_comparison_remote_reports_failure(
 
 def test_run_git_incoming_reports_missing_upstream(
     comparison: _ComparisonHarness,
+    caplog: pytest.LogCaptureFixture,
+    recording_recorder: RecordingRecorder,
 ) -> None:
     """A missing upstream should exit 2 and explain how to configure one."""
+    caplog.set_level(logging.INFO, logger=incoming_outgoing.__name__)
     repo = _FakeRepo("", upstream=None)
 
     exit_code, out, err = comparison.run(
@@ -400,6 +443,68 @@ def test_run_git_incoming_reports_missing_upstream(
     )
     assert "pass a ref" in err, (
         "a missing upstream must suggest passing an explicit ref"
+    )
+    (record,) = _comparison_records(caplog)
+    assert record.levelno == logging.INFO, "a missing upstream must log at INFO"
+    assert record.getMessage() == "No upstream configured for the comparison", (
+        "a missing upstream must log why the comparison did not run"
+    )
+    fields = vars(record)
+    assert fields["direction"] == "incoming", (
+        "the missing-upstream log must carry the direction"
+    )
+    assert fields["result"] == "unavailable", (
+        "a missing upstream must log result=unavailable"
+    )
+    assert recording_recorder.outcomes("comparison") == ["unavailable"], (
+        "a missing upstream must record an unavailable comparison"
+    )
+    assert recording_recorder.error_kinds("comparison") == [], (
+        "an unset upstream is not an error and must record no error kind"
+    )
+
+
+def test_run_git_incoming_reports_upstream_lookup_failure(
+    comparison: _ComparisonHarness,
+    caplog: pytest.LogCaptureFixture,
+    recording_recorder: RecordingRecorder,
+) -> None:
+    """A configured upstream that cannot resolve must not look like no upstream."""
+    caplog.set_level(logging.INFO, logger=incoming_outgoing.__name__)
+    # A branch that configures an upstream rev-parse cannot resolve models the
+    # state the lookup must report, as distinct from an unset upstream.
+    repo = _FakeRepo("", upstream=None)
+    repo.head = _FakeHead(tracking=True)
+
+    exit_code, out, err = comparison.run(
+        repo,
+        incoming_outgoing.run_git_incoming,
+        ref=None,
+    )
+
+    assert exit_code == _COULD_NOT_RUN_EXIT_CODE, "a failed lookup must exit 2"
+    assert not out, "a failed lookup must print no commits"
+    assert "upstream lookup failed" in err, (
+        "a failed lookup must report the lookup itself"
+    )
+    assert "no upstream branch configured" not in err, (
+        "a failed lookup must not be reported as a missing upstream"
+    )
+    (record,) = _comparison_records(caplog)
+    assert record.levelno == logging.WARNING, "a failed lookup must log at WARNING"
+    assert record.getMessage() == "Upstream lookup failed", (
+        "a failed lookup must log a diagnostic message"
+    )
+    fields = vars(record)
+    assert fields["direction"] == "incoming", (
+        "the failure log must carry the comparison direction"
+    )
+    assert fields["result"] == "failure", "the failure log must carry result=failure"
+    assert recording_recorder.outcomes("comparison") == ["failure"], (
+        "a failed lookup must record a failed comparison"
+    )
+    assert recording_recorder.error_kinds("comparison") == ["git_command_error"], (
+        "a failed lookup must record the resolved error kind"
     )
 
 

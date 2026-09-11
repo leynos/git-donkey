@@ -28,8 +28,15 @@ completion. Those steps also report through
 ``git_donkey.observability``: the fetch is timed as ``comparison_fetch`` and
 the comparison read as ``comparison``, each recording a bounded outcome
 through the process-wide recorder (``success``, ``failure``, or
-``not_requested`` for the fetch; ``found``, ``empty``, or ``failure`` for the
-comparison).
+``not_requested`` for the fetch; ``found``, ``empty``, ``failure``, or
+``unavailable`` for the comparison).
+
+Comparison-ref resolution keeps a missing upstream distinct from a failed
+lookup: an unset upstream is an ordinary configuration state that reports
+``unavailable``, while a branch that configures an upstream that cannot be
+resolved raises through the adapter and reports ``failure`` with a
+``git_command_error`` error kind. The diagnostic text differs accordingly, so
+a transient lookup failure is never reported as "no upstream configured".
 
 The ``git_donkey.cli`` module exposes these workflows as Cyclopts apps and
 delegates to ``run_git_incoming`` and ``run_git_outgoing``.
@@ -41,7 +48,8 @@ Both runners return standard process exit codes:
 - 0: matching commits were found and printed
 - 1: the comparison succeeded but found no matching commits
 - 2: the command could not run, such as when no upstream is configured and no
-  explicit ref was supplied, a fetch failed, or the comparison failed
+  explicit ref was supplied, a configured upstream cannot be resolved, a fetch
+  failed, or the comparison failed
 
 Examples
 --------
@@ -69,6 +77,31 @@ _GIT_INCOMING_PREFIX = "git-incoming"
 _GIT_OUTGOING_PREFIX = "git-outgoing"
 
 
+class _UpstreamLookupError(RuntimeError):
+    """A configured upstream could not be resolved."""
+
+
+def _upstream_is_configured(repo: Repo) -> bool:
+    """Report whether the current branch names an upstream it cannot resolve.
+
+    A detached HEAD and an unborn branch both report no configured upstream,
+    matching what ``git rev-parse @{upstream}`` treats as unset. Only a branch
+    that has ``branch.<name>.remote`` and ``branch.<name>.merge`` set, yet
+    still fails to resolve, reaches the failure path.
+
+    Returns
+    -------
+    bool
+        True when the checked-out branch configures an upstream, so a failed
+        lookup is a real error rather than a missing configuration.
+
+    """
+    head = repo.head
+    if head.is_detached:
+        return False
+    return head.reference.tracking_branch() is not None
+
+
 class _GitLog(typ.Protocol):
     """Small protocol for the ``git log`` command surface."""
 
@@ -80,7 +113,11 @@ class _ComparisonAdapter(_GitLog, typ.Protocol):
     """Git infrastructure required by the comparison queries."""
 
     def upstream_ref(self) -> str | None:
-        """Return the current branch upstream ref, or ``None`` when unset."""
+        """Return the current branch upstream ref, or ``None`` when unset.
+
+        Implementations raise when the upstream is configured but cannot be
+        resolved, so callers can tell that apart from an unset upstream.
+        """
 
     def remote_names(self) -> typ.Iterable[str]:
         """Return the configured remote names."""
@@ -107,7 +144,22 @@ class _GitPythonComparison:
     prefix: str
 
     def upstream_ref(self) -> str | None:
-        """Return the upstream ref, or ``None`` when none is configured."""
+        """Return the upstream ref, or ``None`` when none is configured.
+
+        Returns
+        -------
+        str | None
+            The configured upstream ref, or ``None`` when the current branch
+            has no upstream at all.
+
+        Raises
+        ------
+        _UpstreamLookupError
+            When the branch does configure an upstream that ``rev-parse``
+            cannot resolve, so a genuine lookup failure is never reported as
+            a missing upstream.
+
+        """
         try:
             return str(
                 self.repo.git.rev_parse(
@@ -116,7 +168,10 @@ class _GitPythonComparison:
                     "@{upstream}",
                 )
             )
-        except GitCommandError:
+        except GitCommandError as exc:
+            if _upstream_is_configured(self.repo):
+                msg = f"cannot resolve the configured upstream: {exc}"
+                raise _UpstreamLookupError(msg) from exc
             return None
 
     def remote_names(self) -> typ.Iterable[str]:
@@ -292,8 +347,45 @@ def _run_comparison(
     if adapter is None:
         adapter = _GitPythonComparison(helpers._find_repo(prefix), prefix)
 
-    comparison_ref = _resolve_comparison_ref(adapter, request.ref)
+    try:
+        comparison_ref = _resolve_comparison_ref(adapter, request.ref)
+    except _UpstreamLookupError as exc:
+        # A branch that configures an upstream yet cannot resolve it is a
+        # failed lookup, not a missing upstream, so it gets its own
+        # diagnostic and its own bounded error kind.
+        _LOGGER.warning(
+            "Upstream lookup failed",
+            extra={
+                "operation": "compare",
+                "direction": direction,
+                "result": "failure",
+            },
+        )
+        observability.get_recorder().record(
+            observability.Observation(
+                operation="comparison",
+                outcome="failure",
+                error_kind="git_command_error",
+            )
+        )
+        helpers._eprint(f"{prefix}: upstream lookup failed: {exc}")
+        return 2
+
     if comparison_ref is None:
+        _LOGGER.info(
+            "No upstream configured for the comparison",
+            extra={
+                "operation": "compare",
+                "direction": direction,
+                "result": "unavailable",
+            },
+        )
+        observability.get_recorder().record(
+            observability.Observation(
+                operation="comparison",
+                outcome="unavailable",
+            )
+        )
         helpers._eprint(
             f"{prefix}: no upstream branch configured; set one with "
             "`git branch --set-upstream-to <remote>/<branch>` or pass a ref"
@@ -354,8 +446,8 @@ def run_git_incoming(ref: str | None = None, *, fetch: bool = True) -> int:
     int
         ``0`` if commits were found and printed, ``1`` if the comparison
         succeeded but found no commits, or ``2`` if the command could not
-        run (no upstream and no explicit ref, a failed fetch, or a failed
-        comparison).
+        run (no upstream and no explicit ref, an unresolvable upstream, a
+        failed fetch, or a failed comparison).
 
     Examples
     --------
@@ -400,8 +492,8 @@ def run_git_outgoing(ref: str | None = None, *, fetch: bool = True) -> int:
     int
         ``0`` if commits were found and printed, ``1`` if the comparison
         succeeded but found no commits, or ``2`` if the command could not
-        run (no upstream and no explicit ref, a failed fetch, or a failed
-        comparison).
+        run (no upstream and no explicit ref, an unresolvable upstream, a
+        failed fetch, or a failed comparison).
 
     Examples
     --------

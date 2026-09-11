@@ -137,7 +137,8 @@ adapter with a no-op default. A record is an `Observation`: an `operation`, an
 - `comparison_fetch`: `not_requested` when `--no-fetch` is used or the
   comparison ref is a local ref owned by no remote, `success`, or `failure`
   with `git_command_error`.
-- `comparison`: `found`, `empty`, or `failure` with `git_command_error`.
+- `comparison`: `found`, `empty`, `unavailable` when no upstream is configured
+  and no explicit ref was supplied, or `failure` with `git_command_error`.
 
 Remote default discovery, the default-branch fetch, pull execution, worktree
 creation, the comparison fetch, and the comparison are also timed; a span
@@ -147,6 +148,13 @@ Every attribute comes from a fixed vocabulary, so records stay aggregatable.
 Branch names, filesystem paths, remote URLs, Git output, exception text, and
 template directory names are never recorded, because those values have
 unbounded cardinality or disclose local information.
+
+The bounded vocabulary applies to `Observation` records recorded through the
+`Recorder`; the operational log records described under
+[Operational logging](#operational-logging) deliberately retain diagnostic
+values such as `ref` and `remote`, because branch and remote names have
+unbounded cardinality. This distinction is intentional and documented, not an
+oversight.
 
 Records are not exported. `NullRecorder` is the default and discards them; the
 module starts no process and opens no connection. Installing `LoggingRecorder`
@@ -272,7 +280,8 @@ Both runners return standard process exit codes:
 - `1` means the comparison succeeded but found no matching commits; both
   codes are the ones Mercurial documents.
 - `2` is git-donkey's own code for a command that could not run: no upstream
-  configured and no explicit ref, a failed fetch, or a failed comparison.
+  configured and no explicit ref, a configured upstream cannot be resolved, a
+  failed fetch, or a failed comparison.
 
 The shared `helpers._fetch_remote` exits `1` on failure, so the workflow
 catches that `SystemExit` and remaps it to `2`; otherwise a fetch failure would
@@ -295,12 +304,14 @@ through `extra`, so callers can route records into structured logging later:
   `removed_count` provide diagnostic context for plonk cleanup decisions.
 - Incoming and outgoing comparisons use `operation` (`compare` or `fetch`),
   `direction` (`incoming` or `outgoing`), `fetch_enabled`, `ref`, `remote`,
-  `commit_count`, and `result` (`found`, `empty`, `success`, or `failure`).
-  Records are emitted at comparison start, fetch selection, fetch completion,
-  fetch failure, and comparison completion; a successful fetch is confirmed at
-  `INFO` once it returns, while failures are also reported with
-  `_LOGGER.exception` (comparison failure) and `_LOGGER.warning` (fetch
-  failure).
+  `commit_count`, and `result` (`found`, `empty`, `unavailable`, `success`, or
+  `failure`). Records are emitted at comparison start, ref resolution, fetch
+  selection, fetch completion, fetch failure, and comparison completion; a
+  successful fetch is confirmed at `INFO` once it returns, while failures are
+  also reported with `_LOGGER.exception` (comparison failure) and
+  `_LOGGER.warning` (fetch failure). An unset upstream is logged at `INFO` with
+  `result` of `unavailable`, and a configured upstream that cannot be resolved
+  is logged at `WARNING` with `result` of `failure`.
 
 ## Dead-code detection
 

@@ -34,16 +34,37 @@ def _set_main_upstream(repo: Repo) -> None:
     repo.git.branch("--set-upstream-to", "origin/main", "main")
 
 
+class _ComparisonRunner(typ.Protocol):
+    """Callable surface shared by the incoming and outgoing runners."""
+
+    def __call__(self, ref: str | None = None, *, fetch: bool = True) -> int:
+        """Run one comparison and return its process exit code."""
+
+
+class _RunAndCapture(typ.Protocol):
+    """Callable surface of the runner that captures comparison output."""
+
+    def __call__(
+        self,
+        path: Path,
+        runner: _ComparisonRunner,
+        ref: str | None = None,
+        *,
+        fetch: bool = True,
+    ) -> tuple[int, str, str]:
+        """Run ``runner`` in ``path`` and return its exit code and output."""
+
+
 @pytest.fixture
 def run_and_capture(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
-) -> typ.Callable[..., tuple[int, str, str]]:
+) -> _RunAndCapture:
     """Return a comparison runner that captures output in its repository."""
 
     def _run(
         path: Path,
-        runner: typ.Callable[..., int],
+        runner: _ComparisonRunner,
         ref: str | None = None,
         *,
         fetch: bool = True,
@@ -58,7 +79,7 @@ def run_and_capture(
 
 def test_git_incoming_fetches_and_reports_remote_only_commit(
     tmp_path: Path,
-    run_and_capture: typ.Callable[..., tuple[int, str, str]],
+    run_and_capture: _RunAndCapture,
 ) -> None:
     """git-incoming should report commits that would be pulled."""
     local_path, remote_path = _setup_repo(tmp_path)
@@ -82,7 +103,7 @@ def test_git_incoming_fetches_and_reports_remote_only_commit(
 
 def test_git_incoming_no_changes_returns_one(
     tmp_path: Path,
-    run_and_capture: typ.Callable[..., tuple[int, str, str]],
+    run_and_capture: _RunAndCapture,
 ) -> None:
     """git-incoming should return 1 when nothing would be pulled."""
     local_path, _remote_path = _setup_repo(tmp_path)
@@ -102,7 +123,7 @@ def test_git_incoming_no_changes_returns_one(
 
 def test_git_outgoing_reports_local_only_commit(
     tmp_path: Path,
-    run_and_capture: typ.Callable[..., tuple[int, str, str]],
+    run_and_capture: _RunAndCapture,
 ) -> None:
     """git-outgoing should report commits that would be pushed."""
     local_path, _remote_path = _setup_repo(tmp_path)
@@ -125,7 +146,7 @@ def test_git_outgoing_reports_local_only_commit(
 
 def test_git_outgoing_no_changes_returns_one(
     tmp_path: Path,
-    run_and_capture: typ.Callable[..., tuple[int, str, str]],
+    run_and_capture: _RunAndCapture,
 ) -> None:
     """git-outgoing should return 1 when nothing would be pushed."""
     local_path, _remote_path = _setup_repo(tmp_path)
@@ -146,7 +167,7 @@ def test_git_outgoing_no_changes_returns_one(
 
 def test_default_ref_requires_upstream(
     tmp_path: Path,
-    run_and_capture: typ.Callable[..., tuple[int, str, str]],
+    run_and_capture: _RunAndCapture,
 ) -> None:
     """Default comparison should fail clearly when no upstream is configured."""
     local_path, _remote_path = _setup_repo(tmp_path)
@@ -167,7 +188,7 @@ def test_default_ref_requires_upstream(
 
 def test_no_fetch_uses_current_remote_tracking_ref(
     tmp_path: Path,
-    run_and_capture: typ.Callable[..., tuple[int, str, str]],
+    run_and_capture: _RunAndCapture,
 ) -> None:
     """--no-fetch should compare against the already-known tracking ref."""
     local_path, remote_path = _setup_repo(tmp_path)
@@ -192,7 +213,7 @@ def test_no_fetch_uses_current_remote_tracking_ref(
 
 def test_explicit_ref_does_not_require_upstream(
     tmp_path: Path,
-    run_and_capture: typ.Callable[..., tuple[int, str, str]],
+    run_and_capture: _RunAndCapture,
 ) -> None:
     """An explicit comparison ref should work without branch upstream config."""
     local_path, remote_path = _setup_repo(tmp_path)
@@ -217,7 +238,7 @@ def test_explicit_ref_does_not_require_upstream(
 
 def test_canonical_ref_fetches_owning_remote(
     tmp_path: Path,
-    run_and_capture: typ.Callable[..., tuple[int, str, str]],
+    run_and_capture: _RunAndCapture,
 ) -> None:
     """A canonical refs/remotes ref should fetch its owning remote first."""
     local_path, remote_path = _setup_repo(tmp_path)
@@ -299,9 +320,71 @@ def test_git_in_alias_entrypoint_reports_nothing_to_pull(
     assert not captured.err, "an empty comparison must not write to stderr"
 
 
+def test_git_outgoing_entrypoint_reports_local_only_commit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    recording_recorder: RecordingRecorder,
+) -> None:
+    """The git-outgoing entrypoint should run the command boundary end to end."""
+    local_path, _remote_path = _setup_repo(tmp_path)
+    local_repo = Repo(local_path)
+    local_repo.remote("origin").fetch()
+    _seed_repo(local_repo, "local.txt", "local")
+    local_commit = local_repo.head.commit.hexsha[:7]
+
+    # No upstream is configured, so the exit code proves the explicit ref
+    # parsed from ``argv`` reached the runner: an ignored argument list would
+    # fall back to the missing upstream and exit 2. An ignored ``--no-fetch``
+    # would fetch instead, which the recorded spans below detect.
+    monkeypatch.chdir(local_path)
+    monkeypatch.setattr(sys, "argv", ["git-outgoing", "origin/main", "--no-fetch"])
+
+    with pytest.raises(SystemExit) as exit_info:
+        cli.git_outgoing()
+
+    captured = capsys.readouterr()
+    assert exit_info.value.code == 0, "a local-only commit must exit 0"
+    assert local_commit in captured.out, (
+        "the entrypoint must print the local-only commit"
+    )
+    assert not captured.err, "a successful comparison must not write to stderr"
+    assert [span.operation for span in recording_recorder.spans] == ["comparison"], (
+        "--no-fetch must time the comparison without timing a fetch"
+    )
+
+
+def test_git_out_alias_entrypoint_reports_local_only_commit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    recording_recorder: RecordingRecorder,
+) -> None:
+    """The git-out alias should run through the same command boundary."""
+    local_path, _remote_path = _setup_repo(tmp_path)
+    local_repo = Repo(local_path)
+    local_repo.remote("origin").fetch()
+    _seed_repo(local_repo, "local.txt", "local")
+    local_commit = local_repo.head.commit.hexsha[:7]
+
+    monkeypatch.chdir(local_path)
+    monkeypatch.setattr(sys, "argv", ["git-out", "origin/main", "--no-fetch"])
+
+    with pytest.raises(SystemExit) as exit_info:
+        cli.git_out()
+
+    captured = capsys.readouterr()
+    assert exit_info.value.code == 0, "a local-only commit must exit 0"
+    assert local_commit in captured.out, "the alias must print the local-only commit"
+    assert not captured.err, "a successful comparison must not write to stderr"
+    assert recording_recorder.outcomes("comparison") == ["found"], (
+        "the alias must record the comparison outcome"
+    )
+
+
 def test_fetch_failure_returns_two(
     tmp_path: Path,
-    run_and_capture: typ.Callable[..., tuple[int, str, str]],
+    run_and_capture: _RunAndCapture,
 ) -> None:
     """A failed fetch should exit 2 rather than report an empty comparison."""
     local_path, _remote_path = _setup_repo(tmp_path)
