@@ -431,12 +431,13 @@ The wheel's `shared-data` mapping puts each generated page under
 as `<environment>/share/man/man1/<command>.1` without running a generator. The
 source distribution instead keeps the `.rst` sources, the Docutils
 configuration, and the build configuration, and excludes the generated `.1`
-pages, so a rebuild regenerates them rather than reusing build outputs.
+pages, so a subsequent wheel build regenerates them rather than reusing
+build outputs.
 
 Generated pages are build output only. They are ignored by Git and regenerated
-in place on every build, so a stale `docs/man/*.1` never reaches a
-distribution. Edit the `.rst` source and rebuild; never edit or commit a `.1`
-file.
+in place whenever the wheel build hook runs, so a stale `docs/man/*.1`
+never reaches a distribution. Edit the `.rst` source and rebuild; never edit
+or commit a `.1` file.
 
 A change to a console script's arguments or options must update
 `docs/man/<command>.rst` and the users' guide in the same change.
