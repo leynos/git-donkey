@@ -337,6 +337,34 @@ def _read_comparison(
     return 0 if commit_count else 1
 
 
+def _report_upstream_lookup_failure(
+    prefix: str,
+    direction: typ.Literal["incoming", "outgoing"],
+    error: _UpstreamLookupError,
+) -> int:
+    """Report a configured upstream that could not be resolved."""
+    # A branch that configures an upstream yet cannot resolve it is a failed
+    # lookup, not a missing upstream, so it gets its own diagnostic and its own
+    # bounded error kind.
+    _LOGGER.warning(
+        "Upstream lookup failed",
+        extra={
+            "operation": "compare",
+            "direction": direction,
+            "result": "failure",
+        },
+    )
+    observability.get_recorder().record(
+        observability.Observation(
+            operation="comparison",
+            outcome="failure",
+            error_kind="git_command_error",
+        )
+    )
+    helpers._eprint(f"{prefix}: upstream lookup failed: {error}")
+    return 2
+
+
 def _run_comparison(
     request: _ComparisonRequest,
     adapter: _ComparisonAdapter | None = None,
@@ -350,26 +378,7 @@ def _run_comparison(
     try:
         comparison_ref = _resolve_comparison_ref(adapter, request.ref)
     except _UpstreamLookupError as exc:
-        # A branch that configures an upstream yet cannot resolve it is a
-        # failed lookup, not a missing upstream, so it gets its own
-        # diagnostic and its own bounded error kind.
-        _LOGGER.warning(
-            "Upstream lookup failed",
-            extra={
-                "operation": "compare",
-                "direction": direction,
-                "result": "failure",
-            },
-        )
-        observability.get_recorder().record(
-            observability.Observation(
-                operation="comparison",
-                outcome="failure",
-                error_kind="git_command_error",
-            )
-        )
-        helpers._eprint(f"{prefix}: upstream lookup failed: {exc}")
-        return 2
+        return _report_upstream_lookup_failure(prefix, direction, exc)
 
     if comparison_ref is None:
         _LOGGER.info(
