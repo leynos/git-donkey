@@ -21,6 +21,10 @@ git-track = "git_donkey.cli:git_track"
 git-fafo = "git_donkey.cli:git_fafo"
 git-plonk = "git_donkey.cli:git_plonk"
 git-donkey-template = "git_donkey.cli:git_donkey_template"
+git-incoming = "git_donkey.cli:git_incoming"
+git-in = "git_donkey.cli:git_in"
+git-outgoing = "git_donkey.cli:git_outgoing"
+git-out = "git_donkey.cli:git_out"
 
 [dependency-groups]
 dev = [
@@ -35,6 +39,7 @@ dev = [
     "pytest-bdd>=8.1.0,<9",
     "syrupy>=5.5.3,<6",
     "pylint>=4.0,<5",
+    "packaging>=25.0,<26",
     "df12-python-lints @ git+https://github.com/leynos/df12-python-lints@v0.2.0",
 ]
 
@@ -422,6 +427,10 @@ commands = [
     "rst2man --config=docutils.conf --output=git-fafo.1 git-fafo.rst",
     "rst2man --config=docutils.conf --output=git-plonk.1 git-plonk.rst",
     "rst2man --config=docutils.conf --output=git-donkey-template.1 git-donkey-template.rst",
+    "rst2man --config=docutils.conf --output=git-incoming.1 git-incoming.rst",
+    "rst2man --config=docutils.conf --output=git-in.1 git-in.rst",
+    "rst2man --config=docutils.conf --output=git-outgoing.1 git-outgoing.rst",
+    "rst2man --config=docutils.conf --output=git-out.1 git-out.rst",
 ]
 
 [tool.hatch.build.targets.wheel.shared-data]
@@ -430,6 +439,10 @@ commands = [
 "docs/man/git-fafo.1" = "share/man/man1/git-fafo.1"
 "docs/man/git-plonk.1" = "share/man/man1/git-plonk.1"
 "docs/man/git-donkey-template.1" = "share/man/man1/git-donkey-template.1"
+"docs/man/git-incoming.1" = "share/man/man1/git-incoming.1"
+"docs/man/git-in.1" = "share/man/man1/git-in.1"
+"docs/man/git-outgoing.1" = "share/man/man1/git-outgoing.1"
+"docs/man/git-out.1" = "share/man/man1/git-out.1"
 
 [tool.hatch.build.targets.sdist]
 # The default source selection includes docs/man/*.rst and docutils.conf.

@@ -1,15 +1,19 @@
 # git-donkey 0.2.0 migration guide
 
-This guide covers the base-selection and base-update changes in the
-forthcoming git-donkey 0.2.0 release, for users upgrading from 0.1.0. The
-[default-base and pull-mode design](default-base-and-pull-modes.md) records the
-full contract; this guide focuses on the user-visible differences and the
-commands that replace the old defaults.
+This guide covers the user-visible changes in the forthcoming git-donkey 0.2.0
+release, for users upgrading from 0.1.0: the base-selection and base-update
+changes to `git donkey`, and the new `git incoming` and `git outgoing`
+comparison commands. The [default-base and pull-mode
+design](default-base-and-pull-modes.md) records the full contract for the base
+changes; this guide focuses on the user-visible differences and the commands
+that replace the old defaults.
 
 ## Who is affected
 
-The changes apply to `git donkey` only. `git track`, `git fafo`, `git plonk`,
-and `git donkey-template` are unchanged.
+The base-selection and base-update changes apply to `git donkey` only.
+`git track`, `git fafo`, `git plonk`, and `git donkey-template` are unchanged.
+The release also adds `git incoming` and `git outgoing`; nothing existing is
+removed or renamed, so the 0.1.0 command surface keeps working unchanged.
 
 - Repositories whose default branch is not `main`, or whose principal remote
   is not `origin`: an omitted base now follows the remote default instead of
@@ -113,6 +117,75 @@ on the remote. `.` picks the branch checked out in the calling working
 directory, including when called from a linked worktree. If the requested
 branch already exists locally or on the remote, it is reused with its
 existing tracking rules; the base is used only when creating a new branch.
+
+## New comparison commands
+
+0.2.0 adds `git incoming` (`git in`) and `git outgoing` (`git out`), which
+preview branch movement before pulling or pushing. Both are new commands with
+no 0.1.0 equivalent; they use Git branches in place of Mercurial bookmarks:
+
+- `git incoming` and `git in` show commits reachable from the comparison ref
+  and not reachable from `HEAD`; the commits a pull would bring in.
+- `git outgoing` and `git out` show commits reachable from `HEAD` and not
+  reachable from the comparison ref; the commits a push would send.
+
+### Default comparison ref
+
+When no ref is provided, both commands compare against the current branch's
+configured upstream, such as `origin/feature/foo`:
+
+```shell
+# Show commits that would be pulled from the upstream
+git incoming
+git in
+
+# Show commits that would be pushed to the upstream
+git outgoing
+git out
+```
+
+If no upstream is configured, the command exits with code `2` and explains how
+to set an upstream or pass an explicit ref.
+
+### Explicit comparison refs
+
+An explicit ref overrides the upstream for one run:
+
+```shell
+git incoming origin/main
+git outgoing origin/release/1.2
+```
+
+### Fetching
+
+Remote-backed comparison refs, whether written as `origin/main` or in
+canonical `refs/remotes/origin/main` form, are fetched before the comparison by
+default. The fetch updates the shared remote-tracking ref, so a later
+`--no-fetch` run compares against the newly fetched state. Pass `--no-fetch` to
+compare against the currently known local tracking ref without contacting the
+remote:
+
+```shell
+git incoming --no-fetch
+git outgoing origin/main --no-fetch
+```
+
+Local refs such as `main` are never fetched.
+
+### Exit codes
+
+Codes `0` and `1` follow Mercurial's documented behaviour for these commands,
+while `2` is git-donkey's own code for a command that could not run:
+
+- `0` means matching commits were found and printed.
+- `1` means no matching commits were found.
+- `2` means the command could not run, such as when no upstream is configured
+  and no explicit ref was supplied, a configured upstream cannot be resolved,
+  or when the fetch or comparison failed, so automation never mistakes a
+  fetch failure for "no changes".
+
+The [users' guide](users-guide.md#git-incoming-and-git-outgoing) documents the
+full command usage, including the console-script aliases.
 
 ## Command migration
 

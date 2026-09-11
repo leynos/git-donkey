@@ -10,6 +10,8 @@ import typing as typ
 from pathlib import Path
 
 import pytest
+from packaging.requirements import Requirement
+from packaging.utils import canonicalize_name
 
 _ROOT = Path(__file__).resolve().parents[2]
 
@@ -154,18 +156,26 @@ def test_build_commands_generate_every_manual() -> None:
     )
 
 
+def _requirement_names(requirements: list[str]) -> set[str]:
+    """Return the canonical distribution names of PEP 508 requirements."""
+    return {
+        canonicalize_name(Requirement(requirement).name) for requirement in requirements
+    }
+
+
 def test_generation_dependencies_are_build_only() -> None:
     """Do not add documentation tools to installed CLI dependencies."""
     config = _project_config()
     for dependency in ("docutils", "hatch-build-scripts"):
+        expected = canonicalize_name(dependency)
         requires = config["build-system"]["requires"]
-        assert any(requirement.startswith(dependency) for requirement in requires), (
+        assert expected in _requirement_names(requires), (
             f"build-system requires must declare {dependency}: {requires}"
         )
         dependencies = config["project"]["dependencies"]
-        assert not any(
-            requirement.startswith(dependency) for requirement in dependencies
-        ), f"runtime dependencies must exclude {dependency}: {dependencies}"
+        assert expected not in _requirement_names(dependencies), (
+            f"runtime dependencies must exclude {dependency}: {dependencies}"
+        )
 
 
 def test_generation_is_strict_and_does_not_insert_files() -> None:
@@ -194,7 +204,17 @@ def test_generation_is_strict_and_does_not_insert_files() -> None:
 
 @pytest.mark.parametrize(
     "command",
-    ["git-donkey", "git-track", "git-fafo", "git-plonk", "git-donkey-template"],
+    [
+        "git-donkey",
+        "git-track",
+        "git-fafo",
+        "git-plonk",
+        "git-donkey-template",
+        "git-incoming",
+        "git-in",
+        "git-outgoing",
+        "git-out",
+    ],
 )
 def test_manual_has_standard_sections(command: str) -> None:
     """Keep each generated page useful as a standalone reference."""
@@ -226,6 +246,10 @@ def test_manual_has_standard_sections(command: str) -> None:
         ("git-plonk", "--hard"),
         ("git-plonk", "--dry-run"),
         ("git-donkey-template", "XDG_DATA_HOME"),
+        ("git-incoming", "--no-fetch"),
+        ("git-in", "--no-fetch"),
+        ("git-outgoing", "--no-fetch"),
+        ("git-out", "--no-fetch"),
     ],
 )
 def test_manual_covers_command_specific_behaviour(
@@ -319,6 +343,10 @@ def _option_names(command: str, argument: ast.arg) -> list[str]:
         ("git-fafo", "_fafo_cli"),
         ("git-plonk", "_plonk_cli"),
         ("git-donkey-template", "_template_cli"),
+        ("git-incoming", "_incoming_cli"),
+        ("git-in", "_incoming_cli"),
+        ("git-outgoing", "_outgoing_cli"),
+        ("git-out", "_outgoing_cli"),
     ],
 )
 def test_manual_covers_cli_parameters(command: str, wrapper: str) -> None:

@@ -13,5 +13,8 @@ This index summarizes the maintained project documentation.
 - [Scripting standards](scripting-standards.md) records requirements for local
   automation.
 - [Users' guide](users-guide.md) explains the public command-line workflows.
+- [0.2.0 migration guide](v0-2-0-migration-guide.md) records the user-visible
+  changes for users upgrading from 0.1.0, including the new comparison
+  commands.
 
 [adr-003]: adr-003-python-lint-architecture.md

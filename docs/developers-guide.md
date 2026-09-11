@@ -134,21 +134,41 @@ adapter with a no-op default. A record is an `Observation`: an `operation`, an
 - `template_overlay`: `unavailable` (with `selection_error` when the template
   directory cannot be selected), `started`, `success`, or `failure` with
   `os_error`.
+- `comparison_fetch`: `not_requested` when `--no-fetch` is used or the
+  comparison ref is a local ref owned by no remote, `success`, or `failure`
+  with `git_command_error`.
+- `comparison`: `found`, `empty`, `unavailable` when no upstream is configured
+  and no explicit ref was supplied, or `failure` with `git_command_error`.
 
-Remote default discovery, the default-branch fetch, pull execution, and
-worktree creation are also timed; a span reports its operation name and
-duration only.
+Remote default discovery, the default-branch fetch, pull execution, worktree
+creation, the comparison fetch, and the comparison are also timed; a span
+reports its operation name and duration only.
 
 Every attribute comes from a fixed vocabulary, so records stay aggregatable.
 Branch names, filesystem paths, remote URLs, Git output, exception text, and
 template directory names are never recorded, because those values have
 unbounded cardinality or disclose local information.
 
+The bounded vocabulary applies to `Observation` records recorded through the
+`Recorder`; the operational log records described under
+[Operational logging](#operational-logging) deliberately retain diagnostic
+values such as `ref` and `remote`, because branch and remote names have
+unbounded cardinality. This distinction is intentional and documented, not an
+oversight.
+
 Records are not exported. `NullRecorder` is the default and discards them; the
 module starts no process and opens no connection. Installing `LoggingRecorder`
 routes records through the structured `extra` convention described under
 [Operational logging](#operational-logging) instead, and changes nothing else
 about how the command behaves.
+
+The project has no metrics backend, which is the same policy the remote
+adoption classifier records: bounded reason values are the integration point
+for future metrics rather than an ad hoc counter implementation. Here that
+integration point is `Recorder` itself, so a metrics backend implements the
+protocol and receives the bounded `operation` and `outcome` vocabulary plus
+span durations; `comparison_fetch` and `comparison` can then be counted and
+timed without changing the workflow.
 
 ## git-fafo module boundaries
 
@@ -209,11 +229,69 @@ directories.
 `syrupy` pins stable summary rendering. Hypothesis checks marker-shape
 invariants in the pure policy layer.
 
+## git-incoming and git-outgoing module boundaries
+
+`git-incoming` and `git-outgoing` answer the two questions a developer asks
+before syncing with a shared branch: which commits would arrive on a pull, and
+which would leave on a push. The implementation is split between pure
+comparison policy, a Git-facing workflow, and CLI delegation, so comparison
+rules stay testable without GitPython while the workflow owns Git work and
+user-visible behaviour:
+
+- `git_donkey.incoming_outgoing_policy` owns the pure comparison decisions.
+  `remote_name_for_ref()` returns the configured remote that owns a comparison
+  ref, handling both `origin/main` and canonical `refs/remotes/origin/main`
+  forms, and `comparison_range()` returns the include/exclude ref pair for a
+  direction. It contains no GitPython, filesystem, or process mutation and
+  mirrors the `plonk_policy` precedent.
+- `git_donkey.incoming_outgoing` owns Git work and user-visible behaviour.
+  Ref resolution (`_resolve_comparison_ref`) and commit lookup
+  (`_commits_unique_to`) are queries: they return data, a ref string or
+  `git log` output, without printing, fetching, or otherwise changing state.
+  `_run_comparison` is the command boundary: it owns repository discovery,
+  comparison-ref resolution, rendering to stdout or stderr, and exit-code
+  mapping. Its `_fetch_comparison_remote` helper owns the optional fetch: it
+  honours `--no-fetch`, fetches the remote owning the comparison ref, and
+  reports whether the comparison may proceed.
+
+`_run_comparison` accepts a frozen `_ComparisonRequest` value object carrying
+the prefix, direction, optional ref, and fetch flag, plus an optional injected
+adapter. The `_ComparisonAdapter` protocol describes the Git surface the
+queries need: `upstream_ref() -> str | None`, `remote_names()`,
+`fetch_remote(remote)`, and the inherited `log(*args) -> str`.
+`_GitPythonComparison` implements it over GitPython and delegates fetching to
+the shared `helpers._fetch_remote`. Tests drive the workflow with fakes that
+satisfy this protocol, so comparison behaviour is exercised without a real
+repository.
+
+`git_donkey.cli` is the console-script boundary. It defines Cyclopts `App`
+instances for `git incoming` and `git outgoing`, and delegates through a
+`_ComparisonRunner` protocol and the shared `_run_incoming_outgoing_cli` helper
+to the public runners `run_git_incoming(ref=None, *, fetch=True)` and
+`run_git_outgoing(ref=None, *, fetch=True)`. `pyproject.toml` registers four
+console scripts pointing at `git_donkey.cli`: `git-incoming`, the `git-in`
+alias, `git-outgoing`, and the `git-out` alias. Git discovers subcommands by
+executable name, so the aliases need their own scripts rather than argument
+aliases on the primary commands.
+
+Both runners return standard process exit codes:
+
+- `0` means matching commits were found and printed.
+- `1` means the comparison succeeded but found no matching commits; both
+  codes are the ones Mercurial documents.
+- `2` is git-donkey's own code for a command that could not run: no upstream
+  configured and no explicit ref, a configured upstream cannot be resolved, a
+  failed fetch, or a failed comparison.
+
+The shared `helpers._fetch_remote` exits `1` on failure, so the workflow
+catches that `SystemExit` and remaps it to `2`; otherwise a fetch failure would
+masquerade as "no changes" rather than as a failed command.
+
 ## Operational logging
 
-`git-fafo` and `git-plonk` log decision boundaries without logging secrets.
-Stable fields are provided through `extra`, so callers can route records into
-structured logging later:
+`git-fafo`, `git-plonk`, and the `git incoming` and `git outgoing` workflows
+log decision boundaries without logging secrets. Stable fields are provided
+through `extra`, so callers can route records into structured logging later:
 
 - `token_source` records whether credentials came from the environment, cache,
   or device flow.
@@ -224,6 +302,16 @@ structured logging later:
   diagnostic context for repository decisions.
 - `mode`, `worktree`, `marker`, `candidate_count`, `completed_count`, and
   `removed_count` provide diagnostic context for plonk cleanup decisions.
+- Incoming and outgoing comparisons use `operation` (`compare` or `fetch`),
+  `direction` (`incoming` or `outgoing`), `fetch_enabled`, `ref`, `remote`,
+  `commit_count`, and `result` (`found`, `empty`, `unavailable`, `success`, or
+  `failure`). Records are emitted at comparison start, ref resolution, fetch
+  selection, fetch completion, fetch failure, and comparison completion; a
+  successful fetch is confirmed at `INFO` once it returns, while failures are
+  also reported with `_LOGGER.exception` (comparison failure) and
+  `_LOGGER.warning` (fetch failure). An unset upstream is logged at `INFO` with
+  `result` of `unavailable`, and a configured upstream that cannot be resolved
+  is logged at `WARNING` with `result` of `failure`.
 
 ## Dead-code detection
 

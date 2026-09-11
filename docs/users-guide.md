@@ -8,6 +8,10 @@ these as `git <subcommand>` when `git-<subcommand>` is available on the `PATH`.
 - `git donkey` (`git-donkey`) creates linked worktrees for branch-based work.
 - `git track` (`git-track`) fetches the first remote and switches to or creates
   a tracking branch.
+- `git incoming` (`git-incoming`) and `git in` (`git-in`) show commits that
+  would be pulled from the current branch's upstream.
+- `git outgoing` (`git-outgoing`) and `git out` (`git-out`) show commits that
+  would be pushed to the current branch's upstream.
 - `git fafo` (`git-fafo`) scaffolds and publishes a new GitHub repository from
   a template.
 - `git plonk` (`git-plonk`) removes completed worktrees or generated
@@ -26,8 +30,9 @@ uv tool install git-donkey
 
 For an unreleased source checkout, run `uv tool install .` from the repository
 root instead. The wheel includes a section-one manual for every console script:
-`git-donkey(1)`, `git-track(1)`, `git-fafo(1)`, `git-plonk(1)`, and
-`git-donkey-template(1)`.
+`git-donkey(1)`, `git-track(1)`, `git-fafo(1)`, `git-plonk(1)`,
+`git-donkey-template(1)`, `git-incoming(1)`, `git-in(1)`, `git-outgoing(1)`, and
+`git-out(1)`.
 
 ### Installation layout
 
@@ -48,6 +53,10 @@ result is:
 <uv-tool-dir>/git-donkey/share/man/man1/git-fafo.1
 <uv-tool-dir>/git-donkey/share/man/man1/git-plonk.1
 <uv-tool-dir>/git-donkey/share/man/man1/git-donkey-template.1
+<uv-tool-dir>/git-donkey/share/man/man1/git-incoming.1
+<uv-tool-dir>/git-donkey/share/man/man1/git-in.1
+<uv-tool-dir>/git-donkey/share/man/man1/git-outgoing.1
+<uv-tool-dir>/git-donkey/share/man/man1/git-out.1
 ```
 
 Use `uv tool dir` to discover the tool directory rather than assume a
@@ -217,6 +226,63 @@ suggests close matches.
 
 git track feature/foo
 ```
+
+## git incoming and git outgoing
+
+Preview branch movement before pulling or pushing. These commands intentionally
+match the core Mercurial `incoming` and `outgoing` semantics while using Git
+branches in place of Mercurial bookmarks:
+
+- `git incoming` and `git in` show commits reachable from the comparison ref
+  and not reachable from `HEAD`.
+- `git outgoing` and `git out` show commits reachable from `HEAD` and not
+  reachable from the comparison ref.
+
+When no ref is provided, the comparison ref is the current branch's configured
+upstream, such as `origin/feature/foo`. If no upstream is configured, the
+command exits with code `2` and explains how to set an upstream or pass a ref.
+
+```shell
+
+
+# Fetch the upstream remote and show commits that would be pulled
+
+git incoming
+git in
+
+
+# Fetch the upstream remote and show commits that would be pushed
+
+git outgoing
+git out
+```
+
+Pass an explicit ref to compare against something other than the current
+branch's upstream:
+
+```shell
+git incoming origin/main
+git outgoing origin/release/1.2
+```
+
+By default, remote-backed comparison refs are fetched before comparison. Use
+`--no-fetch` to compare against the currently known local tracking ref without
+contacting the remote:
+
+```shell
+git incoming --no-fetch
+git outgoing origin/main --no-fetch
+```
+
+Return codes `0` and `1` follow Mercurial's documented behaviour for these
+commands, while `2` is git-donkey's own code for a command that could not run:
+
+- `0` means matching incoming or outgoing commits were found and printed.
+- `1` means no matching commits were found.
+- `2` means the command could not run, such as when no upstream is configured
+  and no explicit ref was provided, a configured upstream cannot be resolved,
+  or when the fetch or comparison failed, so automation never mistakes a
+  fetch failure for "no changes".
 
 ## git fafo
 
