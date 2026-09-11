@@ -310,10 +310,27 @@ Mercurial bundles, templates, phases, or bookmark comparison output.
   `pyproject.toml` as deliberate, so raising it was rejected in favour of
   trimming the file to 791 lines: the classmethod's construction returned to
   its only caller with a comment naming the state it models, and
-  `_comparison_records()` -- now returning the record list rather than
-  unpacking two itself -- serves the single-record lookups both upstream tests
-  need. Every assertion in both tests is unchanged, so the coverage the
-  architecture and observability findings required is intact.
+  `_comparison_records()` -- then returning the record list rather than
+  unpacking two itself -- served the single-record lookups both upstream tests
+  needed. Every assertion in both tests was unchanged, so the coverage the
+  architecture and observability findings required was intact. (The record
+  helper's later home is recorded in the test-split bullet below.)
+- [x] (2026-09-11 00:00Z) Split the incoming and outgoing unit tests along the
+  production boundaries they verify, clearing the CodeScene low-cohesion
+  finding for `tests/unit/test_incoming_outgoing.py`. The pure remote-ownership
+  decisions now live in `tests/unit/test_incoming_outgoing_policy.py`, which
+  imports only `pytest` and `git_donkey.incoming_outgoing_policy`; the fetch
+  helper and runner observability tests now live in
+  `tests/unit/test_incoming_outgoing_observability.py`, with their own
+  `_FakeAdapter`, single-record `_comparison_records()` lookup, and a minimal
+  local `_FakeRepo`/`_FakeGit` pair rather than private symbols imported from
+  the workflow module; and the workflow module keeps the commit-query,
+  upstream-resolution, comparison-workflow, range-direction, and
+  reachability-model tests. Test behaviour, assertion coverage, fixture
+  semantics, and the Hypothesis strategy are unchanged, and all three files
+  score 10.00 locally under the CodeScene CLI. The workflow module's own
+  `_comparison_record()` lookup replaces its last use of the moved helper, so
+  no private support symbol crosses a module boundary.
 
 ## Surprises & discoveries
 
@@ -433,6 +450,18 @@ Mercurial bundles, templates, phases, or bookmark comparison output.
   present transitively at the same version (25.0). `uv.lock` grew by two lines
   and no resolved version changed, so the escalation is recorded rather than
   acted on further. Date/Author: 2026-09-11, Claude.
+- Decision: Split the incoming and outgoing unit tests by the production
+  boundary each test verifies rather than growing the existing module.
+  Rationale: CodeScene's low-cohesion finding on
+  `tests/unit/test_incoming_outgoing.py` was valid -- the module mixed pure
+  policy decisions, fetch-helper observability, and end-to-end command
+  workflows, which are three different reasons to change. The workflow module
+  also needed a second trim anyway to stay under pylint's 800-line limit. The
+  split gives each module one reason to change and keeps private support
+  symbols (`_FakeAdapter`, `_comparison_records`, and `_FakeRepo`) local to the
+  module that uses them, so no test module imports another test module's
+  private names. Production code is untouched, so the split cannot change
+  behaviour. Date/Author: 2026-09-11, Claude.
 
 ## Outcomes & retrospective
 
@@ -458,12 +487,14 @@ boundary the deferral was protecting.
 ### Scope overrun
 
 The Scope tolerance above allowed 450 net lines of production code. The
-delivered implementation is 746 net lines (755 added, 9 deleted) across four
-non-test source files: `git_donkey/incoming_outgoing.py` (514 lines),
+delivered implementation is 755 net lines (764 added, 9 deleted) across four
+non-test source files: `git_donkey/incoming_outgoing.py` (523 lines),
 `git_donkey/cli.py` (140), `git_donkey/incoming_outgoing_policy.py` (94), and
 `git_donkey/observability.py` (7). It stood at 654 net lines before the fourth
-review round added the upstream-resolution fix and its instrumentation. The
-file count is within the eight-file limit; the line count is not.
+review round added the upstream-resolution fix and its instrumentation, and at
+746 before the fifth round extracted the upstream-lookup failure report into
+its own helper. The file count is within the eight-file limit; the line count
+is not.
 
 This was not escalated when the tolerance was crossed, which is a process
 failure recorded here rather than excused. The work continued because the user
@@ -575,8 +606,13 @@ LOG="/tmp/${ACTION}-git-donkey-$(git branch --show-current).out"
 make build 2>&1 | tee "/tmp/build-git-donkey-$(git branch --show-current).out"
 UV_CACHE_DIR=.uv-cache UV_TOOL_DIR=.uv-tools uv run pytest -v \
   tests/unit/test_incoming_outgoing.py \
+  tests/unit/test_incoming_outgoing_policy.py \
+  tests/unit/test_incoming_outgoing_observability.py \
   tests/integration/test_git_incoming_outgoing.py 2>&1 | tee "$LOG"
 ```
+
+The two extra unit modules are the later split recorded in the progress log;
+the original stage ran only the first and last.
 
 Expected red-stage transcript before implementation:
 
@@ -752,4 +788,7 @@ operational log records, and the [Scope overrun](#scope-overrun) disclosure.
 Revised later on 2026-09-11 to record the two `make lint` fixes that round
 required: the missing `Returns` section and the test-module trim that holds
 `tests/unit/test_incoming_outgoing.py` under pylint's 800-line limit without
-weakening either upstream test.
+weakening either upstream test. Revised again on 2026-09-11 to record the
+`_report_upstream_lookup_failure` extraction and the split of the incoming and
+outgoing unit tests into policy, observability, and workflow modules along the
+production boundaries they verify.
