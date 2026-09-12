@@ -104,11 +104,14 @@ remote selection (`principal_remote()`), the pure
 `discover_default_branch()`, and `fetch_default_branch_ref()`, which fetches the
 named branch into `refs/remotes/{remote}/{branch}`.
 `git_donkey.donkey._fetch_remote_default_ref()` composes discovery with the
-fetch for base selection, and `git_donkey.plonk._canonical_trunk_ref()` does the
-same for completion history, so the two commands cannot disagree about which
-branch is trunk. Fetching explicitly matters because a narrow fetch
-configuration may omit the default branch, and a stale local `remote/HEAD`
-alias is not trusted.
+fetch for base selection. For completion history, `git_donkey.plonk` splits the
+same resolution into a query and a command, because a query must not fetch:
+`_advertised_trunk()` selects the principal remote and reads the default name
+it advertises, while `_fetch_canonical_trunk_ref()` composes that query with
+`fetch_default_branch_ref()` and returns the remote-tracking ref. The two
+commands therefore cannot disagree about which branch is trunk. Fetching
+explicitly matters because a narrow fetch configuration may omit the default
+branch, and a stale local `remote/HEAD` alias is not trusted.
 
 ### Adding a pull mode
 
@@ -126,8 +129,11 @@ field therefore changes the command-line surface as well as the workflow.
 
 The workflow reports what it did through `git_donkey.observability`, a small
 adapter with a no-op default. A record is an `Observation`: an `operation`, an
-`outcome`, and at most one label from `pull_mode`, `base_kind`, or
-`error_kind`.
+`outcome`, and the labels that step reports, drawn from the fixed vocabularies
+(`pull_mode`, `base_kind`, `error_kind`, `mode`, `skip_reason`). `mode` is the
+git-plonk cleanup mode (`default`, `soft`, or `hard`) and `skip_reason` is why
+a cleanup step left a worktree in place (`dirty`, `unavailable`, or
+`removal_failed`).
 
 - `pull_mode_selection`: `not_requested`, `selected`, `rejected`.
 - `remote_default_discovery`: `success`, or `failure` with
@@ -144,6 +150,12 @@ adapter with a no-op default. A record is an `Observation`: an `operation`, an
   with `git_command_error`.
 - `comparison`: `found`, `empty`, `unavailable` when no upstream is configured
   and no explicit ref was supplied, or `failure` with `git_command_error`.
+- `worktree_preflight`: `success`, or `skipped` with `skip_reason` `dirty`,
+  `unavailable`, or `removal_failed`; records `mode`.
+- `worktree_removal`: `success`, or `failure` with `git_command_error`;
+  records `mode`.
+- `branch_deletion`: `success`, or `failure` with `git_command_error`;
+  records `mode`.
 
 Remote default discovery, the default-branch fetch, pull execution, worktree
 creation, the comparison fetch, and the comparison are also timed; a span
@@ -152,7 +164,8 @@ reports its operation name and duration only.
 Every attribute comes from a fixed vocabulary, so records stay aggregatable.
 Branch names, filesystem paths, remote URLs, Git output, exception text, and
 template directory names are never recorded, because those values have
-unbounded cardinality or disclose local information.
+unbounded cardinality or disclose local information. The cleanup records keep
+that guarantee: a skip reason is a bounded label, never a message.
 
 The bounded vocabulary applies to `Observation` records recorded through the
 `Recorder`; the operational log records described under
@@ -196,8 +209,8 @@ variables, credential files, or OAuth prompts.
 
 ## git-plonk module boundaries
 
-`git-plonk` is split between pure completion policy, CLI parsing, and
-infrastructure mutation:
+`git-plonk` is split across pure policy and selection, shared records,
+summary rendering, CLI parsing, and infrastructure mutation:
 
 - `git_donkey.cli` exposes the `git-plonk` console script and maps `--soft`,
   `--hard`, and `--dry-run` to `git_donkey.plonk.run_git_plonk()`.
@@ -206,9 +219,23 @@ infrastructure mutation:
   such as `road-1-2-3a-4-title` to `(road.1.2.3a.4)`, and selects candidates
   whose markers appear in history. It must stay free of GitPython, filesystem,
   and process mutation.
-- `git_donkey.plonk` owns repository discovery, git-donkey worktree discovery,
-  generated-directory cleanup, Git worktree removal, local branch deletion,
-  dry-run planning, and user-facing summaries.
+- `git_donkey.plonk_records` owns the records and vocabulary the workflow
+  speaks: the cleanup modes, the skip reasons, the candidate and result records
+  (`_PlonkCandidate`, `_SkippedWorktree`, `_PlonkResult`, `_PlonkContext`,
+  `_SoftPlonkContext`), and the maps that translate modes and skip reasons into
+  the bounded observability labels. It holds values only: no Git access and no
+  filesystem access.
+- `git_donkey.plonk_selection` turns parsed `git worktree list --porcelain`
+  stanzas into the git-donkey worktrees `git plonk` may clean, and into
+  completed candidates. It is pure: it reads stanza values and path objects,
+  never Git state or the filesystem, and it contains the only
+  branch-name-to-candidate selection rule.
+- `git_donkey.plonk_summary` holds the summary rendering: `_render_summary()`
+  and its section helpers take a finished `_PlonkResult` and return text,
+  reading no Git state and touching no filesystem. `_render_summary()` is what
+  `run_git_plonk()` prints.
+- `git_donkey.plonk` keeps orchestration (`run_git_plonk()`), the GitPython
+  adapter, worktree removal and branch deletion, and dry-run planning.
 - `git_donkey.remote_default` owns the principal-remote and default-branch
   discovery both commands use, so completion history and base selection cannot
   diverge.
@@ -235,6 +262,13 @@ branches after a successful unforced removal, so a skipped worktree keeps its
 branch; it does not delete remote branches. Soft mode uses the same git-donkey
 worktree discovery but only removes conventional generated directories such as
 `target`, `node_modules`, `.venv`, and cache directories.
+
+A local branch Git refuses to delete is reported rather than fatal. The
+worktree counts as removed, the branch is neither reported as removed nor
+reported as skipped, and the failure gets its own `Failed branch deletions:`
+summary section. The sweep continues with later candidates, and
+`run_git_plonk()` returns exit status 1 for a run whose branch deletion failed;
+a run that only skipped worktrees still returns 0.
 
 The decision table, the skip vocabulary, and the reasoning behind reporting
 skips rather than forcing removal are recorded in the
@@ -491,6 +525,19 @@ analyse identical syntax.
 The root `conftest.py` provides GitHub API stubs shared by unit and integration
 tests. Integration-specific Git repository helpers live in
 `tests/integration/conftest.py`.
+
+`tests/git_repo_helpers.py` provides shared builders that create real
+repositories: `configure_repo()`, `seed_repo()`, and
+`repo_with_remote_default()`. Both the unit and integration suites use them,
+because these tests pin Git's own behaviour (which remote default a repository
+advertises, and what `git worktree remove` refuses) rather than a Python
+double's idea of it. The builders configure a local commit identity, so tests
+never read or write the runner's global Git configuration.
+
+`tests/observability_helpers.py` holds the recording recorder used to assert
+bounded workflow records, plus `declared_attribute_values()`, which derives the
+bounded vocabulary from the `git_donkey.observability` type aliases. The root
+`conftest.py` installs it through the `recording_recorder` fixture.
 
 `tests/integration/conftest.py` also provides the `stub_commands` fixture. It
 creates temporary `git` and `copier` executables that append their command-line

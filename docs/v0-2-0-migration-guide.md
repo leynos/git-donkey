@@ -150,6 +150,12 @@ work. In 0.2.0 cleanup is unforced:
   by `git branch -D`.
 - Each skipped worktree is listed under `Skipped worktrees:` with the reason it
   was left alone, and skips appear in `--dry-run` previews too.
+- A local branch Git refuses to delete is reported under `Failed branch
+  deletions:` instead of ending the sweep: the worktree has gone, the branch is
+  reported neither as removed nor as skipped, and the remaining candidates are
+  still processed. Such a run exits with status `1`, so a partial sweep is
+  visible to scripts; a skip still leaves the status at `0`, because a skip is
+  a reported decision.
 
 `git plonk --soft` is unchanged: it still removes generated directories only,
 and never touches worktrees or branches.

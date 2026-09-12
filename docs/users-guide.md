@@ -382,6 +382,11 @@ Files ignored by `.gitignore` are the exception, because Git's own removal rule
 ignores them too. There is no option that forces removal, so a skipped worktree
 stays on disk with its branch intact.
 
+In hard mode, if Git refuses to delete a local branch, the command reports it
+under a `Failed branch deletions:` heading and continues with the remaining
+worktrees. Such a run exits with status 1, unlike a skip, which leaves the
+status at 0.
+
 Soft mode removes generated directories from all `git donkey` worktrees without
 removing worktrees or branches:
 
@@ -422,8 +427,11 @@ and each skipped worktree is listed with the reason it was left alone:
 git-plonk: mode=hard
 Removed worktrees:
 - /home/user/demo.worktrees/issue-123-fix
+- /home/user/demo.worktrees/issue-321-old
 Removed branches:
 - issue-123-fix
+Failed branch deletions:
+- issue-321-old (branch deletion failed)
 Skipped worktrees:
 - /home/user/demo.worktrees/issue-456-dirty (uncommitted changes)
 - /home/user/demo.worktrees/issue-789-gone (worktree directory is missing)

@@ -42,6 +42,22 @@ Nothing in this command forces a removal, so a skipped worktree stays on disk
 with its branch intact.
 The summary lists removed worktrees, deleted branches, and every skipped
 worktree with the reason it was skipped.
+A branch Git refuses to delete is reported in a ``Failed branch deletions:``
+section.
+The sweep continues with the remaining candidates, and the command exits with
+status ``1``.
+
+The command exits with one of the following statuses:
+
+``0``
+    The sweep did everything it planned, including any reported skips.
+
+``1``
+    The trunk could not be resolved, or a local branch could not be deleted.
+
+``2``
+    The command could not run, for example ``--soft`` combined with
+    ``--hard``.
 
 OPTIONS
 =======
@@ -58,7 +74,8 @@ OPTIONS
     Apply the same completion-marker check and the same cleanliness check as
     default mode.
     A worktree skipped for uncommitted or untracked files keeps its branch,
-    because the branch is deleted only after its worktree is removed.
+    because the branch is deleted only after its worktree is removed; a
+    refused branch deletion is reported rather than fatal.
     Never force a removal and never delete remote branches.
 
 --dry-run
