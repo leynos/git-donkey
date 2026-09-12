@@ -90,7 +90,7 @@ were found.
 Unit tests drive the workflow with recording fakes and assert that removal is
 issued without `--force`, that a dirty candidate is skipped while its clean
 sibling is still removed, and that a skipped candidate keeps its branch in hard
-mode. A parameterised test compares the preflight against a real
+mode. A parameterized test compares the preflight against a real
 `git worktree remove` for clean, modified, staged, untracked, and ignored
 files, asserting both the classification and the actual Git outcome.
 Behavioural tests run the command against real temporary repositories for dirty

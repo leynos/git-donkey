@@ -77,7 +77,7 @@ def _apply_dirt(worktree_path: Path, dirt: str) -> None:
     Raises
     ------
     AssertionError
-        If ``dirt`` names no supported state, so a typo in a parametrisation
+        If ``dirt`` names no supported state, so a typo in a parametrization
         cannot silently pass as a clean worktree.
 
     """
