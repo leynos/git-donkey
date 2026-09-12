@@ -2,7 +2,8 @@
 
 These tests exercise the CLI command in ``git_donkey.cli`` against real
 temporary repositories and template directories. They depend on the shared
-GitPython setup helpers from ``tests.integration.conftest``.
+GitPython setup helpers in ``tests.git_repo_helpers`` and
+``tests.integration.conftest``.
 """
 
 from __future__ import annotations
@@ -12,7 +13,8 @@ import typing as typ
 from git import Repo
 
 from git_donkey import slugs, template_cmd, templates
-from tests.integration.conftest import _configure_repo, _setup_repo
+from tests.git_repo_helpers import configure_repo
+from tests.integration.conftest import _setup_repo
 
 if typ.TYPE_CHECKING:
     from pathlib import Path
@@ -125,7 +127,7 @@ def test_git_donkey_template_fails_without_remote(
     # Initialize a repo with no remotes
     repo_path = tmp_path / "repo-without-remote"
     repo = Repo.init(repo_path)
-    _configure_repo(repo)
+    configure_repo(repo)
 
     # Ensure the repo has at least one commit
     dummy_file = repo_path / "README.md"
@@ -161,7 +163,7 @@ def test_git_donkey_template_fails_without_origin_remote(
     """git-donkey-template should error when origin remote is missing."""
     repo_path = tmp_path / "repo-multi-remote"
     repo = Repo.init(repo_path)
-    _configure_repo(repo)
+    configure_repo(repo)
 
     dummy_file = repo_path / "README.md"
     dummy_file.write_text("initial\n", encoding="utf-8")

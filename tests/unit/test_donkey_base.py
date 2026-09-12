@@ -1,4 +1,8 @@
-"""Unit contracts for remote default discovery and opt-in pull selection."""
+"""Unit contracts for git-donkey base selection and opt-in pull selection.
+
+Implicit base selection is the shared principal-remote default-branch discovery;
+its contracts live with the module in ``tests.unit.test_remote_default``.
+"""
 
 from __future__ import annotations
 
@@ -14,29 +18,6 @@ if typ.TYPE_CHECKING:
 
 # Exit status reserved for a command-line usage error.
 _USAGE_ERROR_EXIT_CODE = 2
-
-
-@pytest.mark.parametrize(
-    ("advertisement", "expected"),
-    [
-        ("ref: refs/heads/trunk\tHEAD\nabc\tHEAD", "trunk"),
-        ("ref: refs/heads/release/stable\tHEAD", "release/stable"),
-        ("abc\tHEAD", None),
-        ("", None),
-        ("ref: refs/tags/v1\tHEAD", None),
-        ("ref: refs/heads/main\tother", None),
-        ("garbage refs/heads/main HEAD", None),
-        ("ref: refs/heads/main HEAD extra", None),
-    ],
-)
-def test_advertised_default_branch(
-    advertisement: str,
-    expected: str | None,
-) -> None:
-    """Only the advertised HEAD branch supplies an implicit base."""
-    assert donkey._advertised_default_branch(advertisement) == expected, (
-        "only a symbolic HEAD ref names the default branch"
-    )
 
 
 @pytest.mark.parametrize(

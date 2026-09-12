@@ -9,7 +9,8 @@ import pytest
 from git import Repo
 
 from git_donkey import cli, incoming_outgoing
-from tests.integration.conftest import _configure_repo, _seed_repo, _setup_repo
+from tests.git_repo_helpers import configure_repo
+from tests.integration.conftest import _seed_repo, _setup_repo
 
 if typ.TYPE_CHECKING:
     from pathlib import Path
@@ -25,7 +26,7 @@ _COULD_NOT_RUN_EXIT_CODE = 2
 def _clone_remote(remote_path: Path, clone_path: Path) -> Repo:
     """Clone the bare test remote and configure an author identity."""
     repo = Repo.clone_from(remote_path.as_posix(), clone_path, branch="main")
-    _configure_repo(repo)
+    configure_repo(repo)
     return repo
 
 

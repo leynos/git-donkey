@@ -21,7 +21,13 @@ import typing as typ
 
 from git import Git, GitCommandError, Repo
 
-from git_donkey import donkey_worktrees, helpers, observability, templates
+from git_donkey import (
+    donkey_worktrees,
+    helpers,
+    observability,
+    remote_default,
+    templates,
+)
 from git_donkey.helpers import _GIT_DONKEY_PREFIX as _GIT_DONKEY_PREFIX
 from git_donkey.observability import Observation
 
@@ -79,126 +85,13 @@ def choose_base_branch(saved_cwd_branch: str, origin_arg: str) -> str:
     return origin_arg
 
 
-def _advertised_default_branch(advertisement: str) -> str | None:
-    """Extract the branch targeted by HEAD from ls-remote --symref output."""
-    for line in advertisement.splitlines():
-        match line.split():
-            case ["ref:", ref, "HEAD"] if ref.startswith("refs/heads/"):
-                return ref.removeprefix("refs/heads/")
-    return None
-
-
-def _discover_remote_default_branch(context: _DonkeyContext) -> str:
-    """Read the default branch name the principal remote advertises.
-
-    Parameters
-    ----------
-    context : _DonkeyContext
-        Resolved repository state, including the remote whose advertised
-        default branch is read.
-
-    Returns
-    -------
-    str
-        The branch name the remote advertises for its ``HEAD``.
-
-    Raises
-    ------
-    SystemExit
-        If the remote cannot be queried, or advertises no default branch.
-
-    """
-    with observability.get_recorder().span("remote_default_discovery"):
-        try:
-            advertisement = context.repo_home.git.ls_remote(
-                "--symref", context.remote, "HEAD"
-            )
-        except GitCommandError as exc:
-            _record(
-                Observation(
-                    operation="remote_default_discovery",
-                    outcome="failure",
-                    error_kind="git_command_error",
-                )
-            )
-            helpers._die(
-                _GIT_DONKEY_PREFIX,
-                f"cannot discover the default branch on '{context.remote}': {exc}",
-                1,
-            )
-        branch = _advertised_default_branch(advertisement)
-        if branch is None:
-            _record(
-                Observation(
-                    operation="remote_default_discovery",
-                    outcome="failure",
-                    error_kind="missing_advertised_default",
-                )
-            )
-            helpers._die(
-                _GIT_DONKEY_PREFIX,
-                f"remote '{context.remote}' does not advertise a default branch; "
-                "specify a base branch explicitly",
-                1,
-            )
-        _record(Observation(operation="remote_default_discovery", outcome="success"))
-    return branch
-
-
-def _fetch_default_branch_ref(context: _DonkeyContext, branch: str) -> str:
-    """Fetch ``branch`` from the principal remote into its tracking ref.
-
-    Parameters
-    ----------
-    context : _DonkeyContext
-        Resolved repository state, including the repository to fetch into and
-        the remote to fetch from.
-    branch : str
-        Branch name the remote advertises as its default.
-
-    Returns
-    -------
-    str
-        The fully qualified remote-tracking ref of the fetched branch.
-
-    Raises
-    ------
-    SystemExit
-        If the branch cannot be fetched.
-
-    """
-    remote_ref = f"refs/remotes/{context.remote}/{branch}"
-    # A narrow fetch configuration may omit the advertised default branch.
-    # Fetch it explicitly rather than trusting a stale local remote/HEAD alias.
-    with observability.get_recorder().span("default_branch_fetch"):
-        try:
-            context.repo_home.git.fetch(
-                context.remote, f"+refs/heads/{branch}:{remote_ref}"
-            )
-        except GitCommandError as exc:
-            _record(
-                Observation(
-                    operation="default_branch_fetch",
-                    outcome="failure",
-                    error_kind="git_command_error",
-                )
-            )
-            helpers._die(
-                _GIT_DONKEY_PREFIX,
-                f"cannot fetch default branch '{context.remote}/{branch}': {exc}",
-                1,
-            )
-        _record(Observation(operation="default_branch_fetch", outcome="success"))
-    return remote_ref
-
-
 def _fetch_remote_default_ref(context: _DonkeyContext) -> str:
     """Fetch the principal remote's advertised default branch.
 
     This is a command, not a query: it discovers the branch the remote's
     ``HEAD`` names and fetches it into that branch's fully qualified
-    remote-tracking ref. `_discover_remote_default_branch` reads the name and
-    `_fetch_default_branch_ref` performs the fetch.
+    remote-tracking ref. Both steps live in :mod:`git_donkey.remote_default`,
+    which `git plonk` resolves its completion history through as well.
 
     Parameters
     ----------
@@ -218,8 +111,18 @@ def _fetch_remote_default_ref(context: _DonkeyContext) -> str:
         names cannot be fetched.
 
     """
-    branch = _discover_remote_default_branch(context)
-    return _fetch_default_branch_ref(context, branch)
+    branch = remote_default.discover_default_branch(
+        context.repo_home,
+        context.remote,
+        _GIT_DONKEY_PREFIX,
+        missing_advice="specify a base branch explicitly",
+    )
+    return remote_default.fetch_default_branch_ref(
+        context.repo_home,
+        context.remote,
+        branch,
+        _GIT_DONKEY_PREFIX,
+    )
 
 
 def _pull_mode_label(pull_mode: _PullMode | None) -> observability.PullModeLabel:

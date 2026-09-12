@@ -268,8 +268,12 @@ _plonk_app = App(
     help=(
         "Clean up git-donkey worktrees. Default mode removes completed "
         "worktrees, --soft removes generated directories, and --hard also "
-        "deletes completed local branches. --dry-run previews planned "
-        "actions without mutating the filesystem or Git state."
+        "deletes completed local branches. Completion is judged against the "
+        "default branch the principal remote advertises, fetched before the "
+        "sweep. A completed worktree with uncommitted or untracked files is "
+        "skipped and reported rather than forced, and its branch is kept. "
+        "--dry-run previews planned actions without removing generated paths, "
+        "worktrees, or branches."
     ),
 )
 

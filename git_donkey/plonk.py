@@ -4,6 +4,15 @@ The command cleans worktrees created by ``git donkey``. Default and hard modes
 use branch names to derive completion markers and then scan canonical trunk
 history for matching merge messages. Soft mode only removes generated
 directories from linked worktrees and leaves Git state untouched.
+
+A completed worktree is only discarded when Git would discard it unprompted:
+worktrees with modified, staged, or untracked files are skipped and reported, so
+one dirty candidate cannot abandon the rest of the batch. Nothing here forces a
+removal, and hard mode deletes a local branch only after its worktree is gone.
+
+Completion history is read from the principal remote's advertised default
+branch, resolved through :mod:`git_donkey.remote_default`, which is the same
+trunk `git donkey` creates worktrees from.
 """
 
 from __future__ import annotations
@@ -16,9 +25,9 @@ import shutil
 import typing as typ
 from pathlib import Path
 
-from git import GitCommandError, Repo
+from git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
 
-from git_donkey import donkey, helpers, plonk_policy
+from git_donkey import donkey, helpers, plonk_policy, remote_default
 
 _GIT_PLONK_PREFIX = "git-plonk"
 _REFS_HEADS_PREFIX = "refs/heads/"
@@ -46,6 +55,19 @@ class _PlonkMode(enum.StrEnum):
     HARD = "hard"
 
 
+class _SkipReason(enum.StrEnum):
+    """Why a completed candidate was left in place.
+
+    Every member names something a user can act on, so the summary can explain
+    each skip without quoting Git output or losing the distinction between a
+    worktree that was deliberately kept and one that could not be discarded.
+    """
+
+    DIRTY = "uncommitted changes"
+    UNAVAILABLE = "worktree directory is missing"
+    REMOVAL_FAILED = "worktree removal failed"
+
+
 @dataclasses.dataclass(frozen=True, slots=True)
 class _PlonkCandidate:
     """A linked worktree eligible for completion-marker cleanup."""
@@ -53,6 +75,14 @@ class _PlonkCandidate:
     branch_name: str
     worktree_path: Path
     marker: str
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class _SkippedWorktree:
+    """A completed candidate git-plonk left alone, and why."""
+
+    worktree_path: Path
+    reason: _SkipReason
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -65,6 +95,7 @@ class _PlonkResult:
     removed_worktrees: tuple[Path, ...] = ()
     removed_branches: tuple[str, ...] = ()
     cleaned_paths: tuple[Path, ...] = ()
+    skipped_worktrees: tuple[_SkippedWorktree, ...] = ()
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -88,7 +119,7 @@ class _SoftPlonkContext:
 
 @dataclasses.dataclass(frozen=True, slots=True)
 class _GitWorktreeAdapter:
-    """GitPython-backed adapter for history and worktree mutation."""
+    """GitPython-backed adapter for history, inspection, and mutation."""
 
     repo: Repo
 
@@ -101,10 +132,62 @@ class _GitWorktreeAdapter:
                 case message:
                     yield message
 
-    def remove_worktree(self, worktree_path: Path) -> None:
-        """Remove a linked worktree with Git's worktree machinery."""
+    @staticmethod
+    def skip_reason(worktree_path: Path) -> _SkipReason | None:
+        """Return why ``worktree_path`` cannot be discarded, if it cannot.
+
+        The check reads the worktree's own repository rather than the main
+        checkout, so it needs no state from this adapter; it is a static method
+        for the same reason ``_FilesystemCleanupAdapter`` has them. It mirrors
+        the check ``git worktree remove`` performs itself: a worktree with
+        modified, staged, or untracked files is refused, while ignored files are
+        not counted, so ignored build output never blocks cleanup. A worktree
+        whose directory is gone gets its own reason, because "uncommitted
+        changes" would be inaccurate for it.
+
+        Parameters
+        ----------
+        worktree_path : Path
+            Worktree to inspect. It is not modified.
+
+        Returns
+        -------
+        _SkipReason | None
+            The reason to leave the worktree alone, or ``None`` when Git would
+            remove it unprompted.
+
+        """
+        if not worktree_path.is_dir():
+            return _SkipReason.UNAVAILABLE
         try:
-            self.repo.git.worktree("remove", "--force", worktree_path.as_posix())
+            worktree_repo = Repo(worktree_path)
+        except (InvalidGitRepositoryError, NoSuchPathError):
+            return _SkipReason.UNAVAILABLE
+        if worktree_repo.is_dirty(untracked_files=True):
+            return _SkipReason.DIRTY
+        return None
+
+    def remove_worktree(self, worktree_path: Path) -> bool:
+        """Remove a linked worktree, reporting whether Git removed it.
+
+        The removal is deliberately unforced: whatever Git refuses to discard
+        stays on disk. A refusal is logged, reported on stderr, and returned so
+        the caller can skip that candidate and continue the batch instead of
+        abandoning worktrees that are still removable.
+
+        Parameters
+        ----------
+        worktree_path : Path
+            Linked worktree to remove.
+
+        Returns
+        -------
+        bool
+            ``True`` when Git removed the worktree, otherwise ``False``.
+
+        """
+        try:
+            self.repo.git.worktree("remove", worktree_path.as_posix())
         except GitCommandError as exc:
             _LOGGER.exception(
                 "Failed to remove git-plonk worktree",
@@ -113,11 +196,12 @@ class _GitWorktreeAdapter:
                     "worktree": worktree_path.as_posix(),
                 },
             )
-            helpers._die(
-                _GIT_PLONK_PREFIX,
-                f"failed to remove worktree '{worktree_path}': {exc}",
-                1,
+            helpers._eprint(
+                f"{_GIT_PLONK_PREFIX}: failed to remove worktree "
+                f"'{worktree_path}': {exc}"
             )
+            return False
+        return True
 
     def delete_branch(self, branch_name: str) -> None:
         """Delete ``branch_name`` after its completed worktree has been removed."""
@@ -261,16 +345,23 @@ def _append_summary_section(
     lines.extend(f"- {entry}" for entry in section_entries)
 
 
+def _skipped_entries(result: _PlonkResult) -> typ.Iterator[str]:
+    """Yield one report line per worktree git-plonk skipped."""
+    for skipped in result.skipped_worktrees:
+        yield f"{skipped.worktree_path} ({skipped.reason.value})"
+
+
 def _render_summary(result: _PlonkResult) -> str:
     """Render a deterministic human-readable summary for ``result``."""
     suffix = " dry-run" if result.is_dry_run else ""
     lines: list[str] = [f"git-plonk: mode={result.mode.value}{suffix}"]
-    has_removals = any((
+    has_entries = any((
         result.removed_worktrees,
         result.removed_branches,
         result.cleaned_paths,
+        result.skipped_worktrees,
     ))
-    if not has_removals:
+    if not has_entries:
         lines.append(_empty_summary_message(result))
         return "\n".join(lines)
 
@@ -284,32 +375,52 @@ def _render_summary(result: _PlonkResult) -> str:
         _append_summary_section(
             lines, "Planned generated path removals:", result.cleaned_paths
         )
-        return "\n".join(lines)
+    else:
+        _append_summary_section(lines, "Removed worktrees:", result.removed_worktrees)
+        _append_summary_section(lines, "Removed branches:", result.removed_branches)
+        _append_summary_section(lines, "Removed generated paths:", result.cleaned_paths)
 
-    _append_summary_section(lines, "Removed worktrees:", result.removed_worktrees)
-    _append_summary_section(lines, "Removed branches:", result.removed_branches)
-    _append_summary_section(lines, "Removed generated paths:", result.cleaned_paths)
+    # Skips are decisions, not plans: dry-run reports the same set, because a
+    # preview that hid them would misrepresent the run it previews.
+    _append_summary_section(lines, "Skipped worktrees:", _skipped_entries(result))
     return "\n".join(lines)
 
 
 def _canonical_trunk_ref(repo: Repo) -> str:
-    """Return the canonical trunk/default ref for completion history."""
-    for remote in repo.remotes:
-        remote_head_ref = f"refs/remotes/{remote.name}/HEAD"
-        try:
-            return repo.git.symbolic_ref("--quiet", "--short", remote_head_ref)
-        except GitCommandError:
-            continue
+    """Return the canonical trunk ref for completion history.
 
-    if helpers._local_branch_exists(repo, "main"):
-        return "main"
+    The ref is the principal remote's advertised default branch fetched into
+    its remote-tracking ref, so completion is judged against the same trunk
+    `git donkey` created the worktree from. The local
+    ``refs/remotes/<remote>/HEAD`` alias is never consulted: a fetch can leave
+    it naming a branch the remote no longer advertises. Neither is local
+    ``main``, which is not trunk in repositories that default elsewhere.
 
-    helpers._die(
+    Parameters
+    ----------
+    repo : Repo
+        Repository whose principal remote is queried.
+
+    Returns
+    -------
+    str
+        The fully qualified remote-tracking ref of the fetched default branch.
+
+    Raises
+    ------
+    SystemExit
+        If no remote is configured, the remote advertises no default branch, or
+        the advertised branch cannot be fetched.
+
+    """
+    remote = remote_default.principal_remote(repo, _GIT_PLONK_PREFIX)
+    branch = remote_default.discover_default_branch(repo, remote, _GIT_PLONK_PREFIX)
+    return remote_default.fetch_default_branch_ref(
+        repo,
+        remote,
+        branch,
         _GIT_PLONK_PREFIX,
-        "could not determine canonical trunk ref for completion history",
-        2,
     )
-    return ""
 
 
 def _load_plonk_context() -> _PlonkContext:
@@ -423,14 +534,13 @@ def _log_plonk_candidates_selected(
     )
 
 
-def _remove_completed_candidate(
+def _log_planned_candidate(
     candidate: _PlonkCandidate,
-    adapter: _GitWorktreeAdapter,
     mode: _PlonkMode,
     *,
     dry_run: bool,
-) -> str | None:
-    """Remove one completed candidate and return its branch when deleted."""
+) -> None:
+    """Log the planned removal of one clean completed candidate."""
     _LOGGER.info(
         "Planning completed git-plonk worktree removal"
         if dry_run
@@ -444,11 +554,15 @@ def _remove_completed_candidate(
             "worktree": candidate.worktree_path.as_posix(),
         },
     )
-    if not dry_run:
-        adapter.remove_worktree(candidate.worktree_path)
-    if mode is not _PlonkMode.HARD:
-        return None
 
+
+def _log_planned_branch_deletion(
+    candidate: _PlonkCandidate,
+    mode: _PlonkMode,
+    *,
+    dry_run: bool,
+) -> None:
+    """Log the planned branch deletion for one removed candidate."""
     _LOGGER.info(
         "Planning completed git-plonk branch deletion"
         if dry_run
@@ -461,9 +575,76 @@ def _remove_completed_candidate(
             "marker": candidate.marker,
         },
     )
+
+
+def _log_skipped_candidate(
+    candidate: _PlonkCandidate,
+    reason: _SkipReason,
+    mode: _PlonkMode,
+) -> None:
+    """Log a completed candidate that git-plonk left in place."""
+    _LOGGER.info(
+        "Skipping git-plonk candidate",
+        extra={
+            "mode": mode.value,
+            "operation": "skip_worktree",
+            "branch": candidate.branch_name,
+            "marker": candidate.marker,
+            "worktree": candidate.worktree_path.as_posix(),
+            "reason": reason.value,
+        },
+    )
+
+
+def _clean_completed_candidate(
+    candidate: _PlonkCandidate,
+    adapter: _GitWorktreeAdapter,
+    mode: _PlonkMode,
+    *,
+    dry_run: bool,
+) -> _SkipReason | None:
+    """Remove one completed candidate, returning why it was skipped instead.
+
+    A candidate is only touched when Git would discard it unprompted, so a
+    completed worktree holding uncommitted or untracked work survives the run
+    and is reported. Its local branch survives with it, even in hard mode: the
+    branch is only safe to delete once its worktree is gone.
+
+    Parameters
+    ----------
+    candidate : _PlonkCandidate
+        Completed candidate to clean.
+    adapter : _GitWorktreeAdapter
+        Git surface used for the cleanliness query and the removal.
+    mode : _PlonkMode
+        Cleanup mode; hard mode also deletes the local branch.
+    dry_run : bool
+        When true, plan the work without removing anything.
+
+    Returns
+    -------
+    _SkipReason | None
+        The reason the candidate was left alone, or ``None`` when it was
+        removed (or planned for removal in a dry run).
+
+    """
+    reason = adapter.skip_reason(candidate.worktree_path)
+    if reason is not None:
+        _log_skipped_candidate(candidate, reason, mode)
+        return reason
+
+    _log_planned_candidate(candidate, mode, dry_run=dry_run)
+    if not dry_run and not adapter.remove_worktree(candidate.worktree_path):
+        _log_skipped_candidate(candidate, _SkipReason.REMOVAL_FAILED, mode)
+        return _SkipReason.REMOVAL_FAILED
+
+    if mode is not _PlonkMode.HARD:
+        return None
+
+    _log_planned_branch_deletion(candidate, mode, dry_run=dry_run)
     if not dry_run:
         adapter.delete_branch(candidate.branch_name)
-    return candidate.branch_name
+    return None
 
 
 def _run_completed_cleanup(
@@ -492,17 +673,22 @@ def _run_completed_cleanup(
         completed_candidates,
         removable_candidates,
     )
-    removed_worktrees = [candidate.worktree_path for candidate in removable_candidates]
+    removed_worktrees: list[Path] = []
     removed_branches: list[str] = []
+    skipped_worktrees: list[_SkippedWorktree] = []
     for candidate in removable_candidates:
-        branch_name = _remove_completed_candidate(
+        reason = _clean_completed_candidate(
             candidate,
             adapter,
             mode,
             dry_run=dry_run,
         )
-        if branch_name is not None:
-            removed_branches.append(branch_name)
+        if reason is not None:
+            skipped_worktrees.append(_SkippedWorktree(candidate.worktree_path, reason))
+            continue
+        removed_worktrees.append(candidate.worktree_path)
+        if mode is _PlonkMode.HARD:
+            removed_branches.append(candidate.branch_name)
 
     return _PlonkResult(
         mode=mode,
@@ -510,6 +696,7 @@ def _run_completed_cleanup(
         inspected_worktrees=len(candidates),
         removed_worktrees=tuple(removed_worktrees),
         removed_branches=tuple(removed_branches),
+        skipped_worktrees=tuple(skipped_worktrees),
     )
 
 
@@ -535,6 +722,13 @@ def run_git_plonk(
     -------
     int
         The desired process exit code.
+
+    Notes
+    -----
+    Completed worktrees holding uncommitted, staged, or untracked files are
+    skipped and reported instead of being force-removed, and their local
+    branches are kept even in hard mode. Ignored files, such as build output
+    under a gitignored directory, do not block cleanup.
 
     """
     if soft and hard:
