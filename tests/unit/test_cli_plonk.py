@@ -6,7 +6,9 @@ import pytest
 
 from git_donkey import cli, plonk
 
-# ``argparse`` exit status for a command-line usage error.
+# Exit status ``helpers._die`` uses when the command rejects its own arguments,
+# such as ``--soft`` with ``--hard``: the flags parse, but the combination is
+# unusable. Cyclopts itself exits 1 for a parse error.
 _USAGE_ERROR_EXIT_CODE = 2
 
 

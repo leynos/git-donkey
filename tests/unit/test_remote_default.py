@@ -19,8 +19,9 @@ from tests import git_repo_helpers
 if typ.TYPE_CHECKING:
     from pathlib import Path
 
-# Exit status ``argparse``/Cyclopts reserve for a usage error, which a missing
-# remote is: the command cannot run at all.
+# Exit status ``helpers._die`` uses when the command cannot run at all, which a
+# missing remote is: the command rejects its own precondition rather than
+# falling back to a local branch.
 _USAGE_ERROR_EXIT_CODE = 2
 
 # Exit status for a remote that cannot be queried or cannot supply a branch.

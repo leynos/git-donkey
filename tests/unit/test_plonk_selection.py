@@ -5,7 +5,8 @@ marker that trunk history confirms. These tests pin the marker derivations, the
 streaming history scan that filters candidates, and the canonical trunk ref the
 scan reads: the default branch the principal remote advertises, fetched
 explicitly, never a stale ``refs/remotes/<remote>/HEAD`` alias and never a local
-``main``.
+``main``. Reading the advertisement is a query and acquiring the ref is a
+command, so the two are tested apart.
 """
 
 from __future__ import annotations
@@ -18,14 +19,16 @@ from git import Repo
 from hypothesis import given
 from hypothesis import strategies as st
 
-from git_donkey import plonk, plonk_policy
+from git_donkey import plonk, plonk_policy, plonk_records
 from tests import git_repo_helpers
 
 # History messages consumed before the streaming scan stops: one per candidate
 # marker, so the trailing "Unneeded late history" message is never pulled.
 _EXPECTED_CONSUMED_HISTORY_MESSAGES = 2
 
-# ``argparse`` exit status for a command-line usage error.
+# Exit status ``helpers._die`` uses when the command cannot run at all, which a
+# repository without a remote is: Cyclopts is not involved, the command rejects
+# its own precondition.
 _USAGE_ERROR_EXIT_CODE = 2
 
 # Exit status for a remote that cannot be queried or cannot supply a branch.
@@ -107,24 +110,24 @@ def test_unrecognized_branch_has_no_completion_marker() -> None:
 def test_completed_candidates_use_history_markers() -> None:
     """Candidate filtering should keep only branches with matching markers."""
     candidates = [
-        plonk._PlonkCandidate(
+        plonk_records._PlonkCandidate(
             branch_name="issue-123-fix",
             worktree_path=Path("/repo.worktrees/issue-123-fix"),
             marker="(#123)",
         ),
-        plonk._PlonkCandidate(
+        plonk_records._PlonkCandidate(
             branch_name="road-1-2-3a-4-task",
             worktree_path=Path("/repo.worktrees/road-1-2-3a-4-task"),
             marker="(road.1.2.3a.4)",
         ),
-        plonk._PlonkCandidate(
+        plonk_records._PlonkCandidate(
             branch_name="issue-456-open",
             worktree_path=Path("/repo.worktrees/issue-456-open"),
             marker="(#456)",
         ),
     ]
 
-    completed = plonk._completed_candidates(
+    completed = plonk_policy.completed_candidates(
         candidates,
         ["Merge pull request (#123)", "Roadmap complete (road.1.2.3a.4.)"],
     )
@@ -138,12 +141,12 @@ def test_completed_candidates_use_history_markers() -> None:
 def test_completed_candidates_streams_history_until_markers_match() -> None:
     """Candidate filtering should not consume history after all markers match."""
     candidates = [
-        plonk._PlonkCandidate(
+        plonk_records._PlonkCandidate(
             branch_name="issue-123-fix",
             worktree_path=Path("/repo.worktrees/issue-123-fix"),
             marker="(#123)",
         ),
-        plonk._PlonkCandidate(
+        plonk_records._PlonkCandidate(
             branch_name="issue-456-fix",
             worktree_path=Path("/repo.worktrees/issue-456-fix"),
             marker="(#456)",
@@ -161,7 +164,7 @@ def test_completed_candidates_streams_history_until_markers_match() -> None:
         consumed_messages += 1
         yield "Unneeded late history"
 
-    completed = plonk._completed_candidates(candidates, messages())
+    completed = plonk_policy.completed_candidates(candidates, messages())
 
     assert [candidate.branch_name for candidate in completed] == [
         "issue-123-fix",
@@ -172,7 +175,7 @@ def test_completed_candidates_streams_history_until_markers_match() -> None:
     )
 
 
-def test_canonical_trunk_ref_ignores_a_stale_remote_head_alias(
+def test_fetched_trunk_ref_ignores_a_stale_remote_head_alias(
     tmp_path: Path,
 ) -> None:
     """Completion history should follow the advertised default, not a stale alias."""
@@ -183,7 +186,7 @@ def test_canonical_trunk_ref_ignores_a_stale_remote_head_alias(
     repo.remote("origin").fetch()
     repo.git.symbolic_ref("refs/remotes/origin/HEAD", "refs/remotes/origin/legacy")
 
-    trunk_ref = plonk._canonical_trunk_ref(repo)
+    trunk_ref = plonk._fetch_canonical_trunk_ref(repo)
 
     assert (
         repo.git.symbolic_ref("refs/remotes/origin/HEAD")
@@ -194,7 +197,25 @@ def test_canonical_trunk_ref_ignores_a_stale_remote_head_alias(
     )
 
 
-def test_canonical_trunk_ref_follows_the_advertised_default_name(
+def test_advertised_trunk_reads_the_advertisement_without_fetching(
+    tmp_path: Path,
+) -> None:
+    """Querying the advertised trunk should not acquire the ref it names."""
+    repo, _remote_repo = git_repo_helpers.repo_with_remote_default(
+        tmp_path / "local", tmp_path / "remote.git", default_branch="trunk"
+    )
+    repo.git.update_ref("-d", "refs/remotes/origin/trunk")
+
+    remote, branch = plonk._advertised_trunk(repo)
+
+    assert (remote, branch) == ("origin", "trunk"), (
+        "the query reports the remote and the branch it advertises"
+    )
+    remote_refs = repo.git.for_each_ref("--format=%(refname)", "refs/remotes")
+    assert not remote_refs, "reading the advertisement creates no remote-tracking ref"
+
+
+def test_fetched_trunk_ref_follows_the_advertised_default_name(
     tmp_path: Path,
 ) -> None:
     """A repository whose trunk is not ``main`` should not be judged against main."""
@@ -202,7 +223,7 @@ def test_canonical_trunk_ref_follows_the_advertised_default_name(
         tmp_path / "local", tmp_path / "remote.git", default_branch="trunk"
     )
 
-    trunk_ref = plonk._canonical_trunk_ref(repo)
+    trunk_ref = plonk._fetch_canonical_trunk_ref(repo)
 
     assert repo.active_branch.name == "main", (
         "the fixture keeps the local branch discovery must ignore"
@@ -215,7 +236,7 @@ def test_canonical_trunk_ref_follows_the_advertised_default_name(
     )
 
 
-def test_canonical_trunk_ref_requires_a_remote(
+def test_advertised_trunk_requires_a_remote(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
@@ -223,7 +244,7 @@ def test_canonical_trunk_ref_requires_a_remote(
     repo = git_repo_helpers.seed_repo(tmp_path / "local")
 
     with pytest.raises(SystemExit) as exc_info:
-        plonk._canonical_trunk_ref(repo)
+        plonk._advertised_trunk(repo)
 
     assert exc_info.value.code == _USAGE_ERROR_EXIT_CODE, (
         "a repository with no remote cannot run the command at all"
@@ -233,7 +254,7 @@ def test_canonical_trunk_ref_requires_a_remote(
     )
 
 
-def test_canonical_trunk_ref_fails_without_an_advertised_default(
+def test_advertised_trunk_fails_without_an_advertised_default(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
@@ -244,7 +265,7 @@ def test_canonical_trunk_ref_fails_without_an_advertised_default(
     repo.create_remote("origin", remote_path.as_posix())
 
     with pytest.raises(SystemExit) as exc_info:
-        plonk._canonical_trunk_ref(repo)
+        plonk._advertised_trunk(repo)
 
     assert exc_info.value.code == _DISCOVERY_FAILURE_EXIT_CODE, (
         "an unadvertised default is an error, not a licence to guess"

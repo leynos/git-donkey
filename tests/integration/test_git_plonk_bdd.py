@@ -9,11 +9,11 @@ branches, worktree paths, generated directories, and exit codes.
 These tests exercise the public ``git_donkey.plonk.run_git_plonk`` workflow and
 the ``git_donkey.cli`` command boundary rather than low-level helpers. They
 validate default, soft, hard, and mutually-exclusive flag behavior, the
-skip-and-report contract for completed worktrees holding uncommitted or
-untracked work, and include direct regression tests proving that cleanup uses
-the advertised default branch's history — not a stale local remote ``HEAD``
-alias, and not a topic worktree's history — even when invoked from a linked
-topic worktree.
+skip-and-report contract for completed worktrees holding a tracked
+modification, a staged change, or an untracked file, and include direct
+regression tests proving that cleanup uses the advertised default branch's
+history — not a stale local remote ``HEAD`` alias, and not a topic worktree's
+history — even when invoked from a linked topic worktree.
 """
 
 from __future__ import annotations
@@ -30,6 +30,13 @@ from tests.integration.conftest import _setup_repo
 
 # Cyclopts exits with this code when mutually exclusive flags are supplied.
 _USAGE_ERROR_EXIT_CODE = 2
+
+# The tracked seed file the dirt fixtures edit, and the content each edit
+# leaves behind. Both kinds of dirt are uncommitted work, so both must keep
+# their worktree and its branch.
+_TRACKED_FILE = "README.md"
+_MODIFIED_CONTENT = "edited in the worktree"
+_STAGED_CONTENT = "staged in the worktree"
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -148,14 +155,15 @@ def repository_with_completed_worktree(
 
 
 @given(
-    "a repository with a dirty completed git donkey worktree beside a clean one",
+    "a repository with a completed git donkey worktree holding a staged change "
+    "beside a clean one",
     target_fixture="scenario",
 )
-def repository_with_dirty_and_clean_completed_worktrees(
+def repository_with_staged_change_and_clean_completed_worktrees(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> PlonkScenario:
-    """Create one completed worktree holding a change and one clean sibling."""
+    """Create one completed worktree holding a staged change and a clean sibling."""
     local_path, _remote_path = _setup_repo(tmp_path)
     monkeypatch.chdir(local_path)
     clean_branch = "issue-123-fix-closed-work"
@@ -170,9 +178,43 @@ def repository_with_dirty_and_clean_completed_worktrees(
         completed_branch=clean_branch,
         dirty_branch=dirty_branch,
     )
-    uncommitted = scenario.worktree_path(dirty_branch) / "uncommitted.txt"
-    uncommitted.write_text("work in progress")
+    _stage_tracked_change(scenario, dirty_branch, _STAGED_CONTENT)
     return scenario
+
+
+@given(
+    "a repository with a completed git donkey worktree holding a tracked modification",
+    target_fixture="scenario",
+)
+def repository_with_tracked_modification(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> PlonkScenario:
+    """Create a completed worktree holding an uncommitted edit to a tracked file."""
+    scenario = repository_with_completed_worktree(tmp_path, monkeypatch)
+    _edit_tracked_file(scenario, scenario.completed_branch, _MODIFIED_CONTENT)
+    return scenario
+
+
+def _edit_tracked_file(
+    scenario: PlonkScenario,
+    branch_name: str,
+    content: str,
+) -> Path:
+    """Write ``content`` over the tracked seed file in ``branch_name``'s worktree."""
+    readme = scenario.worktree_path(branch_name) / _TRACKED_FILE
+    readme.write_text(content)
+    return readme
+
+
+def _stage_tracked_change(
+    scenario: PlonkScenario,
+    branch_name: str,
+    content: str,
+) -> None:
+    """Stage an edit to the tracked seed file in ``branch_name``'s worktree."""
+    readme = _edit_tracked_file(scenario, branch_name, content)
+    Repo(readme.parent).index.add([readme.as_posix()])
 
 
 @given(
@@ -306,8 +348,12 @@ def dirty_completed_worktree_remains(scenario: PlonkScenario) -> None:
     assert scenario.dirty_branch is not None, "expected dirty branch in scenario"
     worktree_path = scenario.worktree_path(scenario.dirty_branch)
     assert worktree_path.exists(), "expected dirty completed worktree to remain"
-    assert (worktree_path / "uncommitted.txt").read_text() == "work in progress", (
-        "expected the uncommitted work to survive the sweep"
+    staged = worktree_path / _TRACKED_FILE
+    assert staged.read_text() == _STAGED_CONTENT, (
+        "expected the staged change to survive the sweep"
+    )
+    assert _TRACKED_FILE in Repo(worktree_path).git.diff("--cached", "--name-only"), (
+        "expected the change to remain staged, not merely present in the file"
     )
 
 

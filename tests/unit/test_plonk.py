@@ -173,3 +173,49 @@ def test_skipped_summary_matches_snapshot(snapshot: SnapshotAssertion) -> None:
     assert plonk._render_summary(result) == snapshot(matcher=_WORKTREE_PATH_MATCHER), (
         "expected removals and skips to be reported together"
     )
+
+
+def test_dry_run_planned_and_skipped_summary_matches_snapshot(
+    snapshot: SnapshotAssertion,
+) -> None:
+    """A dry run should report its plans and its skips in one reviewable block."""
+    result = plonk._PlonkResult(
+        mode=plonk._PlonkMode.HARD,
+        is_dry_run=True,
+        removed_worktrees=(Path("/repo.worktrees/issue-123-fix"),),
+        removed_branches=("issue-123-fix",),
+        skipped_worktrees=(
+            plonk._SkippedWorktree(
+                Path("/repo.worktrees/issue-456-dirty"),
+                plonk._SkipReason.DIRTY,
+            ),
+        ),
+    )
+
+    assert plonk._render_summary(result) == snapshot(matcher=_WORKTREE_PATH_MATCHER), (
+        "expected planned removals and skips to be reported together"
+    )
+
+
+def test_failed_branch_deletion_gets_its_own_section() -> None:
+    """A branch that outlived its worktree is neither removed nor skipped."""
+    result = plonk._PlonkResult(
+        mode=plonk._PlonkMode.HARD,
+        removed_worktrees=(Path("/repo.worktrees/issue-123-fix"),),
+        failed_branch_deletions=("issue-123-fix",),
+    )
+
+    summary = plonk._render_summary(result)
+
+    assert "Failed branch deletions:" in summary, (
+        "expected the surviving branch to have a section of its own"
+    )
+    assert "- issue-123-fix (branch deletion failed)" in summary, (
+        "expected the report to name the branch Git kept"
+    )
+    assert "Removed branches:" not in summary, (
+        "a branch Git refused to delete is not reported as removed"
+    )
+    assert "No matching git donkey worktrees found." not in summary, (
+        "expected a failed deletion not to be reported as an empty match"
+    )

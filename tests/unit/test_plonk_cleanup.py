@@ -3,8 +3,9 @@
 These tests cover what a sweep does to a completed candidate: the cleanliness
 preflight that mirrors ``git worktree remove``, the unforced removal it issues,
 the skip-and-report rule that keeps one dirty worktree from abandoning the rest
-of the batch, branch deletion in hard mode, dry runs that plan without
-mutating, and the soft pass that never resolves a trunk at all.
+of the batch, branch deletion in hard mode and the branch Git refuses to
+delete, dry runs that plan without mutating, the soft pass that never resolves
+a trunk at all, and the bounded record each step leaves behind.
 """
 
 from __future__ import annotations
@@ -16,11 +17,12 @@ from types import SimpleNamespace
 
 import pytest
 from git import Repo
-from hypothesis import given
-from hypothesis import strategies as st
 
-from git_donkey import plonk
+from git_donkey import plonk, plonk_records
 from tests import git_repo_helpers
+
+if typ.TYPE_CHECKING:
+    from tests.observability_helpers import RecordingRecorder
 
 # Trunk ref shape a real run resolves: the fetched remote-tracking ref of the
 # default branch the principal remote advertises.
@@ -230,7 +232,7 @@ def test_soft_mode_loads_only_worktree_context(
     )
     monkeypatch.setattr(
         plonk,
-        "_canonical_trunk_ref",
+        "_fetch_canonical_trunk_ref",
         lambda _repo: pytest.fail("soft mode should not resolve trunk history"),
     )
     monkeypatch.setattr(
@@ -273,17 +275,15 @@ class _FailingGitAdapter:
 
     Dry-run cleanup must reuse candidate discovery while skipping destructive
     Git APIs, so ``remove_worktree`` and ``delete_branch`` fail the test if the
-    planner ever invokes them. The completion marker is configurable so callers
-    can pin it to the candidate branch under test.
+    planner ever invokes them. History reports the candidate under test as
+    complete, so the planner reaches the mutations it must not perform.
     """
 
-    def __init__(self, marker: str = "Merge pull request (#123)") -> None:
-        self._marker = marker
-
-    def history_messages(self, ref: str) -> typ.Iterator[str]:
+    @staticmethod
+    def history_messages(ref: str) -> typ.Iterator[str]:
         """Assert the resolved trunk ref, then yield the completion marker."""
         assert ref == _TRUNK_REF, "expected configured trunk ref"
-        yield self._marker
+        yield _marker_for(_candidate(_WORKTREE_BRANCH, 123))
 
     @staticmethod
     def skip_reason(worktree_path: Path) -> plonk._SkipReason | None:
@@ -291,12 +291,12 @@ class _FailingGitAdapter:
         return None
 
     @staticmethod
-    def remove_worktree(worktree_path: Path) -> None:
+    def remove_worktree(worktree_path: Path) -> bool:
         """Fail the test unconditionally — dry runs must not remove worktrees."""
         pytest.fail(f"dry run should not remove worktree {worktree_path}")
 
     @staticmethod
-    def delete_branch(branch_name: str) -> None:
+    def delete_branch(branch_name: str) -> bool:
         """Fail the test unconditionally — dry runs must not delete branches."""
         pytest.fail(f"dry run should not delete branch {branch_name}")
 
@@ -307,7 +307,8 @@ class _RecordingGitAdapter:
     Trunk history is driven by the ``markers`` the double yields and each
     candidate's state by ``skip_reasons``, so one batch can mix worktrees Git
     would remove with worktrees it would refuse. ``removal_failures`` models a
-    worktree that passes the preflight but whose removal still fails.
+    worktree that passes the preflight but whose removal still fails, and
+    ``deletion_failures`` a branch Git refuses to delete.
     """
 
     def __init__(
@@ -316,10 +317,12 @@ class _RecordingGitAdapter:
         *,
         skip_reasons: dict[Path, plonk._SkipReason] | None = None,
         removal_failures: typ.Iterable[Path] = (),
+        deletion_failures: typ.Iterable[str] = (),
     ) -> None:
         self._markers = tuple(markers)
         self.skip_reasons = dict(skip_reasons or {})
         self.removal_failures = set(removal_failures)
+        self.deletion_failures = set(deletion_failures)
         self.removed: list[Path] = []
         self.deleted: list[str] = []
 
@@ -341,16 +344,19 @@ class _RecordingGitAdapter:
         self.removed.append(worktree_path)
         return True
 
-    def delete_branch(self, branch_name: str) -> None:
+    def delete_branch(self, branch_name: str) -> bool:
         """Record a branch deletion, which must follow its worktree's removal."""
         removed_branches = [path.name for path in self.removed]
         assert branch_name in removed_branches, (
             "hard mode deletes a branch only once its worktree is gone"
         )
+        if branch_name in self.deletion_failures:
+            return False
         self.deleted.append(branch_name)
+        return True
 
 
-def _candidate(branch_name: str, issue_number: int) -> plonk._PlonkCandidate:
+def _candidate(branch_name: str, issue_number: int) -> plonk_records._PlonkCandidate:
     """Return the candidate git donkey creates for ``branch_name``.
 
     Parameters
@@ -362,40 +368,40 @@ def _candidate(branch_name: str, issue_number: int) -> plonk._PlonkCandidate:
 
     Returns
     -------
-    plonk._PlonkCandidate
+    plonk_records._PlonkCandidate
         The candidate, marked complete by the matching issue marker.
 
     """
-    return plonk._PlonkCandidate(
+    return plonk_records._PlonkCandidate(
         branch_name=branch_name,
         worktree_path=Path(f"/repo.worktrees/{branch_name}"),
         marker=f"(#{issue_number})",
     )
 
 
-def _marker_for(candidate: plonk._PlonkCandidate) -> str:
+def _marker_for(candidate: plonk_records._PlonkCandidate) -> str:
     """Return the trunk history line that marks ``candidate`` complete."""
     return f"Merge pull request {candidate.marker}"
 
 
 def _context(
-    candidates: typ.Iterable[plonk._PlonkCandidate],
-) -> plonk._PlonkContext:
+    candidates: typ.Iterable[plonk_records._PlonkCandidate],
+) -> plonk_records._PlonkContext:
     """Return the repository state a completed cleanup of ``candidates`` sees.
 
     Parameters
     ----------
-    candidates : collections.abc.Iterable[plonk._PlonkCandidate]
+    candidates : collections.abc.Iterable[plonk_records._PlonkCandidate]
         Candidates whose worktree stanzas the context reports.
 
     Returns
     -------
-    plonk._PlonkContext
+    plonk_records._PlonkContext
         Context holding one stanza per candidate and no invoking worktree, so
         every candidate is eligible for cleanup.
 
     """
-    return plonk._PlonkContext(
+    return plonk_records._PlonkContext(
         repo_home=typ.cast("Repo", SimpleNamespace()),
         stanzas=[
             {
@@ -411,7 +417,7 @@ def _context(
 
 
 def _cleanup(
-    candidates: typ.Iterable[plonk._PlonkCandidate],
+    candidates: typ.Iterable[plonk_records._PlonkCandidate],
     adapter: object,
     *,
     mode: plonk._PlonkMode,
@@ -421,7 +427,7 @@ def _cleanup(
 
     Parameters
     ----------
-    candidates : collections.abc.Iterable[plonk._PlonkCandidate]
+    candidates : collections.abc.Iterable[plonk_records._PlonkCandidate]
         Candidates to clean up.
     adapter : object
         Any double exposing the adapter's history, skip, and mutation surface.
@@ -559,6 +565,7 @@ def test_dry_run_completed_mode_reports_plans_without_mutating(
 
     result = _cleanup([candidate], _FailingGitAdapter(), mode=mode, dry_run=True)
 
+    assert result.mode is mode, "expected completed dry-run mode to be preserved"
     assert result.is_dry_run, "expected dry-run result marker"
     assert result.removed_worktrees == (candidate.worktree_path,), (
         "expected planned worktree removal"
@@ -568,40 +575,121 @@ def test_dry_run_completed_mode_reports_plans_without_mutating(
     )
 
 
-@given(
-    mode=st.sampled_from((
-        plonk._PlonkMode.DEFAULT,
-        plonk._PlonkMode.HARD,
-    )),
-    issue_number=st.integers(min_value=1, max_value=999_999),
-)
-def test_dry_run_modes_never_mutate_and_report_mode_specific_plans(
-    mode: plonk._PlonkMode,
-    issue_number: int,
+def test_failed_branch_deletion_is_reported_and_the_batch_continues() -> None:
+    """A branch Git refuses to delete should be reported, not fatal."""
+    stubborn = _candidate("issue-456-stubborn", 456)
+    clean = _candidate("issue-123-clean", 123)
+    adapter = _RecordingGitAdapter(
+        [_marker_for(stubborn), _marker_for(clean)],
+        deletion_failures=[stubborn.branch_name],
+    )
+
+    result = _cleanup([stubborn, clean], adapter, mode=plonk._PlonkMode.HARD)
+
+    assert result.removed_worktrees == (stubborn.worktree_path, clean.worktree_path), (
+        "both worktrees are still removed"
+    )
+    assert result.failed_branch_deletions == (stubborn.branch_name,), (
+        "the surviving branch is reported as a failed deletion"
+    )
+    assert result.removed_branches == (clean.branch_name,), (
+        "a branch is only reported as removed once Git deleted it"
+    )
+    assert not result.skipped_worktrees, (
+        "a failed branch deletion is not a skipped worktree"
+    )
+    assert adapter.deleted == [clean.branch_name], (
+        "the following candidate's branch is still deleted"
+    )
+
+
+def test_skipped_candidate_records_its_bounded_reason(
+    recording_recorder: RecordingRecorder,
 ) -> None:
-    """Completed-cleanup dry runs should report plans without mutating adapters.
-
-    This pins the pure policy invariant for the ``DEFAULT`` and ``HARD`` modes;
-    ``SOFT`` filesystem planning is covered separately by
-    ``test_dry_run_soft_mode_reports_targets_without_removing_them``.
-    """
-    candidate = _candidate(f"issue-{issue_number}-fix", issue_number)
-
-    result = _cleanup(
-        [candidate],
-        _FailingGitAdapter(_marker_for(candidate)),
-        mode=mode,
-        dry_run=True,
+    """A skipped worktree should record why the preflight refused it."""
+    dirty = _candidate("issue-456-dirty", 456)
+    adapter = _RecordingGitAdapter(
+        [_marker_for(dirty)],
+        skip_reasons={dirty.worktree_path: plonk._SkipReason.DIRTY},
     )
 
-    expected_branches = (
-        (candidate.branch_name,) if mode is plonk._PlonkMode.HARD else ()
+    _cleanup([dirty], adapter, mode=plonk._PlonkMode.DEFAULT)
+
+    assert len(recording_recorder.observations) == 1, (
+        "a skipped candidate records the preflight and nothing else"
     )
-    assert result.mode is mode, "expected completed dry-run mode to be preserved"
-    assert result.is_dry_run, "expected dry-run result marker"
-    assert result.removed_worktrees == (candidate.worktree_path,), (
-        "expected planned worktree removal"
+    record = recording_recorder.observations[0]
+    assert record.operation == "worktree_preflight", "the preflight records the skip"
+    assert record.outcome == "skipped", "the skip is an outcome of its own"
+    assert record.skip_reason == "dirty", "the reason is a bounded label"
+    assert record.mode == "default", "the record names the mode the sweep ran in"
+    assert recording_recorder.unbounded_values() == set(), (
+        "every recorded value comes from a declared vocabulary"
     )
-    assert result.removed_branches == expected_branches, (
-        "expected branch plans only in hard dry-run mode"
+
+
+def test_refused_removal_and_deletion_record_bounded_failures(
+    recording_recorder: RecordingRecorder,
+) -> None:
+    """Each refused Git command should record a failure with its error class."""
+    stubborn = _candidate("issue-456-stubborn", 456)
+    branchless = _candidate("issue-789-branchless", 789)
+    adapter = _RecordingGitAdapter(
+        [_marker_for(stubborn), _marker_for(branchless)],
+        removal_failures=[stubborn.worktree_path],
+        deletion_failures=[branchless.branch_name],
+    )
+
+    _cleanup([stubborn, branchless], adapter, mode=plonk._PlonkMode.HARD)
+
+    assert recording_recorder.outcomes("worktree_removal") == ["failure", "success"], (
+        "the refused removal is recorded before the removal that succeeded"
+    )
+    assert recording_recorder.error_kinds("worktree_removal") == [
+        "git_command_error"
+    ], "the failed removal names the error class"
+    assert recording_recorder.outcomes("branch_deletion") == ["failure"], (
+        "the refused deletion records a failure"
+    )
+    assert recording_recorder.error_kinds("branch_deletion") == ["git_command_error"], (
+        "the failed deletion names the error class"
+    )
+    assert recording_recorder.unbounded_values() == set(), (
+        "every recorded value comes from a declared vocabulary"
+    )
+    assert recording_recorder.leaked_details(("/repo.worktrees/", "issue-")) == set(), (
+        "no path or branch name reaches the bounded vocabulary"
+    )
+
+
+@pytest.mark.parametrize(
+    ("failed_branch_deletions", "expected_exit_code"),
+    [
+        pytest.param((), 0, id="complete-sweep"),
+        pytest.param(("issue-123-fix",), 1, id="surviving-branch"),
+    ],
+)
+def test_run_git_plonk_reports_partial_sweeps(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    failed_branch_deletions: tuple[str, ...],
+    expected_exit_code: int,
+) -> None:
+    """A branch the sweep could not delete should reach the caller's exit code."""
+    result = plonk._PlonkResult(
+        mode=plonk._PlonkMode.HARD,
+        removed_worktrees=(Path("/repo.worktrees/issue-123-fix"),),
+        failed_branch_deletions=failed_branch_deletions,
+    )
+    monkeypatch.setattr(plonk, "_load_plonk_context", lambda: None)
+    monkeypatch.setattr(
+        plonk, "_run_completed_cleanup", lambda *_args, **_kwargs: result
+    )
+
+    exit_code = plonk.run_git_plonk(hard=True)
+
+    assert exit_code == expected_exit_code, "the sweep reports what it left behind"
+    summary = capsys.readouterr().out
+    assert ("Failed branch deletions:" in summary) is bool(failed_branch_deletions), (
+        "the summary names the branch that survived, and only then"
     )
