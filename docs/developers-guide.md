@@ -97,13 +97,18 @@ calling directory. That branch was captured during context loading by
 `helpers._get_checked_out_branch_name()`, so a detached HEAD fails before
 resolution.
 
-Implicit discovery is deliberately a command rather than a query.
-`_fetch_remote_default_ref()` reads the principal remote's advertised symbolic
-`HEAD` with `ls_remote --symref` and fetches the named branch into
-`refs/remotes/{remote}/{branch}`. `_advertised_default_branch()` is the pure
-parser for the advertisement and is tested on its own. Fetching explicitly
-matters because a narrow fetch configuration may omit the default branch, and
-a stale local `remote/HEAD` alias is not trusted.
+Implicit discovery is deliberately a command rather than a query, and is shared
+with `git plonk` through `git_donkey.remote_default`. That module owns principal
+remote selection (`principal_remote()`), the pure
+`advertised_default_branch()` parser for `ls_remote --symref` output,
+`discover_default_branch()`, and `fetch_default_branch_ref()`, which fetches the
+named branch into `refs/remotes/{remote}/{branch}`.
+`git_donkey.donkey._fetch_remote_default_ref()` composes discovery with the
+fetch for base selection, and `git_donkey.plonk._canonical_trunk_ref()` does the
+same for completion history, so the two commands cannot disagree about which
+branch is trunk. Fetching explicitly matters because a narrow fetch
+configuration may omit the default branch, and a stale local `remote/HEAD`
+alias is not trusted.
 
 ### Adding a pull mode
 
@@ -204,6 +209,9 @@ infrastructure mutation:
 - `git_donkey.plonk` owns repository discovery, git-donkey worktree discovery,
   generated-directory cleanup, Git worktree removal, local branch deletion,
   dry-run planning, and user-facing summaries.
+- `git_donkey.remote_default` owns the principal-remote and default-branch
+  discovery both commands use, so completion history and base selection cannot
+  diverge.
 
 `git_donkey.plonk_policy.completed_candidates` is generic over its candidate
 type: it accepts any iterable whose items expose a read-only `marker` property
@@ -212,17 +220,25 @@ the candidates it receives. `git_donkey.plonk` therefore passes its worktree
 candidates directly.
 
 The plonk workflow deliberately reads completion history from the canonical
-trunk ref. This allows `git plonk` to be invoked from a linked topic worktree
-while still using the trunk history that contains issue or roadmap merge
-markers.
+trunk ref resolved by `remote_default`. This allows `git plonk` to be invoked
+from a linked topic worktree while still using the trunk history that contains
+issue or roadmap merge markers.
 
 Default and hard modes only consider linked worktrees under
 `../{repo}.worktrees` and only remove worktrees whose branch-derived completion
-marker is present in canonical trunk history. Hard mode deletes local branches
-after that marker check succeeds; it does not delete remote branches. Soft mode
-uses the same git-donkey worktree discovery but only removes conventional
-generated directories such as `target`, `node_modules`, `.venv`, and cache
-directories.
+marker is present in canonical trunk history. Before removing one, they ask
+`_GitWorktreeAdapter.skip_reason()` whether Git would discard it unprompted:
+worktrees with modified, staged, or untracked files, and worktrees whose
+directory is gone, are skipped and reported as `_SkippedWorktree` entries while
+the sweep continues. Removal never passes `--force`. Hard mode deletes local
+branches after a successful unforced removal, so a skipped worktree keeps its
+branch; it does not delete remote branches. Soft mode uses the same git-donkey
+worktree discovery but only removes conventional generated directories such as
+`target`, `node_modules`, `.venv`, and cache directories.
+
+The decision table, the skip vocabulary, and the reasoning behind reporting
+skips rather than forcing removal are recorded in the
+[plonk cleanup policy](plonk-cleanup-policy.md).
 
 `pytest-bdd` and `syrupy` are development dependencies for this command.
 `pytest-bdd` covers user workflows against real temporary Git repositories, and
@@ -301,7 +317,10 @@ through `extra`, so callers can route records into structured logging later:
 - `repo_name`, `owner`, `branch`, `result`, and adoption `reason` provide
   diagnostic context for repository decisions.
 - `mode`, `worktree`, `marker`, `candidate_count`, `completed_count`, and
-  `removed_count` provide diagnostic context for plonk cleanup decisions.
+  `removed_count` provide diagnostic context for plonk cleanup decisions. A
+  skipped candidate also records `operation` of `skip_worktree` and a `reason`
+  from the skip vocabulary, at `INFO` because leaving a worktree in place is a
+  decision rather than a fault.
 - Incoming and outgoing comparisons use `operation` (`compare` or `fetch`),
   `direction` (`incoming` or `outgoing`), `fetch_enabled`, `ref`, `remote`,
   `commit_count`, and `result` (`found`, `empty`, `unavailable`, `success`, or

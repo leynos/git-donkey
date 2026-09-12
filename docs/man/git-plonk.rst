@@ -24,10 +24,24 @@ Worktrees outside that directory remain untouched.
 Default mode removes completed worktrees.
 A worktree counts as completed only when its branch name yields a recognized
 completion marker that appears in the canonical trunk history.
+The canonical trunk is the default branch advertised by the principal remote
+(the first configured remote) and fetched before the sweep, so the local
+``refs/remotes/<remote>/HEAD`` alias is never consulted and there is no
+fallback to local ``main``.
 An issue branch such as ``issue-123-short-title`` matches ``(#123)``.
 A roadmap branch such as ``road-1-2-3a-4-short-title`` matches
 ``(road.1.2.3a.4)`` or ``(road.1.2.3a.4.)``.
 Leave branches with unrecognized names or missing history markers alone.
+
+A completed worktree holding modified, staged, or untracked files is skipped
+and reported, and the sweep continues with the remaining worktrees, so one
+dirty candidate cannot leave clean siblings behind.
+Files ignored by ``.gitignore`` do not protect a worktree, matching the rule
+``git worktree remove`` itself applies.
+Nothing in this command forces a removal, so a skipped worktree stays on disk
+with its branch intact.
+The summary lists removed worktrees, deleted branches, and every skipped
+worktree with the reason it was skipped.
 
 OPTIONS
 =======
@@ -41,13 +55,17 @@ OPTIONS
 
 --hard
     Remove completed worktrees and delete their matching local branches.
-    Apply the same completion-marker check as default mode.
-    Never delete remote branches.
+    Apply the same completion-marker check and the same cleanliness check as
+    default mode.
+    A worktree skipped for uncommitted or untracked files keeps its branch,
+    because the branch is deleted only after its worktree is removed.
+    Never force a removal and never delete remote branches.
 
 --dry-run
     Print planned actions without removing generated paths, worktrees, or
     branches.
     Combine with default, soft, or hard mode to preview its effects.
+    Worktrees that would be skipped are reported in the preview as well.
 
 -h, --help
     Display command-line help and exit.
@@ -73,6 +91,15 @@ Preview removal of completed worktrees and local branches::
 Remove completed worktrees after reviewing the preview::
 
     git plonk
+
+A run that leaves work behind names each skipped worktree and the reason::
+
+    git-plonk: mode=default
+    Removed worktrees:
+    - /home/user/demo.worktrees/issue-123-fix
+    Skipped worktrees:
+    - /home/user/demo.worktrees/issue-456-dirty (uncommitted changes)
+    - /home/user/demo.worktrees/issue-789-gone (worktree directory is missing)
 
 SEE ALSO
 ========
