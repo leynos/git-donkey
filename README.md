@@ -31,9 +31,10 @@ git-donkey gives you Git subcommands for branch-based work:
   `agent-template` projects. Find out what happens when you want to start a new
   project *fast*.
 
-- **`git plonk`** – Reclaim disk space from completed `git donkey` worktrees,
-  optionally cleaning generated directories or deleting completed local
-  branches.
+- **`git plonk`** – Reclaim disk space from completed, clean `git donkey`
+  worktrees, optionally cleaning generated directories or deleting completed
+  local branches. Worktrees holding uncommitted work are reported and left
+  alone rather than discarded.
 
 - **`git donkey-template`** – Manage template directories that get
   automatically copied into new worktrees. Perfect for per-repository config

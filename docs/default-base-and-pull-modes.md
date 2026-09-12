@@ -9,9 +9,9 @@ flowchart TD
     Start["git donkey invocation"] --> Validate["_pull_mode"]
     Validate -->|conflicting options| Error["fail before repository access"]
     Validate -->|valid options| Base{base supplied?}
-    Base -->|no| Default["_fetch_remote_default_ref"]
+    Base -->|no| Default["discover_default_branch"]
     Default --> Advertise["ls_remote(--symref, HEAD)"]
-    Advertise --> Fetch["fetch default branch refspec"]
+    Advertise --> Fetch["fetch_default_branch_ref"]
     Fetch --> RemoteBase["fully qualified remote-tracking ref"]
     Base -->|yes| Explicit["choose_base_branch"]
     RemoteBase --> Update["optional confirmed base update"]
@@ -79,4 +79,7 @@ parser, including conflicting options. Unit tests cover advertisement parsing
 and explicit mode selection.
 
 The change does not alter remote selection, template overlays, `git track`,
-`git plonk`, branch cleanup, or the confirmation policy for existing updates.
+branch cleanup, or the confirmation policy for existing updates. `git plonk`
+shares this discovery for its completion trunk, so a `git plonk` run fetches
+the advertised default branch exactly as base selection does; see the
+[plonk cleanup policy](plonk-cleanup-policy.md) for what it then removes.

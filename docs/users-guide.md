@@ -14,8 +14,9 @@ these as `git <subcommand>` when `git-<subcommand>` is available on the `PATH`.
   would be pushed to the current branch's upstream.
 - `git fafo` (`git-fafo`) scaffolds and publishes a new GitHub repository from
   a template.
-- `git plonk` (`git-plonk`) removes completed worktrees or generated
-  directories from worktrees created by `git donkey`.
+- `git plonk` (`git-plonk`) removes completed, clean worktrees or generated
+  directories from worktrees created by `git donkey`, and reports any completed
+  worktree it leaves in place.
 - `git donkey-template` (`git-donkey-template`) displays and creates the
   template directory for the current repository.
 
@@ -363,11 +364,28 @@ git plonk
 ```
 
 Default mode removes worktrees whose branch name has a recognized completion
-marker and whose marker appears in the canonical trunk history used by
-`git plonk`. Issue branches named like `issue-123-short-title` match commits
-containing `(#123)`. Roadmap branches named like `road-1-2-3a-4-short-title`
-match commits containing `(road.1.2.3a.4)` or `(road.1.2.3a.4.)`. Branches with
-unrecognized names or no matching trunk history marker are left alone.
+marker and whose marker appears in canonical trunk history. Issue branches
+named like `issue-123-short-title` match commits containing `(#123)`. Roadmap
+branches named like `road-1-2-3a-4-short-title` match commits containing
+`(road.1.2.3a.4)` or `(road.1.2.3a.4.)`. Branches with unrecognized names or no
+matching trunk history marker are left alone.
+
+The trunk is the default branch the principal remote advertises, discovered
+with `git ls-remote --symref <remote> HEAD` and fetched explicitly, exactly as
+`git donkey` selects an implicit base. A stale `<remote>/HEAD` alias is never
+consulted, and there is no fallback to local `main`.
+
+Cleanup never discards work. A completed worktree holding modified, staged, or
+untracked files is skipped and reported, and the sweep continues with the
+remaining worktrees, so one dirty candidate cannot strand its clean siblings.
+Files ignored by `.gitignore` are the exception, because Git's own removal rule
+ignores them too. There is no option that forces removal, so a skipped worktree
+stays on disk with its branch intact.
+
+In hard mode, if Git refuses to delete a local branch, the command reports it
+under a `Failed branch deletions:` heading and continues with the remaining
+worktrees. Such a run exits with status 1, unlike a skip, which leaves the
+status at 0.
 
 Soft mode removes generated directories from all `git donkey` worktrees without
 removing worktrees or branches:
@@ -386,18 +404,41 @@ Hard mode removes completed worktrees and deletes their matching local branches:
 git plonk --hard
 ```
 
-Hard mode uses the same history-marker check as default mode before deleting a
-branch. It deletes local branches only; it never deletes remote branches.
+Hard mode uses the same history-marker check and the same cleanliness preflight
+as default mode. The branch is deleted only after its worktree is removed, so a
+skipped worktree keeps its branch. It deletes local branches only; it never
+forces a removal and never deletes remote branches.
 
 Dry-run mode prints the actions `git plonk` would take and exits without
-removing generated paths, worktrees, or branches. It can be combined with the
-default, soft, or hard cleanup mode:
+removing generated paths, worktrees, or branches. Skips appear in the preview
+too, because a preview that hid them would misrepresent the run it previews. It
+can be combined with the default, soft, or hard cleanup mode:
 
 ```shell
 git plonk --dry-run
 git plonk --soft --dry-run
 git plonk --hard --dry-run
 ```
+
+Every run ends with a summary. Removals are listed under their own headings,
+and each skipped worktree is listed with the reason it was left alone:
+
+```text
+git-plonk: mode=hard
+Removed worktrees:
+- /home/user/demo.worktrees/issue-123-fix
+- /home/user/demo.worktrees/issue-321-old
+Removed branches:
+- issue-123-fix
+Failed branch deletions:
+- issue-321-old (branch deletion failed)
+Skipped worktrees:
+- /home/user/demo.worktrees/issue-456-dirty (uncommitted changes)
+- /home/user/demo.worktrees/issue-789-gone (worktree directory is missing)
+```
+
+A run in which every candidate is skipped reports the skips rather than
+claiming that no matching worktrees were found.
 
 ## git donkey-template
 

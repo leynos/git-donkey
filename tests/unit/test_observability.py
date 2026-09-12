@@ -23,6 +23,8 @@ _BOUNDED_ATTRIBUTE_NAMES = frozenset({
     "pull_mode",
     "base_kind",
     "error_kind",
+    "mode",
+    "skip_reason",
 })
 
 # Attributes logging adds to every record, excluded when reading the payload.
@@ -63,6 +65,8 @@ def test_observation_attributes_use_only_declared_vocabulary() -> None:
         pull_mode="rebase",
         base_kind="implicit_remote_default",
         error_kind="git_command_error",
+        mode="hard",
+        skip_reason="dirty",
     )
 
     attributes = observation.attributes()
@@ -82,6 +86,8 @@ def test_declared_attribute_values_are_populated() -> None:
         "failure",
         "git_command_error",
         "implicit_remote_default",
+        "hard",
+        "dirty",
     } <= declared_attribute_values(), "the vocabularies declare their values"
 
 

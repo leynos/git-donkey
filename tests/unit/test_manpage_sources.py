@@ -245,6 +245,9 @@ def test_manual_has_standard_sections(command: str) -> None:
         ("git-plonk", "--soft"),
         ("git-plonk", "--hard"),
         ("git-plonk", "--dry-run"),
+        # The manual must describe the skip-and-report policy, not the
+        # force-removal behaviour 0.2.0 replaced.
+        ("git-plonk", "skipped"),
         ("git-donkey-template", "XDG_DATA_HOME"),
         ("git-incoming", "--no-fetch"),
         ("git-in", "--no-fetch"),

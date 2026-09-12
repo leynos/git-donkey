@@ -2,18 +2,20 @@
 
 This guide covers the user-visible changes in the forthcoming git-donkey 0.2.0
 release, for users upgrading from 0.1.0: the base-selection and base-update
-changes to `git donkey`, and the new `git incoming` and `git outgoing`
-comparison commands. The [default-base and pull-mode
-design](default-base-and-pull-modes.md) records the full contract for the base
-changes; this guide focuses on the user-visible differences and the commands
-that replace the old defaults.
+changes to `git donkey`, the cleanup-safety changes to `git plonk`, and the new
+`git incoming` and `git outgoing` comparison commands. The [default-base and
+pull-mode design](default-base-and-pull-modes.md) records the full contract for
+the base changes, and the [plonk cleanup policy](plonk-cleanup-policy.md)
+records the cleanup contract; this guide focuses on the user-visible
+differences and the commands that replace the old defaults.
 
 ## Who is affected
 
-The base-selection and base-update changes apply to `git donkey` only.
-`git track`, `git fafo`, `git plonk`, and `git donkey-template` are unchanged.
-The release also adds `git incoming` and `git outgoing`; nothing existing is
-removed or renamed, so the 0.1.0 command surface keeps working unchanged.
+The base-selection and base-update changes apply to `git donkey`, and the
+cleanup changes apply to `git plonk`. `git track`, `git fafo`, and
+`git donkey-template` are unchanged. The release also adds `git incoming` and
+`git outgoing`; nothing existing is removed or renamed, so the 0.1.0 command
+surface keeps working unchanged.
 
 - Repositories whose default branch is not `main`, or whose principal remote
   is not `origin`: an omitted base now follows the remote default instead of
@@ -29,6 +31,13 @@ removed or renamed, so the 0.1.0 command surface keeps working unchanged.
   resolves to the remote default instead of local `main`.
 - Anyone who relied on a new branch inheriting tracking from its base: new
   branches are now created with `--no-track`.
+- Anyone who relied on `git plonk` discarding uncommitted changes in a
+  completed worktree: such a worktree is now skipped, reported, and left on
+  disk with its branch, while the rest of the sweep continues.
+- Repositories whose default branch is not `main`, or whose principal remote
+  is not `origin`: `git plonk` now judges completion against the default branch
+  the principal remote advertises, rather than a stale `<remote>/HEAD` alias or
+  local `main`.
 
 ## Behaviour changes
 
@@ -41,6 +50,10 @@ removed or renamed, so the 0.1.0 command surface keeps working unchanged.
 | Explicit base or `.` | Selected as supplied | Unchanged |
 | `--no-pull` | Suppressed the update prompt | Accepted; selects the same no-update default |
 | New branch tracking | Could inherit from the base via `branch.autoSetupMerge` | Never inherits (`--no-track`) |
+| `git plonk` cleanup | Removed completed worktrees with `git worktree remove --force` | Removes completed worktrees without `--force`; dirty ones are skipped and reported |
+| `git plonk --hard` | Deleted local branches after a forced worktree removal | Deletes local branches only after an unforced removal, so a skipped worktree keeps its branch |
+| `git plonk` trunk | Read `<remote>/HEAD`, falling back to local `main` | The fetched default branch the principal remote advertises |
+| `git plonk --soft` | Removed generated directories only | Unchanged |
 
 _Table 1: Behaviour changes between git-donkey 0.1.0 and 0.2.0._
 
@@ -117,6 +130,42 @@ on the remote. `.` picks the branch checked out in the calling working
 directory, including when called from a linked worktree. If the requested
 branch already exists locally or on the remote, it is reused with its
 existing tracking rules; the base is used only when creating a new branch.
+
+### git plonk cleanup policy
+
+In 0.1.0 `git plonk` removed completed worktrees with `git worktree remove
+--force`, so a completion marker on trunk was enough to discard uncommitted
+work. In 0.2.0 cleanup is unforced:
+
+- A completed worktree holding modified, staged, or untracked files is skipped
+  and reported, and the sweep continues with the remaining worktrees, so one
+  dirty candidate no longer abandons the clean worktrees behind it. Files
+  ignored by `.gitignore` still do not protect a worktree, because Git's own
+  removal rule ignores them.
+- `--hard` keeps its meaning of "delete the matching local branch". Because the
+  branch is deleted only after its worktree is removed, a skipped worktree
+  keeps its branch.
+- There is no force option in 0.2.0. Discarding uncommitted work stays a
+  deliberate, separate action, such as `git worktree remove --force` followed
+  by `git branch -D`.
+- Each skipped worktree is listed under `Skipped worktrees:` with the reason it
+  was left alone, and skips appear in `--dry-run` previews too.
+- A local branch Git refuses to delete is reported under `Failed branch
+  deletions:` instead of ending the sweep: the worktree has gone, the branch is
+  reported neither as removed nor as skipped, and the remaining candidates are
+  still processed. Such a run exits with status `1`, so a partial sweep is
+  visible to scripts; a skip still leaves the status at `0`, because a skip is
+  a reported decision.
+
+`git plonk --soft` is unchanged: it still removes generated directories only,
+and never touches worktrees or branches.
+
+Completion history now comes from the shared discovery described above: the
+principal remote's advertised symbolic `HEAD`, fetched explicitly into
+`refs/remotes/<remote>/<branch>`. A stale `<remote>/HEAD` alias is no longer
+trusted, and there is no fallback to local `main`. This is the same trunk
+`git donkey` bases new worktrees on, so the two commands cannot disagree about
+which branch is the repository's trunk.
 
 ## New comparison commands
 
@@ -227,8 +276,40 @@ When an explicit local base is behind and is not checked out in any worktree,
 enabling a pull mode makes the command exit with code 1. Omitting the pull
 option still creates the worktree from the unchanged local base.
 
+### git plonk
+
+Before (0.1.0):
+
+```shell
+# Removed every completed worktree, dirty or not
+git plonk
+
+# Removed them and deleted their local branches
+git plonk --hard
+```
+
+After (0.2.0):
+
+```shell
+# Removes completed clean worktrees; dirty ones are reported and kept
+git plonk
+
+# Makes the same decisions, and deletes branches for removed worktrees only
+git plonk --hard
+
+# Previews the same decisions, including which worktrees would be skipped
+git plonk --dry-run
+```
+
+A completed worktree with uncommitted or untracked files needs no workaround:
+it is left alone, and listed under `Skipped worktrees:` with the reason. Resolve
+the changes deliberately, then re-run to collect the worktree and, in hard
+mode, its branch.
+
 ## Further reading
 
 - [Users' guide](users-guide.md) documents the current command surface.
 - [Default-base and pull-mode design](default-base-and-pull-modes.md) records
   the discovery, preservation, and verification contracts.
+- [Plonk cleanup policy](plonk-cleanup-policy.md) records the removal policy
+  `git plonk` applies to completed worktrees.

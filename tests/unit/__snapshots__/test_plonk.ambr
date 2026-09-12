@@ -1,4 +1,15 @@
 # serializer version: 1
+# name: test_dry_run_planned_and_skipped_summary_matches_snapshot
+  '''
+  git-plonk: mode=hard dry-run
+  Planned worktree removals:
+  - <worktrees>/issue-123-fix
+  Planned branch deletions:
+  - issue-123-fix
+  Skipped worktrees:
+  - <worktrees>/issue-456-dirty (uncommitted changes)
+  '''
+# ---
 # name: test_dry_run_summary_reports_planned_actions
   '''
   git-plonk: mode=hard dry-run
@@ -6,6 +17,18 @@
   - <worktrees>/issue-123-fix
   Planned branch deletions:
   - issue-123-fix
+  '''
+# ---
+# name: test_skipped_summary_matches_snapshot
+  '''
+  git-plonk: mode=hard
+  Removed worktrees:
+  - <worktrees>/issue-123-fix
+  Removed branches:
+  - issue-123-fix
+  Skipped worktrees:
+  - <worktrees>/issue-456-dirty (uncommitted changes)
+  - <worktrees>/issue-789-gone (worktree directory is missing)
   '''
 # ---
 # name: test_summary_rendering_matches_snapshot

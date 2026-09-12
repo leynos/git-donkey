@@ -14,6 +14,8 @@ from pathlib import Path
 import pytest
 from git import Repo
 
+from tests.git_repo_helpers import configure_repo
+
 
 @dataclasses.dataclass(frozen=True, slots=True)
 class StubCommands:
@@ -21,13 +23,6 @@ class StubCommands:
 
     bin_dir: Path
     log_path: Path
-
-
-def _configure_repo(repo: Repo) -> None:
-    """Configure user identity for commit creation."""
-    with repo.config_writer() as config:
-        config.set_value("user", "name", "Test User")
-        config.set_value("user", "email", "test@example.com")
 
 
 @pytest.fixture
@@ -75,7 +70,7 @@ def _setup_repo(tmp_path: Path) -> tuple[Path, Path]:
 
     remote_repo = Repo.init(remote_path, bare=True)
     local_repo = Repo.init(local_path)
-    _configure_repo(local_repo)
+    configure_repo(local_repo)
     local_repo.create_remote("origin", remote_path.as_posix())
 
     _seed_repo(local_repo, "README.md", "seed")

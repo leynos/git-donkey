@@ -123,7 +123,10 @@ directories being removed or retained.
   still-valid issues: docs now consistently describe canonical trunk/default
   history, trunk-ref resolution prefers remote default branches before local
   `main`, completed cleanup excludes the invoking linked worktree, and unit
-  plonk assertions now include diagnostics.
+  plonk assertions now include diagnostics. Superseded on 2026-09-12: the
+  local `main` fallback was removed; trunk-ref resolution now follows the
+  default branch the principal remote advertises, and fails with exit code 1
+  when none is advertised.
 - [x] 2026-06-28: Re-verified the latest failed-check report. The users' guide
   warning was stale. Fixed the still-valid soft-mode architecture and marker
   scan findings by splitting soft setup from trunk cleanup setup and streaming
@@ -133,6 +136,26 @@ directories being removed or retained.
   mutating filesystem or Git state. Follow-up review coverage now includes a
   `pytest-bdd` soft dry-run scenario proving generated paths stay put while the
   planned cleanup summary is printed.
+- [x] 2026-09-12: Adopted the skip-and-report cleanup contract. A completed
+  worktree holding a tracked modification, a staged change, or an untracked
+  file is no longer force-removed: the preflight classifies it, the sweep
+  reports it under `Skipped worktrees:` with a bounded reason, keeps its
+  branch, and continues with the rest of the batch. Ignored build output still
+  does not block removal. The decision table is in
+  `docs/plonk-cleanup-policy.md`.
+- [x] 2026-09-12: Split `git_donkey.plonk` into cohesive modules
+  (`plonk_records`, `plonk_selection`, `plonk_summary`, and the existing
+  `plonk_policy`) and made a refused branch deletion report itself as a failed
+  deletion instead of abandoning the sweep.
+- [x] 2026-09-12: Cleared the CodeScene Code Health regressions this branch
+  introduced by splitting the plonk test modules along the same production
+  boundaries, and verified every touched module with `cs check` (all 10.00).
+- [x] 2026-09-12: Rebased onto `origin/main` (`d3433e8`). Main had advanced by
+  two locked dependency bumps — `cyclopts` 4.21.0 to 4.24.0 and `platformdirs`
+  4.10.0 to 4.11.7 — and nothing else, so no source, test, or documentation
+  file was changed on both sides and the rebase was conflict-free. `uv.lock` is
+  `main`'s file byte for byte; `uv lock --check` reports it consistent with the
+  declarations in `pyproject.toml`, and a rebuild (`uv lock`) is a no-op.
 
 ## Surprises & Discoveries
 
@@ -154,9 +177,12 @@ directories being removed or retained.
   mutation. The policy is now isolated in `git_donkey.plonk_policy`, while
   `git_donkey.plonk` owns infrastructure adapters and user summaries.
 - Inline review found completion history still depended on checked-out state in
-  the main worktree. The workflow now resolves a canonical trunk/default ref,
+  the main worktree. The workflow then resolved a canonical trunk/default ref,
   preferring the remote default branch and falling back to local `main`, before
-  scanning completion history.
+  scanning completion history. Superseded on 2026-09-12: the local `main`
+  fallback was removed; resolution now follows the default branch the
+  principal remote advertises, and fails with exit code 1 when none is
+  advertised.
 - Inline review found soft mode could inspect worktrees and remove nothing but
   still report "No matching git donkey worktrees found." `_PlonkResult` now
   records inspected worktree count so soft mode can report that there were no
@@ -164,6 +190,18 @@ directories being removed or retained.
 - Inline review found `pytest-bdd` and `syrupy` had minimum versions without
   upper bounds. The development dependency entries now keep the existing
   minimums and cap the next major releases.
+- The `CodeScene Code Health Review (main)` check failed on this branch with
+  two "Low Cohesion" findings, which CodeScene raises when a module carries
+  four or more responsibilities among its functions (threshold = 4):
+  `tests/integration/test_git_plonk_bdd.py` fell from 10.00 to 8.54, and the
+  then-new `tests/unit/test_plonk_cleanup.py` scored 8.81. Reproduced locally
+  with `cs delta origin/main --output-format json`, which reports only the
+  findings a branch introduces.
+- The BDD module sat exactly on the tipping point: removing any one of several
+  test groups raised it back to 10.00, and it stayed clean at 46 top-level
+  functions but was flagged at 47. The finding was therefore structural — the
+  module had accumulated unrelated responsibilities — rather than the fault of
+  one careless test.
 
 ## Decision Log
 
@@ -204,11 +242,38 @@ directories being removed or retained.
   completion history, with local `main` as fallback. Rationale: repositories
   may keep local `main` while their configured remote default branch is
   different, and plonk cleanup must follow the repository default rather than a
-  stale local branch.
+  stale local branch. Superseded on 2026-09-12: the local `main` fallback was
+  removed; completion is judged against the default branch the principal
+  remote advertises, resolved through `git_donkey.remote_default`, and an
+  unadvertised default fails with exit code 1 rather than falling back to a
+  local branch.
 - Decision: keep conflicting `--soft --hard` coverage in both unit CLI-boundary
   tests and the BDD feature. Rationale: the unit test pins the Cyclopts-facing
   usage error cheaply, while the BDD scenario records the user workflow in the
   feature specification.
+- Decision: clear the CodeScene low-cohesion findings by splitting the test
+  modules along the production boundaries they verify, rather than relaxing the
+  threshold in a local CodeScene rule file. Rationale: the production modules
+  were already split that way for the same gate, and `cs check <file>` reports
+  a module's absolute code health before the pull request does, so the split is
+  verifiable locally and keeps the gate meaningful.
+- Decision: keep the completed-cleanup workflow, its worktree adapters, and
+  `run_git_plonk()` together in `git_donkey.plonk`. Rationale: they share
+  `_GIT_PLONK_PREFIX`, the module logger, and the `plonk.helpers` patch seams
+  the unit tests monkeypatch; splitting them further would move no
+  responsibility out of the module and would break those seams.
+- Decision: adopt `main`'s `uv.lock` wholesale on rebase and prove it canonical,
+  rather than re-resolving the lock around the branch's own history. Rationale:
+  the branch declares no dependency of its own, so the lock has exactly one
+  authoritative form — the one `main` already validates in CI. `uv lock --check`
+  and a no-op `uv lock` rebuild together show the adopted file is the file the
+  declarations resolve to, which a hand-merged lock could not claim.
+- Decision: treat the `cyclopts` bump as the one `main` change with a bearing on
+  this branch, and re-run every gate under it. Rationale: the branch rewrites
+  the `git plonk` help text, and the parser contract it must satisfy is pinned
+  by `tests/unit/test_cli_plonk.py` and the manpage contract test in
+  `tests/unit/test_manpage_sources.py`; a CLI-framework bump is precisely the
+  change those tests exist to catch.
 
 ## Implementation Plan
 
@@ -357,7 +422,9 @@ coverage and diagnostics.
 The final review-response pass also made remote default branch resolution take
 precedence over local `main`, protected the invoking linked worktree from
 default and hard cleanup, and corrected plan/user documentation to describe
-canonical trunk/default history consistently.
+canonical trunk/default history consistently. Superseded on 2026-09-12: the
+local `main` fallback was removed; the advertised default branch is now the
+sole authority, and an unadvertised default fails with exit code 1.
 
 The latest architecture follow-up split `--soft` context loading from
 default/hard trunk cleanup context loading, so soft cleanup does not resolve
@@ -377,3 +444,73 @@ the living Progress, BDD specification, and Outcomes sections reflect the
 extension. Remaining work is unchanged: keep review follow-ups narrow, preserve
 the documented cleanup contracts, and run the project gates after behaviour
 changes.
+
+Revision note, 2026-09-12: `git plonk` now skips and reports instead of forcing
+removal. A completed worktree holding uncommitted work keeps its worktree and
+its branch, and the run continues; ignored build output still does not block
+removal. The skip vocabulary and decision table are in
+`docs/plonk-cleanup-policy.md`.
+
+The same revision split `git_donkey.plonk` along its production boundaries —
+`plonk_records` (records and the observation vocabulary), `plonk_selection`
+(worktree stanzas to candidates), and `plonk_summary` (report rendering) — and
+made a refused branch deletion non-fatal. The orchestration, the worktree
+adapters, and the completed-cleanup workflow stay in `git_donkey.plonk`
+because they share its prefix constant, its logger, and the patch seams the
+unit tests use.
+
+The test modules now follow those boundaries. `git plonk` coverage lives in
+`tests/unit/test_plonk.py` (summary rendering),
+`tests/unit/test_plonk_selection.py` (candidate selection, marker derivation,
+and the canonical trunk ref), `tests/unit/test_cli_plonk.py` (the Cyclopts
+parser and its mutually exclusive modes), `tests/unit/test_plonk_cleanup.py`
+(the completed-cleanup workflow),
+`tests/unit/test_plonk_worktree_adapter.py` (the adapter against real Git), and
+`tests/unit/test_plonk_soft_mode.py` (the soft pass). On the integration side,
+`tests/integration/test_git_plonk_bdd.py` binds the scenarios in
+`tests/integration/features/git_plonk.feature`,
+`tests/integration/test_git_plonk_trunk_history.py` covers which history
+supplies completion, and `tests/integration/plonk_helpers.py` holds the
+repository builders both suites compose. The split answers the CodeScene Code
+Health "Low Cohesion" finding that failed the pull request checks; each module
+scores 10.00 under `cs check`.
+
+Revision note, 2026-09-12 (rebase): Rebased onto `origin/main`, which had
+advanced by two locked dependency bumps — `cyclopts` 4.24.0 and `platformdirs`
+4.11.7 — and nothing else. `main`'s `uv.lock` is adopted wholesale, so the
+branch carries no lock change of its own; its commits are otherwise unchanged
+apart from the new SHAs the rebase gave them. The `cyclopts` bump is the one
+`main` change that touches this branch's surface, because the branch rewrites
+the `git plonk` help text, so every gate was re-run under it.
+
+Revision note, 2026-09-13: The third review round asked for evidence rather
+than new behaviour, so the changes are instrumentation, tests, and the
+documentation that described them.
+
+The three cleanup boundaries now emit spans: `worktree_preflight` times the
+whole cleanliness query in `_GitWorktreeAdapter.skip_reason()`, while
+`worktree_removal` and `branch_deletion` time their single Git call inside the
+existing `try:` block, so a refusal is timed as well. The operation names stay
+inside the fixed vocabulary in `git_donkey/observability.py`, and a span still
+reports the operation name and its duration only.
+
+Coverage followed the same seams. `tests/unit/test_plonk_selection.py` now
+exercises the stanza filters directly: detached and branchless stanzas, a
+missing `worktree` field, `~` expansion, the worktrees root and paths outside
+it, and unrecognized branches.
+`tests/unit/test_plonk_worktree_adapter.py` runs the production
+`delete_branch()` against real Git for both a deletion and Git's refusal, and
+asserts that each of the three boundaries emits its span, refusals included.
+The completed-cleanup rules moved from examples to properties:
+`tests/unit/test_plonk_cleanup_properties.py` compares a run against a
+reference model over per-candidate states, and the doubles and builders the two
+cleanup suites share now live in `tests/unit/plonk_cleanup_helpers.py`. The
+soft-pass module docstring states that a real soft run removes generated paths
+and only a dry run leaves them, and a new test pins that removal.
+
+Documentation was corrected where it described the old vocabulary.
+`docs/developers-guide.md` no longer lists `removal_failed` as a
+`worktree_preflight` skip reason, because a refused removal is recorded as a
+`worktree_removal` failure, and it now lists the cleanup spans among the timed
+operations. The trunk-resolution passages in this plan carry superseded
+markers, and the BDD module docstring uses en-GB spelling.

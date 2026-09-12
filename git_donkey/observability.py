@@ -1,11 +1,12 @@
 """Bounded observability for the git-donkey workflow.
 
 Workflow steps report what happened as a small record: an operation name, an
-outcome, and at most one label for the pull mode, the base kind, or the error
-class. Every attribute is drawn from a fixed vocabulary, so records stay
-aggregatable. Branch names, filesystem paths, remote URLs, Git output, exception
-text, and template directory names are never recorded: those values either have
-unbounded cardinality or disclose local information.
+outcome, and the labels that step reports, such as the pull mode, the base kind,
+the error class, the cleanup mode, or the reason a worktree was skipped. Every
+attribute is drawn from a fixed vocabulary, so records stay aggregatable. Branch
+names, filesystem paths, remote URLs, Git output, exception text, and template
+directory names are never recorded: those values either have unbounded
+cardinality or disclose local information.
 
 Records are delivered to the process-wide recorder, which is a :class:`Recorder`
 implementation installed with :func:`set_recorder`. The default is
@@ -24,8 +25,9 @@ becomes an ``extra`` field::
     )
 
 The timed operations are remote default discovery, default-branch fetch, pull
-execution, worktree creation, comparison fetch, and comparison. A span reports
-the operation name and its duration only; outcomes are reported by
+execution, worktree creation, comparison fetch, comparison, and the cleanup
+boundaries: worktree preflight, worktree removal, and branch deletion. A span
+reports the operation name and its duration only; outcomes are reported by
 :meth:`Recorder.record`.
 """
 
@@ -50,6 +52,9 @@ type Operation = typ.Literal[
     "template_overlay",
     "comparison_fetch",
     "comparison",
+    "worktree_preflight",
+    "worktree_removal",
+    "branch_deletion",
 ]
 """Fixed operation names a workflow step can report."""
 
@@ -65,6 +70,7 @@ type Outcome = typ.Literal[
     "unavailable",
     "found",
     "empty",
+    "skipped",
 ]
 """Fixed outcomes an operation can report."""
 
@@ -84,6 +90,12 @@ type ErrorKind = typ.Literal[
 ]
 """Fixed labels for the class of failure an operation reported."""
 
+type CleanupModeLabel = typ.Literal["default", "soft", "hard"]
+"""Fixed labels for the git-plonk mode a cleanup step ran in."""
+
+type SkipReasonLabel = typ.Literal["dirty", "unavailable", "removal_failed"]
+"""Fixed labels for why a cleanup step left a worktree in place."""
+
 
 @dataclasses.dataclass(frozen=True, slots=True)
 class Observation:
@@ -94,6 +106,8 @@ class Observation:
     pull_mode: PullModeLabel | None = None
     base_kind: BaseKind | None = None
     error_kind: ErrorKind | None = None
+    mode: CleanupModeLabel | None = None
+    skip_reason: SkipReasonLabel | None = None
 
     def attributes(self) -> dict[str, str]:
         """Return the record's bounded attributes, omitting unset labels.
@@ -112,6 +126,8 @@ class Observation:
                 ("pull_mode", self.pull_mode),
                 ("base_kind", self.base_kind),
                 ("error_kind", self.error_kind),
+                ("mode", self.mode),
+                ("skip_reason", self.skip_reason),
             )
             if value is not None
         }

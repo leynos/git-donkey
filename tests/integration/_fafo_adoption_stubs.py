@@ -3,7 +3,7 @@
 The adoption workflow needs a GitHub API duplicate-repository response and
 bare Git remotes with different histories. This module provides those reusable
 fixtures for ``test_git_fafo_adoption`` while sharing repository configuration
-with ``tests.integration.conftest``.
+with ``tests.git_repo_helpers``.
 """
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ from git import Repo
 from github3 import exceptions as github3_exceptions
 
 from git_donkey import fafo
-from tests.integration.conftest import _configure_repo
+from tests.git_repo_helpers import configure_repo
 
 if typ.TYPE_CHECKING:
     import collections.abc as cabc
@@ -89,7 +89,7 @@ def _seed_with_empty_initial(
     """
     seed_path = tmp_path / config.seed_name
     repo = Repo.init(seed_path)
-    _configure_repo(repo)
+    configure_repo(repo)
     repo.git.commit("--allow-empty", "-m", "Initial commit")
     repo.git.branch("-M", "main")
     if config.setup_fn is not None:
@@ -109,7 +109,7 @@ def _seed_nonempty_default(remote_path: Path, tmp_path: Path) -> None:
     """Seed the remote's default branch with a real (non-empty) commit."""
     seed_path = tmp_path / "seed-nonempty"
     repo = Repo.init(seed_path)
-    _configure_repo(repo)
+    configure_repo(repo)
     (seed_path / "file.txt").write_text("real work\n")
     repo.git.add("file.txt")
     repo.git.commit("-m", "Add real work")
@@ -123,7 +123,7 @@ def _seed_empty_initial_with_extra_branch(remote_path: Path, tmp_path: Path) -> 
     """Seed an empty initial commit on main plus a branch with real commits."""
     seed_path = tmp_path / "seed-extra-branch"
     repo = Repo.init(seed_path)
-    _configure_repo(repo)
+    configure_repo(repo)
     repo.git.commit("--allow-empty", "-m", "Initial commit")
     repo.git.branch("-M", "main")
     repo.git.checkout("-b", "feature")
