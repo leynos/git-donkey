@@ -133,6 +133,20 @@ directories being removed or retained.
   mutating filesystem or Git state. Follow-up review coverage now includes a
   `pytest-bdd` soft dry-run scenario proving generated paths stay put while the
   planned cleanup summary is printed.
+- [x] 2026-09-12: Adopted the skip-and-report cleanup contract. A completed
+  worktree holding a tracked modification, a staged change, or an untracked
+  file is no longer force-removed: the preflight classifies it, the sweep
+  reports it under `Skipped worktrees:` with a bounded reason, keeps its
+  branch, and continues with the rest of the batch. Ignored build output still
+  does not block removal. The decision table is in
+  `docs/plonk-cleanup-policy.md`.
+- [x] 2026-09-12: Split `git_donkey.plonk` into cohesive modules
+  (`plonk_records`, `plonk_selection`, `plonk_summary`, and the existing
+  `plonk_policy`) and made a refused branch deletion report itself as a failed
+  deletion instead of abandoning the sweep.
+- [x] 2026-09-12: Cleared the CodeScene Code Health regressions this branch
+  introduced by splitting the plonk test modules along the same production
+  boundaries, and verified every touched module with `cs check` (all 10.00).
 
 ## Surprises & Discoveries
 
@@ -164,6 +178,18 @@ directories being removed or retained.
 - Inline review found `pytest-bdd` and `syrupy` had minimum versions without
   upper bounds. The development dependency entries now keep the existing
   minimums and cap the next major releases.
+- The `CodeScene Code Health Review (main)` check failed on this branch with
+  two "Low Cohesion" findings, which CodeScene raises when a module carries
+  four or more responsibilities among its functions (threshold = 4):
+  `tests/integration/test_git_plonk_bdd.py` fell from 10.00 to 8.54, and the
+  then-new `tests/unit/test_plonk_cleanup.py` scored 8.81. Reproduced locally
+  with `cs delta origin/main --output-format json`, which reports only the
+  findings a branch introduces.
+- The BDD module sat exactly on the tipping point: removing any one of several
+  test groups raised it back to 10.00, and it stayed clean at 46 top-level
+  functions but was flagged at 47. The finding was therefore structural — the
+  module had accumulated unrelated responsibilities — rather than the fault of
+  one careless test.
 
 ## Decision Log
 
@@ -209,6 +235,17 @@ directories being removed or retained.
   tests and the BDD feature. Rationale: the unit test pins the Cyclopts-facing
   usage error cheaply, while the BDD scenario records the user workflow in the
   feature specification.
+- Decision: clear the CodeScene low-cohesion findings by splitting the test
+  modules along the production boundaries they verify, rather than relaxing the
+  threshold in a local CodeScene rule file. Rationale: the production modules
+  were already split that way for the same gate, and `cs check <file>` reports
+  a module's absolute code health before the pull request does, so the split is
+  verifiable locally and keeps the gate meaningful.
+- Decision: keep the completed-cleanup workflow, its worktree adapters, and
+  `run_git_plonk()` together in `git_donkey.plonk`. Rationale: they share
+  `_GIT_PLONK_PREFIX`, the module logger, and the `plonk.helpers` patch seams
+  the unit tests monkeypatch; splitting them further would move no
+  responsibility out of the module and would break those seams.
 
 ## Implementation Plan
 
@@ -377,3 +414,33 @@ the living Progress, BDD specification, and Outcomes sections reflect the
 extension. Remaining work is unchanged: keep review follow-ups narrow, preserve
 the documented cleanup contracts, and run the project gates after behaviour
 changes.
+
+Revision note, 2026-09-12: `git plonk` now skips and reports instead of forcing
+removal. A completed worktree holding uncommitted work keeps its worktree and
+its branch, and the run continues; ignored build output still does not block
+removal. The skip vocabulary and decision table are in
+`docs/plonk-cleanup-policy.md`.
+
+The same revision split `git_donkey.plonk` along its production boundaries —
+`plonk_records` (records and the observation vocabulary), `plonk_selection`
+(worktree stanzas to candidates), and `plonk_summary` (report rendering) — and
+made a refused branch deletion non-fatal. The orchestration, the worktree
+adapters, and the completed-cleanup workflow stay in `git_donkey.plonk`
+because they share its prefix constant, its logger, and the patch seams the
+unit tests use.
+
+The test modules now follow those boundaries. `git plonk` coverage lives in
+`tests/unit/test_plonk.py` (summary rendering),
+`tests/unit/test_plonk_selection.py` (candidate selection, marker derivation,
+and the canonical trunk ref), `tests/unit/test_cli_plonk.py` (the Cyclopts
+parser and its mutually exclusive modes), `tests/unit/test_plonk_cleanup.py`
+(the completed-cleanup workflow),
+`tests/unit/test_plonk_worktree_adapter.py` (the adapter against real Git), and
+`tests/unit/test_plonk_soft_mode.py` (the soft pass). On the integration side,
+`tests/integration/test_git_plonk_bdd.py` binds the scenarios in
+`tests/integration/features/git_plonk.feature`,
+`tests/integration/test_git_plonk_trunk_history.py` covers which history
+supplies completion, and `tests/integration/plonk_helpers.py` holds the
+repository builders both suites compose. The split answers the CodeScene Code
+Health "Low Cohesion" finding that failed the pull request checks; each module
+scores 10.00 under `cs check`.

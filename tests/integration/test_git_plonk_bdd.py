@@ -1,96 +1,45 @@
 """Behaviour-driven integration tests for the ``git plonk`` command.
 
 The module binds scenarios from ``features/git_plonk.feature`` to real
-temporary Git repositories created by ``tests.integration.conftest._setup_repo``.
-Shared helpers create `git donkey` worktrees, add trunk completion-marker
-commits, and expose a small ``PlonkScenario`` object so BDD steps can assert on
+temporary Git repositories created by ``tests.integration.conftest._setup_repo``
+and seeded through ``tests.integration.plonk_helpers``. The steps assert on
 branches, worktree paths, generated directories, and exit codes.
 
 These tests exercise the public ``git_donkey.plonk.run_git_plonk`` workflow and
 the ``git_donkey.cli`` command boundary rather than low-level helpers. They
-validate default, soft, hard, and mutually-exclusive flag behavior, the
+validate default, soft, hard, and mutually-exclusive flag behavior, and the
 skip-and-report contract for completed worktrees holding a tracked
-modification, a staged change, or an untracked file, and include direct
-regression tests proving that cleanup uses the advertised default branch's
-history — not a stale local remote ``HEAD`` alias, and not a topic worktree's
-history — even when invoked from a linked topic worktree.
+modification, a staged change, or an untracked file. The history the modes
+treat as trunk is covered separately in ``test_git_plonk_trunk_history.py``.
 """
 
 from __future__ import annotations
 
-import dataclasses
-from pathlib import Path
+import typing as typ
 
 import pytest
 from git import Repo
 from pytest_bdd import given, scenarios, then, when
 
-from git_donkey import cli, donkey, plonk
+from git_donkey import cli, plonk
 from tests.integration.conftest import _setup_repo
+from tests.integration.plonk_helpers import (
+    MODIFIED_CONTENT,
+    STAGED_CONTENT,
+    TRACKED_FILE,
+    PlonkScenario,
+    commit_completion_marker,
+    commit_ignore_rule,
+    create_git_donkey_worktree,
+    edit_tracked_file,
+    stage_tracked_change,
+)
+
+if typ.TYPE_CHECKING:
+    from pathlib import Path
 
 # Cyclopts exits with this code when mutually exclusive flags are supplied.
 _USAGE_ERROR_EXIT_CODE = 2
-
-# The tracked seed file the dirt fixtures edit, and the content each edit
-# leaves behind. Both kinds of dirt are uncommitted work, so both must keep
-# their worktree and its branch.
-_TRACKED_FILE = "README.md"
-_MODIFIED_CONTENT = "edited in the worktree"
-_STAGED_CONTENT = "staged in the worktree"
-
-
-@dataclasses.dataclass(frozen=True, slots=True)
-class PlonkScenario:
-    """Repository state shared by BDD steps."""
-
-    local_path: Path
-    completed_branch: str
-    active_branch: str | None = None
-    dirty_branch: str | None = None
-
-    @property
-    def worktree_root(self) -> Path:
-        """The git-donkey worktree root for the scenario repository."""
-        return self.local_path.parent / f"{self.local_path.name}.worktrees"
-
-    def worktree_path(self, branch_name: str) -> Path:
-        """Return the expected worktree path for ``branch_name``."""
-        return self.worktree_root / branch_name
-
-
-def _commit_completion_marker(local_path: Path, marker: str) -> None:
-    """Commit a completion marker on ``main`` without changing worktree content."""
-    repo = Repo(local_path)
-    repo.git.checkout("main")
-    marker_name = marker.removeprefix("(").removesuffix(")").replace("#", "issue-")
-    marker_path = local_path / f"completion-{marker_name}.txt"
-    marker_path.write_text(marker)
-    repo.index.add([marker_path.as_posix()])
-    repo.index.commit(f"Complete work {marker}")
-    repo.remote("origin").push("main")
-
-
-def _commit_ignore_rule(local_path: Path, rule: str) -> None:
-    """Commit ``rule`` to the repository's ``.gitignore`` on ``main``.
-
-    The rule must be committed before a worktree is created, so the worktree
-    inherits it and the ignored path is genuinely ignored in both checkouts.
-    """
-    repo = Repo(local_path)
-    repo.git.checkout("main")
-    ignore_path = local_path / ".gitignore"
-    ignore_path.write_text(f"{rule}\n")
-    repo.index.add([ignore_path.as_posix()])
-    repo.index.commit("Ignore generated build output")
-    repo.remote("origin").push("main")
-
-
-def _create_git_donkey_worktree(local_path: Path, branch_name: str) -> None:
-    """Create a git-donkey worktree in ``local_path`` for ``branch_name``."""
-    repo = Repo(local_path)
-    repo.git.checkout("main")
-    exit_code = donkey.run_git_donkey(branch_name, no_pull=True)
-    assert exit_code == 0, f"expected git donkey to create {branch_name}"
 
 
 @given(
@@ -107,9 +56,9 @@ def repository_with_completed_and_active_worktrees(
     completed_branch = "issue-123-fix-closed-work"
     active_branch = "issue-456-active-work"
 
-    _create_git_donkey_worktree(local_path, completed_branch)
-    _create_git_donkey_worktree(local_path, active_branch)
-    _commit_completion_marker(local_path, "(#123)")
+    create_git_donkey_worktree(local_path, completed_branch)
+    create_git_donkey_worktree(local_path, active_branch)
+    commit_completion_marker(local_path, "(#123)")
 
     return PlonkScenario(
         local_path=local_path,
@@ -148,8 +97,8 @@ def repository_with_completed_worktree(
     monkeypatch.chdir(local_path)
     completed_branch = "road-1-2-3a-4-finished-task"
 
-    _create_git_donkey_worktree(local_path, completed_branch)
-    _commit_completion_marker(local_path, "(road.1.2.3a.4)")
+    create_git_donkey_worktree(local_path, completed_branch)
+    commit_completion_marker(local_path, "(road.1.2.3a.4)")
 
     return PlonkScenario(local_path=local_path, completed_branch=completed_branch)
 
@@ -169,16 +118,16 @@ def repository_with_staged_change_and_clean_completed_worktrees(
     clean_branch = "issue-123-fix-closed-work"
     dirty_branch = "issue-124-fix-uncommitted-work"
 
-    _create_git_donkey_worktree(local_path, clean_branch)
-    _create_git_donkey_worktree(local_path, dirty_branch)
-    _commit_completion_marker(local_path, "(#123)")
-    _commit_completion_marker(local_path, "(#124)")
+    create_git_donkey_worktree(local_path, clean_branch)
+    create_git_donkey_worktree(local_path, dirty_branch)
+    commit_completion_marker(local_path, "(#123)")
+    commit_completion_marker(local_path, "(#124)")
     scenario = PlonkScenario(
         local_path=local_path,
         completed_branch=clean_branch,
         dirty_branch=dirty_branch,
     )
-    _stage_tracked_change(scenario, dirty_branch, _STAGED_CONTENT)
+    stage_tracked_change(scenario, dirty_branch, STAGED_CONTENT)
     return scenario
 
 
@@ -192,29 +141,8 @@ def repository_with_tracked_modification(
 ) -> PlonkScenario:
     """Create a completed worktree holding an uncommitted edit to a tracked file."""
     scenario = repository_with_completed_worktree(tmp_path, monkeypatch)
-    _edit_tracked_file(scenario, scenario.completed_branch, _MODIFIED_CONTENT)
+    edit_tracked_file(scenario, scenario.completed_branch, MODIFIED_CONTENT)
     return scenario
-
-
-def _edit_tracked_file(
-    scenario: PlonkScenario,
-    branch_name: str,
-    content: str,
-) -> Path:
-    """Write ``content`` over the tracked seed file in ``branch_name``'s worktree."""
-    readme = scenario.worktree_path(branch_name) / _TRACKED_FILE
-    readme.write_text(content)
-    return readme
-
-
-def _stage_tracked_change(
-    scenario: PlonkScenario,
-    branch_name: str,
-    content: str,
-) -> None:
-    """Stage an edit to the tracked seed file in ``branch_name``'s worktree."""
-    readme = _edit_tracked_file(scenario, branch_name, content)
-    Repo(readme.parent).index.add([readme.as_posix()])
 
 
 @given(
@@ -243,11 +171,11 @@ def repository_with_ignored_build_output(
     """Create a completed worktree whose only extra content is ignored output."""
     local_path, _remote_path = _setup_repo(tmp_path)
     monkeypatch.chdir(local_path)
-    _commit_ignore_rule(local_path, "build/")
+    commit_ignore_rule(local_path, "build/")
     completed_branch = "issue-123-fix-closed-work"
 
-    _create_git_donkey_worktree(local_path, completed_branch)
-    _commit_completion_marker(local_path, "(#123)")
+    create_git_donkey_worktree(local_path, completed_branch)
+    commit_completion_marker(local_path, "(#123)")
     scenario = PlonkScenario(local_path=local_path, completed_branch=completed_branch)
     build = scenario.worktree_path(completed_branch) / "build"
     build.mkdir()
@@ -348,11 +276,11 @@ def dirty_completed_worktree_remains(scenario: PlonkScenario) -> None:
     assert scenario.dirty_branch is not None, "expected dirty branch in scenario"
     worktree_path = scenario.worktree_path(scenario.dirty_branch)
     assert worktree_path.exists(), "expected dirty completed worktree to remain"
-    staged = worktree_path / _TRACKED_FILE
-    assert staged.read_text() == _STAGED_CONTENT, (
+    staged = worktree_path / TRACKED_FILE
+    assert staged.read_text() == STAGED_CONTENT, (
         "expected the staged change to survive the sweep"
     )
-    assert _TRACKED_FILE in Repo(worktree_path).git.diff("--cached", "--name-only"), (
+    assert TRACKED_FILE in Repo(worktree_path).git.diff("--cached", "--name-only"), (
         "expected the change to remain staged, not merely present in the file"
     )
 
@@ -573,148 +501,6 @@ def git_plonk_reports_planned_generated_cleanup(
         assert str(worktree_path / "node_modules") in plonk_output, (
             f"expected node_modules path in dry-run output for {branch_name}"
         )
-
-
-def test_git_plonk_uses_main_history_when_run_from_topic_worktree(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Default mode should ignore topic-only markers from a topic CWD."""
-    local_path, _remote_path = _setup_repo(tmp_path)
-    monkeypatch.chdir(local_path)
-    completed_branch = "issue-789-completed-from-main"
-    topic_branch = "issue-790-active-topic"
-
-    _create_git_donkey_worktree(local_path, completed_branch)
-    _create_git_donkey_worktree(local_path, topic_branch)
-    scenario = PlonkScenario(
-        local_path=local_path,
-        completed_branch=completed_branch,
-        active_branch=topic_branch,
-    )
-
-    monkeypatch.chdir(scenario.worktree_path(topic_branch))
-    topic_repo = Repo(Path.cwd())
-    marker_path = Path.cwd() / "topic-only-marker.txt"
-    marker_path.write_text("(#789)")
-    topic_repo.index.add([marker_path.as_posix()])
-    topic_repo.index.commit("Topic-only completion marker (#789)")
-    exit_code = plonk.run_git_plonk()
-
-    assert exit_code == 0, "expected default git plonk to succeed from topic worktree"
-    assert scenario.worktree_path(completed_branch).exists(), (
-        "expected trunk history to ignore topic-only completion marker"
-    )
-    assert scenario.worktree_path(topic_branch).exists(), (
-        "expected topic worktree to remain"
-    )
-    assert completed_branch in Repo(local_path).heads, (
-        "expected completed branch to remain without trunk marker"
-    )
-
-
-def test_git_plonk_removes_main_completed_worktree_from_topic_worktree(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Default mode should use main markers when run from a topic CWD."""
-    local_path, _remote_path = _setup_repo(tmp_path)
-    monkeypatch.chdir(local_path)
-    completed_branch = "issue-791-completed-on-main"
-    topic_branch = "issue-792-active-topic"
-
-    _create_git_donkey_worktree(local_path, completed_branch)
-    _create_git_donkey_worktree(local_path, topic_branch)
-    _commit_completion_marker(local_path, "(#791)")
-    scenario = PlonkScenario(
-        local_path=local_path,
-        completed_branch=completed_branch,
-        active_branch=topic_branch,
-    )
-
-    monkeypatch.chdir(scenario.worktree_path(topic_branch))
-    exit_code = plonk.run_git_plonk()
-
-    assert exit_code == 0, "expected default git plonk to succeed from topic worktree"
-    assert not scenario.worktree_path(completed_branch).exists(), (
-        "expected main-history completion marker to remove completed worktree"
-    )
-    assert scenario.worktree_path(topic_branch).exists(), (
-        "expected active topic worktree to remain"
-    )
-    assert completed_branch in Repo(local_path).heads, (
-        "expected default mode to keep completed branch"
-    )
-
-
-@pytest.mark.parametrize("hard", [False, True])
-def test_git_plonk_keeps_invoking_completed_worktree(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    *,
-    hard: bool,
-) -> None:
-    """Default and hard modes should not remove their invoking worktree."""
-    local_path, _remote_path = _setup_repo(tmp_path)
-    monkeypatch.chdir(local_path)
-    completed_branch = "issue-793-invoking-completed-worktree"
-
-    _create_git_donkey_worktree(local_path, completed_branch)
-    _commit_completion_marker(local_path, "(#793)")
-    scenario = PlonkScenario(
-        local_path=local_path,
-        completed_branch=completed_branch,
-    )
-
-    monkeypatch.chdir(scenario.worktree_path(completed_branch))
-    exit_code = plonk.run_git_plonk(hard=hard)
-
-    assert exit_code == 0, "expected git plonk to succeed from completed worktree"
-    assert scenario.worktree_path(completed_branch).exists(), (
-        "expected invoking completed worktree to remain"
-    )
-    assert completed_branch in Repo(local_path).heads, (
-        "expected invoking completed branch to remain"
-    )
-
-
-def test_git_plonk_ignores_a_stale_remote_head_alias(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Completion should follow the advertised default, not a stale origin/HEAD.
-
-    The remote keeps advertising ``main`` on its symbolic ``HEAD``; only the
-    local ``refs/remotes/origin/HEAD`` alias is pointed at a branch that carries
-    no completion marker.
-    """
-    local_path, _remote_path = _setup_repo(tmp_path)
-    monkeypatch.chdir(local_path)
-    completed_branch = "issue-794-completed-on-advertised-default"
-    repo = Repo(local_path)
-
-    # A branch that exists on the remote, but is not its advertised default and
-    # never receives the completion marker.
-    repo.git.push("origin", "main:refs/heads/legacy")
-    repo.remote("origin").fetch()
-
-    _create_git_donkey_worktree(local_path, completed_branch)
-    _commit_completion_marker(local_path, "(#794)")
-    repo.git.symbolic_ref("refs/remotes/origin/HEAD", "refs/remotes/origin/legacy")
-    scenario = PlonkScenario(local_path=local_path, completed_branch=completed_branch)
-
-    exit_code = plonk.run_git_plonk()
-
-    assert repo.git.symbolic_ref("refs/remotes/origin/HEAD") == (
-        "refs/remotes/origin/legacy"
-    ), "expected the fixture to leave a stale local alias for the run"
-    assert exit_code == 0, "expected default git plonk to succeed"
-    assert not scenario.worktree_path(completed_branch).exists(), (
-        "expected the advertised default to supply the completion history"
-    )
-    assert completed_branch in Repo(local_path).heads, (
-        "expected default mode to keep the completed branch"
-    )
 
 
 scenarios("features/git_plonk.feature")

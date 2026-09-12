@@ -553,6 +553,28 @@ than Git setup.
 messages. Add new cases there when a new `git-fafo` conflict or credential
 failure path is introduced.
 
+The `git-plonk` test modules are split the same way as the production modules
+they verify. `tests/integration/test_git_plonk_bdd.py` binds the scenarios in
+`tests/integration/features/git_plonk.feature`: the default, soft, and hard
+modes, their dry runs, the mutually exclusive `--soft --hard` usage error, and
+the skip-and-report contract for completed worktrees holding a tracked
+modification, a staged change, or an untracked file.
+`tests/integration/test_git_plonk_trunk_history.py` proves cleanup follows the
+advertised default branch's history rather than a topic worktree's own history
+or a stale local `refs/remotes/origin/HEAD` alias, and never removes the
+invoking worktree. `tests/integration/plonk_helpers.py` holds the repository
+builders both suites compose: `PlonkScenario`, `commit_completion_marker()`,
+`commit_ignore_rule()`, `create_git_donkey_worktree()`, `edit_tracked_file()`,
+`stage_tracked_change()`, and the `TRACKED_FILE`, `MODIFIED_CONTENT`, and
+`STAGED_CONTENT` constants. On the unit side, `tests/unit/test_plonk.py` keeps
+summary rendering, `tests/unit/test_plonk_selection.py` covers selection,
+`tests/unit/test_plonk_cleanup.py` the completed cleanup workflow, and
+`tests/unit/test_plonk_worktree_adapter.py` the worktree adapter against real
+Git; `tests/unit/test_plonk_soft_mode.py` covers the soft pass and
+`tests/unit/test_cli_plonk.py` the CLI flags. The split exists because it runs
+along the production boundaries each module verifies and keeps every module
+below CodeScene's Low Cohesion threshold of four.
+
 ## Manual pages
 
 Every console entrypoint has an authored reStructuredText source in `docs/man/`,
