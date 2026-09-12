@@ -147,6 +147,12 @@ directories being removed or retained.
 - [x] 2026-09-12: Cleared the CodeScene Code Health regressions this branch
   introduced by splitting the plonk test modules along the same production
   boundaries, and verified every touched module with `cs check` (all 10.00).
+- [x] 2026-09-12: Rebased onto `origin/main` (`d3433e8`). Main had advanced by
+  two locked dependency bumps — `cyclopts` 4.21.0 to 4.24.0 and `platformdirs`
+  4.10.0 to 4.11.7 — and nothing else, so no source, test, or documentation
+  file was changed on both sides and the rebase was conflict-free. `uv.lock` is
+  `main`'s file byte for byte; `uv lock --check` reports it consistent with the
+  declarations in `pyproject.toml`, and a rebuild (`uv lock`) is a no-op.
 
 ## Surprises & Discoveries
 
@@ -246,6 +252,18 @@ directories being removed or retained.
   `_GIT_PLONK_PREFIX`, the module logger, and the `plonk.helpers` patch seams
   the unit tests monkeypatch; splitting them further would move no
   responsibility out of the module and would break those seams.
+- Decision: adopt `main`'s `uv.lock` wholesale on rebase and prove it canonical,
+  rather than re-resolving the lock around the branch's own history. Rationale:
+  the branch declares no dependency of its own, so the lock has exactly one
+  authoritative form — the one `main` already validates in CI. `uv lock --check`
+  and a no-op `uv lock` rebuild together show the adopted file is the file the
+  declarations resolve to, which a hand-merged lock could not claim.
+- Decision: treat the `cyclopts` bump as the one `main` change with a bearing on
+  this branch, and re-run every gate under it. Rationale: the branch rewrites
+  the `git plonk` help text, and the parser contract it must satisfy is pinned
+  by `tests/unit/test_cli_plonk.py` and the manpage contract test in
+  `tests/unit/test_manpage_sources.py`; a CLI-framework bump is precisely the
+  change those tests exist to catch.
 
 ## Implementation Plan
 
@@ -444,3 +462,11 @@ supplies completion, and `tests/integration/plonk_helpers.py` holds the
 repository builders both suites compose. The split answers the CodeScene Code
 Health "Low Cohesion" finding that failed the pull request checks; each module
 scores 10.00 under `cs check`.
+
+Revision note, 2026-09-12 (rebase): Rebased onto `origin/main`, which had
+advanced by two locked dependency bumps — `cyclopts` 4.24.0 and `platformdirs`
+4.11.7 — and nothing else. `main`'s `uv.lock` is adopted wholesale, so the
+branch carries no lock change of its own; its commits are otherwise unchanged
+apart from the new SHAs the rebase gave them. The `cyclopts` bump is the one
+`main` change that touches this branch's surface, because the branch rewrites
+the `git plonk` help text, so every gate was re-run under it.
