@@ -7,7 +7,7 @@ branches, worktree paths, generated directories, and exit codes.
 
 These tests exercise the public ``git_donkey.plonk.run_git_plonk`` workflow and
 the ``git_donkey.cli`` command boundary rather than low-level helpers. They
-validate default, soft, hard, and mutually-exclusive flag behavior, and the
+validate default, soft, hard, and mutually-exclusive flag behaviour, and the
 skip-and-report contract for completed worktrees holding a tracked
 modification, a staged change, or an untracked file. The history the modes
 treat as trunk is covered separately in ``test_git_plonk_trunk_history.py``.

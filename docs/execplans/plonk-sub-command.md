@@ -123,7 +123,10 @@ directories being removed or retained.
   still-valid issues: docs now consistently describe canonical trunk/default
   history, trunk-ref resolution prefers remote default branches before local
   `main`, completed cleanup excludes the invoking linked worktree, and unit
-  plonk assertions now include diagnostics.
+  plonk assertions now include diagnostics. Superseded on 2026-09-12: the
+  local `main` fallback was removed; trunk-ref resolution now follows the
+  default branch the principal remote advertises, and fails with exit code 1
+  when none is advertised.
 - [x] 2026-06-28: Re-verified the latest failed-check report. The users' guide
   warning was stale. Fixed the still-valid soft-mode architecture and marker
   scan findings by splitting soft setup from trunk cleanup setup and streaming
@@ -174,9 +177,12 @@ directories being removed or retained.
   mutation. The policy is now isolated in `git_donkey.plonk_policy`, while
   `git_donkey.plonk` owns infrastructure adapters and user summaries.
 - Inline review found completion history still depended on checked-out state in
-  the main worktree. The workflow now resolves a canonical trunk/default ref,
+  the main worktree. The workflow then resolved a canonical trunk/default ref,
   preferring the remote default branch and falling back to local `main`, before
-  scanning completion history.
+  scanning completion history. Superseded on 2026-09-12: the local `main`
+  fallback was removed; resolution now follows the default branch the
+  principal remote advertises, and fails with exit code 1 when none is
+  advertised.
 - Inline review found soft mode could inspect worktrees and remove nothing but
   still report "No matching git donkey worktrees found." `_PlonkResult` now
   records inspected worktree count so soft mode can report that there were no
@@ -236,7 +242,11 @@ directories being removed or retained.
   completion history, with local `main` as fallback. Rationale: repositories
   may keep local `main` while their configured remote default branch is
   different, and plonk cleanup must follow the repository default rather than a
-  stale local branch.
+  stale local branch. Superseded on 2026-09-12: the local `main` fallback was
+  removed; completion is judged against the default branch the principal
+  remote advertises, resolved through `git_donkey.remote_default`, and an
+  unadvertised default fails with exit code 1 rather than falling back to a
+  local branch.
 - Decision: keep conflicting `--soft --hard` coverage in both unit CLI-boundary
   tests and the BDD feature. Rationale: the unit test pins the Cyclopts-facing
   usage error cheaply, while the BDD scenario records the user workflow in the
@@ -412,7 +422,9 @@ coverage and diagnostics.
 The final review-response pass also made remote default branch resolution take
 precedence over local `main`, protected the invoking linked worktree from
 default and hard cleanup, and corrected plan/user documentation to describe
-canonical trunk/default history consistently.
+canonical trunk/default history consistently. Superseded on 2026-09-12: the
+local `main` fallback was removed; the advertised default branch is now the
+sole authority, and an unadvertised default fails with exit code 1.
 
 The latest architecture follow-up split `--soft` context loading from
 default/hard trunk cleanup context loading, so soft cleanup does not resolve
@@ -470,3 +482,35 @@ branch carries no lock change of its own; its commits are otherwise unchanged
 apart from the new SHAs the rebase gave them. The `cyclopts` bump is the one
 `main` change that touches this branch's surface, because the branch rewrites
 the `git plonk` help text, so every gate was re-run under it.
+
+Revision note, 2026-09-13: The third review round asked for evidence rather
+than new behaviour, so the changes are instrumentation, tests, and the
+documentation that described them.
+
+The three cleanup boundaries now emit spans: `worktree_preflight` times the
+whole cleanliness query in `_GitWorktreeAdapter.skip_reason()`, while
+`worktree_removal` and `branch_deletion` time their single Git call inside the
+existing `try:` block, so a refusal is timed as well. The operation names stay
+inside the fixed vocabulary in `git_donkey/observability.py`, and a span still
+reports the operation name and its duration only.
+
+Coverage followed the same seams. `tests/unit/test_plonk_selection.py` now
+exercises the stanza filters directly: detached and branchless stanzas, a
+missing `worktree` field, `~` expansion, the worktrees root and paths outside
+it, and unrecognized branches.
+`tests/unit/test_plonk_worktree_adapter.py` runs the production
+`delete_branch()` against real Git for both a deletion and Git's refusal, and
+asserts that each of the three boundaries emits its span, refusals included.
+The completed-cleanup rules moved from examples to properties:
+`tests/unit/test_plonk_cleanup_properties.py` compares a run against a
+reference model over per-candidate states, and the doubles and builders the two
+cleanup suites share now live in `tests/unit/plonk_cleanup_helpers.py`. The
+soft-pass module docstring states that a real soft run removes generated paths
+and only a dry run leaves them, and a new test pins that removal.
+
+Documentation was corrected where it described the old vocabulary.
+`docs/developers-guide.md` no longer lists `removal_failed` as a
+`worktree_preflight` skip reason, because a refused removal is recorded as a
+`worktree_removal` failure, and it now lists the cleanup spans among the timed
+operations. The trunk-resolution passages in this plan carry superseded
+markers, and the BDD module docstring uses en-GB spelling.

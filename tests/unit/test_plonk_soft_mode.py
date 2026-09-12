@@ -1,9 +1,10 @@
 """Unit tests for ``git-plonk``'s soft pass.
 
 Soft mode is the one sweep that resolves no trunk at all: it loads only the
-worktree context, plans the generated paths ``git donkey`` leaves behind, and
-mutates nothing. These tests pin that narrow contract, including the dry run
-that reports the same paths without touching them.
+worktree context and works on the generated paths ``git donkey`` leaves behind.
+A real run removes those directories and leaves everything else, Git state
+included, exactly as it found it; a dry run reports the same paths without
+removing them. These tests pin that narrow contract.
 """
 
 from __future__ import annotations
@@ -59,6 +60,30 @@ def test_soft_mode_loads_only_worktree_context(
     assert exit_code == 0, "expected soft git plonk to succeed"
     assert "git-plonk: mode=soft" in capsys.readouterr().out, (
         "expected soft-mode summary output"
+    )
+
+
+def test_soft_mode_removes_generated_paths_and_leaves_the_rest(
+    tmp_path: Path,
+) -> None:
+    """A real soft run should remove the generated paths and nothing else."""
+    worktrees_root = tmp_path / "repo.worktrees"
+    worktree_path = worktrees_root / "issue-123-fix"
+    target_path = worktree_path / "target"
+    target_path.mkdir(parents=True)
+    work_file = worktree_path / "README.md"
+    work_file.write_text("work in progress")
+
+    result = plonk._run_soft([{"worktree": worktree_path}], worktrees_root)
+
+    assert result.mode is plonk._PlonkMode.SOFT, "expected soft mode"
+    assert not result.is_dry_run, "a real soft run is not a plan"
+    assert result.cleaned_paths == (target_path,), (
+        "the generated path is the only removal the run reports"
+    )
+    assert not target_path.exists(), "the generated directory is really removed"
+    assert work_file.read_text() == "work in progress", (
+        "soft mode removes generated paths, never the worktree's own files"
     )
 
 

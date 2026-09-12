@@ -132,8 +132,10 @@ adapter with a no-op default. A record is an `Observation`: an `operation`, an
 `outcome`, and the labels that step reports, drawn from the fixed vocabularies
 (`pull_mode`, `base_kind`, `error_kind`, `mode`, `skip_reason`). `mode` is the
 git-plonk cleanup mode (`default`, `soft`, or `hard`) and `skip_reason` is why
-a cleanup step left a worktree in place (`dirty`, `unavailable`, or
-`removal_failed`).
+the preflight left a worktree in place (`dirty` or `unavailable`). A removal
+Git refuses leaves the worktree in place too; the run's result reports it with
+the `removal_failed` skip reason, while its record is the `worktree_removal`
+failure.
 
 - `pull_mode_selection`: `not_requested`, `selected`, `rejected`.
 - `remote_default_discovery`: `success`, or `failure` with
@@ -150,16 +152,17 @@ a cleanup step left a worktree in place (`dirty`, `unavailable`, or
   with `git_command_error`.
 - `comparison`: `found`, `empty`, `unavailable` when no upstream is configured
   and no explicit ref was supplied, or `failure` with `git_command_error`.
-- `worktree_preflight`: `success`, or `skipped` with `skip_reason` `dirty`,
-  `unavailable`, or `removal_failed`; records `mode`.
+- `worktree_preflight`: `success`, or `skipped` with `skip_reason` `dirty` or
+  `unavailable`; records `mode`.
 - `worktree_removal`: `success`, or `failure` with `git_command_error`;
   records `mode`.
 - `branch_deletion`: `success`, or `failure` with `git_command_error`;
   records `mode`.
 
 Remote default discovery, the default-branch fetch, pull execution, worktree
-creation, the comparison fetch, and the comparison are also timed; a span
-reports its operation name and duration only.
+creation, the comparison fetch, the comparison, and the cleanup boundaries
+(worktree preflight, worktree removal, and branch deletion) are also timed; a
+span reports its operation name and duration only.
 
 Every attribute comes from a fixed vocabulary, so records stay aggregatable.
 Branch names, filesystem paths, remote URLs, Git output, exception text, and

@@ -25,8 +25,9 @@ becomes an ``extra`` field::
     )
 
 The timed operations are remote default discovery, default-branch fetch, pull
-execution, worktree creation, comparison fetch, and comparison. A span reports
-the operation name and its duration only; outcomes are reported by
+execution, worktree creation, comparison fetch, comparison, and the cleanup
+boundaries: worktree preflight, worktree removal, and branch deletion. A span
+reports the operation name and its duration only; outcomes are reported by
 :meth:`Recorder.record`.
 """
 

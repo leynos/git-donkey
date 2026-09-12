@@ -91,7 +91,9 @@ class _GitWorktreeAdapter:
         modified, staged, or untracked files is refused, while ignored files are
         not counted, so ignored build output never blocks cleanup. A worktree
         whose directory is gone gets its own reason, because "uncommitted
-        changes" would be inaccurate for it.
+        changes" would be inaccurate for it. The whole query is timed as the
+        ``worktree_preflight`` span: reading another repository crosses a
+        storage boundary.
 
         Parameters
         ----------
@@ -105,15 +107,16 @@ class _GitWorktreeAdapter:
             remove it unprompted.
 
         """
-        if not worktree_path.is_dir():
-            return _SkipReason.UNAVAILABLE
-        try:
-            worktree_repo = Repo(worktree_path)
-        except (InvalidGitRepositoryError, NoSuchPathError):
-            return _SkipReason.UNAVAILABLE
-        if worktree_repo.is_dirty(untracked_files=True):
-            return _SkipReason.DIRTY
-        return None
+        with observability.get_recorder().span("worktree_preflight"):
+            if not worktree_path.is_dir():
+                return _SkipReason.UNAVAILABLE
+            try:
+                worktree_repo = Repo(worktree_path)
+            except (InvalidGitRepositoryError, NoSuchPathError):
+                return _SkipReason.UNAVAILABLE
+            if worktree_repo.is_dirty(untracked_files=True):
+                return _SkipReason.DIRTY
+            return None
 
     def remove_worktree(self, worktree_path: Path) -> bool:
         """Remove a linked worktree, reporting whether Git removed it.
@@ -121,7 +124,9 @@ class _GitWorktreeAdapter:
         The removal is deliberately unforced: whatever Git refuses to discard
         stays on disk. A refusal is logged, reported on stderr, and returned so
         the caller can skip that candidate and continue the batch instead of
-        abandoning worktrees that are still removable.
+        abandoning worktrees that are still removable. The Git invocation is
+        timed as the ``worktree_removal`` span, refusal included, because the
+        subprocess runs either way.
 
         Parameters
         ----------
@@ -135,7 +140,8 @@ class _GitWorktreeAdapter:
 
         """
         try:
-            self.repo.git.worktree("remove", worktree_path.as_posix())
+            with observability.get_recorder().span("worktree_removal"):
+                self.repo.git.worktree("remove", worktree_path.as_posix())
         except GitCommandError as exc:
             _LOGGER.exception(
                 "Failed to remove git-plonk worktree",
@@ -156,7 +162,9 @@ class _GitWorktreeAdapter:
 
         Like the worktree removal, a refusal is reported rather than fatal: a
         completed worktree whose branch survives is a partial result the summary
-        must name, not a reason to abandon the candidates queued behind it.
+        must name, not a reason to abandon the candidates queued behind it. The
+        Git invocation is timed as the ``branch_deletion`` span, refusal
+        included, because the subprocess runs either way.
 
         Parameters
         ----------
@@ -170,7 +178,8 @@ class _GitWorktreeAdapter:
 
         """
         try:
-            self.repo.git.branch("-D", branch_name)
+            with observability.get_recorder().span("branch_deletion"):
+                self.repo.git.branch("-D", branch_name)
         except GitCommandError as exc:
             _LOGGER.exception(
                 "Failed to delete git-plonk branch",

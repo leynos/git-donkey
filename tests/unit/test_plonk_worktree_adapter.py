@@ -5,7 +5,10 @@ tests pin both halves of that contract against a real repository: the
 cleanliness preflight that mirrors ``git worktree remove``, and the unforced
 removal it issues. The two are asserted together, because a preflight that
 disagreed with Git in either direction would either destroy uncommitted work or
-skip a worktree Git would happily discard.
+skip a worktree Git would happily discard. Deleting a branch has no Git
+behaviour to mirror, so its success and its refusal are asserted directly. Each
+of those three boundaries is asserted to emit its own timed span, refusals
+included, because the subprocess that reports the refusal ran too.
 """
 
 from __future__ import annotations
@@ -20,6 +23,9 @@ from git import Repo
 
 from git_donkey import plonk
 from tests import git_repo_helpers
+
+if typ.TYPE_CHECKING:
+    from tests.observability_helpers import RecordingRecorder
 
 # The branch and directory ``git donkey`` would have created for the candidate
 # worktrees these tests exercise.
@@ -110,6 +116,7 @@ def test_cleanliness_preflight_matches_git_removal(
     tmp_path: Path,
     dirt: str,
     expected_reason: plonk._SkipReason | None,
+    recording_recorder: RecordingRecorder,
 ) -> None:
     """The preflight should clear exactly the worktrees Git removes unprompted.
 
@@ -129,6 +136,10 @@ def test_cleanliness_preflight_matches_git_removal(
     assert removed is (expected_reason is None), (
         "Git removes every worktree the preflight clears, and no other"
     )
+    assert recording_recorder.span_operations() == [
+        "worktree_preflight",
+        "worktree_removal",
+    ], "both Git boundaries the adapter crossed are timed, dirt or not"
 
 
 def test_skip_reason_reports_a_missing_worktree_directory(tmp_path: Path) -> None:
@@ -196,4 +207,56 @@ def test_removal_leaves_a_dirty_worktree_on_disk(
     )
     assert "failed to remove worktree" in capsys.readouterr().err, (
         "the refusal is reported to the user"
+    )
+
+
+def test_delete_branch_removes_the_branch_and_times_the_deletion(
+    tmp_path: Path,
+    recording_recorder: RecordingRecorder,
+) -> None:
+    """A deletable branch should be gone, with the Git call timed.
+
+    The production adapter is exercised here rather than a Git double, so the
+    assertion is about what Git does with the arguments the adapter builds.
+    """
+    repo = git_repo_helpers.seed_repo(tmp_path / "repo")
+    repo.git.branch(_WORKTREE_BRANCH)
+
+    deleted = plonk._GitWorktreeAdapter(repo).delete_branch(_WORKTREE_BRANCH)
+
+    assert deleted is True, "Git deletes a branch that is not checked out here"
+    assert _WORKTREE_BRANCH not in {head.name for head in repo.heads}, (
+        "the branch is really gone from the repository"
+    )
+    assert recording_recorder.span_operations() == ["branch_deletion"], (
+        "the deletion is timed, whether or not it succeeds"
+    )
+
+
+def test_delete_branch_reports_and_survives_gits_refusal(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    recording_recorder: RecordingRecorder,
+) -> None:
+    """Git's refusal to delete a checked-out branch should be a reported ``False``.
+
+    A branch cannot be deleted while it is checked out, so this is the refusal a
+    real repository produces. The failure is returned rather than raised, the
+    branch survives, and the attempt is still timed: the subprocess that
+    reported the refusal ran too.
+    """
+    repo = git_repo_helpers.seed_repo(tmp_path / "repo")
+    checked_out = repo.head.reference.name
+
+    deleted = plonk._GitWorktreeAdapter(repo).delete_branch(checked_out)
+
+    assert deleted is False, "the adapter reports the refusal as a boolean"
+    assert checked_out in {head.name for head in repo.heads}, (
+        "Git's refusal leaves the branch in place"
+    )
+    assert "failed to delete branch" in capsys.readouterr().err, (
+        "the refusal is reported to the user"
+    )
+    assert recording_recorder.span_operations() == ["branch_deletion"], (
+        "the refused deletion is timed as well"
     )
