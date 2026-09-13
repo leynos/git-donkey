@@ -10,7 +10,9 @@ description: >-
   and dry-run-first cleanup with checks that protect other agents' work.
 compatibility: >-
   Requires Git and git-donkey commands on PATH. Verify installed help supports
-  remote-default bases, --pull-ff, --pull-rebase, and git plonk --dry-run.
+  remote-default bases, --pull-ff, --pull-rebase, and git plonk --dry-run, and
+  that git plonk help describes skipping worktrees with uncommitted or
+  untracked files; older releases force removal instead.
 ---
 
 # Worktree management with git donkey and git plonk
@@ -49,11 +51,11 @@ authorization; creating a worktree does not authorize later cleanup.
    A detached `HEAD` requires an explicit decision about the calling checkout;
    the current donkey workflow expects a checked-out branch even when the base
    argument is omitted. Do not switch a shared checkout to make it proceed.
-4. Identify the main worktree and the principal remote. Donkey selects the first
-   configured remote, not necessarily `origin`. Do not assume its default branch
-   is `main`, or change remote configuration to make an assumption fit. Donkey
-   reports `Using remote: ...`; verify that this agrees with the intended
-   remote.
+4. Identify the main worktree and the principal remote. Donkey and plonk both
+   select the first configured remote, not necessarily `origin`, and both
+   discover the default branch it advertises rather than assuming `main`. Do
+   not change remote configuration to make an assumption fit. Donkey reports
+   `Using remote: ...`; verify that this agrees with the intended remote.
 5. Coordinate with other agents before changing shared branch or worktree state.
    Worktrees have separate working files but share repository refs and other Git
    metadata. A new checkout is not a separate clone or a permission boundary.
@@ -209,12 +211,18 @@ retire a parent worktree until its dependent work has been accounted for.
 
 **Read [the cleanup checklist](references/cleanup.md) before every cleanup,
 including `--soft`.** It documents safeguards the command does not enforce.
-Default plonk removal is forced; `--hard` additionally force-deletes local
-branches. Completion markers do not prove that current work is safe to discard.
+Plonk skips a completed worktree holding modified, staged, or untracked files
+and reports it, but it deletes ignored files with the worktree, and `--hard`
+deletes a removed worktree's local branch with `git branch -D`, without a
+merged check. Completion markers do not prove that current work is safe to
+discard.
 
-Start with the preview for the requested mode from a deliberately selected
-invoking worktree, normally the main worktree. Keep that location unchanged
-between preview and execution:
+Default and hard runs, previews included, contact the principal remote: plonk
+discovers and fetches its advertised default branch before every sweep, and
+fails without removing anything when the remote is unreachable or advertises
+no default branch. Start with the preview for the requested mode from a
+deliberately selected invoking worktree, normally the main worktree. Keep that
+location unchanged between preview and execution:
 
 ```bash
 git -C "$main_worktree" plonk --dry-run
@@ -231,7 +239,9 @@ that plonk mode. A no-op result is not a reason to escalate to `--hard` or
 For creation or reuse, report the branch, absolute worktree path, chosen base,
 starting commit, whether any pull occurred, and unexpected overlay changes. For
 cleanup, report the mode, inspected trunk ref, reviewed targets, actual
-removals, retained branches, and skipped or unsafe work. Distinguish a preview,
-a completed operation, and a partial failure. Do not imply a push, merge,
-rebase, or remote-branch deletion took place when none was requested or
+removals, retained branches, each skipped worktree with its reported reason,
+any failed branch deletion, and the exit status. Skips exit `0`; a refused
+branch deletion exits `1` with its worktree already removed. Distinguish a
+preview, a completed operation, and a partial failure. Do not imply a push,
+merge, rebase, or remote-branch deletion took place when none was requested or
 performed.

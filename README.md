@@ -68,14 +68,14 @@ git plonk
 git donkey-template
 ```
 
-
 ## Agent skill
 
 The [worktree-management skill](skill/git-donkey-worktrees/SKILL.md) provides an
 agent workflow for `git donkey` and `git plonk`, including remote-default bases,
 existing-worktree reuse, stacked branches, and reviewed cleanup. Its bundled
 [cleanup checklist](skill/git-donkey-worktrees/references/cleanup.md) covers
-forced removal, completion-marker limitations, and other agents' active work.
+the cleanliness check, completion-marker limitations, and other agents' active
+work.
 
 To install it in a compatible agent's skill directory, copy or symlink the
 whole `skill/git-donkey-worktrees/` directory, retaining the directory name and

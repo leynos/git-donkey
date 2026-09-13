@@ -12,16 +12,17 @@ considers Git-registered linked worktrees under its sibling
 check: a manually created worktree under that directory can also qualify. It
 does not sweep arbitrary unregistered directories.
 
-- Default mode removes worktrees whose recognized branch marker occurs in the
-  selected trunk history. It keeps local branches.
-- `--hard` uses the same candidate test and also deletes matching local
-  branches. It never deletes remote branches and does not broaden completion
-  matching.
+- Default mode removes clean worktrees whose recognized branch marker occurs in
+  the selected trunk history. It keeps local branches.
+- `--hard` uses the same candidate test and cleanliness check, and also deletes
+  the local branch of each worktree it removed. It never deletes remote
+  branches and does not broaden completion matching.
 - `--soft` removes named generated directories from **all** worktrees in scope,
   irrespective of branch naming or completion. It keeps worktree registrations
   and branches, but does not check whether the directory contains tracked files.
-- `--dry-run` previews the selected mode without deleting paths or branches.
-  `--soft` and `--hard` are mutually exclusive.
+- `--dry-run` previews the selected mode without deleting paths or branches. It
+  reports the worktrees a real run would skip, and why. `--soft` and `--hard`
+  are mutually exclusive.
 
 Default and hard modes exclude the invoking worktree. Soft mode does **not**
 exclude it. All modes can affect other agents' worktrees. Execute a reviewed
@@ -29,45 +30,60 @@ preview from the same invoking worktree: changing directory can change the
 candidate set. Running from the main worktree avoids excluding a linked worktree
 merely because the shell happens to be inside it.
 
-Default and hard removal call `git worktree remove --force`. Hard branch removal
-calls `git branch -D`. These operations do not enforce a clean-tree or
-ancestry-based merged-branch check. Do not rely on Git's usual non-forced
-refusals to protect changes here.
+## Know what the cleanliness check protects
+
+Default and hard modes remove a worktree with an unforced `git worktree remove`
+after a preflight that mirrors Git's own refusal. A completed worktree holding
+modified, staged, or untracked files is skipped, listed under
+`Skipped worktrees:` with the reason `uncommitted changes`, and left on disk
+with its branch. The sweep continues with the remaining candidates, and skips
+leave the exit status at `0`. There is no option that forces a removal; do not
+add `--force` to any plonk invocation.
+
+The check protects only what Git itself would refuse to discard:
+
+- Files matched by `.gitignore` do not protect a worktree. Ignored build
+  output, installed environments, caches, and local configuration are deleted
+  with it.
+- Committed but unpushed commits do not protect a worktree. Default mode keeps
+  the branch, so those commits survive on it; hard mode does not.
+- A registered worktree whose directory is missing is skipped with the reason
+  `worktree directory is missing`. Any other refusal during removal is reported
+  as `worktree removal failed`, and the worktree stays registered.
+
+Hard mode deletes a branch only after its worktree was removed, using
+`git branch -D`. That deletion performs no merged or ancestry check, so a branch
+carrying commits after the matching marker is deleted with them. A branch Git
+refuses to delete is listed under `Failed branch deletions:`; its worktree is
+already gone, the sweep continues, and the run exits with status `1`.
 
 ## Resolve completion history before default or hard cleanup
 
-Plonk does **not** fetch. It reads locally available refs and selects the first
-resolvable symbolic `refs/remotes/<remote>/HEAD` across configured remotes. If
-none resolves, it falls back to local `main`, or errors when `main` is absent.
-This differs from donkey's live discovery of the principal remote's advertised
-default branch. A successful donkey creation does not certify plonk's trunk ref.
+Plonk resolves trunk the same way donkey selects an implicit base. It takes the
+first configured remote as the principal remote, reads the default branch that
+remote advertises with `git ls-remote --symref`, and fetches that branch into
+`refs/remotes/<remote>/<branch>` before scanning its history. It never consults
+the local `refs/remotes/<remote>/HEAD` alias and never falls back to local
+`main`. This happens on every default or hard run, `--dry-run` included, so
+those modes need access to the principal remote. An unreachable remote, or one
+that advertises no default branch, is an error with exit status `1`, and
+nothing is removed.
 
-Inspect configured remotes in order and each candidate symbolic ref:
+Inspect the configured remotes and the advertised default before previewing:
 
 ```bash
 git -C "$main_worktree" remote -v
-git -C "$main_worktree" symbolic-ref --quiet --short "refs/remotes/$remote/HEAD"
 git -C "$main_worktree" ls-remote --symref "$remote" HEAD
 ```
 
-Assign `remote` from the inspected configuration, not a guessed `origin`. Check
-that the ref plonk would select resolves to the intended trunk commit. A
-missing, stale, or wrong remote `HEAD` can select another remote or the local
-fallback. Do not silently accept local `main` when it is not the authoritative
-trunk.
-
-When remote refresh is authorized, fetch the intended remote before previewing:
-
-```bash
-git -C "$main_worktree" fetch "$remote"
-```
-
-Fetching alone need not repair a stale remote `HEAD` alias or a narrow fetch
-configuration. Verify the selected ref again. Resolve mismatches explicitly,
-without pulling, switching, or resetting the main checkout. Never add a
-nonexistent `git plonk --fetch`, `--remote`, or `--base` option. In an
-intentional offline workflow, report the stale-history limitation rather than
-claim the remote state was verified.
+Assign `remote` from the first configured remote, not a guessed `origin`.
+Confirm that the advertised branch is the intended trunk: plonk follows the
+remote's advertisement even when the repository integrates elsewhere, and a
+repository whose first remote is a fork or mirror judges completion against
+that remote. Do not reorder or rewrite remotes to steer the selection. Never
+add a nonexistent `git plonk --fetch`, `--remote`, or `--base` option. When the
+remote cannot be reached, report that cleanup could not resolve trunk rather
+than substitute local history.
 
 ## Treat completion markers as hints
 
@@ -107,12 +123,14 @@ individually; do not approve a batch solely because one matching task finished.
    git -C "$worktree" submodule status --recursive
    ```
 
-   A clean ordinary status does not prove that ignored local data is expendable.
-   Inspect submodule working changes separately when present. Leave unresolved
-   edits or in-progress Git operations untouched. Saving a tip commit alone does
-   not preserve working files or ignored data.
-3. Assign `trunk_ref` to the ref plonk actually selected. Inspect commits that
-   trunk does not reach:
+   A clean ordinary status does not prove that ignored local data is expendable:
+   the cleanliness check skips modified, staged, and untracked files, but
+   ignored data is deleted with the worktree. Inspect submodule working changes
+   separately when present. Leave unresolved edits or in-progress Git
+   operations untouched. Saving a tip commit alone does not preserve working
+   files or ignored data.
+3. Assign `trunk_ref` to `refs/remotes/<remote>/<branch>` for the advertised
+   default inspected above. Inspect commits that trunk does not reach:
 
    ```bash
    git -C "$worktree" log --oneline "$trunk_ref"..HEAD
@@ -195,9 +213,16 @@ soft mode as an unsolicited disk-pressure or post-task housekeeping action.
 
 Re-read `git worktree list --porcelain`, check retained branch refs and paths,
 and inspect surviving checkouts after execution. Compare actual results with the
-reviewed preview. Confirm that default mode retained branches, soft mode
-retained worktrees and branches, or hard mode deleted only reviewed local
-branches, as applicable.
+reviewed preview, including each skipped worktree and its reason. Confirm that
+default mode retained branches, soft mode retained worktrees and branches, or
+hard mode deleted only the local branches of removed worktrees, as applicable.
+
+Read the exit status. `0` means the sweep did everything it planned, reported
+skips included. `1` means trunk could not be resolved, or a branch deletion
+failed after its worktree was removed. `2` means the command could not run. A
+skip is not an error, and a failed branch deletion is not a skip; a run in
+which every candidate was skipped lists those skips rather than reporting that
+no matching worktrees were found.
 
 Cleanup can partially succeed before a later removal fails. Report completed and
 failed actions separately, re-inspect state, and stop rather than retrying the

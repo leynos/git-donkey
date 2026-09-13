@@ -9,12 +9,26 @@ focus on their scenario-specific assertions.
 from __future__ import annotations
 
 import dataclasses
+import typing as typ
 from pathlib import Path
 
 import pytest
+import vcr
 from git import Repo
 
 from tests.git_repo_helpers import configure_repo
+
+if typ.TYPE_CHECKING:
+    import collections.abc as cabc
+
+    from vcr.cassette import Cassette
+
+# Recorded GitHub API exchanges replayed by ``github_api_cassette``. The
+# worktree commands under test talk to their remote over the Git protocol, which
+# the temporary bare repositories in this package stand in for; the cassette
+# covers the GitHub REST API, which they must never consult.
+_CASSETTE_DIR = Path(__file__).parent / "cassettes"
+_NO_GITHUB_API_CASSETTE = "github_api_no_interactions.yaml"
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -53,6 +67,31 @@ def stub_commands(tmp_path: Path) -> StubCommands:
         stub_path.chmod(0o755)
 
     return StubCommands(bin_dir=bin_dir, log_path=log_path)
+
+
+@pytest.fixture
+def github_api_cassette() -> cabc.Iterator[Cassette]:
+    """Replay the recorded GitHub API traffic, refusing any request outside it.
+
+    The cassette is replayed in VCR's ``none`` record mode, so an HTTP request
+    the recording does not contain raises inside the code under test instead
+    of reaching the network. The recording holds no interactions: ``git
+    donkey`` and ``git plonk`` judge completion and choose bases from Git
+    history alone, and a test that provokes a GitHub API call fails here.
+
+    Yields
+    ------
+    Cassette
+        The replayed cassette, whose ``play_count`` and ``requests`` a test can
+        assert on after the workflow ran.
+
+    """
+    recorder = vcr.VCR(
+        record_mode="none",
+        cassette_library_dir=_CASSETTE_DIR.as_posix(),
+    )
+    with recorder.use_cassette(_NO_GITHUB_API_CASSETTE) as cassette:
+        yield cassette
 
 
 def _seed_repo(repo: Repo, filename: str, content: str) -> None:
