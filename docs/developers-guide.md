@@ -547,6 +547,37 @@ creates temporary `git` and `copier` executables that append their command-line
 arguments to a log file. Scaffold workflow tests should use this fixture
 instead of writing per-test command stubs.
 
+The same module provides the `github_api_cassette` fixture, which replays the
+recorded GitHub REST API exchange in `tests/integration/cassettes/` through
+`vcrpy` in its `none` record mode: any HTTP request the recording does not
+contain raises inside the code under test instead of reaching the network. The
+worktree commands reach their remote over the Git protocol, which the temporary
+bare repositories stand in for, and the recording for them holds no
+interactions, so a scenario run under the fixture proves that `git donkey` and
+`git plonk` never consult the GitHub API. Record a new cassette only for a
+command that is meant to call the API, and never edit a recording by hand.
+
+The behaviours the [worktree-management skill](../skill/git-donkey-worktrees/SKILL.md)
+documents are pinned by behavioural suites that build ephemeral repositories
+and real `git donkey` worktrees. `tests/integration/test_git_donkey_bases_bdd.py`
+binds `features/git_donkey_bases.feature`: the mandatory fetch, the equivalence
+of `--no-pull` and the default, the pull-option usage error raised before any
+repository access, the non-interactive prompt, `.` as a base, the principal
+remote, and the absence of GitHub API calls.
+`tests/integration/test_git_donkey_reuse_bdd.py` binds
+`features/git_donkey_reuse.feature`, and both share the `DonkeyScenario`
+record and runners in `tests/integration/donkey_helpers.py`: branch reuse and
+its upstream rules,
+occupied-branch and existing-path conflicts, detached `HEAD`, nested branch
+paths, and overlay overwrites. `tests/integration/test_git_plonk_trunk_bdd.py`
+and `test_git_plonk_markers_bdd.py` cover trunk discovery (a non-`main`
+default, a missing advertisement, an unreachable remote, the fetch a dry run
+performs, and the absence of GitHub API calls) and completion-marker semantics.
+`tests/integration/test_git_plonk_scope_bdd.py` and
+`test_git_plonk_outcomes_bdd.py` cover the path-based worktree scope, remote
+branches surviving hard mode, soft mode's reach, missing directories, skipped
+previews, refused branch deletions, and exit statuses.
+
 `tests/integration/_fafo_adoption_stubs.py` builds local bare remotes with
 specific histories for adoption tests. Use these helpers when adding new
 existing-repository scenarios, so the tests stay focused on behaviour rather
