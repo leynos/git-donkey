@@ -13,7 +13,8 @@ import pytest
 from git import Repo
 
 from git_donkey import donkey
-from tests.integration.conftest import _seed_repo, _setup_repo
+from tests.integration.conftest import _setup_repo
+from tests.integration.donkey_helpers import seed_repo
 
 if typ.TYPE_CHECKING:
     from pathlib import Path
@@ -48,7 +49,7 @@ def test_git_donkey_allows_local_only_base_branch(
     repo = Repo(local_path)
 
     repo.git.checkout("-b", "feature/local-only")
-    _seed_repo(repo, "local.txt", "local change")
+    seed_repo(repo, "local.txt", "local change")
 
     monkeypatch.chdir(local_path)
     exit_code = donkey.run_git_donkey("feature/from-local", ".", no_pull=False)
@@ -81,7 +82,7 @@ def test_git_donkey_updates_base_branch_when_behind_remote(
     local_path, _remote_path = _setup_repo(tmp_path)
     repo = Repo(local_path)
 
-    _seed_repo(repo, "upstream.txt", "upstream change")
+    seed_repo(repo, "upstream.txt", "upstream change")
     repo.remote("origin").push("main")
     remote_tip = repo.head.commit.hexsha
     repo.git.reset("--hard", "HEAD~1")
@@ -112,7 +113,7 @@ def test_git_donkey_sets_upstream_for_existing_branch(
     repo = Repo(local_path)
 
     repo.git.checkout("-b", "feature/existing")
-    _seed_repo(repo, "feature.txt", "feature")
+    seed_repo(repo, "feature.txt", "feature")
     repo.remote("origin").push("feature/existing")
     repo.git.checkout("main")
 

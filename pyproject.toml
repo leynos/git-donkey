@@ -41,6 +41,7 @@ dev = [
     "pylint>=4.0,<5",
     "packaging>=25.0,<26",
     "df12-python-lints @ git+https://github.com/leynos/df12-python-lints@v0.2.0",
+    "vcrpy>=7.0.0,<8",
 ]
 
 [tool.ruff]

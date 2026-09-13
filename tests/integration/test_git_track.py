@@ -12,7 +12,8 @@ import typing as typ
 from git import Repo
 
 from git_donkey import track
-from tests.integration.conftest import _seed_repo, _setup_repo
+from tests.integration.conftest import _setup_repo
+from tests.integration.donkey_helpers import seed_repo
 
 if typ.TYPE_CHECKING:
     from pathlib import Path
@@ -29,7 +30,7 @@ def test_git_track_creates_tracking_branch(
     repo = Repo(local_path)
 
     repo.git.checkout("-b", "feature/track")
-    _seed_repo(repo, "feature.txt", "feature")
+    seed_repo(repo, "feature.txt", "feature")
     repo.remote("origin").push("feature/track")
     repo.git.checkout("main")
     repo.delete_head("feature/track", force=True)

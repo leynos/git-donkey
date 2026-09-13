@@ -10,7 +10,8 @@ from git import Repo
 
 from git_donkey import cli, incoming_outgoing
 from tests.git_repo_helpers import configure_repo
-from tests.integration.conftest import _seed_repo, _setup_repo
+from tests.integration.conftest import _setup_repo
+from tests.integration.donkey_helpers import seed_repo
 
 if typ.TYPE_CHECKING:
     from pathlib import Path
@@ -88,7 +89,7 @@ def test_git_incoming_fetches_and_reports_remote_only_commit(
     _set_main_upstream(local_repo)
 
     peer_repo = _clone_remote(remote_path, tmp_path / "peer")
-    _seed_repo(peer_repo, "remote.txt", "remote")
+    seed_repo(peer_repo, "remote.txt", "remote")
     peer_repo.remote("origin").push("main")
     remote_commit = peer_repo.head.commit.hexsha[:7]
 
@@ -131,7 +132,7 @@ def test_git_outgoing_reports_local_only_commit(
     repo = Repo(local_path)
     _set_main_upstream(repo)
     repo.remote("origin").fetch()
-    _seed_repo(repo, "local.txt", "local")
+    seed_repo(repo, "local.txt", "local")
     local_commit = repo.head.commit.hexsha[:7]
 
     exit_code, out, err = run_and_capture(
@@ -198,7 +199,7 @@ def test_no_fetch_uses_current_remote_tracking_ref(
     local_repo.remote("origin").fetch()
 
     peer_repo = _clone_remote(remote_path, tmp_path / "peer")
-    _seed_repo(peer_repo, "remote.txt", "remote")
+    seed_repo(peer_repo, "remote.txt", "remote")
     peer_repo.remote("origin").push("main")
 
     exit_code, out, err = run_and_capture(
@@ -222,7 +223,7 @@ def test_explicit_ref_does_not_require_upstream(
     local_repo.remote("origin").fetch()
 
     peer_repo = _clone_remote(remote_path, tmp_path / "peer")
-    _seed_repo(peer_repo, "remote.txt", "remote")
+    seed_repo(peer_repo, "remote.txt", "remote")
     peer_repo.remote("origin").push("main")
     remote_commit = peer_repo.head.commit.hexsha[:7]
 
@@ -248,7 +249,7 @@ def test_canonical_ref_fetches_owning_remote(
     local_repo.remote("origin").fetch()
 
     peer_repo = _clone_remote(remote_path, tmp_path / "peer")
-    _seed_repo(peer_repo, "remote.txt", "remote")
+    seed_repo(peer_repo, "remote.txt", "remote")
     peer_repo.remote("origin").push("main")
     remote_commit = peer_repo.head.commit.hexsha[:7]
 
@@ -275,7 +276,7 @@ def test_git_incoming_entrypoint_reports_remote_only_commit(
     local_repo.remote("origin").fetch()
 
     peer_repo = _clone_remote(remote_path, tmp_path / "peer")
-    _seed_repo(peer_repo, "remote.txt", "remote")
+    seed_repo(peer_repo, "remote.txt", "remote")
     peer_repo.remote("origin").push("main")
     remote_commit = peer_repo.head.commit.hexsha[:7]
 
@@ -331,7 +332,7 @@ def test_git_outgoing_entrypoint_reports_local_only_commit(
     local_path, _remote_path = _setup_repo(tmp_path)
     local_repo = Repo(local_path)
     local_repo.remote("origin").fetch()
-    _seed_repo(local_repo, "local.txt", "local")
+    seed_repo(local_repo, "local.txt", "local")
     local_commit = local_repo.head.commit.hexsha[:7]
 
     # No upstream is configured, so the exit code proves the explicit ref
@@ -365,7 +366,7 @@ def test_git_out_alias_entrypoint_reports_local_only_commit(
     local_path, _remote_path = _setup_repo(tmp_path)
     local_repo = Repo(local_path)
     local_repo.remote("origin").fetch()
-    _seed_repo(local_repo, "local.txt", "local")
+    seed_repo(local_repo, "local.txt", "local")
     local_commit = local_repo.head.commit.hexsha[:7]
 
     monkeypatch.chdir(local_path)

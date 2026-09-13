@@ -8,7 +8,8 @@ import pytest
 from git import Repo
 
 from git_donkey import donkey
-from tests.integration.conftest import _seed_repo, _setup_repo
+from tests.integration.conftest import _setup_repo
+from tests.integration.donkey_helpers import seed_repo
 
 if typ.TYPE_CHECKING:
     from pathlib import Path
@@ -18,7 +19,7 @@ def _behind_repo(tmp_path: Path) -> Repo:
     """Create a local main one commit behind its remote counterpart."""
     local_path, _remote_path = _setup_repo(tmp_path)
     repo = Repo(local_path)
-    _seed_repo(repo, "upstream.txt", "upstream change")
+    seed_repo(repo, "upstream.txt", "upstream change")
     repo.remote("origin").push("main")
     repo.git.reset("--hard", "HEAD~1")
     return repo
@@ -30,7 +31,7 @@ def test_pull_rebase_preserves_local_commits_on_explicit_base(
 ) -> None:
     """Explicit rebase incorporates remote commits and replays local work."""
     repo = _behind_repo(tmp_path)
-    _seed_repo(repo, "local.txt", "local change")
+    seed_repo(repo, "local.txt", "local change")
     old_tip = repo.head.commit.hexsha
     monkeypatch.chdir(repo.working_tree_dir or ".")
     monkeypatch.setattr(donkey.helpers, "_prompt_yes_no", lambda *_: True)
@@ -64,7 +65,7 @@ def test_pull_ff_refuses_divergence_even_with_rebase_configured(
 ) -> None:
     """Fast-forward mode must neither merge nor rebase divergent local work."""
     repo = _behind_repo(tmp_path)
-    _seed_repo(repo, "local.txt", "local change")
+    seed_repo(repo, "local.txt", "local change")
     original_tip = repo.head.commit.hexsha
     repo.git.config("pull.rebase", "true")
     repo.git.config("pull.ff", "false")
@@ -102,7 +103,7 @@ def test_opt_in_never_pulls_base_into_unrelated_primary_checkout(
     """An unowned base must not be pulled into the primary worktree's branch."""
     repo = _behind_repo(tmp_path)
     repo.git.checkout("-b", "unrelated")
-    _seed_repo(repo, "unrelated.txt", "unrelated change")
+    seed_repo(repo, "unrelated.txt", "unrelated change")
     original_tip = repo.head.commit.hexsha
     monkeypatch.chdir(repo.working_tree_dir or ".")
     monkeypatch.setattr(donkey.helpers, "_prompt_yes_no", lambda *_: True)
@@ -160,7 +161,7 @@ def test_pull_updates_linked_base_and_leaves_primary_alone(
     """Pulling targets the base's linked worktree, not the calling checkout."""
     repo = _behind_repo(tmp_path)
     repo.git.checkout("-b", "unrelated")
-    _seed_repo(repo, "unrelated.txt", "unrelated change")
+    seed_repo(repo, "unrelated.txt", "unrelated change")
     original_tip = repo.head.commit.hexsha
     base_path = tmp_path / "base-worktree"
     repo.git.worktree("add", str(base_path), "main")
