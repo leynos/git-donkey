@@ -547,15 +547,15 @@ creates temporary `git` and `copier` executables that append their command-line
 arguments to a log file. Scaffold workflow tests should use this fixture
 instead of writing per-test command stubs.
 
-The same module provides the `github_api_cassette` fixture, which replays the
-recorded GitHub REST API exchange in `tests/integration/cassettes/` through
-`vcrpy` in its `none` record mode: any HTTP request the recording does not
-contain raises inside the code under test instead of reaching the network. The
-worktree commands reach their remote over the Git protocol, which the temporary
-bare repositories stand in for, and the recording for them holds no
-interactions, so a scenario run under the fixture proves that `git donkey` and
-`git plonk` never consult the GitHub API. Record a new cassette only for a
-command that is meant to call the API, and never edit a recording by hand.
+The same module provides the `github_api_cassette` fixture, which loads an
+empty cassette (`interactions: []`) from `tests/integration/cassettes/`
+through `vcrpy` in its `none` record mode: because no interaction is recorded,
+any HTTP request raises inside the code under test instead of reaching the
+network. The worktree commands reach their remote over the Git protocol,
+which the temporary bare repositories stand in for, so a scenario run under
+the fixture proves that `git donkey` and `git plonk` never consult the
+GitHub API. Record a real cassette only for a command that is meant to call
+the API, and never edit a recording by hand.
 
 The behaviours the [worktree-management skill](../skill/git-donkey-worktrees/SKILL.md)
 documents are pinned by behavioural suites that build ephemeral repositories

@@ -9,10 +9,11 @@ description: >-
   checkout. Includes remote-default bases, opt-in pulls, template overlays,
   and dry-run-first cleanup with checks that protect other agents' work.
 compatibility: >-
-  Requires Git and git-donkey commands on PATH. Verify installed help supports
-  remote-default bases, --pull-ff, --pull-rebase, and git plonk --dry-run, and
-  that git plonk help describes skipping worktrees with uncommitted or
-  untracked files; older releases force removal instead.
+  Requires Git and both git-donkey and git-plonk on PATH. Verify that git
+  donkey --help supports remote-default bases, --no-pull, --pull-ff, and
+  --pull-rebase, and that git plonk --help supports --soft, --hard, and
+  --dry-run and describes skipping worktrees with uncommitted or untracked
+  files, since older releases force removal instead.
 ---
 
 # Worktree management with git donkey and git plonk

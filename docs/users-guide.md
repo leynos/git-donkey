@@ -459,3 +459,67 @@ repositories with different remote URLs) have separate template directories. If
 multiple remotes are configured and none is named `origin`, the command exits
 with an error; rename a remote to `origin` or remove the extra remotes to
 resolve the ambiguity.
+
+## Agent skill
+
+The [worktree-management skill](../skill/git-donkey-worktrees/SKILL.md) is
+written for coding agents, and their operators, that create, reuse, and
+retire linked worktrees with `git donkey` and `git plonk`. It is not needed
+for ordinary editing in a checkout already selected for a task.
+
+### Prerequisites
+
+The skill requires Git plus `git-donkey` and `git-plonk` on `PATH`. It expects
+`git donkey` to support remote-default bases, `--no-pull`, `--pull-ff`, and
+`--pull-rebase`, and `git plonk` to support `--soft`, `--hard`, and
+`--dry-run`, whose help text describes skipping worktrees that hold
+uncommitted or untracked files rather than forcing their removal, as older
+releases did. The skill tells the agent to check `git donkey --help` and
+`git plonk --help` before relying on these behaviours.
+
+### When it activates
+
+The skill applies to creating an isolated branch checkout, locating or
+reusing an existing worktree, preparing a stacked branch, retiring completed
+worktrees, or explicitly cleaning generated directories. It does not apply to
+ordinary editing, committing, or pull-request review.
+
+### Installation
+
+Copy or symlink the complete `skill/git-donkey-worktrees/` directory into the
+agent's documented skill location, keeping the directory name and its bundled
+`references/` subdirectory intact. The Python package does not install the
+skill automatically; installation is agent-specific.
+
+```shell
+# Copy the skill into an agent's skill directory
+cp -r skill/git-donkey-worktrees ~/.agents/skills/
+
+# Or symlink it instead of copying
+ln -s "$(pwd)/skill/git-donkey-worktrees" ~/.agents/skills/git-donkey-worktrees
+```
+
+### Supported workflows
+
+The skill covers:
+
+- creating a worktree from a remote-default base, an explicit base, or `.`,
+- opting in to a pull with `--pull-ff` or `--pull-rebase`,
+- reusing an existing branch, including its upstream constraints,
+- verifying the resulting worktree's path, branch, and starting commit,
+- applying template overlays copied into new worktrees,
+- handing a stacked branch over to a child worktree, and
+- reviewed cleanup that starts with the matching `--dry-run` preview and
+  requires reading the bundled cleanup checklist first.
+
+### Cleanup safeguards beyond the commands themselves
+
+The bundled
+[cleanup checklist](../skill/git-donkey-worktrees/references/cleanup.md) adds
+safeguards that `git plonk` itself does not enforce:
+
+- authorization for the entire preview batch, not just individual candidates,
+- per-candidate checks of data and ownership before removal,
+- running the preview and the execution from the same invoking worktree,
+- verification of the resulting state after the run, and
+- reporting of skipped worktrees, failed branch deletions, and exit statuses.

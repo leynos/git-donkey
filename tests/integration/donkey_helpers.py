@@ -13,15 +13,15 @@ from __future__ import annotations
 
 import dataclasses
 import typing as typ
+from pathlib import Path
 
 from git import Repo
 
 from git_donkey import donkey
-from tests.integration.conftest import _seed_repo, _setup_repo
+from tests.integration.conftest import _setup_repo
 
 if typ.TYPE_CHECKING:
     import collections.abc as cabc
-    from pathlib import Path
 
     import pytest
 
@@ -113,6 +113,25 @@ def new_scenario(
     )
 
 
+def seed_repo(repo: Repo, filename: str, content: str) -> None:
+    """Commit one file into an existing repository.
+
+    Parameters
+    ----------
+    repo : Repo
+        Repository the file is written and committed into.
+    filename : str
+        Name of the file to create relative to the repository's working tree.
+    content : str
+        Content written to the file before it is committed.
+
+    """
+    path = Path(repo.working_tree_dir or ".") / filename
+    path.write_text(content)
+    repo.index.add([str(path)])
+    repo.index.commit("Seed commit")
+
+
 def leave_base_behind_remote(scenario: DonkeyScenario) -> None:
     """Push a commit to the remote and reset the local base back behind it.
 
@@ -127,7 +146,7 @@ def leave_base_behind_remote(scenario: DonkeyScenario) -> None:
 
     """
     repo = scenario.repo
-    _seed_repo(repo, "upstream.txt", "upstream change")
+    seed_repo(repo, "upstream.txt", "upstream change")
     repo.remote("origin").push("main")
     scenario.remote_tip = repo.head.commit.hexsha
     repo.git.reset("--hard", "HEAD~1")

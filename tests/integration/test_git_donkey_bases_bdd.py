@@ -24,13 +24,13 @@ from git import Repo
 from pytest_bdd import given, parsers, scenarios, then, when
 
 from git_donkey import cli, donkey
-from tests.integration.conftest import _seed_repo
 from tests.integration.donkey_helpers import (
     DonkeyScenario,
     leave_base_behind_remote,
     new_scenario,
     run_donkey,
     run_donkey_without_pulling,
+    seed_repo,
 )
 
 if typ.TYPE_CHECKING:
@@ -118,7 +118,7 @@ def repository_with_committed_and_uncommitted_work(
     """Commit one file, then leave an unstaged edit and an untracked file behind."""
     scenario = new_scenario(tmp_path, monkeypatch, "feature/from-caller")
     repo = scenario.repo
-    _seed_repo(repo, "committed.txt", "committed work")
+    seed_repo(repo, "committed.txt", "committed work")
     scenario.local_tip = repo.head.commit.hexsha
     (scenario.local_path / "README.md").write_text(_UNSTAGED_CONTENT)
     (scenario.local_path / "scratch.txt").write_text(_UNTRACKED_CONTENT)
@@ -165,15 +165,6 @@ def run_donkey_with_current_branch_base(
     run_donkey(scenario, capsys, ".")
 
 
-@when("I run git donkey with the remote default base")
-def run_donkey_with_remote_default_base(
-    scenario: DonkeyScenario,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    """Run the workflow with an implicit base."""
-    run_donkey(scenario, capsys)
-
-
 @when("I run git donkey with --pull-ff and the current branch as the base")
 def run_donkey_with_pull_ff(
     scenario: DonkeyScenario,
@@ -210,29 +201,6 @@ def run_donkey_cli_with_flags(
     with pytest.raises(SystemExit) as excinfo:
         cli._donkey_app(["feature/x", *flags.split()])
     return _CliOutcome(code=excinfo.value.code, stderr=capsys.readouterr().err)
-
-
-@then("git donkey succeeds")
-def git_donkey_succeeds(scenario: DonkeyScenario) -> None:
-    """Assert the workflow reported success."""
-    assert scenario.exit_code == 0, "expected git donkey to succeed"
-
-
-@then(parsers.parse('git donkey fails with code {code:d} and reports "{message}"'))
-def git_donkey_fails_reporting(
-    scenario: DonkeyScenario,
-    code: int,
-    message: str,
-) -> None:
-    """Assert the workflow exited with ``code`` and explained itself on stderr."""
-    assert scenario.exit_code == code, f"expected git donkey to exit with {code}"
-    assert message in scenario.stderr, f"expected stderr to report {message!r}"
-
-
-@then(parsers.parse('git donkey reports "{message}"'))
-def git_donkey_reports(scenario: DonkeyScenario, message: str) -> None:
-    """Assert the workflow wrote ``message`` to stderr."""
-    assert message in scenario.stderr, f"expected stderr to report {message!r}"
 
 
 @then("no branch or worktree is created")

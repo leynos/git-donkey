@@ -13,7 +13,8 @@ import pytest
 from git import Repo
 
 from git_donkey import donkey, slugs, templates
-from tests.integration.conftest import _seed_repo, _setup_repo
+from tests.integration.conftest import _setup_repo
+from tests.integration.donkey_helpers import seed_repo
 
 if typ.TYPE_CHECKING:
     from pathlib import Path
@@ -25,7 +26,7 @@ def _behind_repo(tmp_path: Path) -> Repo:
     """Create a local main one commit behind its remote counterpart."""
     local_path, _remote_path = _setup_repo(tmp_path)
     repo = Repo(local_path)
-    _seed_repo(repo, "upstream.txt", "upstream change")
+    seed_repo(repo, "upstream.txt", "upstream change")
     repo.remote("origin").push("main")
     repo.git.reset("--hard", "HEAD~1")
     return repo
@@ -259,7 +260,7 @@ def test_failed_base_update_records_the_git_failure(
 ) -> None:
     """A divergent base records the failed update, not the Git output."""
     repo = _behind_repo(tmp_path)
-    _seed_repo(repo, "local.txt", "local change")
+    seed_repo(repo, "local.txt", "local change")
     monkeypatch.chdir(repo.working_tree_dir or ".")
     monkeypatch.setattr(donkey.helpers, "_prompt_yes_no", lambda *_: True)
 
@@ -290,7 +291,7 @@ def test_base_outside_a_worktree_records_the_failure(
     """A base held by no worktree records that failure class."""
     repo = _behind_repo(tmp_path)
     repo.git.checkout("-b", "unrelated")
-    _seed_repo(repo, "unrelated.txt", "unrelated change")
+    seed_repo(repo, "unrelated.txt", "unrelated change")
     monkeypatch.chdir(repo.working_tree_dir or ".")
     monkeypatch.setattr(donkey.helpers, "_prompt_yes_no", lambda *_: True)
 

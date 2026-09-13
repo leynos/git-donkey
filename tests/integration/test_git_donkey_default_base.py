@@ -8,7 +8,8 @@ import pytest
 from git import Repo
 
 from git_donkey import donkey
-from tests.integration.conftest import _seed_repo, _setup_repo
+from tests.integration.conftest import _setup_repo
+from tests.integration.donkey_helpers import seed_repo
 
 if typ.TYPE_CHECKING:
     from pathlib import Path
@@ -38,12 +39,12 @@ def test_default_uses_remote_tip_without_changing_dirty_local_base(
     repo.git.branch("-M", default_branch)
     if remote_name != "origin":
         repo.git.remote("rename", "origin", remote_name)
-    _seed_repo(repo, "remote.txt", "remote change")
+    seed_repo(repo, "remote.txt", "remote change")
     repo.remote(remote_name).push(default_branch)
     Repo(remote_path).git.symbolic_ref("HEAD", f"refs/heads/{default_branch}")
     remote_tip = repo.head.commit.hexsha
     repo.git.reset("--hard", "HEAD~1")
-    _seed_repo(repo, "local.txt", "unpublished local commit")
+    seed_repo(repo, "local.txt", "unpublished local commit")
     local_tip = repo.head.commit.hexsha
     (local_path / "README.md").write_text("staged change")
     repo.index.add(["README.md"])
@@ -89,7 +90,7 @@ def test_remote_head_is_rediscovered_with_a_narrow_fetch_refspec(
     repo = Repo(local_path)
     repo.git.symbolic_ref("refs/remotes/origin/HEAD", "refs/remotes/origin/main")
     repo.git.checkout("-b", "trunk")
-    _seed_repo(repo, "trunk.txt", "new default")
+    seed_repo(repo, "trunk.txt", "new default")
     repo.remote("origin").push("trunk")
     remote_tip = repo.head.commit.hexsha
     Repo(remote_path).git.symbolic_ref("HEAD", "refs/heads/trunk")
@@ -155,7 +156,7 @@ def test_dot_uses_calling_linked_worktree_not_primary_checkout(
     caller_path = tmp_path / "caller"
     repo.git.worktree("add", "-b", "caller", str(caller_path), "main")
     caller = Repo(caller_path)
-    _seed_repo(caller, "caller.txt", "caller-only content")
+    seed_repo(caller, "caller.txt", "caller-only content")
     monkeypatch.chdir(caller_path)
 
     assert donkey.run_git_donkey("feature/from-caller", ".") == 0, (

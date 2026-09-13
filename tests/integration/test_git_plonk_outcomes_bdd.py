@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import sys
 import typing as typ
 
 import pytest
@@ -391,8 +392,12 @@ def both_completed_branches_remain(scenario: PlonkScenario) -> None:
 
 
 @pytest.mark.skipif(
-    os.geteuid() == 0,
-    reason="a root effective UID ignores the read-only loose-ref directory",
+    sys.platform == "win32" or os.geteuid() == 0,
+    reason=(
+        "a root effective UID ignores the read-only loose-ref directory, and "
+        "the read-only loose-ref scenario needs POSIX permissions and a "
+        "non-root effective UID"
+    ),
 )
 @scenario(
     "features/git_plonk_outcomes.feature",

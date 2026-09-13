@@ -16,14 +16,14 @@ from __future__ import annotations
 import typing as typ
 from pathlib import Path
 
-from pytest_bdd import given, parsers, scenarios, then, when
+from pytest_bdd import given, scenarios, then, when
 
 from git_donkey import slugs, templates
-from tests.integration.conftest import _seed_repo
 from tests.integration.donkey_helpers import (
     DonkeyScenario,
     new_scenario,
     run_donkey,
+    seed_repo,
 )
 
 if typ.TYPE_CHECKING:
@@ -61,11 +61,11 @@ def repository_with_existing_branch_and_newer_main(
     scenario = new_scenario(tmp_path, monkeypatch, "feature/existing")
     repo = scenario.repo
     repo.git.checkout("-b", scenario.branch)
-    _seed_repo(repo, "feature.txt", "feature work")
+    seed_repo(repo, "feature.txt", "feature work")
     repo.remote("origin").push(scenario.branch)
     scenario.local_tip = repo.head.commit.hexsha
     repo.git.checkout("main")
-    _seed_repo(repo, "newer.txt", "newer main work")
+    seed_repo(repo, "newer.txt", "newer main work")
     repo.remote("origin").push("main")
     return scenario
 
@@ -82,7 +82,7 @@ def repository_with_remote_only_branch(
     scenario = new_scenario(tmp_path, monkeypatch, "feature/remote-only")
     repo = scenario.repo
     repo.git.checkout("-b", scenario.branch)
-    _seed_repo(repo, "remote-only.txt", "remote-only work")
+    seed_repo(repo, "remote-only.txt", "remote-only work")
     repo.remote("origin").push(scenario.branch)
     scenario.remote_tip = repo.head.commit.hexsha
     repo.git.checkout("main")
@@ -103,7 +103,7 @@ def repository_with_local_only_branch(
     scenario = new_scenario(tmp_path, monkeypatch, "feature/local-only")
     repo = scenario.repo
     repo.git.checkout("-b", scenario.branch)
-    _seed_repo(repo, "local-only.txt", "local-only work")
+    seed_repo(repo, "local-only.txt", "local-only work")
     scenario.local_tip = repo.head.commit.hexsha
     repo.git.checkout("main")
     return scenario
@@ -190,15 +190,6 @@ def repository_with_overwriting_template(
     return scenario
 
 
-@when("I run git donkey with the remote default base")
-def run_donkey_with_remote_default_base(
-    scenario: DonkeyScenario,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    """Run the workflow with an implicit base."""
-    run_donkey(scenario, capsys)
-
-
 @when("I run git donkey with main as the base")
 def run_donkey_with_main_as_the_base(
     scenario: DonkeyScenario,
@@ -206,29 +197,6 @@ def run_donkey_with_main_as_the_base(
 ) -> None:
     """Run the workflow with main supplied as an explicit base."""
     run_donkey(scenario, capsys, "main")
-
-
-@then("git donkey succeeds")
-def git_donkey_succeeds(scenario: DonkeyScenario) -> None:
-    """Assert the workflow reported success."""
-    assert scenario.exit_code == 0, "expected git donkey to succeed"
-
-
-@then(parsers.parse('git donkey fails with code {code:d} and reports "{message}"'))
-def git_donkey_fails_reporting(
-    scenario: DonkeyScenario,
-    code: int,
-    message: str,
-) -> None:
-    """Assert the workflow exited with ``code`` and explained itself on stderr."""
-    assert scenario.exit_code == code, f"expected git donkey to exit with {code}"
-    assert message in scenario.stderr, f"expected stderr to report {message!r}"
-
-
-@then(parsers.parse('git donkey reports "{message}"'))
-def git_donkey_reports(scenario: DonkeyScenario, message: str) -> None:
-    """Assert the workflow wrote ``message`` to stderr."""
-    assert message in scenario.stderr, f"expected stderr to report {message!r}"
 
 
 @then("the new worktree starts at the existing branch tip")
