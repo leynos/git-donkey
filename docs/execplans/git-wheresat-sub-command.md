@@ -406,6 +406,14 @@ Stop and escalate rather than improvising when any of these is reached.
     `StackRecordConflictError` as unused. Both are live; the two dispositions
     and the four probes behind them are recorded under Surprises. The
     `skylos-allow` helper needed repairing before it could record the second.
+  - Reviewed: `coderabbit review --agent --base origin/main` reports
+    `review_completed` with zero findings over 28 changed files (log
+    `/tmp/coderabbit-git-donkey-git-wheresat-sub-command.out`). The review is
+    taken against `origin/main` rather than `main`, because the local `main` in
+    a worktree can lag the remote by dozens of commits and inflate the diff.
+    Six deterministic gates were green first (logs
+    `/tmp/{check-fmt,lint,typecheck,test,markdownlint,nixie}-git-donkey-git-wheresat-sub-command-1.out`),
+    so the review was asked to judge design, not to catch what a gate catches.
 - [ ] EP-M4 `git plonk` tombstones, sweeps, prunes, and reports stack
       records. Shippable on its own.
 - [ ] EP-M5 Build the hard fixtures: squash-merged, advanced, and rewritten
