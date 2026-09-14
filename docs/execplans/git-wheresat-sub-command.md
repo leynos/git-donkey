@@ -1936,6 +1936,13 @@ Feature: Preserve stack evidence through cleanup
     And a tombstone names the tip the branch had
     And no live stack record remains for that branch
 
+  Scenario: A branch with no record of its own is still entombed
+    Given a completed git donkey worktree for a branch created from the trunk
+    And a child branch stacked on it
+    When I run git plonk in hard mode
+    Then the branch is deleted
+    And a tombstone names the tip the branch had
+
   Scenario: A dry run reports the tombstone without writing it
     Given a completed git donkey worktree for a branch with a stack record
     When I run git plonk in hard mode as a dry run
@@ -2388,8 +2395,14 @@ class StackRecordWriter(StackRecordReader, typ.Protocol):
     def entomb(self, branch: str, tip: str) -> None:
         """Write the tombstone and remove the live record, in that order.
 
-        Ordering matters: a crash between the two leaves a tombstone and a
-        live record, which `reconcile` reports as malformed and the sweep
+        A tombstone is written whether or not `branch` had a record of its
+        own. That is the common case, not an edge case: a parent created from
+        the trunk is not itself stacked and so has no record, yet its tip is
+        exactly what a surviving child needs for the
+        `parent-history-intact` gate.
+
+        Ordering matters: a crash between the two steps leaves a tombstone and
+        a live record, which `reconcile` reports as malformed and the sweep
         repairs. The reverse ordering would lose the tip outright.
         """
 
