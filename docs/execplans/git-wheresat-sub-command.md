@@ -513,6 +513,25 @@ Stop and escalate rather than improvising when any of these is reached.
     of the parent's head. The assertion is restated as the property that does
     hold, the design detail the finding exposes is recorded under Surprises for
     EP-M6, and the amendment is recorded in the Decision log.
+  - Reviewed: `coderabbit review --agent --base origin/main` reports
+    `review_completed` with zero findings over 46 changed files (log
+    `/tmp/coderabbit-git-donkey-git-wheresat-sub-command-3.out`), taken at
+    `8a4ffa6`, the commit this entry describes, on the first attempt and
+    without meeting a rate limit, so no `vsleep` retry was needed. The first
+    gate pass was red on two of the six: nine ruff findings — four docstrings
+    missing a `Returns` section, `_merge_base` missing its `Raises` section, a
+    membership test against a tuple, an unsorted `TYPE_CHECKING` import block,
+    and two magic-value comparisons — and two MD049 emphasis errors in this
+    plan. All eleven were fixed before the review was requested, so CodeRabbit
+    judged design rather than gate failures; `lint` and `markdownlint` were
+    then re-run at `-7` and the four gates whose evidence predated the fix at
+    `-8` (logs
+    `/tmp/{check-fmt,lint,typecheck,test,markdownlint,nixie}-git-donkey-git-wheresat-sub-command-{7,8}.out`),
+    with `lint` green through all seven stages at 10.00/10 on both Pylint
+    passes, `test` reporting `558 passed` with 5 snapshots, and `markdownlint`
+    linting 30 files with 0 errors. The review is taken against `origin/main`
+    rather than `main`, because the local `main` in a worktree can lag the
+    remote by dozens of commits and inflate the diff.
 - [ ] EP-M6 `git wheresat` pure value types, gates, and assessment.
 - [ ] EP-M7 `git wheresat` read-only Git query port and the separate ref
       writer.
