@@ -474,13 +474,13 @@ def _empty_payload() -> _Payload:
         "target": None,
         "parent": None,
         "parentHead": None,
-        # ``landed`` and ``backupRef`` are declared here and stay null until the
-        # milestone that has something to put in them: the parent's landed
-        # commit, which no assessment carries yet, and the ref ``--record``
-        # writes before it replaces a record. Declaring them beside the keys a
-        # run does fill keeps the key set in one place, so a consumer reads one
-        # shape from a run that established nothing and from one that never
-        # started.
+        # ``landed`` and ``backupRef`` are declared here and stay null until
+        # the milestone that has something to put in them: the parent's landed
+        # commit, which no assessment carries yet, and the ref the report would
+        # have the user keep before the rebase it proposes, which it does not
+        # yet spell out. Declaring them beside the keys a run does fill keeps
+        # the key set in one place, so a consumer reads one shape from a run
+        # that established nothing and from one that never started.
         "landed": None,
         "oldBase": None,
         "durableRef": None,

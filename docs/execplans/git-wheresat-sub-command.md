@@ -710,6 +710,111 @@ Stop and escalate rather than improvising when any of these is reached.
     why the deterministic substitute above was run as well. Log
     `/tmp/coderabbit-git-donkey-git-wheresat-sub-command.out`.
 - [ ] EP-M9 `git wheresat --record` refreshes the shared record.
+  - The production half is committed as `5e49716` ("Write the record a run was
+    asked to refresh"), five files: `git_donkey/stack_store.py` gains the
+    reader's `anchor`, which is the read a refresh makes before it replaces
+    anything; `git_donkey/stack_records.py` gains the evidence kind a refresh
+    stamps; `git_donkey/wheresat_writes.py` is the command's whole writing
+    surface — the retaining ref a boundary no durable ref reaches needs (INV-8)
+    and the record refresh — with the writer built inside the method that needs
+    it, so a run that asks for neither write never holds one;
+    `git_donkey/wheresat.py` keeps the workflow and passes `--record` and
+    `--expected-old` through; and `git_donkey/wheresat_errors.py` owns the usage
+    failure that both the command line and the writes raise. The split is what
+    brought `wheresat.py` back under the 800-line module cap, and the two writes
+    are one subject rather than two branches of the workflow.
+  - Acceptance evidence, written after the production files and green over them:
+    `tests/integration/test_wheresat_record.py`, thirteen tests — the five cases
+    of INV-7 as one test each (anchor absent and re-created; anchor present with
+    no expectation; present with a matching one; present with a mismatched one;
+    and a run whose result was unresolved), the property that generalizes those
+    five rather than resting on them, and four that keep them from passing
+    vacuously: a boundary no record attests is never written back, a record the
+    branch has moved past is read as evidence rather than restated, a refreshed
+    record is still read as attested evidence, and `--record` is the only path
+    that builds the writer, which is the milestone's conformance check. Beside
+    it, `tests/integration/features/git_wheresat_record.feature` with its binder
+    `tests/integration/test_git_wheresat_record_bdd.py`, four scenarios, and
+    `tests/unit/test_stack_store_reads.py`, twenty tests, whose `anchor` read is
+    now pinned on the reader because a refresh reads it before it writes. The
+    three suites together: `37 passed in 14.28s` over no snapshots, with the six
+    `wheresat` suites together at `79 passed in 9.61s` (logs
+    `/tmp/pytest-git-donkey-git-wheresat-sub-command.out` and
+    `/tmp/test-bee71329-fdba-410e-a4cc-ebbeb26df240-git-wheresat-sub-command.out`,
+    the second named for this session's worktree because that is the directory
+    the tee convention expands to here).
+  - The property is INV-7's `Method` completed rather than a thirteenth example:
+    `test_only_a_pair_that_agrees_replaces_the_record` draws whether the anchor
+    ref is still there and which of three commits (none, the boundary, the child
+    tip) the run is told it holds, and holds the write to proceeding exactly when
+    the two agree — a disagreeing pair must leave the whole repository as the run
+    found it, which is the write-a-five-case-matrix-cannot-forbid. Two things
+    about it are recorded because they were not what the plan assumed. The
+    strategy space is six pairs and Hypothesis exhausts it rather than sampling
+    it ("6 passing ... Stopped because nothing left to do"), so no
+    `max_examples` is set and the docstring says the count is ground covered
+    rather than a budget. And `@given` with `tmp_path` trips Hypothesis's
+    `function_scoped_fixture` health check, which is suppressed with the reason
+    the fixture is safe here: `tmp_path` is the parent each example makes its own
+    `mkdtemp` checkout under, not state carried between examples. Refusing to
+    suppress would have meant a module-level temporary directory and a fixture
+    that is not reset anyway, which is the thing the check exists to warn about.
+  - Every assertion is made against Git rather than against the run's account of
+    itself: the anchor ref with `rev-parse`, the four record values with
+    `config --list`, the record as `stack_store` reads it back, and the whole
+    repository — refs, index, both working trees, stash, configuration, and
+    `FETCH_HEAD` — with the read-only suite's fingerprint, which the record
+    suite reuses. The observability recorder is read the same way, sliced to the
+    run under test, so a write's outcomes and the span it opened are evidence
+    about which path a run took where the exit status alone is not.
+  - Red first, on the suite's own measurement rather than on the command: three
+    of the observability tests failed because the `git donkey` that builds each
+    checkout writes the birth record under the same operation the assertions
+    count, and the machine-readable case failed with a `JSONDecodeError` because
+    the run's stdout began with that same `git donkey`'s output. The recorder is
+    now sliced from the run's own start, and the run helper drains the capture
+    before it runs — the two corrections are the whole of the suite's red
+    evidence, and they are recorded because a suite that passed a measurement
+    bug would have been green for the wrong reason. The fourth scenario of the
+    BDD feature failed first as well, reading the child's anchor while the run
+    it was asserting about asked about the parent; the step now names the branch
+    it checks, which is what the scenario's `And the existing record is
+    unchanged` says as well.
+  - Documentation, all of it written from the code rather than from the intent:
+    the users' guide scopes the read-only promise to a run without `--record`,
+    replaces the two "accepted and has no effect yet" bullets with what the
+    write does and when each pairing of the two flags is refused, and adds a
+    paragraph on when a refresh is worth asking for and why a birth record goes
+    stale once the parent is integrated and the branch restacked. The
+    developers' guide's read-only paragraph now says which vectors its matrix
+    holds and that `--record` is measured by the record suite instead, because
+    `--record` is the one flag that writes and so is not a vector the matrix can
+    hold. `WheresatOptions`' docstring names the five options that are inert
+    instead of saying "the remaining flags past `--explain`", which had stopped
+    being true, and `wheresat_report.py`'s `backupRef` comment no longer calls
+    that key `--record`'s write (see the Decision log).
+  - Gate note: all eight gates ran green in one sequential pass over the tree
+    this milestone commits — `build`, `check-fmt`, `lint`, `typecheck`, `test`,
+    `spelling`, `markdownlint`, and `nixie`, with `test` reporting `741 passed,
+    219 warnings` over 21 snapshots and `typos.toml` untouched (logs
+    `/tmp/{build,check-fmt,lint,typecheck,test,spelling,markdownlint,nixie}-git-donkey-git-wheresat-sub-command-15.out`).
+    Three rounds were needed to get there, and the two findings that survived
+    the first round are worth carrying forward because each was masked by the
+    round before it rather than newly introduced. Ruff's formatter and linter
+    between them flagged the three new files: imports used only in annotations
+    (`pathlib.Path` and `pytest` in the binder, `git.Repo` in the record suite),
+    three `@given` fixtures whose prose docstrings had no `Returns` section, one
+    unused helper import, one composite assertion, and one line at 90 columns.
+    With ruff clean, the built-in Pylint pass then reached eight C1803s —
+    `before.differences(reading(scenario)) == ()` and `built == []`, which the
+    house style writes as truthiness checks, as the read-only suite already did.
+    With that clean, the df12 Pylint pass reported the one finding the other two
+    had been hiding: `Where` in `wheresat_helpers.py` was a bare `typ.Literal`
+    alias, and the pass wants a PEP 695 `type` statement, which is the shape
+    `wheresat_report.py`'s `type _Payload` already has. A shared helper is gated
+    by the second Pylint pass and a new test module by all three, so the two new
+    suites and the one helper they share only converged in that order. The
+    Markdown-reading gates were re-run once this entry was written.
 - [ ] EP-M10 GitHub evidence, `--json`, behavioural scenarios, and the
       remaining documentation.
 
@@ -1356,6 +1461,68 @@ Stop and escalate rather than improvising when any of these is reached.
   is not evidence that a module's sibling functions are distinct in what they
   do, only that no group of them reads alike, so each of the four production
   fixes was checked against its own suite rather than trusted to the score.
+
+- Observation: a child branch `git donkey` has just cut has nothing of its own to
+  replay, so a run against it refuses before the record is ever weighed.
+  Evidence: the record's boundary is the parent's tip and the child's tip is the
+  same commit at birth, which is what made the first draft of the record suite's
+  scenarios fail: `--record` reported a refusal, not a boundary, because the
+  replay range was empty. Every scenario in the suite now commits to the child's
+  worktree first, and the helper says so, so that what the tests measure is the
+  record rather than a range with nothing in it.
+  Impact: the INV-7 cases had to be built on a child that has moved past its
+  own boundary, which is also the state a refresh exists for. It also means the
+  fourth BDD scenario — a run with no boundary to record — is the parent's own
+  case (`--branch parent --onto parent`), where the refusal is about the replay
+  range and nothing else, rather than a child that has not been worked on. The
+  one shape the milestone cannot test through a checkout is a child at birth,
+  because the command has nothing to say about it yet.
+
+- Observation: at this milestone a refresh can restate a record's anchor and its
+  written-from tip, but cannot move the boundary the record names.
+  Evidence: the local evidence path has exactly one attested source — the
+  record's own claim — so the boundary a run establishes is the boundary the
+  record already names, and a boundary computed from the merge base or the fork
+  point is derived evidence, which `--record` refuses to write back. The
+  superseded-record test shows the sharp end of it: after a restack, the record
+  is demoted to derived evidence, the run still establishes a boundary from the
+  surviving history with exit `0`, and the write is refused with the
+  "boundary rests on derived evidence" warning.
+  Impact: the users' guide says what a refresh does rather than what the
+  milestone's one-line summary implies, and the compare-and-swap on the anchor
+  is documented as the shape a moving boundary needs rather than as a mechanism
+  this milestone exercises to its end. Attested evidence about where a parent
+  went is what makes the boundary move, and that is EP-M10's forge evidence.
+
+- Observation: two of the four `git_wheresat_record.feature` scenarios sketched
+  in this plan could not be built as written.
+  Evidence: the first asked for a record to be created for a branch that had
+  none ("Recording a stack record for the first time"), and the third asked for
+  the anchor to be shown naming a _new_ boundary. INV-7's obligation is
+  create-only for the anchor and refresh-only for the record, and at this
+  milestone the boundary cannot move — so the first would have tested a write
+  that must not happen and the third a write that cannot. Both are replaced in
+  the as-built feature above.
+  Impact: the plan's own sketch was the first place the create-only rule had
+  been read as an implementation requirement rather than as prose, and re-reading
+  the invariant against it was what produced the two warnings the command now
+  prints. A sketch in a plan is a prediction like any other, and this one was
+  wrong in a way that would have been embarrassing to discover while writing the
+  scenario, which is where it was discovered.
+
+- Observation: the fixture that builds each record test's checkout writes a birth
+  record, and the observability recorder cannot tell that write from the one
+  under test.
+  Evidence: three tests failed on the first run with the birth write's outcomes
+  in place of the refresh's, and the machine-readable test parsed the fixture's
+  own `git donkey` output as its envelope. The recorder is now sliced from the
+  run's first observation and the capture drained immediately before each run.
+  Impact: the slicing is a measurement correction that could equally have been
+  papered over by asserting on the last observation, which would have passed for
+  a reason rather than on purpose. The rule the suite follows — a recorder read
+  for one run is sliced to that run, and a capture read for one run is drained
+  before it — is recorded in the two helpers' docstrings so the next suite does
+  not re-learn it.
 
 ## Decision log
 
@@ -2102,6 +2269,97 @@ Stop and escalate rather than improvising when any of these is reached.
   documented names stay silent, so the entries suppress what they name rather
   than the gate having stopped asking.
   Date/Author: 2026-09-14, implementation agent, EP-M6–EP-M8.
+- Decision: ``--record`` refreshes and never creates, so the create-only half of
+  INV-7 is enforced on the anchor ref and a run on a branch with no record is a
+  reported fact rather than a write.
+  Rationale: INV-7's obligation says the record is created when it does not
+  exist and refreshed when it does, which reads as one either/or rule until it is
+  read against the claim the record carries. A record states the parent the user
+  named at birth; a run reads the parent out of a record it already has and knows
+  nothing else about it, so a record it created would state a boundary it
+  computed as though someone had declared it. That is the promotion INV-7's
+  second sentence exists to forbid: only an attested claim is written back. The
+  create-only spelling therefore belongs to the anchor ref — Git's own empty
+  expected-old value — where it does the work it was written for, which is to
+  lose to a concurrent writer rather than overwrite one (AXIOM-4), and the
+  refresh is the only record write this command has. The consequence is
+  recorded rather than hidden: ``_recorded``'s two refusals (no record, an
+  unreadable record) cannot be reached through the local evidence path at this
+  milestone, because the record's own candidate is the only attested source
+  there is, so an attested support implies a record. They are written anyway,
+  and EP-M10 is where a fetched parent head can be attested while the branch has
+  no record, which is what makes them reachable.
+  Date/Author: 2026-09-14, implementation agent, EP-M9.
+- Decision: two distinct warnings say nothing was recorded — one when the run
+  established no boundary, one when the boundary it established rests on derived
+  evidence — and the refused write is observed as ``rejected`` with no error
+  kind, opening no span.
+  Rationale: the two states are different facts about the same absence, and a
+  user who had passed ``--record`` needs to know which one they are in: nothing
+  to write, or something to write that this command may not. A single warning
+  would have to be vague about both. The observation follows the same rule the
+  report's warnings do — a refusal that changes no exit status is not an error —
+  so the trace distinguishes a write that was attempted and declined from one
+  that never started, which is what the recorded span is for. The messages are
+  pinned by value in the record suite and by prose in the BDD binder, so a
+  reworded warning is a failing test rather than a silent change of contract.
+  Date/Author: 2026-09-14, implementation agent, EP-M9.
+- Decision: move the command's whole writing surface into a new
+  ``git_donkey/wheresat_writes.py``, and build the ref writer inside the method
+  that needs it rather than holding one on the run's context.
+  Rationale: ``wheresat.py`` had grown past the 800-line house cap once
+  ``--record`` was wired, and the two writes — the retaining ref a boundary no
+  durable ref reaches needs (INV-8) and the record refresh (INV-7) — are one
+  subject: the command's writes, as against its reads. Keeping the writer out of
+  the context is what makes INV-1 a property of the code rather than of the
+  flags: a run that asks for neither write never constructs an object that can
+  write, which the record suite asserts by counting the constructions. The
+  module-qualified call is deliberate — ``wheresat_refs.GitWheresatRefWriter``
+  is named through its module inside the method, so a test can replace the class
+  and count what a run built.
+  Date/Author: 2026-09-14, implementation agent, EP-M9.
+- Decision: put the anchor read on ``StackRecordReader`` rather than on the
+  writer or in the command's own ref reader.
+  Rationale: a refresh has to compare-and-swap against the anchor's current
+  value, and the reconciliation ``read`` performs is deliberately blind to
+  whether the anchor exists: a record whose anchor has gone still reconciles as
+  a record. So the value the write expects can only come from the ref itself,
+  and a caller that holds no writer must still be able to read it — otherwise
+  the only way to make the read would be to hold the object that writes, which
+  is the coupling INV-1 is measured against. The reader is where every other
+  read lives, and the unit suite now pins the read there for that reason.
+  Date/Author: 2026-09-14, implementation agent, EP-M9.
+- Decision: the record suite's readers — the anchor, the record's configuration,
+  the fingerprint, the run helper — live in ``tests/integration/
+  wheresat_helpers.py`` beside the checkout that builds them, and the read-only
+  suite's private copies are left alone.
+  Rationale: this repository has no imports across test modules, so a helper two
+  suites need belongs with the fixture they share rather than being copied into
+  the second suite. The read-only suite's own ``_reading`` and ``_run_in`` are
+  not the same functions and are not touched: they are the measurement INV-1's
+  evidence was taken with, and re-plumbing them would invalidate that evidence
+  to save four lines.
+  Date/Author: 2026-09-14, implementation agent, EP-M9.
+- Decision: supersede the EP-M8 note that "the backup ref is EP-M9's write".
+  The ``backupRef`` envelope key stays ``null``, and the comment above it now
+  says what the key is for: the ref the report would have the user keep before
+  the rebase it proposes, which the report does not yet spell out.
+  Rationale: ``backupRef`` is not a record write at all, which the milestone
+  established on reading the requirement it comes from — every proposed
+  ``git rebase --onto`` command must be preceded by a backup ref the user can
+  return to, and the plan's sample output shows the user running ``git
+  update-ref`` themselves. Nothing about ``--record`` produces it, so EP-M9 was
+  the wrong milestone to name. What the report owes is a rebase plan with a
+  backup ref and the child tip beside the command it already prints, and that
+  belongs with the report work EP-M10 does. One tension is recorded here rather
+  than left for EP-M10 to rediscover: the constraint that every proposed
+  ``git rebase --onto`` command use full 40-character object IDs is met by the
+  envelope's ``rebaseCommand`` and not by the text rendering, which abbreviates
+  every commit through ``COMMIT_ABBREVIATION`` — EP-M6's decision about detail
+  lines, taken before the report had a command in it. The backup ref, the
+  child-tip line, and the IDs belong to the same block of output, so EP-M10
+  settles all three together; its ``Remaining gaps`` line now says so.
+  Date/Author: 2026-09-14, implementation agent, EP-M9.
 
 ## Outcomes & retrospective
 
@@ -3212,6 +3470,34 @@ assertion proves `--record` is the only path that constructs the writer for
 anything other than a fetch.
 Recovery: revert; a refreshed record is restored from its ref reflog.
 Remaining gaps: no GitHub evidence.
+As built: the refresh is the only record write the command has, and a record is
+never created — what creates one is `git donkey` at branch birth, where the
+parent is known because the user named the base. So the create-only half of
+INV-7 is the anchor ref's, and a run on a branch with no record reports that it
+has none to refresh. `_expected_old` refuses all three wrong pairings rather
+than only the mismatched one: an anchor that exists with no expectation, an
+expectation with no anchor, and an expectation naming a commit the anchor does
+not hold, each a usage error with status 2. The two states that leave nothing to
+write report different warnings, because they are different facts: no boundary
+was established, or a boundary was established from derived evidence and only an
+attested claim is written back. Both are observed as a write that was rejected,
+not as a failure of writing.
+The boundary cannot move at this milestone, and the milestone says so rather
+than leaving the users' guide to imply it: the local evidence path has exactly
+one attested source, the record's own claim, so the boundary a refresh writes is
+the boundary the record already names. What a refresh changes is the anchor, the
+tip the record was written from, and the evidence kind. The compare-and-swap is
+already the shape a moving boundary needs, which is why the anchor carries it
+rather than the configuration.
+The command's writing surface moved to `git_donkey/wheresat_writes.py`, and the
+usage error to `git_donkey/wheresat_errors.py`, so `wheresat.py` stays under the
+800-line module cap and the writer is built inside the method that needs it
+(see the Decision log).
+Delivered: `tests/integration/test_wheresat_record.py`, the amended
+`tests/integration/features/git_wheresat_record.feature` with its binder, the
+`anchor` read pinned in `tests/unit/test_stack_store_reads.py`, and the
+users'-guide and developers'-guide entries. See the Progress entry for the
+counts and the Surprises for the two findings that shaped it.
 
 **EP-M10 — GitHub evidence, machine-readable output, and the behavioural
 suite.**
@@ -3226,7 +3512,11 @@ open pull request, a rate-limited response, and one commit-to-pull-request
 association page. `tests/integration/features/git_wheresat.feature` and its
 binder module pass. `docs/developers-guide.md` gains the `--json` convention,
 the cassette-recording procedure, and the `stack`-field note;
-`docs/v0-2-0-migration-guide.md` gains a new-commands entry.
+`docs/v0-2-0-migration-guide.md` gains a new-commands entry. The report's
+proposed rebase plan is completed here too: the backup ref the envelope's
+`backupRef` key has been holding a place for, the statement of the child tip the
+answer was computed against, and the full object IDs the design review requires
+(see the EP-M9 Decision log entry on `backupRef` and the remaining gaps below).
 Requirements: REQ-parent-pr, REQ-pr-head.
 Acceptance evidence: `make test` passes with the cassettes replayed in `none`
 record mode, so any unrecorded request fails; `uv run pytest
@@ -3235,7 +3525,11 @@ Conformance check: no live network access in the suite; the `Authorization`
 header is filtered from every cassette; the association search is bounded and
 reports truncation; no cassette was hand-edited.
 Recovery: revert; cassettes are additive files.
-Remaining gaps: none planned.
+Remaining gaps: the report's rebase plan is completed here — the backup ref the
+``backupRef`` key has been holding a place for, the statement of the child tip
+the answer was computed against, and the full 40-character object IDs the design
+review requires, which the text rendering currently abbreviates while the
+envelope carries them (see the Decision log, EP-M9).
 
 ## Concrete steps
 
@@ -3541,35 +3835,51 @@ Feature: Locate the replay boundary for a squash-merged parent
     And the only new refs are under the evidence namespace
 ```
 
-`tests/integration/features/git_wheresat_record.feature` (EP-M9):
+`tests/integration/features/git_wheresat_record.feature` (EP-M9), as built:
 
 ```gherkin
 Feature: Refresh a stack record
 
-  Scenario: Recording a stack record for the first time
-    Given a child branch with an established replay boundary and no record
+  Scenario: Anchoring a record whose anchor ref is gone
+    Given a child branch with a stack record whose anchor ref is gone
     When I run git wheresat with recording enabled
-    Then the stack-base ref names the established boundary
-    And the branch configuration records the parent identity and the child tip
+    Then git wheresat succeeds
+    And the stack-base ref names the boundary the record attests
+    And the record preserves the parent it was born with
+    And the record names the child tip the run was made at
+    And the record names the refresh as its evidence
 
   Scenario: Refusing to overwrite an existing record
     Given a child branch with an existing stack record
-    When I run git wheresat with recording enabled and no expected old value
+    When I run git wheresat with recording enabled
     Then the existing record is unchanged
     And the command reports that an expected old object ID is required
     And the command exits with status 2
 
-  Scenario: Updating a record with the correct expected old value
+  Scenario: Refreshing a record with the expected old value
     Given a child branch with an existing stack record
-    When I run git wheresat with recording enabled and the correct expected old value
-    Then the stack-base ref names the new boundary
+    When I run git wheresat with recording enabled and the expected old value
+    Then git wheresat succeeds
+    And the stack-base ref names the boundary the record attests
+    And the record preserves the parent it was born with
+    And the record names the child tip the run was made at
+    And the record names the refresh as its evidence
 
   Scenario: Refusing to record an unresolved result
-    Given a child branch whose replay boundary cannot be established
-    When I run git wheresat with recording enabled
-    Then no stack-base ref is created
+    Given a stacked checkout whose parent cannot be replayed onto itself
+    When I run git wheresat with recording enabled for parent
+    Then no stack-base ref is created for parent
+    And the existing record is unchanged
+    And the command reports that nothing was recorded
     And the command exits with status 1
 ```
+
+Two scenarios were amended from the sketch once the create-only rule was read
+back into the invariant (see the Surprises): a refresh never creates a record,
+so no scenario begins without one, and the boundary it writes is the one the
+record already attests, so no scenario can show it moving. Both write scenarios
+therefore begin from the record `git donkey` wrote at the branch's birth; what
+they vary is whether that record is still reachable.
 
 ### Quality criteria
 
@@ -3874,6 +4184,18 @@ class StackRecordReader(typ.Protocol):
 
     def read(self, branch: str) -> RecordResult:
         """Return the reconciled record for one branch."""
+
+    def anchor(self, branch: str) -> str | None:
+        """Return the commit `branch`'s anchor ref names, if it has one.
+
+        Added by EP-M9. A record's configuration and its anchor can disagree,
+        and the reconciliation `read` performs is deliberately blind to which
+        of the two a caller must compare against: a record whose anchor has
+        gone still reconciles as a record. A caller about to refresh one
+        therefore reads the ref itself, which is what it passes to the writer
+        as the value it expects to find (INV-7). It is a read, so it belongs to
+        the reader: `git wheresat` holds no writer to make it with.
+        """
 
     def tombstone(self, branch: str) -> str | None:
         """Return the tip preserved when `branch` was deleted, if any."""

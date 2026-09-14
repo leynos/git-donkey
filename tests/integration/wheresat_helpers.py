@@ -8,6 +8,13 @@ against that checkout and measures what the repository looks like afterwards;
 ``test_wheresat_end_to_end.py`` plonks the parent first, so the same boundary has
 to come back from the tombstone the sweep left behind.
 
+``test_wheresat_record.py`` asks the command to refresh that record instead, and
+so builds a checkout of its own per test rather than sharing one: a record write
+is a change no later test could read the same repository past. The readers here
+and in the record suite's binder take the artefacts back out of Git — the anchor
+ref with ``rev-parse``, the record's values with ``config --list`` — so what the
+suites assert on is the repository, not the run's account of it.
+
 The fingerprint is the suites' shared measurement, and it is deliberately wider
 than any one test's interest: INV-1 is a claim about a whole repository — every
 ref and the commit it names, the index and the working tree, the stash, the
@@ -27,9 +34,9 @@ import os
 import typing as typ
 from pathlib import Path
 
-from git import Repo
+from git import GitCommandError, Repo
 
-from git_donkey import wheresat
+from git_donkey import stack_records, wheresat
 from tests import git_repo_helpers
 from tests.integration.conftest import _setup_repo
 from tests.integration.plonk_helpers import (
@@ -146,6 +153,61 @@ def stacked_child(root: Path) -> WheresatScenario:
     return dataclasses.replace(scenario, tip=scenario.worktree_head())
 
 
+def _ref_value(repo: Repo, ref: str) -> str | None:
+    """Return the commit ``ref`` names, or ``None`` when it does not exist."""
+    try:
+        return str(repo.git.rev_parse("--verify", "--quiet", ref))
+    except GitCommandError:
+        return None
+
+
+def reading(scenario: WheresatScenario) -> Fingerprint:
+    """Return the fingerprint of both of the scenario's working trees."""
+    return fingerprint(
+        scenario.local_path,
+        scenario.worktree_path(),
+        repo=scenario.repo,
+    )
+
+
+def anchor(scenario: WheresatScenario, branch: str = CHILD) -> str | None:
+    """Return the commit ``branch``'s anchor ref names, if it has one.
+
+    The child is the default because that is the branch every suite here reads;
+    a branch the scenario has no record for is asked about explicitly, which is
+    how a suite shows that a run wrote nothing for it.
+
+    Returns
+    -------
+    str | None
+        The commit the ref names, or ``None`` when the branch has no anchor ref.
+
+    """
+    return _ref_value(scenario.repo, stack_records.base_ref_path(branch))
+
+
+def configuration(scenario: WheresatScenario) -> dict[str, str]:
+    """Return the child's branch configuration, read from Git directly."""
+    prefix = f"branch.{CHILD}."
+    return {
+        key[len(prefix) :]: value
+        for entry in scenario.repo.git.config("--local", "--list", "-z").split("\0")
+        if entry
+        for key, _, value in (entry.partition("\n"),)
+        if key.startswith(prefix)
+    }
+
+
+def forget_anchor(scenario: WheresatScenario) -> None:
+    """Delete the child's anchor ref, leaving its configuration behind.
+
+    A record whose anchor was collected is the state a refresh exists for: the
+    configuration still names the boundary, and the write that makes it
+    reachable again is the create-only half of INV-7.
+    """
+    scenario.repo.git.update_ref("-d", stack_records.base_ref_path(CHILD))
+
+
 @contextlib.contextmanager
 def in_directory(path: Path) -> cabc.Iterator[None]:
     """Run the block with the process current directory set to ``path``.
@@ -231,6 +293,49 @@ def run_wheresat(
         stdout=captured.out,
         stderr=captured.err,
     )
+
+
+type Where = typ.Literal["worktree", "checkout"]
+"""Which of a scenario's two working trees a run is made from."""
+
+
+def run_wheresat_in(
+    scenario: WheresatScenario,
+    options: wheresat.WheresatOptions,
+    capsys: pytest.CaptureFixture[str],
+    *,
+    where: Where = "worktree",
+) -> WheresatRun:
+    """Run the command from one of the scenario's working trees.
+
+    The child's worktree is where the branch is checked out, so no ``--branch``
+    is needed there; the checkout is where a run about any other branch has to
+    be made from, because the command reads its repository from the current
+    directory.
+
+    Parameters
+    ----------
+    scenario : WheresatScenario
+        The checkout the run is made against.
+    options : wheresat.WheresatOptions
+        What the command line asked for.
+    capsys : pytest.CaptureFixture[str]
+        Capture fixture the run's output is read from.
+    where : Where, optional
+        Working tree to run from.
+
+    Returns
+    -------
+    WheresatRun
+        The status and both output streams, which are the run's own: a suite
+        that built its checkout inside the test leaves the ``git donkey`` that
+        built it in the capture, so the capture is drained first.
+
+    """
+    directory = scenario.worktree_path() if where == "worktree" else scenario.local_path
+    capsys.readouterr()
+    with in_directory(directory):
+        return run_wheresat(options, capsys)
 
 
 @dataclasses.dataclass(frozen=True, slots=True)

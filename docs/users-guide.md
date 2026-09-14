@@ -530,9 +530,9 @@ git wheresat
 git wheresat --branch issue-123-fix
 ```
 
-The command is read-only: it never moves a branch, never changes a worktree,
-and writes no record. The only refs it may add are evidence refs under
-`refs/wheresat/`; a boundary that nothing else reaches is retained at
+Without `--record` the command is read-only: it never moves a branch, never
+changes a worktree, and writes no record. The only refs it may add are evidence
+refs under `refs/wheresat/`; a boundary that nothing else reaches is retained at
 `refs/wheresat/boundary/<branch>` so a later `git gc` cannot collect it.
 
 It exits with one of four statuses:
@@ -568,12 +568,50 @@ Options:
 - `--json` prints the versioned envelope described above.
 - `--op-id` names this run; an id that could escape the `refs/wheresat/op/`
   namespace is refused with status 2.
-- `--record` is accepted and has no effect yet: no record is written.
-- `--expected-old` is accepted and has no effect yet; it will require the
-  existing stack record to name this commit before `--record` replaces it.
+- `--record` refreshes the branch's [stack record](#stack-records-at-branch-birth)
+  — the boundary, the tip the record was written from, and the evidence kind
+  that says a run restated it — instead of only reading it. A refresh never
+  invents a record: a branch no one recorded is reported, not recorded. It also
+  writes only a boundary the run established from attested evidence, so a run
+  that had to derive one still reports the boundary and warns that nothing was
+  recorded.
+- `--expected-old` names the commit the record's anchor ref must hold for
+  `--record` to replace it. It is required when the anchor ref exists — a write
+  that names no expectation is refused with status 2 rather than replacing a
+  record the user did not read — and must not be given when it does not, because
+  re-creating a collected anchor replaces nothing. Git performs the same
+  comparison again at the write, so an anchor that moves in between is refused
+  rather than overwritten.
 
-`--no-fetch`, `--offline`, and `--deep` are accepted and change no answer yet
-as well: the local-evidence path fetches nothing and compares nothing deeply,
+Refresh a record when its anchor ref has been collected — the configuration
+still names the boundary, and the refresh writes the ref back — or when the
+record should say the branch has been restated at the tip it has since reached.
+
+```shell
+# Re-anchor a record whose ref git gc collected
+
+git wheresat --record
+
+# Replace the record the run read, naming what its ref must hold
+
+git wheresat --record --expected-old <commit>
+```
+
+A record goes stale when the branch's own history is rewritten under it. Once
+the parent has been integrated and the branch restacked onto it, the tip the
+record was written from is no longer on the branch, so the record stops being a
+claim about where the branch came from: the run reads it as derived evidence,
+answers with the boundary the surviving history agrees on, and `--record` writes
+nothing back. Only an attested claim is written back, and the record's own claim
+is the only attested source the local path has, so a refresh restates the
+boundary the record already names — it re-anchors the commit and restates the
+tip the branch is at, so a later reader can tell the record was restated by a
+run rather than left as the claim written at birth. Moving a record to a new
+boundary needs an attested account of where the parent went, which local
+evidence cannot give.
+
+`--no-fetch`, `--offline`, and `--deep` are accepted and change no answer yet:
+the local-evidence path fetches nothing and compares nothing deeply,
 so the forge-backed evidence and the deeper comparisons those options control
 are not wired yet. A named `--parent` still answers with status 3, because the
 parent pull request cannot be consulted.

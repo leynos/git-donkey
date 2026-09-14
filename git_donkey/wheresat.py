@@ -105,12 +105,13 @@ not answer is recorded as ``unavailable``.
 class WheresatOptions:
     """Every command-line input, before resolution to object IDs.
 
-    ``--op-id`` is checked as it is read and changes no answer yet, and
-    ``--record`` with ``--expected-old`` now write the one record this command
-    owns; the remaining flags past ``--explain`` are accepted and inert at this
-    milestone, because the local evidence path fetches nothing and compares
-    nothing deeply, and the inputs that control those paths arrive with the
-    evidence they compare against.
+    ``--op-id`` is checked as it is read, ``--json`` prints the versioned
+    envelope, and ``--record`` with ``--expected-old`` write the one record this
+    command owns. ``--limit``, ``--heuristic-window``, ``--no-fetch``,
+    ``--offline``, and ``--deep`` are accepted and inert at this milestone,
+    because the local evidence path fetches nothing and compares nothing deeply,
+    and the inputs that control those paths arrive with the evidence they
+    compare against.
 
     """
 

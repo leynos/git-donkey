@@ -381,12 +381,16 @@ key from a run with nothing to say.
 
 The read-only guarantee is measured rather than asserted.
 `tests/integration/test_wheresat_read_only.py` runs an explicit matrix of
-argument vectors — the default run, each flag, a named branch, and the refusal
-and usage-error paths — against a real repository and compares refs, `HEAD`,
-the index, the working tree, `FETCH_HEAD`, the stash, and local configuration
-before and after. The fingerprint is exercised against a changed value so that
-an equality assertion cannot pass by measuring nothing, and evidence a run is
-entitled to write is classified as allowed rather than as a difference.
+argument vectors — the default run, each flag that only reads, a named branch,
+and the refusal and usage-error paths — against a real repository and compares
+refs, `HEAD`, the index, the working tree, `FETCH_HEAD`, the stash, and local
+configuration before and after. The fingerprint is exercised against a changed
+value so that an equality assertion cannot pass by measuring nothing, and
+evidence a run is entitled to write is classified as allowed rather than as a
+difference. `--record` is the one flag that writes a record, so it is measured
+by `tests/integration/test_wheresat_record.py` instead, which also pins that a
+run asked for no write builds no writer at all, and the run asked for one
+builds exactly one.
 `tests/integration/test_wheresat_end_to_end.py` runs the three commands in the
 order the feature exists for: `git donkey` cuts a child and records the
 boundary, `git plonk --hard` sweeps the merged parent and leaves a tombstone,

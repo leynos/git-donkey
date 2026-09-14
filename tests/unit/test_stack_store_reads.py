@@ -2,16 +2,17 @@
 
 Every command asks for a ``GitStackRecordReader`` and only writes need the
 writer, so these tests pin the answers a read gives: the record a branch holds,
-the absent and orphaned cases around it, the orphans a sweep would act on, the
-tombstones a retention window has reached, and the window itself. The writer
-sets the repository up rather than doing the asserting; where a read's contract
-is stated as agreeing with a destructive operation, that operation stands
-beside it as the control. A read only a write could answer is a read the
-commands cannot make, since ``git wheresat`` reads records and writes none of
-them. Like the writer's suite, these tests run against real temporary
-repositories: whether a configuration section survives a deletion, and how a
-reflog records time, are facts about Git rather than beliefs a double could
-hold.
+the anchor ref that record is kept reachable by, the absent and orphaned cases
+around it, the orphans a sweep would act on, the tombstones a retention window
+has reached, and the window itself. The writer sets the repository up rather
+than doing the asserting; where a read's contract is stated as agreeing with a
+destructive operation, that operation stands beside it as the control. A read
+only a write could answer is a read the commands cannot make: ``git wheresat``
+reads a record and its anchor back before it refreshes either, so both halves
+have to be readable without a writer. Like the writer's suite, these tests run
+against real temporary repositories: whether a configuration section survives a
+deletion, and how a reflog records time, are facts about Git rather than beliefs
+a double could hold.
 
 The writer's effects are covered in ``test_stack_store.py``, which owns the
 namespace invariant (INV-9) tying the two halves together, and the pure record
@@ -239,19 +240,30 @@ def test_the_reader_answers_every_read_the_store_declares(tmp_path: Path) -> Non
 
     Every command asks for a ``StackRecordReader`` and only writes need the
     writer, so a read implemented on the writer alone is a read the commands
-    cannot make — ``git wheresat`` reads records and writes none of them. The
-    doubles cannot catch this, because a double answers whatever it declares.
+    cannot make: a refresh reads the record and its anchor back before it
+    replaces either, and a branch with no record has to be readable as having
+    none rather than as a failure. The doubles cannot catch this, because a
+    double answers whatever it declares.
     """
     repo = make_repo(tmp_path)
     base = repo.head.commit.hexsha
     repo.git.branch(CHILD, base)
     repo.git.branch(NEIGHBOUR, base)
     store = make_writer(repo)
+    reader = stack_store.GitStackRecordReader(repo)
+
+    assert reader.anchor(CHILD) is None, (
+        "a branch with no record has no anchor ref to name a commit"
+    )
+
     store.create(make_record(CHILD, base))
     store.create(make_record(NEIGHBOUR, base))
+
+    assert reader.anchor(CHILD) == base, (
+        "the reader names the commit the record's anchor ref holds"
+    )
     delete_ref_surgically(repo, CHILD)
     delete_branch(repo, NEIGHBOUR)
-    reader = stack_store.GitStackRecordReader(repo)
 
     assert reader.orphans() == (CHILD, NEIGHBOUR), "the reader finds both orphans"
     assert reader.rescuable(reader.orphans()) == (CHILD,), (
