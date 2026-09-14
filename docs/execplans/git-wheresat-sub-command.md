@@ -532,11 +532,13 @@ Stop and escalate rather than improvising when any of these is reached.
     linting 30 files with 0 errors. The review is taken against `origin/main`
     rather than `main`, because the local `main` in a worktree can lag the
     remote by dozens of commits and inflate the diff.
-- [ ] EP-M6 `git wheresat` pure value types, gates, and assessment.
-- [ ] EP-M7 `git wheresat` read-only Git query port and the separate ref
-      writer.
-- [ ] EP-M8 `git wheresat` collection, report, CLI, console script, manual
-      page — local evidence only. Shippable plateau.
+- [ ] EP-M6–EP-M8, one plateau and one commit: `git wheresat` pure value types,
+      gates, and assessment (EP-M6); the read-only Git query port and the
+      separate ref writer (EP-M7); collection, report, CLI, console script,
+      manual page, and the documentation entries — local evidence only (EP-M8).
+      Shippable plateau. The three land together because the dead-code gate
+      refuses a module no console script reaches; each keeps its own acceptance
+      evidence. See the Decision log.
 - [ ] EP-M9 `git wheresat --record` refreshes the shared record.
 - [ ] EP-M10 GitHub evidence, `--json`, behavioural scenarios, and the
       remaining documentation.
@@ -915,6 +917,25 @@ Stop and escalate rather than improvising when any of these is reached.
   and it only refuses it while `PARENT_HEAD` names the head the child actually
   inherited. The rewritten-shape test asserts both facts, so a gate built in
   the wrong place fails a fixture test rather than passing quietly.
+- Observation: the dead-code gate was re-measured before EP-M6 was written, and
+  it refuses an unreferenced module however well its tests cover it — so EP-M6,
+  EP-M7, and EP-M8 cannot land as three separate green commits.
+  Evidence: a probe module `git_donkey/_skylos_probe.py` holding one unreferenced
+  `def probe_function()` made the lint stage's last command exit 1 with
+  `git_donkey/_skylos_probe.py:8  SKY-U001  unused function: probe_function`
+  (log `/tmp/skylos-probe-git-donkey-git-wheresat-sub-command.out`). Adding
+  `tests/unit/test_skylos_probe.py`, which imports and calls it, changed
+  nothing: the same finding, exit 1 (log
+  `/tmp/skylos-probe2-git-donkey-git-wheresat-sub-command.out`). Both probes
+  were deleted, and the tree was verified clean at `f5b89e1` afterwards.
+  Impact: this is the EP-M2 corollary below restated with a measurement rather
+  than an inference, and it decides EP-M6's shape. The pure core and its ports
+  have no production caller until the command that reaches them exists, so the
+  smallest green unit is the whole local-evidence plateau: the value types, the
+  two ports, the collector, the report, the runner, and the console script that
+  makes every one of them live. The milestones are re-sliced accordingly in the
+  Decision log, and their acceptance evidence is still reported per milestone —
+  only the commits are merged.
 - Observation: `git diff | git patch-id --stable` produces no patch identifier
   at all under a configured external diff driver, which is the state of this
   machine, so gate 7's patch clause is silently vacuous here.
@@ -1319,6 +1340,38 @@ Stop and escalate rather than improvising when any of these is reached.
   head the child inherited and the head the parent now has, and a `parent_head`
   that meant either one would make the shape inexpressible.
   Date/Author: 2026-09-14, implementation agent, EP-M5.
+- Decision: re-slice EP-M6, EP-M7, and EP-M8 into one plateau that lands as
+  one commit, and keep their acceptance evidence reported separately.
+  Rationale: the dead-code stage of `make lint` runs `skylos git_donkey
+  --category dead_code --gate` with `strict` set, and liveness is counted only
+  from the production roots, so a module no console script reaches is dead
+  code however thoroughly its tests exercise it. Measured before writing any
+  EP-M6 code: one unreferenced module-level function failed the stage with
+  `SKY-U001`, and a test module importing and calling it did not change the
+  answer. The pure core and its ports therefore have no way to be green before
+  the command that reaches them exists. Landing them behind a temporary
+  whitelist entry was rejected for the reason already recorded: the entry would
+  have to be withdrawn when the consumer arrived, and the pinned exception set
+  in `tests/unit/test_skylos_lint_contract.py` exists to keep the whitelist
+  empty. EP-M6, EP-M7, and EP-M8 are unchanged as pieces of work with their own
+  acceptance evidence; the only thing merged is the commit that lands them.
+  `--record` (EP-M9) and the GitHub evidence and `--json` (EP-M10) stay
+  separate, because each is reachable from the console script the plateau
+  installs and so can be green on its own.
+  Date/Author: 2026-09-14, implementation agent, EP-M6.
+- Decision: decide gate applicability from the run's inputs, and carry it on
+  each `GateResult` as an `applicable` flag, rather than inferring it from
+  whether a gate's data arrived.
+  Rationale: the assessment has to say three different things about a gate it
+  did not pass — "this gate does not apply to this run", "this gate applies and
+  failed", and "this gate applies and could not be answered" — and only the
+  first may be dropped from the conjunction. Leaving applicability implicit in
+  the data would make a collection fault silently shrink the gate set, which is
+  the "an error is not a negative answer" failure arriving through the back
+  door; the flag makes the count in the report (`8 applicable, 8 passed`) and
+  the conjunction read from one field. The rule is stated in `Gate semantics`
+  above, and the amendment there records the milestone prose it replaces.
+  Date/Author: 2026-09-14, implementation agent, EP-M6.
 
 ## Outcomes & retrospective
 
@@ -1722,12 +1775,38 @@ when its inputs are unavailable. `C` denotes the candidate boundary.
    the record is visible. `FAILED` demotes the record from `ATTESTED` to
    `DERIVED` and records the reason; it does not by itself refuse.
 
-An `Established` result requires every applicable gate to return `PASSED`.
-Gates 1, 2, 3, 6, and 7 are not applicable when the evidence never needed a
-parent pull request, in which case they are recorded as `INDETERMINATE` and
-the result cannot be `Established` — which is why the local-evidence-only
-command delivered at EP-M8 reports indeterminate for anything it cannot
-confirm, rather than guessing.
+An `Established` result requires every applicable gate to return `PASSED`, and
+a gate is applicable when the run set out to use the gate's subject. This is a
+property of the run's inputs, never of what collection happened to bring back,
+so a fault cannot shrink the gate set: a run that resolved a parent pull
+request has gates 1, 2, 3, and 7 applicable even when the head ref or the
+integration commit is missing, those gates then answer `INDETERMINATE`, and the
+result cannot be `Established`. Concretely, gates 1, 2, and 3 are applicable
+when a parent pull request was resolved or was requested from a forge the run
+was allowed to consult; gate 6 is applicable in addition whenever `PARENT_HEAD`
+is known; gate 7 is applicable in addition only when `PARENT_HEAD` and `LANDED`
+are both known, because its two clauses cannot be separated; gates 4 and 5
+always apply; and gate 8 applies only to a stack-record candidate.
+
+A run that never involved a parent pull request therefore records gates 1, 2,
+3, and 7 as not applicable — still reported, so the count is visible in the
+output — and is judged on gates 4, 5, 6, and 8. That is what lets the
+local-evidence-only command delivered at EP-M8 answer from a stack record and a
+tombstone while still refusing rather than guessing as soon as a gate it needs
+cannot be answered, and it is why gate 6 is applicable whenever `PARENT_HEAD`
+is known: a run whose parent identity is unusable refuses rather than
+establishing a boundary nothing checked. Gate 8 is the one gate that fails by
+demotion rather than refusal: it applies only to a stack-record candidate, and
+its `FAILED` moves that candidate from `ATTESTED` to `DERIVED`, where the
+corroboration rule of INV-2b decides whether it can still establish.
+
+Amendment (2026-09-14, EP-M6): this paragraph first read "gates 1, 2, 3, 6, and
+7 are not applicable ... they are recorded as `INDETERMINATE` and the result
+cannot be `Established`", which made EP-M8's acceptance evidence — a branch
+whose parent was plonked, answered from the record and the tombstone with exit
+`0` — unreachable, because a run with no forge evidence could then never
+establish anything. The rule above is stated from the run's inputs so that both
+requirements hold at once. See the Decision log.
 
 ### Invariants and lemmas
 
@@ -2300,8 +2379,13 @@ INV-2.
 Conformance check: both modules' docstrings state the purity rule; no
 dependency added; `wheresat_records` imports only `stack_records`, and the
 dependency runs one way.
-Recovery: the modules are unreferenced; revert.
-Remaining gaps: no Git ports, no GitHub, no command.
+Slicing: this milestone lands in the same commit as EP-M7 and EP-M8, because
+the dead-code gate refuses a module no console script reaches. Its acceptance
+evidence is reported here and is unaffected. See the Decision log and the
+measurement under Surprises.
+Recovery: revert the plateau commit; the modules are reached only from the
+`git wheresat` console script it also adds.
+Remaining gaps: no GitHub, no `--record`.
 
 **EP-M7 — the two `git wheresat` Git ports.**
 Outcome: `git_donkey/wheresat_graph.py` defines the read-only
@@ -2317,8 +2401,9 @@ control — the deliberately mutating writer — fails as intended.
 Conformance check: no module other than `wheresat_refs` and `stack_store` can
 write; the evidence namespace and the record namespace are the only ref
 prefixes written; `--op-id` values are validated before reaching either port.
-Recovery: revert; nothing references either module yet.
-Remaining gaps: no GitHub, no command.
+Slicing: lands in the same commit as EP-M6 and EP-M8. See the Decision log.
+Recovery: revert the plateau commit.
+Remaining gaps: no GitHub, no `--record`.
 
 **EP-M8 — collection, rendering, and the command line, local evidence only.
 Shippable plateau.**
@@ -2341,7 +2426,10 @@ EP-M4, exits `0` and prints the boundary from the record and the tombstone.
 That end-to-end path is the proof the three commands interoperate.
 Conformance check: a new console script is introduced, which is intended; no
 existing signature changed.
-Recovery: revert; `uv sync` clears an installed `git-wheresat` shim.
+Slicing: lands in the same commit as EP-M6 and EP-M7, which is what makes every
+symbol in them live. See the Decision log.
+Recovery: revert the plateau commit; `uv sync` clears an installed
+`git-wheresat` shim.
 Remaining gaps: records cannot be refreshed; no GitHub evidence; no `--json`;
 no behavioural suite for the forensic paths.
 
