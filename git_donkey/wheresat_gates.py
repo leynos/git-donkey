@@ -423,15 +423,36 @@ def _patch_clause(commit: str, facts: GraphFacts) -> _Clause:
     )
 
 
+def _landed_work_is_in_scope(inputs: _GateInputs) -> bool:
+    """Whether the run can tell which work the parent already landed.
+
+    The gate applies either because the run asked the parent's pull request
+    about it, or because the graph named both the parent's head and the commit
+    it landed — and the second is only half an answer until both are known.
+
+    Parameters
+    ----------
+    inputs : _GateInputs
+        What the gate sees.
+
+    Returns
+    -------
+    bool
+        Whether the gate has a subject to judge.
+
+    """
+    facts = inputs.facts
+    return inputs.parent_gates or (
+        facts.parent_head is not None and facts.landed is not None
+    )
+
+
 def _replay_range_excludes_landed_gate(inputs: _GateInputs) -> GateResult:
     """Gate 7: the replay range holds no work the parent already landed."""
     name = GateName.REPLAY_RANGE_EXCLUDES_LANDED_WORK
-    facts = inputs.facts
-    if not (
-        inputs.parent_gates
-        or (facts.parent_head is not None and facts.landed is not None)
-    ):
+    if not _landed_work_is_in_scope(inputs):
         return _not_applicable(name, _NO_LANDED_WORK)
+    facts = inputs.facts
     missing = _missing_parent_answer(facts)
     if missing is not None:
         return GateResult(name, GateOutcome.INDETERMINATE, missing)

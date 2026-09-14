@@ -215,6 +215,16 @@ def parent_pull_request(**overrides: object) -> ParentPullRequest:
     return dataclasses.replace(base, **typ.cast("typ.Any", overrides))
 
 
+def _candidate[C: (AttestedCandidate, DerivedCandidate, InferredCandidate)](
+    candidate_type: type[C],
+    commit: str,
+    kind: EvidenceKind,
+    source: str,
+) -> C:
+    """Return a candidate of ``candidate_type`` naming ``commit``."""
+    return candidate_type(commit=commit, kind=kind, source=source)
+
+
 def attested(
     commit: str,
     kind: EvidenceKind = EvidenceKind.STACK_RECORD_BIRTH,
@@ -223,22 +233,26 @@ def attested(
 ) -> AttestedCandidate:
     """Return an attested candidate naming ``commit``.
 
+    Attested evidence is what a record written at birth or a review approval
+    carries: a deliberate statement, which is the only kind of support that
+    can establish a boundary on its own.
+
     Parameters
     ----------
     commit : str
-        Commit the candidate names as the boundary.
+        Commit the candidate offers as the boundary.
     kind : EvidenceKind, optional
-        Evidence kind, which must be one ``TIERS`` calls attested.
+        A kind ``TIERS`` classes as attested; the birth record by default.
     source : str, optional
-        Name of the source the evidence came from.
+        Which producer stated it; the birth record by default.
 
     Returns
     -------
     AttestedCandidate
-        The candidate.
+        A candidate that can establish a boundary on its own.
 
     """
-    return AttestedCandidate(commit=commit, kind=kind, source=source)
+    return _candidate(AttestedCandidate, commit, kind, source)
 
 
 def derived(
@@ -249,22 +263,25 @@ def derived(
 ) -> DerivedCandidate:
     """Return a derived candidate naming ``commit``.
 
+    Derived evidence is computed from the repository rather than stated, so
+    it carries a boundary only when two independent sources agree on it.
+
     Parameters
     ----------
     commit : str
-        Commit the candidate names as the boundary.
+        Commit the candidate computes as the boundary.
     kind : EvidenceKind, optional
-        Evidence kind, which must be one ``TIERS`` calls derived.
+        A kind ``TIERS`` classes as derived; the merge base by default.
     source : str, optional
-        Name of the source the evidence came from.
+        The computation that produced it; the merge base by default.
 
     Returns
     -------
     DerivedCandidate
-        The candidate.
+        A candidate that supports a boundary only alongside another.
 
     """
-    return DerivedCandidate(commit=commit, kind=kind, source=source)
+    return _candidate(DerivedCandidate, commit, kind, source)
 
 
 def inferred(
@@ -275,22 +292,26 @@ def inferred(
 ) -> InferredCandidate:
     """Return an inferred candidate naming ``commit``.
 
+    Inferred evidence compares content rather than history, which is why a
+    ``--deep`` search can report it beside a boundary but never as support for
+    one.
+
     Parameters
     ----------
     commit : str
-        Commit the candidate names as the boundary.
+        Commit whose content resembles the boundary.
     kind : EvidenceKind, optional
-        Evidence kind, which must be one ``TIERS`` calls inferred.
+        A kind ``TIERS`` classes as inferred; the tree identity by default.
     source : str, optional
-        Name of the source the evidence came from.
+        The comparison that produced it; the tree identity by default.
 
     Returns
     -------
     InferredCandidate
-        The candidate.
+        A candidate that can never serve as support, only as a lead.
 
     """
-    return InferredCandidate(commit=commit, kind=kind, source=source)
+    return _candidate(InferredCandidate, commit, kind, source)
 
 
 def assessment_of(case: _Case) -> Assessment:
@@ -311,34 +332,36 @@ def assessment_of(case: _Case) -> Assessment:
 
 
 def failed_gates(assessment: Assessment) -> tuple[GateName, ...]:
-    """Return the applicable gates that answered against a candidate.
+    """Return the names of the gates that ruled against a candidate.
 
     Parameters
     ----------
     assessment : Assessment
-        Result to read.
+        Verdict whose refusals are wanted.
 
     Returns
     -------
     tuple[GateName, ...]
-        The gates that failed, skipping any that did not apply.
+        The gates that answered ``FAILED``, in the order the run asked them;
+        a gate that did not apply is left out.
 
     """
     return _gates_with(assessment, GateOutcome.FAILED)
 
 
 def undecided_gates(assessment: Assessment) -> tuple[GateName, ...]:
-    """Return the applicable gates that went unanswered.
+    """Return the names of the gates that could not rule at all.
 
     Parameters
     ----------
     assessment : Assessment
-        Result to read.
+        Verdict to read the unanswered gates from.
 
     Returns
     -------
     tuple[GateName, ...]
-        The gates that are indeterminate, skipping any that did not apply.
+        The gates that came back ``INDETERMINATE``, in the order the run
+        asked them; a gate that did not apply is left out.
 
     """
     return _gates_with(assessment, GateOutcome.INDETERMINATE)

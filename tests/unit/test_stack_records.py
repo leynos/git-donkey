@@ -24,23 +24,30 @@ _SEED = "0" * 40
 _OTHER = "1" * 40
 
 
-def _config(
-    parent: str | None = None,
-    base: str | None = None,
-    recorded_from: str | None = None,
-    evidence: str | None = None,
-    **extra: str,
-) -> dict[str, str]:
-    """Build a branch configuration section holding the named record keys."""
-    values = {
-        stack_records.RecordKey.PARENT: parent,
-        stack_records.RecordKey.BASE: base,
-        stack_records.RecordKey.RECORDED_FROM: recorded_from,
-        stack_records.RecordKey.EVIDENCE: evidence,
+def _config(**values: str) -> dict[str, str]:
+    """Build a branch configuration section holding the named record keys.
+
+    A key that names a ``RecordKey`` member is written under that key's
+    configuration name, so a test asks for ``parent`` and gets the key Git
+    hands back for it; any other key is written as it was given, which is how
+    a section picks up a setting of its own.
+
+    Parameters
+    ----------
+    **values : str
+        Values to write, keyed by record key name or configuration name.
+
+    Returns
+    -------
+    dict[str, str]
+        The configuration section.
+
+    """
+    members = stack_records.RecordKey.__members__
+    return {
+        members[name.upper()].value if name.upper() in members else name: value
+        for name, value in values.items()
     }
-    config = {key.value: value for key, value in values.items() if value is not None}
-    config.update(extra)
-    return config
 
 
 def _complete_config(**overrides: str) -> dict[str, str]:

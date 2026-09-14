@@ -74,47 +74,41 @@ def _log_plonk_candidates_selected(
     )
 
 
-def _log_planned_candidate(
+def _log_planned_step(
     candidate: _PlonkCandidate,
     mode: _PlonkMode,
     *,
     dry_run: bool,
+    removing_worktree: bool,
 ) -> None:
-    """Log the planned removal of one clean completed candidate."""
-    _LOGGER.info(
-        "Planning completed git-plonk worktree removal"
-        if dry_run
-        else "Removing completed git-plonk worktree",
-        extra={
-            "mode": mode.value,
-            "operation": "remove_worktree",
-            "dry_run": dry_run,
-            "branch": candidate.branch_name,
-            "marker": candidate.marker,
-            "worktree": candidate.worktree_path.as_posix(),
-        },
-    )
+    """Log one planned or taken step against a completed candidate.
 
-
-def _log_planned_branch_deletion(
-    candidate: _PlonkCandidate,
-    mode: _PlonkMode,
-    *,
-    dry_run: bool,
-) -> None:
-    """Log the planned branch deletion for one removed candidate."""
-    _LOGGER.info(
-        "Planning completed git-plonk branch deletion"
-        if dry_run
-        else "Deleting completed git-plonk branch",
-        extra={
-            "mode": mode.value,
-            "operation": "delete_branch",
-            "dry_run": dry_run,
-            "branch": candidate.branch_name,
-            "marker": candidate.marker,
-        },
-    )
+    The two steps the cleanup takes against a candidate — removing its
+    worktree and deleting its branch — are logged by the same shape, so the
+    fields every such line carries are assembled in one place. Only the step
+    that removes the worktree names the path it removes.
+    """
+    subject = "worktree" if removing_worktree else "branch"
+    if dry_run:
+        message = (
+            f"Planning completed git-plonk {subject} "
+            f"{'removal' if removing_worktree else 'deletion'}"
+        )
+    else:
+        message = (
+            f"{'Removing' if removing_worktree else 'Deleting'} completed "
+            f"git-plonk {subject}"
+        )
+    fields: dict[str, object] = {
+        "mode": mode.value,
+        "operation": "remove_worktree" if removing_worktree else "delete_branch",
+        "dry_run": dry_run,
+        "branch": candidate.branch_name,
+        "marker": candidate.marker,
+    }
+    if removing_worktree:
+        fields["worktree"] = candidate.worktree_path.as_posix()
+    _LOGGER.info(message, extra=fields)
 
 
 def _log_skipped_candidate(
@@ -417,7 +411,7 @@ def _delete_completed_branch(
 
     """
     adapter, records = surfaces.adapter, surfaces.records
-    _log_planned_branch_deletion(candidate, mode, dry_run=dry_run)
+    _log_planned_step(candidate, mode, dry_run=dry_run, removing_worktree=False)
     if dry_run:
         return _CandidateOutcome(entombed=True)
 
@@ -485,7 +479,7 @@ def _clean_completed_candidate(
         return _CandidateOutcome(skip_reason=reason)
 
     _record_step("worktree_preflight", "success", mode)
-    _log_planned_candidate(candidate, mode, dry_run=dry_run)
+    _log_planned_step(candidate, mode, dry_run=dry_run, removing_worktree=True)
     if not dry_run:
         if not adapter.remove_worktree(candidate.worktree_path):
             _log_skipped_candidate(candidate, _SkipReason.REMOVAL_FAILED, mode)
@@ -531,6 +525,114 @@ def _clean_candidates(
     return tally
 
 
+@dataclasses.dataclass(frozen=True, slots=True)
+class _RecordSweep:
+    """What the record lifecycle did before the first worktree was touched.
+
+    Attributes
+    ----------
+    swept : tuple[str, ...]
+        Names of the records the sweep cleared.
+    unrescuable : tuple[str, ...]
+        Names of the records that could not be rescued.
+    pruned : tuple[str, ...]
+        Names of the tombstones the prune deleted.
+    expire : str
+        The retention window the run resolved, which the prune read.
+
+    """
+
+    swept: tuple[str, ...]
+    unrescuable: tuple[str, ...]
+    pruned: tuple[str, ...]
+    expire: str
+
+
+def _default_surfaces(context: _PlonkContext) -> _CleanupSurfaces:
+    """Return the Git surfaces a run given none of its own cleans through."""
+    return _CleanupSurfaces(
+        adapter=_GitWorktreeAdapter(context.repo_home),
+        records=stack_store.GitStackRecordWriter(context.repo_home),
+    )
+
+
+def _sweep_records(
+    surfaces: _CleanupSurfaces,
+    mode: _PlonkMode,
+    *,
+    dry_run: bool,
+) -> _RecordSweep:
+    """Deal with the repository's records before any worktree is touched.
+
+    The retention window is resolved first, because Git reads a date
+    expression it cannot parse as *now*, so a window that cannot be read stops
+    the run while the candidates are still whole. Sweeping here is also what
+    keeps the removals that follow from orphaning anything, since each of them
+    entombs its branch before deleting it.
+
+    Parameters
+    ----------
+    surfaces : _CleanupSurfaces
+        Git surfaces the run cleans through.
+    mode : _PlonkMode
+        Cleanup mode, carried into the observability record.
+    dry_run : bool
+        When true, report what the sweep would do without doing it.
+
+    Returns
+    -------
+    _RecordSweep
+        What the sweep cleared, what it could not rescue, what the prune
+        deleted, and the window it pruned by.
+
+    """
+    expire = _configured_expiry(surfaces.records)
+    swept, unrescuable = _sweep_orphans(surfaces.records, mode, dry_run=dry_run)
+    pruned = _prune_tombstones(surfaces.records, expire, mode, dry_run=dry_run)
+    return _RecordSweep(swept, unrescuable, pruned, expire)
+
+
+def _removable_candidates(
+    context: _PlonkContext,
+    surfaces: _CleanupSurfaces,
+    mode: _PlonkMode,
+) -> tuple[int, list[_PlonkCandidate]]:
+    """Return how many worktrees were inspected and which may be removed.
+
+    The worktree the run was invoked from holds the branch under inspection
+    and survives, whatever the mode; the rest of the completed candidates are
+    the ones the run may remove.
+
+    Parameters
+    ----------
+    context : _PlonkContext
+        Resolved repository state for the run.
+    surfaces : _CleanupSurfaces
+        Git surfaces the run cleans through.
+    mode : _PlonkMode
+        Cleanup mode, carried into the observability record.
+
+    Returns
+    -------
+    tuple[int, list[_PlonkCandidate]]
+        The number of candidate worktrees seen, and the completed ones that
+        may be removed.
+
+    """
+    candidates = _donkey_worktree_candidates(context.stanzas, context.worktrees_root)
+    completed = plonk_policy.completed_candidates(
+        candidates,
+        surfaces.adapter.history_messages(context.trunk_ref),
+    )
+    removable = [
+        candidate
+        for candidate in completed
+        if candidate.worktree_path != context.invoking_worktree
+    ]
+    _log_plonk_candidates_selected(mode, candidates, completed, removable)
+    return len(candidates), removable
+
+
 def _run_completed_cleanup(
     context: _PlonkContext,
     mode: _PlonkMode,
@@ -540,12 +642,10 @@ def _run_completed_cleanup(
 ) -> _PlonkResult:
     """Remove completed worktrees and optionally their local branches.
 
-    The record lifecycle is repository-wide and runs first: the retention
-    window is resolved and the orphans and stale tombstones are dealt with
-    before the first worktree is touched, so a window that cannot be read
-    stops the run while the candidates are still whole. Sweeping here is also
-    what keeps the deletions in the loop below from orphaning anything, since
-    each of them entombs its branch before deleting it.
+    The record lifecycle is repository-wide and runs first, so a retention
+    window that cannot be read stops the run while the candidates are still
+    whole. See :func:`_sweep_records` for what that phase does and why it runs
+    before the first worktree is touched.
 
     Parameters
     ----------
@@ -565,48 +665,24 @@ def _run_completed_cleanup(
         What the run removed or planned, plus what it preserved.
 
     """
-    surfaces = surfaces or _CleanupSurfaces(
-        adapter=_GitWorktreeAdapter(context.repo_home),
-        records=stack_store.GitStackRecordWriter(context.repo_home),
-    )
+    surfaces = surfaces or _default_surfaces(context)
     _log_plonk_cleanup_start(mode, context)
-    expire = _configured_expiry(surfaces.records)
-    swept_records, unrescuable_records = _sweep_orphans(
-        surfaces.records, mode, dry_run=dry_run
-    )
-    pruned_tombstones = _prune_tombstones(
-        surfaces.records, expire, mode, dry_run=dry_run
-    )
-    candidates = _donkey_worktree_candidates(context.stanzas, context.worktrees_root)
-    completed_candidates = plonk_policy.completed_candidates(
-        candidates,
-        surfaces.adapter.history_messages(context.trunk_ref),
-    )
-    removable_candidates = [
-        candidate
-        for candidate in completed_candidates
-        if candidate.worktree_path != context.invoking_worktree
-    ]
-    _log_plonk_candidates_selected(
-        mode,
-        candidates,
-        completed_candidates,
-        removable_candidates,
-    )
-    tally = _clean_candidates(removable_candidates, surfaces, mode, dry_run=dry_run)
+    sweep = _sweep_records(surfaces, mode, dry_run=dry_run)
+    inspected, removable = _removable_candidates(context, surfaces, mode)
+    tally = _clean_candidates(removable, surfaces, mode, dry_run=dry_run)
 
     return _PlonkResult(
         mode=mode,
         is_dry_run=dry_run,
-        inspected_worktrees=len(candidates),
+        inspected_worktrees=inspected,
         removed_worktrees=tuple(tally.removed_worktrees),
         removed_branches=tuple(tally.removed_branches),
         skipped_worktrees=tuple(tally.skipped_worktrees),
         failed_branch_deletions=tuple(tally.failed_branch_deletions),
         entombed_branches=tuple(tally.entombed_branches),
         failed_entombments=tuple(tally.failed_entombments),
-        swept_records=swept_records,
-        unrescuable_records=unrescuable_records,
-        pruned_tombstones=pruned_tombstones,
-        tombstone_expire=expire,
+        swept_records=sweep.swept,
+        unrescuable_records=sweep.unrescuable,
+        pruned_tombstones=sweep.pruned,
+        tombstone_expire=sweep.expire,
     )

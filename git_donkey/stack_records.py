@@ -237,6 +237,30 @@ def validate_ref_component(value: str) -> str:
     return value
 
 
+def _ref_path(namespace: str, branch: str) -> str:
+    """Return ``namespace``'s ref for ``branch``, validating the branch name.
+
+    Parameters
+    ----------
+    namespace : str
+        Ref namespace the branch's record lives in.
+    branch : str
+        Branch the ref is wanted for.
+
+    Returns
+    -------
+    str
+        The ref path.
+
+    Raises
+    ------
+    ValueError
+        If the branch name would be unsafe in a ref path.
+
+    """
+    return f"{namespace}/{validate_ref_component(branch)}"
+
+
 def base_ref_path(branch: str) -> str:
     """Return ``refs/stack-bases/<branch>``, validating the branch name.
 
@@ -256,11 +280,18 @@ def base_ref_path(branch: str) -> str:
         If the branch name would be unsafe in a ref path.
 
     """
-    return f"{BASE_NAMESPACE}/{validate_ref_component(branch)}"
+    return _ref_path(BASE_NAMESPACE, branch)
 
 
 def tombstone_ref_path(branch: str) -> str:
     """Return ``refs/stack-tombstones/<branch>``, validating the branch name.
+
+    A tombstone is what a branch leaves behind when it is deleted: the anchor
+    it was born at, still resolvable under a ref that outlives it. It is a
+    separate namespace from the anchor rather than a second value inside it,
+    so that a sweep can find every branch that has gone by listing one
+    namespace, and so that the tip a deleted branch stood on stays reachable
+    for ``git wheresat`` long after the branch itself is gone.
 
     Parameters
     ----------
@@ -278,7 +309,7 @@ def tombstone_ref_path(branch: str) -> str:
         If the branch name would be unsafe in a ref path.
 
     """
-    return f"{TOMBSTONE_NAMESPACE}/{validate_ref_component(branch)}"
+    return _ref_path(TOMBSTONE_NAMESPACE, branch)
 
 
 def _is_positive_integer(text: str) -> bool:
