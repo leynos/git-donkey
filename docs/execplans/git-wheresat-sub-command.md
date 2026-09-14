@@ -1,4 +1,4 @@
-# Add `git wheresat`
+# Add `git wheresat` and the shared stack record
 
 This ExecPlan (execution plan) is a living document. The sections
 `Constraints`, `Tolerances (exception triggers)`, `Risks`, `Progress`,
@@ -48,7 +48,7 @@ The command is a **discovery** tool. By default it never rebases, pushes,
 deletes a branch, checks anything out, prompts for credentials, or touches
 the working tree or the index. Its only writes are objects fetched into a
 private, namespaced evidence ref, plus — behind an explicit opt-in flag — a
-local "receipt" recording the boundary so the next incident does not need
+local stack record naming the boundary so the next incident does not need
 forensics at all.
 
 You can see it working: on a repository constructed to reproduce the squash
@@ -57,22 +57,55 @@ derived by hand; on a repository where the parent branch was rewritten before
 merging, it exits `1`, names the `parent-history-intact` gate as the reason,
 and refuses to answer.
 
-### Why the forensic ladder exists at all, and why it should shrink
+### One shared stack record across three commands
 
-The best boundary is one nobody had to recover. This plan therefore treats
-the **receipt** — a locally recorded boundary — as the intended steady state
-and the forensic evidence ladder as the fallback for branches created before
-the receipt existed, or in another clone. GitHub's own stacked pull requests
+The best boundary is one nobody had to recover. Today this package works
+against itself on exactly that point.
+
+`git donkey` creates a stacked branch and, at
+`git_donkey/donkey_worktrees.py:186`, resolves and freezes the base commit —
+then passes `--no-track` so that nothing records it. The fact the forensic
+ladder exists to reconstruct was in hand milliseconds earlier and was thrown
+away. Meanwhile `git plonk --hard` deletes a completed local branch with
+`git branch -D` (`git_donkey/plonk.py:182`), which destroys the branch ref,
+its reflog, and — as measured in `Surprises & discoveries` — the entire
+`branch.<name>` configuration section. That is precisely the evidence
+`git wheresat` would need to recover the boundary for any child still
+stacked on it.
+
+This plan therefore **requires** a single shared artefact, the **stack
+record**, with one owner module and one lifecycle spanning all three
+commands:
+
+- **Birth — `git donkey`.** When it creates a branch from a base that is not
+  the trunk, it writes the stack record: the parent's identity and the
+  frozen base commit. This is the strongest possible evidence, because it is
+  an exact observation made at the instant the fact was true.
+- **Life — `git wheresat`.** It reads the record as its highest-precedence
+  evidence, validates it against everything else it can observe, and under
+  `--record` refreshes it after a restack, with an expected-old check.
+- **Death — `git plonk`.** Before deleting a branch it converts that
+  branch's record into a **tombstone** preserving the tip, and removes the
+  live record so the record namespace never outlives the branch namespace.
+  It also sweeps records orphaned by a plain `git branch -d`, and prunes
+  tombstones older than the retention window. Cleanup is already plonk's
+  job; this makes it the garbage collector for the stack namespace too.
+
+The three commands share one format module and one store module. Neither
+`git donkey` nor `git plonk` learns anything about squash merges, pull
+requests, or evidence tiers; they read and write one small, versioned
+record through the same interface `git wheresat` reads it through. That is
+the whole interoperability contract, and it is a hard constraint rather than
+a follow-up.
+
+With the record in place, the forensic ladder becomes the fallback for
+branches created before this feature, branches created by hand or by another
+tool, and recovery from a different clone. GitHub's own stacked pull requests
 (public preview since July 2026) make the same bet from the server side: for
 a natively stacked pull request, GitHub records the relationship and
-automatically retargets the remaining branches when one in the stack merges.
-
-Two populations therefore remain, and they are what this command is for:
-stacks created outside `gh stack` or any stack tool, and stacks spanning
-forks, which GitHub's native stacks do not support. Both populations are
-finite and, with receipts in place, shrinking. That framing matters for
-sequencing: milestone EP-M5 delivers receipt recording early rather than last
-precisely so the ladder's maintenance burden applies to a decreasing need.
+retargets the remaining branches when one in the stack merges. The
+populations the ladder serves are finite and shrinking; that is why the
+record is delivered first, in EP-M2 through EP-M4, and the ladder afterwards.
 
 ## Constraints
 
@@ -117,9 +150,32 @@ workaround.
   object IDs for the target and the boundary, must be preceded by a backup
   ref the user can return to, and must state the object ID of the child tip
   the answer was computed against.
-- Preserve the existing `git donkey`, `git track`, `git fafo`, `git plonk`,
-  `git incoming`, `git outgoing`, and `git donkey-template` behaviours and
-  console entrypoints.
+- All three commands read and write the stack record through one pair of
+  modules — `git_donkey/stack_records.py` for the format and its decisions,
+  `git_donkey/stack_store.py` for the Git access. No command may parse a
+  record key, build a record ref path, or decide the lifecycle for itself.
+- Configuration is authoritative for a record's values; the ref is the
+  reachability anchor and nothing more. `git branch -D` deletes the whole
+  `branch.<name>` section, and `git branch -m` carries it, so the two
+  artefacts can disagree; a disagreement is a malformed record to report,
+  never a value to choose between.
+- `git donkey` must write a stack record when, and only when, it creates a
+  branch from a base that is not the trunk. Recording every branch would
+  make every branch look stacked.
+- `git plonk` must convert a branch's stack record into a tombstone before
+  deleting that branch, and must remove the live record in the same run. The
+  stack-base namespace must remain a subset of the branch namespace, because
+  an orphaned record eventually collides with a nested branch name.
+- Changes to `git donkey` and `git plonk` are limited to writing, converting,
+  sweeping, and reporting stack records. Neither command learns anything
+  about pull requests, squash merges, or evidence tiers.
+- Preserve the existing `git track`, `git fafo`, `git incoming`,
+  `git outgoing`, and `git donkey-template` behaviours and every console
+  entrypoint. `git donkey` and `git plonk` gain the record behaviours above
+  and nothing else; in particular `git donkey` must not alter the `--no-track`
+  decision at `git_donkey/donkey_worktrees.py:184-192`, because
+  `branch.<name>.stack*` keys are a separate namespace from
+  `branch.<name>.remote` and `.merge`.
 - Use the repository's existing tooling: Python 3.13+, Cyclopts, GitPython,
   `github3.py`, `loctocat`, Ruff, `ty`, Pyright, Pylint, Skylos, pytest,
   pytest-bdd, Hypothesis, syrupy, and vcrpy. Adding any new runtime
@@ -147,15 +203,21 @@ workaround.
 
 Stop and escalate rather than improvising when any of these is reached.
 
-- Scope, hard limit: more than twelve new or modified non-test source files,
-  or more than 1,400 net lines of production code.
-- Scope, checkpoint: at 900 net lines of production code, stop and record an
-  explicit continue-or-cut decision in `Decision log`, naming what would be
-  cut. This checkpoint exists because the most recent comparable plan,
+- Scope, hard limit: more than sixteen new or modified non-test source files,
+  or more than 1,800 net lines of production code. The budget grew from
+  twelve files and 1,400 lines when the shared stack record became a
+  requirement, because the change now spans three commands.
+- Scope, checkpoint: at 1,200 net lines of production code, stop and record
+  an explicit continue-or-cut decision in `Decision log`, naming what would
+  be cut. This checkpoint exists because the most recent comparable plan,
   `docs/execplans/incoming-outgoing-commands.md`, overran its own 450-line
   tolerance by 68 per cent and its retrospective recommended exactly this
   treatment. For calibration, `git plonk` is 1,122 lines across five modules
   and has no GitHub surface, no machine-readable output, and no gate model.
+- Existing-command behaviour: any change to `git donkey` or `git plonk`
+  beyond writing, converting, sweeping, and reporting stack records — in
+  particular any change to which worktrees plonk removes, which branches it
+  deletes, or which base donkey selects.
 - Interface: any existing public function signature or console script must
   change incompatibly.
 - Dependencies: any new package dependency, runtime or development.
@@ -191,7 +253,7 @@ Stop and escalate rather than improvising when any of these is reached.
   was rewritten and its old refs and reflogs are gone.
   Severity: high. Likelihood: medium.
   Mitigation: make refusal a first-class, well-tested outcome with its own
-  exit code, and deliver receipt recording early (EP-M5) so the next incident
+  exit code, and deliver the stack record early (EP-M3) so the next incident
   does not depend on forensics.
 - Risk: a tree-identity or patch-identity match looks conclusive but is not.
   An added change followed by its revert produces a later prefix with the
@@ -261,15 +323,42 @@ Stop and escalate rather than improvising when any of these is reached.
   `max_examples`), keep Hypothesis for pure properties over generated graph
   _data_, and use a parameterized matrix for the tests that build real
   repositories, with `@pytest.mark.timeout(120)`.
-- Risk: `git plonk --hard` deletes the completed local parent branch, and
-  `git branch -D` takes its reflog with it. The product therefore destroys,
-  in one command, exactly the surviving refs and reflogs that the
+- Risk: `git plonk --hard` deletes the completed local parent branch with
+  `git branch -D`, destroying the branch ref, its reflog, and the whole
+  `branch.<name>` configuration section — exactly the evidence the
   `parent-history-intact` gate and the fork-point rung depend on.
   Severity: high. Likelihood: high.
-  Mitigation: this plan does not change `git plonk`, but it names the
-  interaction in the users' guide and the design document, and EP-M8 proposes
-  a branch tombstone (`refs/plonk-tombstones/<branch>`) written before any
-  deletion. EP-M8 is explicitly separable into its own pull request.
+  Mitigation: no longer a follow-up. EP-M4 makes tombstoning a required part
+  of plonk's delete path, so the parent's tip survives deletion. The
+  limitation is stated honestly: a tombstone preserves the tip, not the
+  reflog, so fork-point recovery is still lost. That is acceptable because
+  the tip is what gates 6 and 7 and the merge-base rung actually need.
+- Risk: a stack record outlives its branch — deleted by a plain
+  `git branch -d` outside plonk, or orphaned when `git branch -m` carries the
+  configuration but leaves `refs/stack-bases/<old>` behind. An orphaned flat
+  record eventually collides with a nested branch name: measured in this
+  worktree, `refs/stack-bases/alpha` blocks the creation of
+  `refs/stack-bases/alpha/beta`.
+  Severity: medium. Likelihood: medium.
+  Mitigation: state the subset invariant (INV-9), have the reader ignore and
+  report a record with no branch rather than trusting it, have plonk sweep
+  orphans into tombstones on every run, and have the writer detect a
+  directory/file collision and report it instead of crashing.
+- Risk: tombstones accumulate indefinitely, pinning objects against
+  `git gc` forever.
+  Severity: low. Likelihood: high.
+  Mitigation: tombstones expire. Plonk prunes those older than
+  `stack.tombstoneExpire`, defaulting to 90 days to match Git's own
+  `gc.reflogExpire` default — so a tombstone lasts exactly as long as the
+  reflog it stands in for would have.
+- Risk: `git donkey` writes a record for every branch it creates, so every
+  branch looks stacked and `git wheresat` proposes a boundary for branches
+  that never had a parent.
+  Severity: medium. Likelihood: medium.
+  Mitigation: record only when the resolved base is not the trunk, decided by
+  the pure policy in `stack_records.py` against
+  `remote_default.discover_default_branch`, and covered by a behavioural
+  scenario in both directions.
 - Risk: `make fmt` reflows untouched Markdown across the repository, creating
   unrelated churn in this branch.
   Severity: low. Likelihood: high.
@@ -278,23 +367,25 @@ Stop and escalate rather than improvising when any of these is reached.
 
 ## Progress
 
-- [ ] EP-M1 Write `docs/squash-restack-boundary-recovery.md` and
-      `docs/adr-004-squash-restack-evidence-precedence.md` — the
-      specification this plan implements.
-- [ ] EP-M2 Build the hard fixtures first: squash-merged parent, advanced
-      parent, and rewritten parent, in `tests/git_repo_helpers.py`.
-- [ ] EP-M3 Pure value types, receipt and shared-record formats, gates and
-      assessment, with unit, parameterized and property tests.
-- [ ] EP-M4 Read-only Git query adapter and the separate ref-writing adapter,
-      with the read-only guarantee and the range partition invariants.
-- [ ] EP-M5 Evidence collection pipeline, report rendering, CLI, console
-      script, manual page — local evidence only. Shippable plateau.
-- [ ] EP-M6 Receipt recording behind `--record`, with expected-old checking
-      and provenance.
-- [ ] EP-M7 GitHub adapter, recorded cassette, `--json`, behavioural
-      scenarios, and the remaining documentation.
-- [ ] EP-M8 (separable) `git plonk` branch tombstones, so hard mode stops
-      destroying the evidence this command depends on.
+- [ ] EP-M1 Write the two design documents and the two architectural
+      decision records — the specification this plan implements.
+- [ ] EP-M2 `git_donkey/stack_records.py` and `git_donkey/stack_store.py`:
+      the shared format, lifecycle decisions, and Git access. No command
+      changes.
+- [ ] EP-M3 `git donkey` writes a stack record at branch birth. Shippable on
+      its own.
+- [ ] EP-M4 `git plonk` tombstones, sweeps, prunes, and reports stack
+      records. Shippable on its own.
+- [ ] EP-M5 Build the hard fixtures: squash-merged, advanced, and rewritten
+      parent stacks.
+- [ ] EP-M6 `git wheresat` pure value types, gates, and assessment.
+- [ ] EP-M7 `git wheresat` read-only Git query port and the separate ref
+      writer.
+- [ ] EP-M8 `git wheresat` collection, report, CLI, console script, manual
+      page — local evidence only. Shippable plateau.
+- [ ] EP-M9 `git wheresat --record` refreshes the shared record.
+- [ ] EP-M10 GitHub evidence, `--json`, behavioural scenarios, and the
+      remaining documentation.
 
 ## Surprises & discoveries
 
@@ -316,12 +407,13 @@ Stop and escalate rather than improvising when any of these is reached.
   the selected ref once and never track the remote default branch from a new
   feature branch".
   Impact: most of the forensic ladder exists to reconstruct a fact the tool
-  family had in hand milliseconds earlier. This is the strongest argument for
-  delivering receipts early (EP-M6) and for the follow-up recorded in
-  `Decision log` that `git donkey` should write a birth-time receipt.
+  family had in hand milliseconds earlier. This is why the shared stack
+  record is a requirement of this plan rather than a follow-up, and why
+  `git donkey` writes it at EP-M3, before `git wheresat` exists.
 - Observation: `git plonk --hard` destroys the evidence this command needs.
   Evidence: `git_donkey/plonk.py:160` `delete_branch` deletes a completed
-  local branch; Git removes the branch's reflog along with the ref.
+  local branch with `git branch -D`; Git removes the branch's reflog and its
+  whole configuration section along with the ref.
   Impact: the highest-likelihood cause of the refusal path is another command
   in the same package. EP-M8 addresses it; until then the users' guide must
   warn that running `git plonk --hard` on a parent worktree forecloses
@@ -369,6 +461,40 @@ Stop and escalate rather than improvising when any of these is reached.
   otherwise. Both forms ignore all whitespace within the patch.
   Impact: the adapter must pass `--stable` explicitly rather than relying on
   the user's configuration, or two runs on two machines can disagree.
+- Observation: `git branch -D` deletes the entire `branch.<name>`
+  configuration section, including keys Git knows nothing about.
+  Evidence: measured in a scratch repository on Git 2.52.0 on 2026-09-14.
+  After setting `branch.feat.stackParent` and `branch.feat.stackBase` and
+  running `git branch -D feat`, `git config --local --get-regexp '^branch\.'`
+  returns nothing.
+  Impact: this is the single fact that shapes the record lifecycle. A
+  branch's own record cannot survive that branch's deletion, so the tombstone
+  must carry what the next reader needs, and it must carry it in a ref.
+- Observation: `git branch -m` carries custom `branch.<name>.*` keys to the
+  new section, but does not move `refs/stack-bases/<name>`.
+  Evidence: same measurement; after `git branch -m feat feat2`,
+  `branch.feat2.stackParent` and `branch.feat2.stackBase` are present.
+  Impact: configuration is the durable half of the record and is therefore
+  authoritative for values; the ref is only an anchor that keeps the boundary
+  commit reachable, and may legitimately be missing after a rename.
+- Observation: a flat record namespace has real directory/file collisions.
+  Evidence: with `refs/stack-bases/alpha` present, `git update-ref
+  refs/stack-bases/alpha/beta` fails with "cannot lock ref … 'alpha' exists".
+  Impact: the flat form from the supplied procedure is safe only while the
+  namespace stays a subset of `refs/heads`, which is why INV-9 and plonk's
+  sweep exist.
+- Observation: `git worktree add --no-track -b <name>` writes no
+  `branch.<name>` configuration at all.
+  Evidence: same measurement; `git config --local --get-regexp
+  '^branch\.wtb\.'` returns nothing after the worktree is added.
+  Impact: `git donkey`'s record write is the first writer of that section, so
+  it is not racing or overwriting anything Git set up, and it does not
+  disturb the deliberate `--no-track` decision.
+- Observation: `git plonk` deletes branches with `git branch -D`, not `-d`.
+  Evidence: `git_donkey/plonk.py:182`.
+  Impact: deletion always succeeds when the branch exists, so the tombstone
+  must be written before the call and cannot rely on a refusal to protect
+  anything.
 - Observation: `git merge-base --is-ancestor` returns 128, not 2, for an
   unknown object on this Git version.
   Evidence: measured in this working tree on Git 2.52.0 — exit `0` for an
@@ -467,14 +593,14 @@ Stop and escalate rather than improvising when any of these is reached.
 - Decision: keep the full evidence ladder from the supplied procedure, and
   record the recommendation to cut it.
   Rationale: the design review's strongest recommendation was to ship only
-  receipt plus pull-request-head evidence and delete the shared record,
+  stack-record plus pull-request-head evidence and delete the shared record,
   fork-point, tree identity, and patch identity — three evidence kinds, three
   gates, four modules. That is a genuinely better cost profile. It is
   rejected here because the supplied recovery procedure specifies each of
   those rungs, including their limitations, and the task is to automate that
   procedure rather than a subset of it. The cost is mitigated by sequencing:
-  EP-M5 ships a working local-evidence command, and the expensive rungs
-  arrive in EP-M7 where a reviewer can see their price in isolation.
+  EP-M8 ships a working local-evidence command, and the expensive rungs
+  arrive in EP-M10 where a reviewer can see their price in isolation.
   Date/Author: 2026-09-14, planning agent.
 - Decision: reject commit-message trailers as the boundary carrier.
   Rationale: the design review's strongest _alternative_ was to have
@@ -489,17 +615,75 @@ Stop and escalate rather than improvising when any of these is reached.
   necessary", because it irreversibly mutates commit messages, and because it
   offers nothing for the branches that already exist — which is the acute
   problem. It is recorded here, and in the ADR, as the alternative to revisit
-  if receipts prove insufficient in practice.
+  if the stack record proves insufficient in practice.
   Date/Author: 2026-09-14, planning agent.
-- Decision: `git donkey` writing a birth-time receipt is a follow-up, not
-  part of this plan.
-  Rationale: it is the highest-value change in this whole space — it would
-  make the forensic ladder apply to a shrinking population rather than to
-  every invocation forever. It is excluded here because it changes an
-  existing command's behaviour, needs its own tests, documentation, and
-  migration note, and would push this plan past its scope tolerance before
-  the forensic path exists to validate it against. Recorded as the first item
-  in `Outcomes & retrospective` for the next plan.
+- Decision: require one shared stack record across `git donkey`,
+  `git plonk`, and `git wheresat`, owned by `git_donkey/stack_records.py`
+  and `git_donkey/stack_store.py`, rather than giving `git wheresat` a
+  private record format.
+  Rationale: the first draft left the two most valuable changes as
+  follow-ups, which meant shipping a forensic tool to reconstruct a fact
+  `git donkey` had already discarded, while `git plonk` went on destroying
+  the evidence that tool depends on. Three commands touching one artefact
+  through three private parsers would diverge; one format module and one
+  store module cannot. The commands stay ignorant of each other: neither
+  donkey nor plonk learns anything about pull requests or evidence tiers.
+  Date/Author: 2026-09-14, planning agent.
+- Decision: configuration holds the record; the ref is only a reachability
+  anchor.
+  Rationale: measured behaviour forced this. `git branch -m` carries
+  `branch.<name>.*` to the new section but leaves `refs/stack-bases/<old>`
+  behind, so a ref-authoritative design silently loses the record on every
+  rename. Conversely `git branch -D` destroys the configuration section
+  entirely, which is why the tombstone must be a ref. Splitting the roles —
+  configuration for values, ref for reachability — makes each artefact
+  authoritative for the thing it is actually good at, and turns a
+  disagreement between them into a reportable malformed record rather than a
+  coin toss. It also discharges INV-8 for free: the anchor ref is what keeps
+  an established boundary safe from `git gc`.
+  Date/Author: 2026-09-14, planning agent.
+- Decision: `git plonk` owns the end of the record lifecycle — tombstone,
+  sweep, and prune.
+  Rationale: plonk is already the cleanup command, already enumerates
+  worktrees and branches, and already has a dry-run and a summary to report
+  through. Putting the sweep anywhere else would mean inventing a second
+  cleanup entry point. Tombstoning before deletion is required rather than
+  optional because `git plonk --hard` uses `git branch -D`
+  (`git_donkey/plonk.py:182`), which always succeeds — there is no refusal to
+  fall back on.
+  Date/Author: 2026-09-14, planning agent.
+- Decision: keep the flat `refs/stack-bases/<branch>` namespace from the
+  supplied procedure, rather than a directory/file-safe layout such as
+  `refs/stack-bases/<branch>/base`.
+  Rationale: a leaf-suffixed layout would make collisions impossible by
+  construction, and the collision is real — measured here,
+  `refs/stack-bases/alpha` blocks `refs/stack-bases/alpha/beta`. The flat
+  form is kept because it is what the supplied procedure specifies verbatim,
+  and because collisions cannot arise while the record namespace stays a
+  subset of the branch namespace: Git already forbids branches `alpha` and
+  `alpha/beta` coexisting. INV-9 states that subset invariant, plonk's sweep
+  maintains it, and the writer reports a collision rather than crashing when
+  it has been violated from outside. If that proves fragile in practice, the
+  leaf-suffixed layout is the recorded fallback.
+  Date/Author: 2026-09-14, planning agent.
+- Decision: tombstones preserve the tip only, and expire after 90 days.
+  Rationale: preserving every incarnation a branch's reflog held would need a
+  ref per incarnation and an expiry policy per ref, for a case — recovering a
+  superseded force-push of a deleted parent — that the pull request head ref
+  already covers better. The tip is what gates 6 and 7 and the merge-base
+  rung need. Ninety days matches Git's own `gc.reflogExpire` default, so a
+  tombstone lasts exactly as long as the reflog it stands in for would have.
+  The honest consequence, stated in the users' guide: tombstones do not
+  restore fork-point recovery.
+  Date/Author: 2026-09-14, planning agent.
+- Decision: `git donkey` records only when the resolved base is not the
+  trunk.
+  Rationale: a record means "this branch is stacked on something". Writing
+  one for every branch would make `git wheresat` offer a boundary for
+  branches that never had a parent, which is the confidently-wrong-answer
+  failure mode arriving through the front door. The trunk test reuses
+  `remote_default.discover_default_branch`, which `git donkey` and
+  `git plonk` already share.
   Date/Author: 2026-09-14, planning agent.
 - Decision: keep `--json`, and record that the review recommended deferring
   it.
@@ -510,7 +694,7 @@ Stop and escalate rather than improvising when any of these is reached.
   scripted rebase is the clearest case in this package for machine-readable
   output, and because the agent skill in `skill/git-donkey-worktrees/` is a
   plausible first consumer. The convention is written into
-  `docs/developers-guide.md` in EP-M7 so the next command inherits it rather
+  `docs/developers-guide.md` in EP-M10 so the next command inherits it rather
   than reinventing it.
   Date/Author: 2026-09-14, planning agent.
 - Decision: rename `--allow-heuristics` to `--deep`, and document it as a
@@ -546,22 +730,26 @@ Stop and escalate rather than improvising when any of these is reached.
 To be completed at each milestone boundary and at completion. Before setting
 the status to `COMPLETE`, reconcile every implementation discovery against
 `docs/squash-restack-boundary-recovery.md` and
-`docs/adr-004-squash-restack-evidence-precedence.md`: a discovery that
+`docs/stack-records.md`, and the two architectural decision records: a
+discovery that
 falsifies a stated assumption requires updating that document and re-checking
 every trace link in `Conformance basis`, not a quiet amendment here.
 
 Follow-up work this plan deliberately leaves undone, in priority order:
 
-1. Have `git donkey` write a birth-time receipt when it creates a stacked
-   branch. It already freezes the start point at
-   `git_donkey/donkey_worktrees.py:186`; writing `refs/stack-bases/<branch>`
-   and `branch.<branch>.stackParent` there would make the forensic ladder a
-   legacy path.
-2. EP-M8, if it was not delivered with this plan: `git plonk` branch
-   tombstones.
-3. Revisit commit-message trailers if receipts prove insufficient across
-   clones, and revisit pushing `refs/stack-bases/<branch>` to the remote as a
-   cheaper cross-clone mechanism than the shared record.
+1. Cross-clone recovery. The stack record is local: neither
+   `refs/stack-bases/<branch>` nor `branch.<branch>.stack*` travels to
+   another clone. Pushing the anchor ref to the remote is a cheap,
+   machine-validated alternative to the shared record in a pull request body,
+   and would remove a whole evidence rung. It is out of scope here because it
+   introduces a push, and every command in this plan is either read-only or
+   writes only local state.
+2. Preserving superseded parent incarnations in a tombstone, if losing
+   fork-point recovery on deleted branches turns out to matter.
+3. Revisit commit-message trailers if the stack record proves insufficient
+   across clones — the rejected alternative recorded above.
+4. A `git donkey --stack-parent` override for branches whose parent is not
+   their creation base.
 
 ## Context and orientation
 
@@ -618,7 +806,37 @@ trusting the possibly stale local `refs/remotes/<remote>/HEAD` — and
 
 There is **no existing helper** anywhere in `git_donkey/` for `git
 merge-base`, `git for-each-ref`, reading `git config`, or reading a reflog.
-This command introduces the first of each.
+This change introduces the first of each, in `git_donkey/stack_store.py` and
+`git_donkey/wheresat_graph.py`.
+
+Two existing commands change, in narrowly scoped ways.
+
+`git donkey` creates a worktree and branch in
+`git_donkey/donkey_worktrees.py::_add_worktree_for_new_branch`. At lines
+184-192 it resolves and freezes the base commit —
+`start_point = context.repo_home.commit(request.base_branch).hexsha` — and
+then calls `git worktree add --no-track -b <branch> <path> <start_point>`.
+The comment there explains the `--no-track`: it stops a new feature branch
+tracking the remote default branch when `branch.autoSetupMerge` is enabled.
+That decision stays. The frozen `start_point` is exactly the stack record's
+`base`, so recording it costs no extra Git call. Trunk resolution is already
+available through `git_donkey/remote_default.py`, which `git donkey` and
+`git plonk` share.
+
+`git plonk` cleans up completed worktrees.
+`git_donkey/plonk.py::_GitWorktreeAdapter.delete_branch` (line 160) runs
+`git branch -D` — **forced**, so it always succeeds when the branch exists;
+the "deliberately unforced" comment elsewhere in that module applies to
+worktree removal, not branch deletion. Results flow through the frozen
+`_PlonkResult` in `git_donkey/plonk_records.py` and are rendered by the pure
+`git_donkey/plonk_summary.py`, with dry-run handling driven by
+`_PlonkResult.is_dry_run`. Every mutation in that command is already guarded
+by `if not dry_run:`, so the new record operations follow the same shape.
+
+The key fact that shapes the whole record design, measured rather than
+assumed: `git branch -D` removes the entire `branch.<name>` configuration
+section, custom keys included, while `git branch -m` carries it. See
+`Surprises & discoveries`.
 
 `git_donkey/observability.py` defines a closed vocabulary of bounded
 workflow records: `type Operation = typ.Literal[...]`, `type Outcome =
@@ -685,10 +903,16 @@ Taken from `docs/squash-restack-boundary-recovery.md`, which EP-M1 writes.
   `B`. It is not `C` (the first child commit), not `S`, and not `M`.
 - **`TARGET`**: the commit the child is to be replayed onto, captured
   immediately as an immutable object ID.
-- **Receipt**: a locally recorded boundary — the ref
-  `refs/stack-bases/<branch>` plus the config keys
-  `branch.<branch>.stackParent`, `.stackBaseRecordedFrom`, and
-  `.stackBaseEvidence`.
+- **Stack record**: the shared artefact all three commands agree on — the
+  config keys `branch.<branch>.stackParent`, `.stackBase`,
+  `.stackBaseRecordedFrom`, and `.stackBaseEvidence`, which hold the values,
+  plus the anchor ref `refs/stack-bases/<branch>`, which keeps the boundary
+  commit reachable. Written at birth by `git donkey`, refreshed by
+  `git wheresat --record`, and converted to a tombstone by `git plonk`.
+- **Tombstone**: `refs/stack-tombstones/<branch>`, naming the tip a branch
+  had when it was deleted. It preserves the tip, not the reflog, so it
+  rescues the `parent-history-intact` gate and the merge-base rung but not
+  fork-point recovery.
 - **Shared record**: the same information written in prose into a pull
   request body, for recovery from another clone.
 - **Evidence tier**: how much weight a candidate boundary carries.
@@ -723,32 +947,48 @@ tiering).
 
 New upstream artefacts this plan creates, in EP-M1:
 
-- `docs/squash-restack-boundary-recovery.md` — the design document: the graph
-  and the three identities, the evidence model and its tiers, the eight gates
-  with their decision procedures, the receipt and shared-record formats, the
-  degraded-mode table, the limits of fork-point and of content comparison,
-  and a `## Verification contract` section naming the tests that pin each
-  rule.
-- `docs/adr-004-squash-restack-evidence-precedence.md` — the decision record:
-  why evidence is tiered rather than merged, why inferred evidence can never
-  establish a boundary, why a lone derived candidate cannot either, why
-  refusal is an outcome rather than an error, why four exit codes, and why
-  commit-message trailers were rejected. The design document references it
+- `docs/stack-records.md` — the shared contract between `git donkey`,
+  `git plonk`, and `git wheresat`: the record format and its version, the
+  configuration keys and the anchor ref, which artefact is authoritative for
+  what, the birth-refresh-tombstone lifecycle, the namespace subset
+  invariant, the retention policy, and a `## Verification contract` section
+  naming the tests that pin each rule. This is the document a future
+  fourth command would read before touching a record.
+- `docs/squash-restack-boundary-recovery.md` — the `git wheresat` design
+  document: the graph and the three identities, the evidence model and its
+  tiers, the eight gates with their decision procedures, the shared-record
+  format, the degraded-mode table, and the limits of fork-point and of
+  content comparison. It references `docs/stack-records.md` for the record
   rather than restating it.
+- `docs/adr-004-shared-stack-records.md` — the decision record for the
+  contract: why one artefact across three commands, why configuration is
+  authoritative and the ref is an anchor, why `git plonk` owns the end of the
+  lifecycle, why the flat namespace was kept, and why tombstones preserve the
+  tip only.
+- `docs/adr-005-squash-restack-evidence-precedence.md` — the decision record
+  for the evidence model: why evidence is tiered rather than merged, why
+  inferred evidence can never establish a boundary, why a lone derived
+  candidate cannot either, why refusal is an outcome rather than an error,
+  why four exit codes, and why commit-message trailers were rejected.
 
 Trace links:
 
 ```plaintext
-REQ-identities    -> DES-evidence-model -> EP-M3 -> test_wheresat_policy.py::test_identities_never_conflated
-REQ-receipt-read  -> DES-receipt        -> EP-M3 -> test_wheresat_receipts.py::test_receipt_round_trip
-REQ-receipt-write -> DES-receipt        -> EP-M6 -> test_wheresat_receipt_write.py::test_expected_old
-REQ-parent-pr     -> DES-github-adapter -> EP-M7 -> test_wheresat_github.py::test_parent_metadata_contract
-REQ-pr-head       -> DES-evidence-model -> EP-M7 -> git_wheresat.feature::"Established by pull request head"
-REQ-fork-point    -> DES-evidence-model -> EP-M5 -> test_wheresat_policy.py::test_derived_needs_corroboration
-REQ-integration   -> DES-gates          -> EP-M3 -> test_wheresat_policy.py::test_landed_must_reach_target
-REQ-patch-caveat  -> DES-gates          -> EP-M3 -> test_wheresat_properties.py::test_inferred_never_establishes
-REQ-read-only     -> DES-safety         -> EP-M4 -> test_wheresat_read_only.py::test_repository_unchanged
-REQ-refusal       -> DES-gates          -> EP-M5 -> git_wheresat.feature::"Refusal after a rewritten parent"
+REQ-record-format  -> DES-stack-record  -> EP-M2  -> test_stack_records.py::test_record_round_trip
+REQ-record-birth   -> DES-lifecycle     -> EP-M3  -> git_donkey_stack.feature::"A stacked branch records its parent"
+REQ-record-trunk   -> DES-lifecycle     -> EP-M3  -> git_donkey_stack.feature::"A trunk branch records nothing"
+REQ-record-death   -> DES-lifecycle     -> EP-M4  -> git_plonk_stack.feature::"Deleting a branch leaves a tombstone"
+REQ-record-sweep   -> DES-namespace     -> EP-M4  -> git_plonk_stack.feature::"An orphaned record is swept"
+REQ-record-refresh -> DES-lifecycle     -> EP-M9  -> test_wheresat_record.py::test_expected_old
+REQ-identities     -> DES-evidence-model-> EP-M6  -> test_wheresat_policy.py::test_identities_never_conflated
+REQ-record-read    -> DES-stack-record  -> EP-M6  -> test_wheresat_policy.py::test_birth_record_is_attested
+REQ-integration    -> DES-gates         -> EP-M6  -> test_wheresat_policy.py::test_landed_must_reach_target
+REQ-patch-caveat   -> DES-gates         -> EP-M6  -> test_wheresat_properties.py::test_inferred_never_establishes
+REQ-read-only      -> DES-safety        -> EP-M7  -> test_wheresat_read_only.py::test_repository_unchanged
+REQ-fork-point     -> DES-evidence-model-> EP-M8  -> test_wheresat_policy.py::test_derived_needs_corroboration
+REQ-refusal        -> DES-gates         -> EP-M8  -> git_wheresat.feature::"Refusal after a rewritten parent"
+REQ-parent-pr      -> DES-github-adapter-> EP-M10 -> test_wheresat_github.py::test_parent_metadata_contract
+REQ-pr-head        -> DES-evidence-model-> EP-M10 -> git_wheresat.feature::"Established by pull request head"
 ```
 
 ## Verification plan
@@ -807,18 +1047,34 @@ Where a claim was measured in this working tree, the measurement is recorded.
 - AXIOM-8: `github3.py` 4.0.1 maps the pull request payload faithfully for
   the fields it models, and `GitHubCore.as_dict()` returns the raw payload so
   unmodelled fields such as `stack` remain reachable. Library internals are
-  not verified; EP-M7 instead verifies the repository-owned mapping against a
+  not verified; EP-M10 instead verifies the repository-owned mapping against a
   recorded cassette carrying every field the code reads.
 - AXIOM-9: a force-pushed pull request head may be unreachable on the server,
   and `git gc` may prune a local object that no ref reaches. Absence of a
   historical incarnation is not evidence that it never existed.
+- AXIOM-11: `git branch -D <name>` deletes the entire `branch.<name>`
+  configuration section, including keys Git does not define, and `git branch
+  -m <old> <new>` renames that section, carrying those keys, without touching
+  any ref outside `refs/heads`. Measured on Git 2.52.0 in a scratch
+  repository on 2026-09-14.
+  Source: [git-branch](https://git-scm.com/docs/git-branch).
+- AXIOM-12: a Git reference and a reference directory cannot share a path, so
+  `refs/x/a` and `refs/x/a/b` cannot both exist. Measured: with
+  `refs/stack-bases/alpha` present, creating `refs/stack-bases/alpha/beta`
+  fails with "cannot lock ref". Git enforces the same rule on `refs/heads`,
+  which is why branches `alpha` and `alpha/beta` cannot coexist either.
+  Source: [git-check-ref-format](https://git-scm.com/docs/git-check-ref-format).
+- AXIOM-13: Git configuration variable names are case-insensitive and are
+  returned lower-cased. Measured: `branch.feat.stackParent` reads back as
+  `branch.feat.stackparent`. The reader must therefore be case-insensitive.
+  Source: [git-config](https://git-scm.com/docs/git-config).
 - AXIOM-10: GitHub's stacked pull requests expose the relationship through
   `GET /repos/{owner}/{repo}/stacks` and a `stack` field on the pull request
   payload, require all branches to be in one repository, and retarget the
   remaining branches automatically when one pull request in the stack merges.
   The endpoint and the field were verified live from this worktree on
   2026-09-14; the response shape for a **non-empty** stack was not, and
-  EP-M7 must confirm it against a real stacked pull request before relying on
+  EP-M10 must confirm it against a real stacked pull request before relying on
   any field beyond its presence.
   Source: [About stacked pull
   requests](https://docs.github.com/en/pull-requests/get-started/about-stacked-prs)
@@ -848,7 +1104,11 @@ when its inputs are unavailable. `C` denotes the candidate boundary.
    candidate lies on the parent's own history rather than on the trunk.
    `FAILED` otherwise. This is the gate that catches the rewritten-parent
    case, where `git merge-base --all` returns an earlier trunk commit.
-   `INDETERMINATE` when `PARENT_HEAD` cannot be recovered.
+   `INDETERMINATE` when `PARENT_HEAD` cannot be recovered. `PARENT_HEAD` is
+   sought in this order: the fetched pull request head, then
+   `refs/stack-tombstones/<parent>` written by `git plonk`, then the parent's
+   remote-tracking ref. The tombstone is why this gate can still answer after
+   `git plonk --hard` has deleted the parent branch.
 7. `replay-range-excludes-landed-work` — no commit in `C..child_tip` is
    reachable from `PARENT_HEAD`, and the cumulative patch identifier of the
    range does not equal the patch identifier of `LANDED`. Computed as
@@ -861,17 +1121,17 @@ when its inputs are unavailable. `C` denotes the candidate boundary.
    _only_ child work, and AXIOM-3 means its patch comparison is not
    injective. That limitation is why it is one gate among eight rather than
    the whole answer.
-8. `receipt-not-superseded` — applies only to a receipt candidate. The
+8. `record-not-superseded` — applies only to a stack-record candidate. The
    recorded child tip (`branch.<b>.stackBaseRecordedFrom`) is still an
    ancestor of the current child tip, and no parent integration newer than
-   the receipt is visible. `FAILED` demotes the receipt from `ATTESTED` to
+   the record is visible. `FAILED` demotes the record from `ATTESTED` to
    `DERIVED` and records the reason; it does not by itself refuse.
 
 An `Established` result requires every applicable gate to return `PASSED`.
 Gates 1, 2, 3, 6, and 7 are not applicable when the evidence never needed a
 parent pull request, in which case they are recorded as `INDETERMINATE` and
 the result cannot be `Established` — which is why the local-evidence-only
-command delivered at EP-M5 reports indeterminate for anything it cannot
+command delivered at EP-M8 reports indeterminate for anything it cannot
 confirm, rather than guessing.
 
 ### Invariants and lemmas
@@ -1036,21 +1296,23 @@ Non-vacuity: classify generated graphs so linear and forked shapes both
 occur, and require at least one case with a non-empty excluded set. A mutant
 using an inclusive range must be rejected.
 
-**INV-7 — receipt writes are create-only unless an expected old value is
+**INV-7 — record writes are create-only unless an expected old value is
 supplied.**
 Obligation: `--record` creates `refs/stack-bases/<branch>` only when it does
 not exist; when it does exist, the write fails unless `--expected-old`
-matches the current value exactly. A receipt is written only when the result
-was `Established` from attested evidence.
+matches the current value exactly. A record is refreshed only when the
+result was `Established` from attested evidence.
 Method: parameterized tests over the existing, expected, and new triple, plus
 a property that no `(existing, expected)` pair with `existing != expected`
 ever changes the ref.
-Rationale: the procedure requires an existing receipt be reviewed and updated
-with an expected-old object ID, never silently overwritten.
+Rationale: the procedure requires an existing record be reviewed and updated
+with an expected-old object ID, never silently overwritten. All three
+commands write through `stack_store`, so this is checked once for all of
+them.
 Domain: ref absent; present with matching expectation; present with
 mismatched expectation; present with no expectation; and a run whose result
 was `Unresolved`.
-Artefact: `tests/integration/test_wheresat_receipt_write.py`.
+Artefact: `tests/integration/test_wheresat_record.py`.
 Evidence: the ref value after each case, read with `git rev-parse`.
 Non-vacuity: include the case that legitimately updates the ref, so the test
 distinguishes "always refuses" from "refuses correctly". The negative control
@@ -1066,7 +1328,9 @@ branch, and boundary reachable only from the fetched evidence ref.
 Rationale: without this, a successful run can hand the user an answer that
 `git gc --prune=now` invalidates minutes later, turning a correct boundary
 into `fatal: invalid upstream`. The evidence refs are not scratch; they are
-load-bearing for the answer's continued existence.
+load-bearing for the answer's continued existence. Where a stack record
+exists, its anchor ref `refs/stack-bases/<branch>` already discharges this —
+which is the second reason the record is a ref and not configuration alone.
 Domain: the two cases above, each followed by deleting every per-run evidence
 namespace and running `git gc --prune=now`.
 Artefact: `tests/integration/test_wheresat_durability.py`, marked
@@ -1077,6 +1341,73 @@ case.
 Non-vacuity: the first case must genuinely not retain a ref, so the test can
 tell "always retains" from "retains when needed". The negative control is a
 mutant that never retains, which the second case must reject.
+
+**INV-9 — the record namespace is a subset of the branch namespace.**
+Obligation: after any `git donkey` or `git plonk` run, every
+`refs/stack-bases/<b>` has a corresponding `refs/heads/<b>`. A record found
+without its branch is reported as orphaned and is never used as evidence.
+Method: a parameterized test over the lifecycle operations, plus a
+behavioural scenario for the orphan created outside plonk.
+Rationale: AXIOM-12 says the flat namespace has real directory/file
+collisions, and the only thing standing between this design and one is that
+`refs/heads` already forbids the same collision. That guarantee transfers
+only while the subset holds, so the subset is the invariant, not the absence
+of collisions.
+Domain: create, rename, delete through plonk, delete through plain
+`git branch -d`, and a pre-existing orphan.
+Artefact: `tests/unit/test_stack_store.py` and
+`tests/integration/features/git_plonk_stack.feature`.
+Evidence: `git for-each-ref refs/stack-bases/` compared against
+`git for-each-ref refs/heads/` after each operation.
+Non-vacuity: the plain `git branch -d` case must genuinely produce an orphan
+before the sweep runs, so the test distinguishes "never orphans" from
+"sweeps orphans". The negative control is a plonk that deletes the branch
+without removing the record; INV-9 must reject it.
+
+**INV-10 — the record lifecycle is a total, single-owner state machine.**
+Obligation: for any branch, exactly one of these holds at any time — no
+record, a live record, or a tombstone. No operation produces a live record
+and a tombstone for the same branch, and no operation leaves a partially
+written record (a ref with no configuration, or configuration with a
+disagreeing ref) without reporting it as malformed.
+Method: a Hypothesis state-machine test (`RuleBasedStateMachine`) over the
+operations create, refresh, rename, delete-via-plonk, delete-via-git, sweep,
+and prune, checked against a real temporary repository.
+Rationale: this is the one place in the plan where operation _history_
+determines correctness rather than a single input, and three commands write
+to the artefact. That is exactly the case a stateful property test exists
+for, and enumerating the interleavings by hand would miss the ones that
+matter.
+Domain: sequences of up to twelve operations over up to three branches,
+including nested branch names.
+Artefact: `tests/integration/test_stack_record_lifecycle.py`, marked
+`@pytest.mark.timeout(120)` and run under the registered Hypothesis profile.
+Evidence: after every step, the store's own reconciliation reports a
+consistent state, and INV-9 still holds.
+Non-vacuity: classify generated sequences so that at least one reaches a
+tombstone, one reaches a refresh, and one reaches an orphan; require each
+class. The negative control is a store whose delete path writes the tombstone
+but does not remove the live record, which the "exactly one of" check must
+reject.
+
+**INV-11 — a record means the branch is stacked.**
+Obligation: `git donkey` writes a stack record when the resolved base is not
+the trunk, and writes none when it is.
+Method: parameterized test over base selections, plus two behavioural
+scenarios.
+Rationale: the alternative failure — a record on every branch — makes
+`git wheresat` offer a boundary for branches that never had a parent, which
+is the confidently-wrong-answer mode arriving through the front door.
+Domain: base is the advertised default branch; base is a local branch that is
+not the trunk; base is `.`; base is an explicit commit; base is a remote
+default that differs from the local branch name.
+Artefact: `tests/unit/test_donkey_stack_records.py` and
+`tests/integration/features/git_donkey_stack.feature`.
+Evidence: the presence or absence of `branch.<new>.stackParent` after each
+run.
+Non-vacuity: both outcomes must occur across the matrix, so the test
+distinguishes "never records" from "records correctly". The negative control
+is a donkey that records unconditionally.
 
 **LEM-1 — pull request head ancestry supports the boundary.**
 Statement: if the fetched `PARENT_HEAD` is an ancestor of `child_tip`, and
@@ -1099,7 +1430,8 @@ exercises the case where the unique merge base is an earlier trunk commit and
 must be refused. Residual gap: the intactness check relies on surviving refs
 and reflogs; when those are gone the command refuses, which is the intended
 behaviour rather than a verification hole. `git plonk --hard` is the most
-likely cause of them being gone, which is why EP-M8 exists.
+likely cause of them being gone, which is why EP-M4 makes tombstoning
+required.
 
 ### Residual gaps
 
@@ -1118,7 +1450,8 @@ point to reconsider a state-machine model.
 The work proceeds specification first, then hardest fixture first, then
 inside out: pure value types and assessment, then the two Git ports, then
 collection, rendering, and the command line for local evidence only, then
-receipts, then GitHub. Each stage ends with validation, and no stage begins
+record refreshing, then GitHub. Each stage ends with validation, and no
+stage begins
 until the previous stage's validation passes.
 
 Red-Green-Refactor applies **within each milestone**, not across the whole
@@ -1140,8 +1473,8 @@ gate produces a proposed rebase command.
 ```mermaid
 flowchart TD
     resolve["Resolve child, target, and options"]
-    ident["Identify the parent: explicit, receipt,<br/>GitHub stack, shared record, association search"]
-    attested["Collect ATTESTED candidates:<br/>receipt ref, shared-record object ID, pull request head"]
+    ident["Identify the parent: explicit, stack record,<br/>GitHub stack, shared record, association search"]
+    attested["Collect ATTESTED candidates: stack record,<br/>shared-record object ID, pull request head"]
     derived["Collect DERIVED candidates:<br/>merge-base --all, merge-base --fork-point"]
     deep{"--deep requested?"}
     inferred["Collect INFERRED candidates:<br/>tree identity, then cumulative patch identity"]
@@ -1169,29 +1502,36 @@ flowchart TD
 _Figure 1: parent identification, tiered evidence collection, and gate
 evaluation in `git wheresat`._
 
-**Stage A — specify.** Write the design document and the ADR. No code. This
-stage ends when the eight gates, the three evidence tiers, the four exit
-codes, and the receipt and shared-record formats are written down and
-internally consistent.
+**Stage A — specify.** Write `docs/stack-records.md`,
+`docs/squash-restack-boundary-recovery.md`, and the two architectural
+decision records. No code. This stage ends when the record format and
+lifecycle, the eight gates, the three evidence tiers, and the four exit codes
+are written down and internally consistent.
 
-**Stage B — build the hard fixtures.** Extend `tests/git_repo_helpers.py`
-with the three scenario builders the whole plan rests on, and prove each
-builds the history it claims. The rewritten-parent fixture comes first,
-because it is the case the refusal path exists for and the one with no
-existing precedent in this repository.
+**Stage B — build the shared contract.** `git_donkey/stack_records.py` and
+`git_donkey/stack_store.py`, with the lifecycle state machine under test
+before any command uses them.
 
-**Stage C — pure core.** Value types, receipt and shared-record formats,
-gates, assessment. Tests first, milestone by milestone.
+**Stage C — wire the two existing commands.** `git donkey` writes records at
+birth; `git plonk` tombstones, sweeps, prunes, and reports. Each is
+independently valuable and independently reviewable, and together they mean
+the forensic ladder is built for a shrinking population rather than a growing
+one.
 
-**Stage D — ports and command.** The read-only graph port, the separate
-writing port, collection, rendering, and the command line. This stage ends
-with a working command that answers from local evidence and says so honestly
-when it cannot.
+**Stage D — build the hard fixtures.** Extend `tests/git_repo_helpers.py`
+with the three scenario builders the rest of the plan rests on. The
+rewritten-parent fixture comes first, because it is the case the refusal path
+exists for and the one with no existing precedent in this repository.
 
-**Stage E — receipts and GitHub.** Receipt recording, then the GitHub
-adapter, `--json`, the behavioural suite, and the remaining documentation.
+**Stage E — `git wheresat` core.** Value types, gates, assessment, then the
+read-only graph port and the separate writing port. Tests first, milestone by
+milestone.
 
-**Stage F — refactor and validate widely.** Split any module approaching the
+**Stage F — `git wheresat` command.** Collection, rendering, and the command
+line, answering from local evidence and saying so honestly when it cannot.
+Then `--record`, then the GitHub surface.
+
+**Stage G — refactor and validate widely.** Split any module approaching the
 800-line Pylint cap or the CodeScene cohesion threshold, run `cs check` on
 each new file and `cs delta origin/main`, and run the full gate set.
 
@@ -1201,27 +1541,90 @@ Each milestone ends in a repository state that is correct and internally
 coherent, and safe to stop at. No milestone introduces a compatibility shim:
 every new interface is private to this package, introduced after the latest
 release tag, and has no external consumer, so interfaces and their callers
-change together. Every milestone's compatibility decision is therefore
-"none required", and the reason is the same each time; it is not repeated
-below.
+change together. Every milestone's compatibility decision is therefore "none
+required", with one genuine exception recorded at EP-M3.
 
 **EP-M1 — the specification.**
-Outcome: `docs/squash-restack-boundary-recovery.md` and
-`docs/adr-004-squash-restack-evidence-precedence.md` exist and are linked
+Outcome: `docs/stack-records.md`,
+`docs/squash-restack-boundary-recovery.md`,
+`docs/adr-004-shared-stack-records.md`, and
+`docs/adr-005-squash-restack-evidence-precedence.md` exist and are linked
 from `docs/contents.md`. No code.
-Requirements: establishes the `REQ-*` identifiers the rest of the plan
-traces to.
-Acceptance evidence: `make markdownlint` and `make nixie` pass; the design
-document's `## Verification contract` section names every test this plan
-will create; the ADR follows the template at
+Requirements: establishes every `REQ-*` identifier this plan traces to.
+Acceptance evidence: `make markdownlint` and `make nixie` pass; each design
+document's `## Verification contract` section names every test this plan will
+create; both ADRs follow the template at
 `docs/documentation-style-guide.md:267-316`.
-Conformance check: the eight gates, three tiers, and four exit codes in the
-documents match this plan exactly. Any divergence is resolved here, not
-later.
+Conformance check: the record format, the lifecycle, the eight gates, the
+three tiers, and the four exit codes in the documents match this plan
+exactly. Any divergence is resolved here, not later.
 Recovery: documentation only; revert the commit.
 Remaining gaps: everything else.
 
-**EP-M2 — the hard fixtures.**
+**EP-M2 — the shared contract.**
+Outcome: `git_donkey/stack_records.py` holds the format, the key names, the
+ref-path derivation, the reconciliation rule, and the lifecycle decisions as
+pure functions. `git_donkey/stack_store.py` holds the only code that reads or
+writes a record over GitPython, behind a read protocol and a write protocol.
+No command uses them yet.
+Requirements: REQ-record-format.
+Acceptance evidence: `uv run pytest tests/unit/test_stack_records.py
+tests/integration/test_stack_record_lifecycle.py -q` passes, having failed
+first; INV-10's state machine reaches a tombstone, a refresh, and an orphan
+across its generated sequences.
+Conformance check: `stack_records` imports nothing from `git_donkey` except
+type-only references; the store is the only module that writes; the record is
+versioned from the first commit.
+Recovery: both modules are unreferenced; revert.
+Remaining gaps: no command writes or reads a record.
+
+**EP-M3 — `git donkey` records at birth. Shippable on its own.**
+Outcome: when `git donkey` creates a branch from a base that is not the
+trunk, it writes the stack record through `stack_store`. `docs/users-guide.md`
+explains what is recorded and why, `docs/developers-guide.md` gains the
+module-boundaries entry, and `docs/v0-2-0-migration-guide.md` notes the new
+local state.
+Requirements: REQ-record-birth, REQ-record-trunk.
+Acceptance evidence:
+`tests/integration/features/git_donkey_stack.feature` passes both directions
+of INV-11; creating a branch from `main` writes no record, and creating one
+from another feature branch writes `branch.<new>.stackParent` and
+`refs/stack-bases/<new>`.
+Conformance check: the `--no-track` decision at
+`git_donkey/donkey_worktrees.py:184-192` is unchanged, and no existing
+`git donkey` behavioural scenario needed modification; the observability
+vocabulary additions match those listed in `Interfaces and dependencies`.
+Recovery: revert; records already written are inert and are swept by EP-M4
+or removed with `git update-ref -d` and `git config --local --unset`.
+Remaining gaps: nothing reads the record; nothing cleans it up.
+Compatibility decision: **one genuine case**. Branches created before this
+milestone have no record, and branches created after it do. Both must be
+readable forever, so the record is versioned from EP-M2 and every reader
+treats "absent" as a first-class state rather than an error. This is a
+persisted-format concern, not a source-API one; no shim is introduced.
+
+**EP-M4 — `git plonk` owns the end of the lifecycle. Shippable on its own.**
+Outcome: before deleting a branch, `git plonk` converts that branch's record
+into `refs/stack-tombstones/<branch>` and removes the live record. On every
+run it sweeps records orphaned by a plain `git branch -d` and prunes
+tombstones older than `stack.tombstoneExpire` (default 90 days). The summary
+names each action, dry runs report them without performing them, and
+`docs/plonk-cleanup-policy.md` and `docs/users-guide.md` record the
+behaviour — including the honest limitation that a tombstone preserves the
+tip, not the reflog, so fork-point recovery is still lost.
+Requirements: REQ-record-death, REQ-record-sweep.
+Acceptance evidence:
+`tests/integration/features/git_plonk_stack.feature` passes; after
+`git plonk --hard` removes a parent worktree and deletes its branch,
+`refs/stack-tombstones/<parent>` names the tip the branch had, and
+`refs/stack-bases/<parent>` is gone. INV-9 holds after every mode.
+Conformance check: no change to which worktrees plonk removes or which
+branches it deletes — only to what it records and reports; the existing plonk
+behavioural suites pass unmodified.
+Recovery: revert; tombstones are inert refs.
+Remaining gaps: nothing reads records or tombstones yet.
+
+**EP-M5 — the hard fixtures.**
 Outcome: `tests/git_repo_helpers.py` gains `squash_merged_stack()`,
 `advanced_parent_stack()`, and `rewritten_parent_stack()`, each returning a
 record naming `child_tip`, `parent_head`, `landed`, `target`, and the
@@ -1237,44 +1640,44 @@ Conformance check: builders live with the existing shared builders and
 configure a local commit identity, so tests never read the runner's global
 Git configuration.
 Recovery: test-only; revert.
-Remaining gaps: no production code.
+Remaining gaps: no `git wheresat` code.
 
-**EP-M3 — pure value types, formats, gates, and assessment.**
-Outcome: `git_donkey/wheresat_records.py`,
-`git_donkey/wheresat_receipts.py`, and `git_donkey/wheresat_policy.py`
-exist, with no Git, filesystem, network, or process access. The unit,
-parameterized, and property suites for INV-2, INV-2b, INV-3, INV-4, INV-6's
-generated half, and the format round-trips pass.
-Requirements: REQ-identities, REQ-receipt-read, REQ-patch-caveat,
+**EP-M6 — `git wheresat` pure core.**
+Outcome: `git_donkey/wheresat_records.py` and
+`git_donkey/wheresat_policy.py` exist, with no Git, filesystem, network, or
+process access. The unit, parameterized, and property suites for INV-2,
+INV-2b, INV-3, INV-4, and INV-6's generated half pass. Record parsing is
+imported from `stack_records`, not reimplemented.
+Requirements: REQ-identities, REQ-record-read, REQ-patch-caveat,
 REQ-integration.
 Acceptance evidence: `uv run pytest tests/unit/test_wheresat_policy.py
-tests/unit/test_wheresat_receipts.py
 tests/unit/test_wheresat_properties.py -q` passes, each suite having failed
 first. `uv run ty check` rejects a deliberately added
 `Established(support=(InferredCandidate(...),))` — the type-level half of
 INV-2.
-Conformance check: the three modules' docstrings state the purity rule;
-`wheresat_records` imports nothing from `git_donkey`; no dependency added.
+Conformance check: both modules' docstrings state the purity rule; no
+dependency added; `wheresat_records` imports only `stack_records`.
 Recovery: the modules are unreferenced; revert.
-Remaining gaps: no Git, no GitHub, no command.
+Remaining gaps: no Git ports, no GitHub, no command.
 
-**EP-M4 — the two Git ports.**
+**EP-M7 — the two `git wheresat` Git ports.**
 Outcome: `git_donkey/wheresat_graph.py` defines the read-only
 `WheresatGraph` protocol and its GitPython implementation;
 `git_donkey/wheresat_refs.py` defines `WheresatRefWriter`, the only object in
-the command that can write. `tests/integration/test_wheresat_read_only.py`,
-`test_wheresat_ranges.py`, and `test_wheresat_durability.py` pass,
-discharging INV-1, INV-6's real half, and INV-8.
-Requirements: REQ-read-only, REQ-fork-point (local half).
+the command that can write, and it delegates record writes to `stack_store`.
+`tests/integration/test_wheresat_read_only.py`, `test_wheresat_ranges.py`,
+and `test_wheresat_durability.py` pass, discharging INV-1, INV-6's real half,
+and INV-8.
+Requirements: REQ-read-only.
 Acceptance evidence: the read-only matrix passes and its companion negative
 control — the deliberately mutating writer — fails as intended.
-Conformance check: no module other than `wheresat_refs` can write; the
-evidence namespace is the only ref prefix written; `--op-id` values are
-validated before reaching either port.
+Conformance check: no module other than `wheresat_refs` and `stack_store` can
+write; the evidence namespace and the record namespace are the only ref
+prefixes written; `--op-id` values are validated before reaching either port.
 Recovery: revert; nothing references either module yet.
 Remaining gaps: no GitHub, no command.
 
-**EP-M5 — collection, rendering, and the command line, local evidence only.
+**EP-M8 — collection, rendering, and the command line, local evidence only.
 Shippable plateau.**
 Outcome: `git_donkey/wheresat_collect.py` owns the ordered evidence
 pipeline; `git_donkey/wheresat_report.py` renders the text report;
@@ -1283,45 +1686,37 @@ observations; `git_donkey/cli.py` gains `_wheresat_app` and `git_wheresat()`;
 `pyproject.toml` gains the console script, the `rst2man` line, and the
 shared-data mapping; `docs/man/git-wheresat.rst` documents every Cyclopts
 parameter; `docs/users-guide.md`, `README.md`, and `docs/contents.md` gain
-their entries. Gates needing a parent pull request report `INDETERMINATE`,
-so the command answers from a receipt and local refs and otherwise exits `3`
-saying what it could not determine.
-Requirements: REQ-receipt-read, REQ-refusal, REQ-fork-point.
+their entries. Gates needing a parent pull request report `INDETERMINATE`, so
+the command answers from a stack record, a tombstone, and local refs, and
+otherwise exits `3` saying what it could not determine.
+Requirements: REQ-refusal, REQ-fork-point.
 Acceptance evidence: `git wheresat --help` prints the synopsis;
-`tests/unit/test_manpage_sources.py` passes, proving every parameter is
-documented; snapshot tests cover the established, unresolved, and
-indeterminate text reports; running the command in the
-`squash_merged_stack()` fixture with a receipt present exits `0` and prints
-the boundary.
-Conformance check: a new console script is introduced, which is intended;
-the observability vocabulary additions match those listed in
-`Interfaces and dependencies` exactly; no existing signature changed.
+`tests/unit/test_manpage_sources.py` passes; snapshot tests cover the
+established, unresolved, and indeterminate text reports; running the command
+on a branch created by `git donkey` in EP-M3, after its parent was plonked in
+EP-M4, exits `0` and prints the boundary from the record and the tombstone.
+That end-to-end path is the proof the three commands interoperate.
+Conformance check: a new console script is introduced, which is intended; no
+existing signature changed.
 Recovery: revert; `uv sync` clears an installed `git-wheresat` shim.
-Remaining gaps: receipts cannot be written; no GitHub evidence; no `--json`;
-no behavioural suite.
-Note: this is a deliberate release boundary. It may be merged as its own
-pull request so that the local-evidence command and its conventions are
-reviewed separately from the GitHub surface. Doing so is recommended.
+Remaining gaps: records cannot be refreshed; no GitHub evidence; no `--json`;
+no behavioural suite for the forensic paths.
 
-**EP-M6 — receipt recording.**
-Outcome: `--record` and `--expected-old` write `refs/stack-bases/<branch>`
-and the `branch.<branch>.stackParent`, `.stackBaseRecordedFrom`, and
-`.stackBaseEvidence` config keys, with the create-only and expected-old
-semantics of INV-7, and nothing else. The users' guide explains when to
-record a receipt, why a birth-time marker goes stale after a later parent
-integration, and that `git plonk --hard` on a parent worktree forecloses
-fork-point recovery for its children.
-Requirements: REQ-receipt-write.
-Acceptance evidence: `tests/integration/test_wheresat_receipt_write.py`
-passes all five cases of INV-7.
+**EP-M9 — refreshing the record.**
+Outcome: `--record` and `--expected-old` refresh the shared record through
+`stack_store`, with the create-only and expected-old semantics of INV-7, and
+write nothing else. The users' guide explains when to refresh, and why a
+birth record goes stale after a later parent integration.
+Requirements: REQ-record-refresh.
+Acceptance evidence: `tests/integration/test_wheresat_record.py` passes all
+five cases of INV-7.
 Conformance check: INV-1's matrix still passes unchanged, and a separate
 assertion proves `--record` is the only path that constructs the writer for
 anything other than a fetch.
-Recovery: revert; a written receipt is removed with `git update-ref -d` and
-`git config --local --unset`.
-Remaining gaps: no GitHub evidence; no `--json`; no behavioural suite.
+Recovery: revert; a refreshed record is restored from its ref reflog.
+Remaining gaps: no GitHub evidence; no `--json`.
 
-**EP-M7 — GitHub evidence, machine-readable output, and the behavioural
+**EP-M10 — GitHub evidence, machine-readable output, and the behavioural
 suite.**
 Outcome: `git_donkey/wheresat_github.py` defines `WheresatGitHub` and its
 `github3.py` implementation, with its own token resolution that never
@@ -1329,36 +1724,18 @@ prompts. `--json` emits the versioned envelope on every exit code. Cassettes
 recorded against real GitHub traffic cover a merged squash pull request, an
 open pull request, a rate-limited response, and one commit-to-pull-request
 association page. `tests/integration/features/git_wheresat.feature` and its
-binder module pass. `docs/developers-guide.md` gains the module-boundaries
-section, the `--json` convention, the cassette-recording procedure, and the
-`stack`-field note; `docs/v0-2-0-migration-guide.md` gains a new-commands
-entry.
+binder module pass. `docs/developers-guide.md` gains the `--json` convention,
+the cassette-recording procedure, and the `stack`-field note;
+`docs/v0-2-0-migration-guide.md` gains a new-commands entry.
 Requirements: REQ-parent-pr, REQ-pr-head.
-Acceptance evidence: `make test` passes with the cassettes replayed in
-`none` record mode, so any unrecorded request fails; `uv run pytest
+Acceptance evidence: `make test` passes with the cassettes replayed in `none`
+record mode, so any unrecorded request fails; `uv run pytest
 tests/unit/test_wheresat_github_faults.py -q` covers all seven error classes.
 Conformance check: no live network access in the suite; the `Authorization`
 header is filtered from every cassette; the association search is bounded and
 reports truncation; no cassette was hand-edited.
 Recovery: revert; cassettes are additive files.
 Remaining gaps: none planned.
-
-**EP-M8 — `git plonk` branch tombstones (separable).**
-Outcome: before deleting a completed local branch,
-`git_donkey/plonk.py::_GitWorktreeAdapter.delete_branch` writes
-`refs/plonk-tombstones/<branch>` naming the deleted tip. `git wheresat`
-consults tombstones as a `DERIVED` source. The users' guide and
-`docs/plonk-cleanup-policy.md` record the behaviour.
-Requirements: mitigates the `git plonk` risk.
-Acceptance evidence: a behavioural scenario in which `git plonk --hard`
-removes a parent worktree and deletes its branch, and `git wheresat` still
-recovers the boundary from the tombstone.
-Conformance check: this changes an existing command's observable behaviour,
-so it needs its own users' guide and design-document updates; if the scope
-tolerance is near, split it into its own pull request rather than dropping
-it.
-Recovery: revert; tombstone refs are inert.
-Remaining gaps: none.
 
 ## Concrete steps
 
@@ -1420,7 +1797,7 @@ cs check git_donkey/wheresat_policy.py
 cs delta origin/main
 ```
 
-Record a cassette in EP-M7. Do this once, against real traffic, and never
+Record a cassette in EP-M10. Do this once, against real traffic, and never
 edit the result by hand:
 
 ```shell
@@ -1457,7 +1834,8 @@ Expected output for the established case:
   integration      4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e
                    reachable from origin/main
   replay boundary  1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b  (exclusive)
-  evidence         receipt (attested), corroborated by pull request head
+  evidence         stack record, birth (attested)
+                   corroborated by pull request head
   gates            8 applicable, 8 passed
   replaying 2 commits, excluding 2
   computed against target 7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d
@@ -1507,7 +1885,7 @@ Acceptance is behavioural. A reader should be able to run these and compare.
 ### Red-Green-Refactor evidence
 
 - Red: `uv run pytest tests/unit/test_wheresat_properties.py -q` fails with
-  `ImportError` for `git_donkey.wheresat_policy` before EP-M3, and each
+  `ImportError` for `git_donkey.wheresat_policy` before EP-M6, and each
   milestone's tests fail with a missing-module or missing-step error before
   that milestone's implementation.
 - Green: the same command passes after the minimal implementation.
@@ -1515,6 +1893,79 @@ Acceptance is behavioural. A reader should be able to run these and compare.
   all pass after cleanup, in that order, each captured with `tee`.
 
 ### Behavioural specification
+
+The first two feature files are the interoperability contract. They are the
+proof that the three commands agree about one artefact, and they pass before
+`git wheresat` exists at all.
+
+`tests/integration/features/git_donkey_stack.feature` (EP-M3):
+
+```gherkin
+Feature: Record a branch's stack parent at birth
+
+  Scenario: A stacked branch records its parent
+    Given a repository whose trunk is main
+    And a feature branch parent created from main
+    When I create a branch child from parent with git donkey
+    Then the branch configuration for child names parent as its stack parent
+    And the stack-base anchor for child names the tip parent had
+    And the recorded base equals the commit git donkey froze
+
+  Scenario: A trunk branch records nothing
+    Given a repository whose trunk is main
+    When I create a branch solo from main with git donkey
+    Then no stack record exists for solo
+
+  Scenario: Recording does not disturb branch tracking
+    Given a repository whose trunk is main
+    And a feature branch parent created from main
+    When I create a branch child from parent with git donkey
+    Then child has no upstream tracking configuration
+```
+
+`tests/integration/features/git_plonk_stack.feature` (EP-M4):
+
+```gherkin
+Feature: Preserve stack evidence through cleanup
+
+  Scenario: Deleting a branch leaves a tombstone
+    Given a completed git donkey worktree for a branch with a stack record
+    When I run git plonk in hard mode
+    Then the branch is deleted
+    And a tombstone names the tip the branch had
+    And no live stack record remains for that branch
+
+  Scenario: A dry run reports the tombstone without writing it
+    Given a completed git donkey worktree for a branch with a stack record
+    When I run git plonk in hard mode as a dry run
+    Then the summary names the tombstone it would write
+    And no tombstone is created
+    And the stack record is unchanged
+
+  Scenario: An orphaned record is swept
+    Given a stack record whose branch was deleted outside git plonk
+    When I run git plonk in default mode
+    Then the orphaned record becomes a tombstone
+    And the summary names the record it swept
+
+  Scenario: An expired tombstone is pruned
+    Given a tombstone older than the retention window
+    When I run git plonk in default mode
+    Then the tombstone is deleted
+    And the summary names the tombstone it pruned
+
+  Scenario: A child still finds its parent after cleanup
+    Given a child branch whose parent worktree was removed by git plonk in hard mode
+    When I run git wheresat
+    Then the report names the boundary recorded at the child's birth
+    And the report cites the tombstone as corroborating evidence
+    And the command exits with status 0
+```
+
+The last scenario is the one that matters most: it is the end-to-end proof
+that `git donkey`, `git plonk`, and `git wheresat` interoperate through one
+artefact. It belongs to EP-M8, because that is when `git wheresat` can run,
+but its fixtures come from EP-M3 and EP-M4.
 
 `tests/integration/features/git_wheresat.feature`, cut deliberately to seven
 scenarios. Single-gate assertions such as "the pull request is still open"
@@ -1529,15 +1980,15 @@ Feature: Locate the replay boundary for a squash-merged parent
     Given a child branch stacked on a parent branch
     And the parent pull request was squash-merged into the trunk
 
-  Scenario: Established by a recorded receipt
-    Given a stack-base receipt recording the inherited boundary
+  Scenario: Established by a birth stack record
+    Given a stack record naming the inherited boundary
     When I run git wheresat
     Then the report names the recorded commit as the exclusive replay boundary
     And the report proposes a backup ref and a rebase command with full object IDs
     And the command exits with status 0
 
   Scenario: Established by pull request head
-    Given no stack-base receipt
+    Given no stack record
     And the parent pull request head is an ancestor of the child branch
     When I run git wheresat
     Then the report names the pull request head as the exclusive replay boundary
@@ -1545,7 +1996,7 @@ Feature: Locate the replay boundary for a squash-merged parent
     And the command exits with status 0
 
   Scenario: Refusal after a rewritten parent
-    Given no stack-base receipt
+    Given no stack record
     And the parent branch was rebased before it was merged
     And no surviving ref or reflog records the historical parent tip
     When I run git wheresat
@@ -1577,32 +2028,32 @@ Feature: Locate the replay boundary for a squash-merged parent
     And the command exits with status 3
 
   Scenario: The run leaves the repository unchanged
-    Given a stack-base receipt recording the inherited boundary
+    Given a stack record naming the inherited boundary
     When I run git wheresat
     Then no branch, tag, remote-tracking ref, index entry, or tracked file changes
     And the only new refs are under the evidence namespace
 ```
 
-`tests/integration/features/git_wheresat_receipt.feature` (EP-M6):
+`tests/integration/features/git_wheresat_record.feature` (EP-M9):
 
 ```gherkin
-Feature: Record a stack-base receipt
+Feature: Refresh a stack record
 
-  Scenario: Recording a receipt for the first time
-    Given a child branch with an established replay boundary and no receipt
+  Scenario: Recording a stack record for the first time
+    Given a child branch with an established replay boundary and no record
     When I run git wheresat with recording enabled
     Then the stack-base ref names the established boundary
     And the branch configuration records the parent identity and the child tip
 
-  Scenario: Refusing to overwrite an existing receipt
-    Given a child branch with an existing stack-base receipt
+  Scenario: Refusing to overwrite an existing record
+    Given a child branch with an existing stack record
     When I run git wheresat with recording enabled and no expected old value
-    Then the existing receipt is unchanged
+    Then the existing record is unchanged
     And the command reports that an expected old object ID is required
     And the command exits with status 2
 
-  Scenario: Updating a receipt with the correct expected old value
-    Given a child branch with an existing stack-base receipt
+  Scenario: Updating a record with the correct expected old value
+    Given a child branch with an existing stack record
     When I run git wheresat with recording enabled and the correct expected old value
     Then the stack-base ref names the new boundary
 
@@ -1665,7 +2116,7 @@ git for-each-ref --format='%(refname) %(committerdate:unix)' \
   | xargs -r -n1 git update-ref -d
 ```
 
-A receipt written by EP-M6 is removed with:
+A stack record is removed with:
 
 ```shell
 git update-ref -d "refs/stack-bases/$BRANCH"
@@ -1720,7 +2171,8 @@ git diff "$(git merge-base "$CANDIDATE" "$TRUNK_BEFORE")" "$CANDIDATE" \
 git show "$LANDED" | git patch-id --stable
 ```
 
-The receipt, written only under `--record`:
+The stack record, written by `git donkey` at birth and refreshed by
+`git wheresat --record`:
 
 ```shell
 git config --local "branch.$BRANCH.stackParent" "v1:$PARENT_REPOSITORY#$PARENT_PR"
@@ -1757,6 +2209,187 @@ frozen, slotted dataclasses for value types, `enum.StrEnum` for closed
 vocabularies, `typing.Protocol` for adapter interfaces, and PEP 695 syntax
 for generics and type aliases.
 
+### `git_donkey/stack_records.py`
+
+The shared contract's format and decisions. Pure: no GitPython, filesystem,
+network, or process access, and no imports from elsewhere in `git_donkey`
+except type-only references. All three commands depend on this module; none
+of them parses a key, builds a ref path, or decides the lifecycle itself.
+
+```python
+RECORD_VERSION: typ.Final = "v1"
+BASE_NAMESPACE: typ.Final = "refs/stack-bases"
+TOMBSTONE_NAMESPACE: typ.Final = "refs/stack-tombstones"
+DEFAULT_TOMBSTONE_EXPIRE: typ.Final = "90.days.ago"
+
+
+class RecordKey(enum.StrEnum):
+    """The per-branch configuration keys, without the `branch.<name>.` prefix.
+
+    Git lower-cases variable names on read (AXIOM-13), so every lookup is
+    case-insensitive and these values are the canonical lower-case spellings.
+    """
+
+    PARENT = "stackparent"
+    BASE = "stackbase"
+    RECORDED_FROM = "stackbaserecordedfrom"
+    EVIDENCE = "stackbaseevidence"
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class StackParent:
+    """Who a branch is stacked on: a branch at birth, a pull request later."""
+
+    branch: str | None
+    pull_request: PullRequestIdentity | None
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class StackRecord:
+    """One branch's stack record, as stored."""
+
+    branch: str
+    parent: StackParent
+    base: str
+    recorded_from: str
+    evidence: str
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class RecordAbsent:
+    """The branch has no record. A first-class state, never an error."""
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class RecordMalformed:
+    """A half-record, a disagreeing anchor, or an unknown version."""
+
+    reason: str
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class RecordOrphaned:
+    """A record whose branch no longer exists; never used as evidence."""
+
+    branch: str
+
+
+type RecordResult = StackRecord | RecordAbsent | RecordMalformed | RecordOrphaned
+
+
+def reconcile(
+    branch: str,
+    config: typ.Mapping[str, str],
+    anchor: str | None,
+    branch_exists: bool,
+) -> RecordResult:
+    """Combine the configuration and the anchor ref into one record result.
+
+    Configuration is authoritative for values; the anchor is authoritative
+    only for reachability. Configuration present with a disagreeing anchor is
+    `RecordMalformed`, never a choice between the two. Configuration present
+    with a missing anchor is a valid record whose boundary is at risk, which
+    the caller reports. An anchor with no configuration is `RecordMalformed`,
+    because `git branch -m` carries configuration and leaves the anchor
+    behind (AXIOM-11).
+    """
+
+
+def should_record(base_ref: str, base_commit: str, trunk_ref: str, trunk_commit: str) -> bool:
+    """Return whether a branch created from this base is stacked.
+
+    False when the base resolves to the trunk, by ref name or by commit.
+    This is the whole of INV-11's decision, kept pure so both directions are
+    a table test rather than a repository fixture.
+    """
+
+
+def base_ref_path(branch: str) -> str:
+    """Return `refs/stack-bases/<branch>`, validating the branch name."""
+
+
+def tombstone_ref_path(branch: str) -> str:
+    """Return `refs/stack-tombstones/<branch>`, validating the branch name."""
+
+
+def validate_ref_component(value: str) -> str:
+    """Return `value` when it is safe as a ref path component, else raise.
+
+    Rejects a leading `-`, an embedded `:`, `..`, control characters, and
+    anything `git check-ref-format` would refuse. `git wheresat` reuses this
+    for `--op-id`, because that value reaches a fetch refspec destination
+    where `:` is the separator and a leading `-` is argument injection.
+    """
+
+
+def parse_parent(value: str) -> StackParent | None:
+    """Parse `v1:branch:<name>` or `v1:pr:<owner>/<repo>#<n>`.
+
+    The version prefix is what lets a later revision add a field without a
+    reader from this revision misinterpreting it.
+    """
+
+
+def render_parent(parent: StackParent) -> str:
+    """Render a `StackParent` in the versioned form `parse_parent` accepts."""
+
+
+def parse_pull_request_identity(text: str) -> PullRequestIdentity | None:
+    """Parse `owner/repository#123`, returning None when unrecognized."""
+```
+
+### `git_donkey/stack_store.py`
+
+The only module in the package that reads or writes a stack record. Split
+into a read protocol and a write protocol, so a caller that only reads —
+`git wheresat` on its default path — never holds an object that can write.
+
+```python
+class StackRecordReader(typ.Protocol):
+    """Read-only access to stack records and tombstones."""
+
+    def read(self, branch: str) -> RecordResult:
+        """Return the reconciled record for one branch."""
+
+    def tombstone(self, branch: str) -> str | None:
+        """Return the tip preserved when `branch` was deleted, if any."""
+
+    def orphans(self) -> tuple[str, ...]:
+        """Return branches with a record and no branch (INV-9 violations)."""
+
+
+class StackRecordWriter(StackRecordReader, typ.Protocol):
+    """Write access. Constructed only by a caller that will write."""
+
+    def create(self, record: StackRecord) -> None:
+        """Write a record that must not already exist.
+
+        Uses an empty expected-old value on the anchor ref, so a concurrent
+        writer loses rather than silently overwrites (AXIOM-4).
+        """
+
+    def refresh(self, record: StackRecord, expected_old: str) -> None:
+        """Update an existing record, requiring the current anchor value."""
+
+    def entomb(self, branch: str, tip: str) -> None:
+        """Write the tombstone and remove the live record, in that order.
+
+        Ordering matters: a crash between the two leaves a tombstone and a
+        live record, which `reconcile` reports as malformed and the sweep
+        repairs. The reverse ordering would lose the tip outright.
+        """
+
+    def sweep(self, orphans: typ.Sequence[str]) -> tuple[str, ...]:
+        """Convert orphaned records into tombstones; return those converted."""
+
+    def prune(self, expire: str) -> tuple[str, ...]:
+        """Delete tombstones older than `expire`; return those deleted."""
+```
+
+`git donkey` uses `create`. `git plonk` uses `entomb`, `sweep`, and `prune`.
+`git wheresat` uses `StackRecordReader`, and `StackRecordWriter.refresh` only
+under `--record`.
+
 ### `git_donkey/wheresat_records.py`
 
 Shared value types. No Git, filesystem, network, or process access, and no
@@ -1791,7 +2424,8 @@ class EvidenceTier(enum.StrEnum):
 class EvidenceKind(enum.StrEnum):
     """Where a boundary candidate came from."""
 
-    RECEIPT = "receipt"
+    STACK_RECORD_BIRTH = "stack-record-birth"
+    STACK_RECORD_REFRESHED = "stack-record-refreshed"
     SHARED_RECORD = "shared-record"
     PULL_REQUEST_HEAD = "pull-request-head"
     MERGE_BASE = "merge-base"
@@ -1805,10 +2439,10 @@ TIERS: typ.Final[typ.Mapping[EvidenceKind, EvidenceTier]]
 
 
 class ParentSource(enum.StrEnum):
-    """Where the parent pull request identity came from."""
+    """Where the parent identity came from, in precedence order."""
 
     EXPLICIT = "explicit"
-    RECEIPT_CONFIG = "receipt-config"
+    STACK_RECORD = "stack-record"
     FORGE_STACK = "forge-stack"
     SHARED_RECORD = "shared-record"
     ASSOCIATION_SEARCH = "association-search"
@@ -1882,24 +2516,6 @@ class ParentPullRequest:
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
-class Receipt:
-    """A parsed local receipt, or the reason it could not be used."""
-
-    boundary: str
-    parent: PullRequestIdentity | None
-    recorded_from: str | None
-    recorded_evidence: EvidenceKind | None
-
-
-@dataclasses.dataclass(frozen=True, slots=True)
-class SharedRecord:
-    """A stack parent and replay boundary parsed from a pull request body."""
-
-    parent: PullRequestIdentity
-    boundary: str
-
-
-@dataclasses.dataclass(frozen=True, slots=True)
 class BoundaryRequest:
     """Everything the user asked for, resolved to immutable object IDs."""
 
@@ -1927,7 +2543,7 @@ class GraphFacts:
     range_minus_parent: typ.Mapping[str, tuple[str, ...]]
     cumulative_patch: typ.Mapping[str, str | None]
     landed_patch: str | None
-    receipt_recorded_from: str | None
+    record_recorded_from: str | None
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -1972,40 +2588,19 @@ EXIT_CODES: typ.Final[typ.Mapping[type, int]]
 `Established` from an `InferredCandidate` is a type error rather than a test
 failure. That is the type-level half of INV-2.
 
-### `git_donkey/wheresat_receipts.py`
+### `git_donkey/wheresat_shared_record.py`
 
-Parsing and rendering of the receipt ref, the `branch.<name>.*` keys, and the
-shared-record block. Pure. Named for the formats it owns, not for the
-evidence model, which lives in `wheresat_records`.
+Parsing and rendering of the shared-record block found in a pull request
+body. Pure. The local record's format lives in `stack_records`; this module
+owns only the cross-clone prose form.
 
 ```python
 @dataclasses.dataclass(frozen=True, slots=True)
-class ReceiptAbsent:
-    """No stack-base ref and no branch configuration."""
+class SharedRecord:
+    """A stack parent and replay boundary parsed from a pull request body."""
 
-
-@dataclasses.dataclass(frozen=True, slots=True)
-class ReceiptMalformed:
-    """A half-receipt, an unknown version, or an unparsable parent."""
-
-    reason: str
-
-
-type ReceiptResult = Receipt | ReceiptAbsent | ReceiptMalformed
-
-
-def parse_receipt(ref_value: str | None, config: typ.Mapping[str, str]) -> ReceiptResult:
-    """Reconcile the stack-base ref and branch config into one receipt.
-
-    A ref with no config, config with no ref, an unrecognized version
-    prefix, or a `stackParent` value that is not `v1:owner/repo#123` all
-    yield `ReceiptMalformed` with a reason. A half-receipt is never a
-    boundary.
-    """
-
-
-def parse_pull_request_identity(text: str) -> PullRequestIdentity | None:
-    """Parse `owner/repository#123`, returning None when unrecognized."""
+    parent: PullRequestIdentity
+    boundary: str
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -2035,12 +2630,12 @@ type SharedRecordResult = (
 def parse_shared_record(body: str) -> SharedRecordResult:
     """Extract a stack parent and replay boundary from a pull request body.
 
-    The grammar is anchored per line and tolerates leading `-`, `*`, `>`,
-    and `**` decoration. Object IDs must be full 40 or 64 hexadecimal
-    characters; abbreviations are rejected rather than resolved. Lines
-    inside fenced code blocks and block quotes are skipped. Exactly one
-    occurrence of each field is required; two disagreeing occurrences yield
-    `SharedRecordAmbiguous` rather than a silent choice.
+    The grammar is anchored per line and tolerates leading `-`, `*`, `>`, and
+    `**` decoration. Object IDs must be full 40 or 64 hexadecimal characters;
+    abbreviations are rejected rather than resolved. Lines inside fenced code
+    blocks and block quotes are skipped. Exactly one occurrence of each field
+    is required; two disagreeing occurrences yield `SharedRecordAmbiguous`
+    rather than a silent choice.
     """
 
 
@@ -2051,16 +2646,6 @@ def render_shared_record(record: SharedRecord) -> str:
     round-trip is a property test, and it is why the renderer exists even
     though no command emits it. The users' guide presents its output as
     copy-paste text.
-    """
-
-
-def validate_op_id(value: str) -> str:
-    """Return `value` when it is a safe ref path component, else raise.
-
-    Must match `^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`. This is validated in a
-    pure module, before any adapter sees it, because the value is
-    interpolated into a fetch refspec destination where `:` is the refspec
-    separator and a leading `-` is argument injection.
     """
 ```
 
@@ -2142,7 +2727,13 @@ class EvidenceSource(typ.Protocol):
 
 
 SOURCES: typ.Final[tuple[EvidenceSource, ...]]
-"""Evidence sources in precedence order; asserted against ADR-004."""
+"""Boundary-evidence sources in precedence order; asserted against ADR-005.
+
+Stack record, shared record, pull request head, merge base, fork point,
+tree identity, patch identity. A tombstone is not in this tuple: it supplies
+`PARENT_HEAD` to the gates and to the merge-base and fork-point sources,
+rather than proposing a boundary of its own.
+"""
 
 
 MAX_CANDIDATES: typ.Final = 32
@@ -2197,7 +2788,7 @@ class WheresatGraph(typ.Protocol):
 ### `git_donkey/wheresat_refs.py`
 
 The only writing capability in the command. `run_git_wheresat` constructs it
-when a fetch or a receipt write is required, and not otherwise, so the
+when a fetch or a record write is required, and not otherwise, so the
 default path has no object that can write.
 
 ```python
@@ -2213,8 +2804,8 @@ class WheresatRefWriter(typ.Protocol):
     def release(self, op_id: str) -> None:
         """Delete this run's per-run namespace. Called from a finally block."""
 
-    def write_receipt(self, branch: str, receipt: Receipt, expected_old: str | None) -> None:
-        """Write the stack-base ref and branch config, honouring INV-7."""
+    def write_record(self, record: StackRecord, expected_old: str | None) -> None:
+        """Delegate to `stack_store`, honouring INV-7. Never writes directly."""
 ```
 
 `EvidenceRef` is a `typing.NewType` over `str` — a plain assignment, not a
@@ -2325,7 +2916,8 @@ renaming a private field cannot change the wire format:
   "durableRef": null,
   "included": {"commits": ["…"], "count": 2, "truncated": false},
   "excluded": {"commits": ["…"], "count": 2, "truncated": false},
-  "support": [{"commit": "1a2b3c4d…", "kind": "receipt", "tier": "attested"}],
+  "support": [{"commit": "1a2b3c4d…", "kind": "stack-record-birth",
+               "tier": "attested"}],
   "candidates": [],
   "gates": [{"name": "parent-merged", "outcome": "passed", "detail": "…"}],
   "reasons": [],
@@ -2418,7 +3010,8 @@ git wheresat [--branch NAME] [--onto REV] [--parent OWNER/REPO#N]
   Default 200, measured backwards from the target. The report states the
   window scanned so a partial scan never reads as a complete one.
 - `--no-fetch` — perform no Git transport. GitHub queries still run.
-- `--offline` — perform no network access of any kind. The receipt plus local
+- `--offline` — perform no network access of any kind. The stack record plus
+  local
   ancestry must suffice; otherwise the command exits `3` naming the gates it
   could not evaluate. This is the fast path: it should complete in well under
   a second with no round trips.
@@ -2434,10 +3027,10 @@ git wheresat [--branch NAME] [--onto REV] [--parent OWNER/REPO#N]
 - `--op-id ID` — name the per-run evidence namespace. A test seam; the
   default is a `uuid4`. Validated against
   `^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$` before use.
-- `--record` — write the receipt. The only write outside the evidence
+- `--record` — refresh the stack record. The only write outside the evidence
   namespace. Refuses unless the result was established from attested
   evidence.
-- `--expected-old OID` — required to update an existing receipt.
+- `--expected-old OID` — required to update an existing record.
 
 Exit codes: `0` established; `1` the boundary could not be established from
 complete evidence, which is a legitimate result and not a malfunction; `2` a
@@ -2451,16 +3044,21 @@ The departure from the three-code convention used by `git incoming` and
 Add to `git_donkey/observability.py`, and to no other `typing.Literal`:
 
 - `Operation`: `parent_identification`, `evidence_collection`,
-  `boundary_assessment`, `evidence_fetch`, `receipt_write`.
+  `boundary_assessment`, `evidence_fetch`, `stack_record_write`,
+  `stack_record_sweep`, `stack_record_prune`, `stack_record_entomb`. The last
+  four are shared: `git donkey` records the first, `git plonk` the other
+  three, and `git wheresat` the first again under `--record`.
 - `Outcome`: reuse `success`, `failure`, `started`, `selected`, `rejected`.
 - New label type `EvidenceTierLabel = typ.Literal["attested", "derived",
   "inferred"]`.
 - New label type `WheresatVerdictLabel = typ.Literal["established",
   "unresolved", "indeterminate"]`.
 - Add to `ErrorKind`: `github_api_error`, `shallow_history`,
-  `credential_unavailable`.
+  `credential_unavailable`, `stack_record_malformed`,
+  `stack_record_conflict`.
 
-Budget roughly 150 production lines and 350 test lines for this, in EP-M5.
+Budget roughly 200 production lines and 450 test lines for this, split
+across EP-M3, EP-M4, and EP-M8.
 `tests/observability_helpers.py::declared_attribute_values()` derives the
 bounded vocabulary from these type aliases, so the additions are pinned
 automatically.
@@ -2476,7 +3074,7 @@ automatically.
 - Integration tests that build repositories carry
   `@pytest.mark.timeout(120)`, overriding the global `timeout = 30`.
 - `tests/git_repo_helpers.py` gains `squash_merged_stack()`,
-  `advanced_parent_stack()`, and `rewritten_parent_stack()` in EP-M2.
+  `advanced_parent_stack()`, and `rewritten_parent_stack()` in EP-M5.
 - New cassettes use `allow_playback_repeats=True` where one cassette serves
   several parameterized cases.
 - New syrupy snapshots use a `syrupy.matchers.path_type` matcher redacting
@@ -2488,12 +3086,38 @@ automatically.
 - `git_donkey/cli.py`: add `_wheresat_app`, `_wheresat_cli`, and
   `git_wheresat()`, following the `_plonk_app` pattern.
 - `git_donkey/observability.py`: the vocabulary additions above.
+- `git_donkey/donkey_worktrees.py`: after the existing `git worktree add`
+  at lines 184-192, call `stack_store.StackRecordWriter.create` when
+  `stack_records.should_record` says the resolved base is not the trunk.
+  The frozen `start_point` already computed on line 186 is the record's
+  `base`; nothing new needs resolving. Do not change the `--no-track`
+  decision — `branch.<name>.stack*` is a different key namespace from
+  `branch.<name>.remote` and `.merge`, and AXIOM-11 confirms
+  `git worktree add --no-track -b` writes no `branch.<name>` section at all.
+- `git_donkey/donkey.py`: pass the trunk already resolved for base selection
+  into the record decision, so the trunk is not discovered twice.
+- `git_donkey/plonk.py`: in `_GitWorktreeAdapter.delete_branch` (line 160),
+  call `entomb` before `git branch -D`; the deletion is forced and always
+  succeeds, so there is no refusal to fall back on. In the run's outer
+  sequence, call `sweep` and `prune` once per invocation, guarded by the
+  existing `dry_run` flag in the same way every other mutation is.
+- `git_donkey/plonk_records.py`: extend `_PlonkResult` with
+  `entombed_branches`, `swept_records`, and `pruned_tombstones`, each a
+  `tuple[str, ...]`, following the existing `removed_branches` shape.
+- `git_donkey/plonk_summary.py`: render the three new tuples, using the
+  existing "Planned" versus past-tense convention driven by
+  `_PlonkResult.is_dry_run`.
 - `pyproject.toml`: `git-wheresat = "git_donkey.cli:git_wheresat"` in
   `[project.scripts]`, one `rst2man` entry in the `build-scripts.scripts`
   array, and one `docs/man/git-wheresat.1` shared-data mapping.
 - `README.md`: a bullet in the command overview.
 - `docs/users-guide.md`: a `## git wheresat` section and a row in
-  `## Command overview`.
+  `## Command overview`; a paragraph in `## git donkey` explaining what a
+  stacked branch records; and a paragraph in `## git plonk` explaining
+  tombstones, the sweep, the retention window, and the honest limitation that
+  a tombstone does not restore fork-point recovery.
+- `docs/plonk-cleanup-policy.md`: the record lifecycle plonk now owns, added
+  to the existing decision flow and `## Verification contract`.
 - `docs/developers-guide.md`: a `## git-wheresat module boundaries` section,
   the `--json` output convention, the Hypothesis-profile convention, the
   cassette-recording procedure, and the `github3.py` `as_dict()` note.
@@ -2507,8 +3131,9 @@ automatically.
   `SYNOPSIS`, `DESCRIPTION` including the four-value exit-status list,
   `OPTIONS`, `EXAMPLES`, and `SEE ALSO`. Every Cyclopts parameter must
   appear, because `tests/unit/test_manpage_sources.py` cross-checks them.
-- `docs/squash-restack-boundary-recovery.md` and
-  `docs/adr-004-squash-restack-evidence-precedence.md`, as described in
+- `docs/stack-records.md`, `docs/squash-restack-boundary-recovery.md`,
+  `docs/adr-004-shared-stack-records.md`, and
+  `docs/adr-005-squash-restack-evidence-precedence.md`, as described in
   `Conformance basis`.
 
 ## Signposts
@@ -2569,7 +3194,8 @@ relationship rather than reconstruct it:
   offers `none`, `simple` (compare trees) and `exact` (compare patches), the
   same ladder this command exposes under `--deep`, and documents `exact` as
   having a significant performance impact on large repositories. Its
-  `machete.overrideForkPoint.<branch>.to` key is a receipt by another name.
+  `machete.overrideForkPoint.<branch>.to` key is a stack record by another
+  name.
 - [github/gh-stack](https://github.com/github/gh-stack) — GitHub's own
   extension stores stack metadata in `.git/gh-stack` and switches its rebase
   to `--onto` when a lower pull request merges. It performs no forensics
@@ -2602,6 +3228,39 @@ Agent skills to load:
 
 ## Revision note
 
+2026-09-14, revision 3. The plan previously left the two most valuable
+changes as follow-ups: `git donkey` discarded the parent identity it already
+held, and `git plonk --hard` destroyed the evidence `git wheresat` depends
+on. A single shared **stack record** across all three commands is now a hard
+requirement rather than a follow-up. What that changed:
+
+- One format module (`git_donkey/stack_records.py`) and one store module
+  (`git_donkey/stack_store.py`) own the artefact. No command parses a key,
+  builds a ref path, or decides the lifecycle for itself.
+- Configuration holds the values and the ref is a reachability anchor,
+  because measurement showed `git branch -D` destroys the whole
+  `branch.<name>` section while `git branch -m` carries it and leaves the ref
+  behind. The split also discharges INV-8 where a record exists.
+- `git plonk` owns the end of the lifecycle: tombstone before delete, sweep
+  orphans, prune after 90 days, and report all three. `git donkey` owns the
+  start, and records only when the base is not the trunk.
+- Three new invariants: the namespace subset (INV-9), the lifecycle state
+  machine (INV-10, a Hypothesis `RuleBasedStateMachine` because this is the
+  one place operation history determines correctness), and the record-means-
+  stacked rule (INV-11).
+- Three new measured axioms (AXIOM-11 to AXIOM-13) covering configuration
+  deletion and renaming, directory/file ref collisions, and configuration key
+  case-folding.
+- Ten milestones instead of eight, resequenced so the contract comes first.
+  EP-M3 and EP-M4 each ship standalone value before `git wheresat` exists;
+  EP-M8 is the plateau where the end-to-end interoperability scenario passes.
+- Scope tolerance raised to sixteen files and 1,800 lines, with the
+  continue-or-cut checkpoint moved to 1,200, because the change now spans
+  three commands.
+- Two design documents and two architectural decision records instead of one
+  and one, so the shared contract has its own specification that a future
+  fourth command can read.
+
 2026-09-14, revision 2. The first draft was reviewed by a six-lens expert
 panel before delivery. What changed, and why:
 
@@ -2631,7 +3290,7 @@ panel before delivery. What changed, and why:
 - A fourth exit code was added for indeterminate, five undefined types were
   defined, `--op-id` gained a validation rule and a place in INV-1's domain,
   the JSON output gained a versioned envelope and a rule to emit on every
-  exit code, and the receipt and shared-record formats gained versions, a
+  exit code, and the local and shared record formats gained versions, a
   reconciliation rule, and a grammar.
 - Every unbounded operation gained a bound: `--limit`, `--heuristic-window`,
   a reflog limit, a 32-candidate cap, render truncation, an HTTP timeout, and
@@ -2648,9 +3307,11 @@ panel before delivery. What changed, and why:
   against, and the gate table — because the catastrophic failure mode is a
   confident wrong answer that the user cannot undo or re-check.
 - The milestones were resequenced: the specification is written first, the
-  hardest fixture second, and the receipt arrives before the GitHub surface.
-  EP-M5 is a deliberate release boundary. EP-M8 was added for `git plonk`
-  tombstones, because `git plonk --hard` destroys the very evidence this
-  command depends on.
+  hardest fixture second, and the local record arrives before the GitHub
+  surface.
+  A deliberate release boundary was introduced, and `git plonk` tombstones
+  were added as a separable milestone, because `git plonk --hard` destroys
+  the very evidence this command depends on. Revision 3 resequenced the
+  milestones again and made the tombstones mandatory.
 
 No implementation work has begun. The plan awaits approval before Stage B.
