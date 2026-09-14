@@ -490,8 +490,29 @@ Stop and escalate rather than improvising when any of these is reached.
     needed. The review is taken against `origin/main` rather than `main`,
     because the local `main` in a worktree can lag the remote by dozens of
     commits and inflate the diff.
-- [ ] EP-M5 Build the hard fixtures: squash-merged, advanced, and rewritten
+- [x] EP-M5 Build the hard fixtures: squash-merged, advanced, and rewritten
       parent stacks.
+  - Evidence: `tests/git_repo_helpers.py` gains `StackFixture`,
+    `squash_merged_stack()`, `advanced_parent_stack()`, and
+    `rewritten_parent_stack()`, beside the ancestry readers `is_ancestor()` and
+    `merge_bases()`; `tests/unit/test_git_repo_helpers.py` reports `4 passed`
+    (log `/tmp/pytest-git-donkey-git-wheresat-sub-command.out`). Every
+    assertion asks the built repository rather than the builder — merge bases,
+    `rev-list` ranges, fork points, tree identities — so a builder that
+    produced the wrong shape cannot pass by restating its own bookkeeping.
+    `StackFixture` carries six commit fields rather than the five the milestone
+    names: `inherited_head` is stated beside `parent_head` because the
+    rewritten shape's whole content is the divergence between the two, and a
+    fixture that conflated them could not express it.
+  - Finding: the milestone's stated acceptance evidence is unsatisfiable as
+    written. `git merge-base --all parent_head child_tip` returns best common
+    ancestors, each of which is an ancestor of `parent_head` by definition, so
+    it can never "return a commit that is **not** an ancestor of
+    `parent_head`". Measured in the built rewritten fixture: the single merge
+    base is the trunk commit both branches came from, and it _is_ an ancestor
+    of the parent's head. The assertion is restated as the property that does
+    hold, the design detail the finding exposes is recorded under Surprises for
+    EP-M6, and the amendment is recorded in the Decision log.
 - [ ] EP-M6 `git wheresat` pure value types, gates, and assessment.
 - [ ] EP-M7 `git wheresat` read-only Git query port and the separate ref
       writer.
@@ -854,6 +875,42 @@ Stop and escalate rather than improvising when any of these is reached.
   rather than the two modules. The general lesson for later milestones: a
   green stage above is not evidence about a stage below it, so a lint failure
   must be cleared before the stages behind it can be counted at all.
+- Observation: a best common ancestor is always an ancestor of both commits it
+  was computed from, so the parent-history gate cannot refute a merge-base
+  candidate and EP-M5's stated acceptance assertion cannot hold.
+  Evidence: `git merge-base --all A B` lists best common ancestors, each of
+  which is reachable from both `A` and `B` by definition. Measured on the
+  rewritten fixture built in EP-M5: the single answer is the trunk commit both
+  branches came from, and `is_ancestor(parent_head, merge_base)` holds for it.
+  The commit the design describes the gate as refusing — the trunk the parent
+  forked from — is refused, if at all, by the replay range instead: with
+  `PARENT_HEAD` naming the head the child inherited, `git rev-list
+  C..child_tip` holds that head's own work while `git rev-list C..child_tip
+  --not PARENT_HEAD` does not, and only the second is the child's replay range.
+  The plan's sample report, in which gate 6 FAILS on a candidate that is not an
+  ancestor of `parent_head` while gate 7 is INDETERMINATE, is therefore
+  internally impossible.
+  Impact: EP-M6 must not build gate 6 as the rejection point for an advanced or
+  rewritten parent. Gate 6 confirms a candidate that lies on the parent's
+  history; the range check is what refuses a candidate taken from the trunk,
+  and it only refuses it while `PARENT_HEAD` names the head the child actually
+  inherited. The rewritten-shape test asserts both facts, so a gate built in
+  the wrong place fails a fixture test rather than passing quietly.
+- Observation: `git diff | git patch-id --stable` produces no patch identifier
+  at all under a configured external diff driver, which is the state of this
+  machine, so gate 7's patch clause is silently vacuous here.
+  Evidence: with the global `diff.external = difft`,
+  `git diff <boundary> <child_tip> | git patch-id --stable` prints nothing,
+  while `git diff --no-ext-diff <boundary> <child_tip> | git patch-id
+  --stable` prints `3440e6b0…`, the same identifier as the squash commit's own
+  patch; `git diff-tree -p` agrees with the flagged form. Measured on Git
+  2.52.0 in this worktree.
+  Impact: the patch-identity query in `wheresat_graph` must pass
+  `--no-ext-diff`, or read patches through `git diff-tree -p`, rather than
+  inheriting the user's configuration. An empty identifier is not a negative
+  answer either — comparing two empties reads as agreement, which would
+  establish a boundary nothing supported — so EP-M6 decides what an empty
+  patch identifier means rather than treating it as evidence.
 
 ## Decision log
 
@@ -1225,6 +1282,24 @@ Stop and escalate rather than improvising when any of these is reached.
   module boundaries moved. `_GIT_PLONK_PREFIX` was hoisted into
   `git_donkey/_constants.py` so that no module imports upward to get it.
   Date/Author: 2026-09-14, implementation agent.
+- Decision: restate EP-M5's acceptance evidence as the property that holds —
+  the rewritten fixture's merge base is the trunk commit both branches came
+  from, which is an ancestor of the parent's head and is refused by the replay
+  range rather than by the parent-history gate — and keep
+  `StackFixture.inherited_head` as a field of its own.
+  Rationale: the milestone as written required
+  `git merge-base --all parent_head child_tip` to "return a commit that is
+  **not** an ancestor of `parent_head`", which no merge base can satisfy, so
+  the acceptance as written could only be met by an assertion that is false
+  about Git. Amending the acceptance rather than the design keeps the
+  milestone's real object — a fixture whose boundary was lost — and hands the
+  design detail it uncovered (which gate does the refusing) to EP-M6, where the
+  gates are built; the fixture test states both facts, so the amendment cannot
+  hide a gate built in the wrong place. `inherited_head` is a sixth field
+  because the rewritten shape's content is exactly the divergence between the
+  head the child inherited and the head the parent now has, and a `parent_head`
+  that meant either one would make the shape inexpressible.
+  Date/Author: 2026-09-14, implementation agent, EP-M5.
 
 ## Outcomes & retrospective
 
@@ -2167,15 +2242,23 @@ discard the fleet's tombstones.
 **EP-M5 — the hard fixtures.**
 Outcome: `tests/git_repo_helpers.py` gains `squash_merged_stack()`,
 `advanced_parent_stack()`, and `rewritten_parent_stack()`, each returning a
-record naming `child_tip`, `parent_head`, `landed`, `target`, and the
-`expected_old_base` (or `None` where the boundary is genuinely
-unrecoverable). `tests/unit/test_git_repo_helpers.py` proves each builder
-produces the ancestry it claims.
+`StackFixture` naming `child_tip`, `parent_head`, `inherited_head`, `landed`,
+`target`, and the `expected_old_base` (or `None` where the boundary is
+genuinely unrecoverable). `tests/unit/test_git_repo_helpers.py` proves each
+builder produces the ancestry it claims, and the same module gains the
+`is_ancestor()` and `merge_bases()` readers the later suites ask their
+questions with.
 Requirements: de-risks REQ-refusal and REQ-fork-point.
 Acceptance evidence: for `rewritten_parent_stack()`,
-`git merge-base --all parent_head child_tip` returns a commit that is **not**
-an ancestor of `parent_head` — that is the fixture's whole point, and the
-assertion proving it is the milestone.
+`git merge-base --all parent_head child_tip` returns the trunk commit both
+branches came from — a commit that is an ancestor of `parent_head` and is
+therefore not refused by any ancestry question — the child still reaches the
+head it was cut from, and the range from that merge base holds the parent's own
+inherited work while the range excluding `inherited_head` does not. The
+assertions proving those facts are the milestone. (The acceptance as first
+written asked for a merge base that is **not** an ancestor of `parent_head`,
+which no merge base can be; the amendment is recorded in the Decision log and
+the design detail it exposes under Surprises.)
 Conformance check: builders live with the existing shared builders and
 configure a local commit identity, so tests never read the runner's global
 Git configuration.
@@ -3662,8 +3745,9 @@ automatically.
   `@pytest.mark.timeout(120)`, overriding the global `timeout = 30`.
 - `tests/git_repo_helpers.py` gains `advance()` and `commit_on()` in EP-M2,
   so a test can name a commit it has just made rather than re-reading `HEAD`,
-  and gains `squash_merged_stack()`, `advanced_parent_stack()`, and
-  `rewritten_parent_stack()` in EP-M5.
+  and gains `squash_merged_stack()`, `advanced_parent_stack()`,
+  `rewritten_parent_stack()`, and the `is_ancestor()` and `merge_bases()`
+  ancestry readers in EP-M5.
 - New cassettes use `allow_playback_repeats=True` where one cassette serves
   several parameterized cases.
 - New syrupy snapshots use a `syrupy.matchers.path_type` matcher redacting
