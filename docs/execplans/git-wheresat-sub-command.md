@@ -414,7 +414,7 @@ Stop and escalate rather than improvising when any of these is reached.
     Six deterministic gates were green first (logs
     `/tmp/{check-fmt,lint,typecheck,test,markdownlint,nixie}-git-donkey-git-wheresat-sub-command-1.out`),
     so the review was asked to judge design, not to catch what a gate catches.
-- [ ] EP-M4 `git plonk` tombstones, sweeps, prunes, and reports stack
+- [x] EP-M4 `git plonk` tombstones, sweeps, prunes, and reports stack
       records. Shippable on its own.
   - Evidence: `uv run pytest tests/integration/test_git_plonk_stack_bdd.py -q`
     reports `6 passed`, and the combined plonk and stack set — the
@@ -477,6 +477,19 @@ Stop and escalate rather than improvising when any of these is reached.
     `/tmp/ambrleaks-git-donkey-git-wheresat-sub-command.out` and
     `/tmp/skylos-git-donkey-git-wheresat-sub-command.out`), with the reason
     recorded under Surprises.
+  - Reviewed: `coderabbit review --agent --base origin/main` reports
+    `review_completed` with zero findings over 45 changed files (log
+    `/tmp/coderabbit-git-donkey-git-wheresat-sub-command-2.out`), taken at
+    `1b268c3`, the commit this entry describes. Six deterministic gates were
+    green first on that same commit (logs
+    `/tmp/{check-fmt,lint,typecheck,test,markdownlint,nixie}-git-donkey-git-wheresat-sub-command-4.out`):
+    `make lint` reports both Pylint passes at 10.00/10 with the `ambrleaks`
+    and `skylos` stages behind them clean, `make test` reports `554 passed`
+    with 5 snapshots, and `make markdownlint` lints 30 files with 0 errors.
+    No stage was re-run and no rate limit was met, so no `vsleep` retry was
+    needed. The review is taken against `origin/main` rather than `main`,
+    because the local `main` in a worktree can lag the remote by dozens of
+    commits and inflate the diff.
 - [ ] EP-M5 Build the hard fixtures: squash-merged, advanced, and rewritten
       parent stacks.
 - [ ] EP-M6 `git wheresat` pure value types, gates, and assessment.
