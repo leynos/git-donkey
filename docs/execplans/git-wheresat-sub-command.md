@@ -1979,6 +1979,18 @@ shared-record block. Pure. Named for the formats it owns, not for the
 evidence model, which lives in `wheresat_records`.
 
 ```python
+@dataclasses.dataclass(frozen=True, slots=True)
+class ReceiptAbsent:
+    """No stack-base ref and no branch configuration."""
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class ReceiptMalformed:
+    """A half-receipt, an unknown version, or an unparsable parent."""
+
+    reason: str
+
+
 type ReceiptResult = Receipt | ReceiptAbsent | ReceiptMalformed
 
 
@@ -1994,6 +2006,25 @@ def parse_receipt(ref_value: str | None, config: typ.Mapping[str, str]) -> Recei
 
 def parse_pull_request_identity(text: str) -> PullRequestIdentity | None:
     """Parse `owner/repository#123`, returning None when unrecognized."""
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class SharedRecordAbsent:
+    """The body carries no stack-parent or replay-boundary line."""
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class SharedRecordMalformed:
+    """A line matched but its value did not, with the reason why."""
+
+    reason: str
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class SharedRecordAmbiguous:
+    """Two or more disagreeing occurrences; never silently resolved."""
+
+    records: tuple[SharedRecord, ...]
 
 
 type SharedRecordResult = (
@@ -2082,6 +2113,25 @@ tuple, so a unit test can assert it against the ADR rather than against the
 reading order of a long function.
 
 ```python
+@dataclasses.dataclass(frozen=True, slots=True)
+class CollectionContext:
+    """Read-only inputs every evidence source shares."""
+
+    request: BoundaryRequest
+    parent: ParentPullRequest | None
+    graph: WheresatGraph
+    github: WheresatGitHub | None
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class CollectionResult:
+    """What one source produced, or why it produced nothing."""
+
+    candidates: tuple[Candidate, ...]
+    indeterminate_reasons: tuple[str, ...] = ()
+    truncated: bool = False
+
+
 class EvidenceSource(typ.Protocol):
     """One rung of the evidence ladder."""
 
@@ -2167,9 +2217,22 @@ class WheresatRefWriter(typ.Protocol):
         """Write the stack-base ref and branch config, honouring INV-7."""
 ```
 
-`EvidenceRef` is a newtype constructed only by `wheresat_receipts.validate_op_id`
-and a fixed set of namespace templates, so a raw string can never reach a
-refspec destination.
+`EvidenceRef` is a `typing.NewType` over `str` — a plain assignment, not a
+`type` alias statement, because `NewType` must be assigned — constructed only
+by the two factory functions below, so a raw string can never reach a refspec
+destination:
+
+```python
+EvidenceRef = typ.NewType("EvidenceRef", str)
+
+
+def per_run_ref(op_id: str, name: str) -> EvidenceRef:
+    """Return `refs/wheresat/op/<validated op-id>/<name>`."""
+
+
+def parent_head_ref(identity: PullRequestIdentity) -> EvidenceRef:
+    """Return the durable cache ref for a pull request head."""
+```
 
 ### `git_donkey/wheresat_github.py`
 
@@ -2200,6 +2263,16 @@ class WheresatGitHub(typ.Protocol):
         self, repository: str, commits: typ.Sequence[str]
     ) -> AssociationPage:
         """Return pull requests associated with up to `ASSOCIATION_SEARCH_LIMIT` commits."""
+```
+
+```python
+@dataclasses.dataclass(frozen=True, slots=True)
+class AssociationPage:
+    """Pull requests associated with a bounded set of commits."""
+
+    associations: typ.Mapping[str, tuple[PullRequestIdentity, ...]]
+    commits_examined: int
+    truncated: bool
 ```
 
 `AssociationPage` carries `truncated: bool` and `commits_examined: int`, so a
@@ -2285,6 +2358,27 @@ def run_git_wheresat(
     environment error, and 3 when the repository or the forge could not
     answer.
     """
+```
+
+```python
+@dataclasses.dataclass(frozen=True, slots=True)
+class WheresatOptions:
+    """Every command-line input, before resolution to object IDs."""
+
+    branch: str | None = None
+    onto: str | None = None
+    parent: str | None = None
+    remote: str | None = None
+    limit: int = 20
+    heuristic_window: int = 200
+    no_fetch: bool = False
+    offline: bool = False
+    deep: bool = False
+    explain: bool = False
+    json: bool = False
+    op_id: str | None = None
+    record: bool = False
+    expected_old: str | None = None
 ```
 
 `WheresatOptions` is a frozen dataclass flattened onto the command line with
