@@ -127,7 +127,7 @@ def _birth_record(
 
     Raises
     ------
-    stack_store.StackRecordError
+    stack_store.StackRecordConflictError
         Propagated from the store when the branch already has a record or the
         anchor ref could not be created. The caller reports it as a run that
         created the branch but could not record it, because by this point the
@@ -146,7 +146,11 @@ def _birth_record(
                     evidence=stack_records.EVIDENCE_BIRTH,
                 )
             )
-        except stack_store.StackRecordError:
+        # The conflict is named rather than the base error it derives from,
+        # because a conflict is the only failure ``create`` reports through the
+        # kind below: an existing record and an anchor write that lost the race
+        # are the same finding, and anything else reaching here is not one.
+        except stack_store.StackRecordConflictError:
             _record(
                 Observation(
                     operation="stack_record_write",

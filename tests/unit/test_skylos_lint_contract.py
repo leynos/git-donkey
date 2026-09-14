@@ -85,6 +85,9 @@ _SKYLOS_LINT_TOKENS: typ.Final = (
 _SKYLOS_WHITELIST_TOKENS: typ.Final = (
     "flock",
     "$(SKYLOS_WHITELIST_LOCK)",
+    # flock execs its command without a shell, so the uv environment must be
+    # applied by ``env`` rather than by leading assignments.
+    "env",
     "$(SKYLOS_CLI)",
     "whitelist",
     "$${SKYLOS_SYMBOL}",
@@ -105,7 +108,11 @@ _FULL_SUITE_WORKFLOW_JOBS: typ.Final = frozenset((
     (".github/workflows/ci.yml", "lint-test"),
 ))
 _EXPECTED_SKYLOS_WHITELIST_NAMES: typ.Final = frozenset[str]()
-_EXPECTED_SKYLOS_DOCUMENTED_WHITELIST_NAMES: typ.Final = frozenset[str]()
+# A false positive no typed entry point can model: the only callers are the
+# ``except GitCommandError`` handlers in ``stack_store._write_anchor`` and
+# ``stack_store._write_tombstone``, and Skylos does not credit a call made from
+# a handler body as a use.
+_EXPECTED_SKYLOS_DOCUMENTED_WHITELIST_NAMES: typ.Final = frozenset({"_git_failure"})
 # Every symbol the workflow or an embedder reaches through the recorder that
 # ``git_donkey.observability`` installs, which no static call graph follows.
 _EXPECTED_SKYLOS_ENTRYPOINT_NAMES: typ.Final = frozenset({

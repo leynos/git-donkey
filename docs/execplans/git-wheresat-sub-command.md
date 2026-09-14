@@ -402,6 +402,10 @@ Stop and escalate rather than improvising when any of these is reached.
     `All checks passed!`. The record is written from inside
     `_add_worktree_for_new_branch`, from the same `start_point` the worktree
     is created at, so no second observation of the base can disagree with it.
+  - Gate note: the dead-code stage of `make lint` flagged `_git_failure` and
+    `StackRecordConflictError` as unused. Both are live; the two dispositions
+    and the four probes behind them are recorded under Surprises. The
+    `skylos-allow` helper needed repairing before it could record the second.
 - [ ] EP-M4 `git plonk` tombstones, sweeps, prunes, and reports stack
       records. Shippable on its own.
 - [ ] EP-M5 Build the hard fixtures: squash-merged, advanced, and rewritten
@@ -678,6 +682,46 @@ Stop and escalate rather than improvising when any of these is reached.
   `stack_store._config_entries` reads configuration. A test that needs a
   non-raising Git query should reach for that form directly rather than for
   `execute`, which only ever typechecks in its raising form.
+- Observation: Skylos 4.33.2 does not credit a call made from inside an
+  `except` handler, and does not credit `raise X(...)` as a use of `X`.
+  Evidence: measured with four probes against a scratch copy of the package, so
+  no tracked file was edited to learn this. Probe 1 rebound
+  `raise StackRecordConflictError(msg)` to a local and raised that: the
+  `SKY-U004 unused class` finding survived. Probe 2 added one plain call to
+  `_git_failure` in the body of `create`: the `SKY-U001 unused function`
+  finding disappeared, which is what proves an ordinary call in a traversed
+  method body does count. Probe 3 bound a fresh `StackRecordConflictError(...)`
+  to a local and read an attribute of it in a plain statement: the class
+  finding disappeared, so the value has to be consumed by something other than
+  the `raise` that carries it. Probe 4 named the `StackRecordConflictError`
+  subclass rather than `StackRecordError` in `donkey_worktrees._birth_record`'s
+  handler: the class finding disappeared, and the class is the only one of the
+  two for which a real fix existed.
+  Impact: the dead-code gate flagged two symbols that are live, and the two
+  dispositions differ. `_birth_record` now catches the subclass its own
+  `Raises` section and its `stack_record_conflict` observation kind already
+  described — the only failure `create` reports, since an existing record and
+  an anchor write that loses the race are the same finding. `_git_failure` has
+  no such fix: it is called from two handler bodies and from nowhere else, and
+  inlining it would duplicate the stderr formatter. It therefore carries a
+  documented exception, pinned in `tests/unit/test_skylos_lint_contract.py`
+  alongside the recorder entry points. A typed entry point would have modelled
+  it wrongly: an entry point asserts the symbol is a root, where the truth is
+  that its callers are explicit and the tool does not traverse their bodies.
+- Observation: `make skylos-allow` could not run at all, because `flock` execs
+  its command directly and `UV_ENV` holds two assignments.
+  Evidence: the target invoked
+  `flock .skylos-whitelist.lock UV_CACHE_DIR=.uv-cache UV_TOOL_DIR=.uv-tools uv
+  tool run ...`, and flock reported `failed to execute UV_CACHE_DIR=.uv-cache:
+  No such file or directory`, exit 69. The recipe works only when `SKYLOS_CLI`
+  is a bare path, which is exactly the shape the contract test stubs it into,
+  so no gate ever exercised the real command.
+  Impact: the documented remedy for a verified false positive was itself
+  broken, and it broke on the first attempt to use it. The recipe now passes
+  the CLI through `env`, the same idiom the `spelling` recipe already uses for
+  `xargs -0 -r env $(UV_ENV) uv tool run`, and the contract test pins the added
+  token. The reason string is the other half of the remedy: it names both
+  callers, so a later reader can check the claim rather than trust it.
 
 ## Decision log
 

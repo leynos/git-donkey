@@ -408,6 +408,7 @@ strict = true
 names = []
 
 [tool.skylos.whitelist.documented]
+"_git_failure" = "Called only from the except GitCommandError handlers in _write_anchor and _write_tombstone; Skylos does not credit a call in a handler body"
 
 [build-system]
 requires = ["hatchling", "hatch-build-scripts>=1.0.0,<2", "docutils>=0.22.4,<0.23"]
