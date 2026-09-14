@@ -416,6 +416,67 @@ Stop and escalate rather than improvising when any of these is reached.
     so the review was asked to judge design, not to catch what a gate catches.
 - [ ] EP-M4 `git plonk` tombstones, sweeps, prunes, and reports stack
       records. Shippable on its own.
+  - Evidence: `uv run pytest tests/integration/test_git_plonk_stack_bdd.py -q`
+    reports `6 passed`, and the combined plonk and stack set — the
+    `tests/integration/` modules covering `git plonk` and the record
+    lifecycle together with `tests/unit/test_plonk*.py`,
+    `test_cli_plonk.py`, `test_stack_store.py`, and `test_stack_records.py` —
+    reports `120 passed, 4 snapshots passed in 70.47s` (log
+    `/tmp/test-git-donkey-git-wheresat-sub-command.out`). Hard mode entombs
+    through `entomb` before `adapter.delete_branch`, a failed entombment keeps
+    the branch and exits 1, and the sweep and prune run once per completed run
+    behind the same `dry_run` guard as every other write. The behavioural
+    scenarios assert artefacts, not prose: the tombstone names the tip the
+    branch held, the anchor and configuration are gone with the record, a dry
+    run leaves both untouched, and the two sweep outcomes land in different
+    sections.
+  - Evidence: the reader half of `GitStackRecordReader` was unreachable on a
+    real store — `_orphan_tip`, `_configured_expire`, and `_expiry_cutoff`
+    were defined on the writer — so three of the six scenarios failed with
+    `AttributeError`. The helpers moved to the reader and
+    `test_the_reader_answers_every_read_the_store_declares` pins the rule;
+    `tests/unit/test_stack_store.py tests/unit/test_stack_records.py` reports
+    `123 passed, 1 snapshot passed`. Both the bug and the blind spot are
+    recorded under Surprises, with the decision that follows from them.
+  - Evidence: `docs/users-guide.md` gained the tombstone, sweep, retention
+    window, and both honest limits — a tombstone preserves the tip and not the
+    reflog, so fork-point recovery is still lost, and a branch deleted through
+    plain Git leaves an anchor with no tip, so the sweep clears it and reports
+    it under a section of its own. `docs/plonk-cleanup-policy.md` gained the
+    record lifecycle, the two lifecycle nodes in the decision flow, the
+    reporting contract for the split, and the verification contract that names
+    the tests above. The sentence in `docs/users-guide.md` that said `git plonk`
+    "will turn it into a tombstone in later milestones" now says that it does,
+    because this milestone is that one.
+  - Evidence: `make lint` reaches its last three stages for the first time on
+    this branch. Reaching them needed two module splits, both along seams the
+    tests already drew, because Pylint's 800-line module limit is deliberately
+    active: `git_donkey/plonk.py` (997 lines) became the command entry point
+    (284) plus `git_donkey/plonk_cleanup.py` (612, the completed-cleanup
+    workflow the record lifecycle lives in) and
+    `git_donkey/plonk_worktree_adapter.py` (159, the Git side of a removal);
+    `tests/unit/test_stack_store.py` (890) became the writer's suite (489),
+    the reader's suite `tests/unit/test_stack_store_reads.py` (321) and the
+    builders both share in `tests/unit/stack_store_helpers.py` (179).
+    `_GIT_PLONK_PREFIX` moved to `git_donkey/_constants.py` so that no module
+    imports upward for it, and `plonk.run_git_plonk` still calls
+    `_run_completed_cleanup` by module global, so the existing patch points
+    hold. The reader suite is the first test module here that is not a test
+    module; it keeps its names public and stays out of pytest's collection.
+  - Evidence: the df12 pass then reported four findings in two test modules,
+    all of them predating this milestone and none visible while the stage
+    above it was failing: two `trivial-attribute-wrapper` methods on the
+    `RecordingStackStore` double, whose bodies now return the tuple their
+    protocol declares rather than the field — the two fields are annotated as
+    the iterables they are, so `prune` had to be changed with them, which
+    `make typecheck` caught — and two assertions in the reader suite (`expiry`
+    defaults, `expiry` reads the configured window) that now carry failure
+    messages. The two stages behind the df12 pass were hand-run
+    because `make` stops at the first failing stage: `ambrleaks tests` and
+    `skylos` both report nothing (logs
+    `/tmp/ambrleaks-git-donkey-git-wheresat-sub-command.out` and
+    `/tmp/skylos-git-donkey-git-wheresat-sub-command.out`), with the reason
+    recorded under Surprises.
 - [ ] EP-M5 Build the hard fixtures: squash-merged, advanced, and rewritten
       parent stacks.
 - [ ] EP-M6 `git wheresat` pure value types, gates, and assessment.
@@ -730,6 +791,56 @@ Stop and escalate rather than improvising when any of these is reached.
   `xargs -0 -r env $(UV_ENV) uv tool run`, and the contract test pins the added
   token. The reason string is the other half of the remedy: it names both
   callers, so a later reader can check the claim rather than trust it.
+- Observation: a tombstone can be aged from the environment, so the retention
+  window is testable without waiting for it.
+  Evidence: measured twice, once in a shell and once through GitPython. A ref
+  written with `git update-ref --create-reflog` takes its reflog entry's
+  timestamp from `GIT_COMMITTER_DATE`, and GitPython 3.1.46 passes an `env`
+  mapping through to the subprocess, so
+  `repo.git.update_ref("--create-reflog", ref, tip,
+  env={"GIT_COMMITTER_DATE": "2020-01-01T00:00:00 +0000"})` produces a
+  tombstone whose reflog reads `stack-tombstones/probe@{1577836800}`, which
+  `git reflog show --date=unix` confirms. The alternative was a real sleep or
+  a hand-written reflog file, both of which test the fixture rather than the
+  code.
+  Impact: the expired-tombstone scenario builds a tombstone older than any
+  window the suite configures in milliseconds, and the assertion cannot drift
+  with the clock because the instant is a named constant in the fixture
+  (`_TOMBSTONE_WRITTEN_ON`). This is the one place a test reaches into Git's
+  reflog plumbing on purpose, and the Given step asserts the result through
+  the production `expired()` before the scenario runs, so a fixture that
+  stopped working would fail loudly rather than pass vacuously.
+- Observation: the store's reads were half-implemented on the writer, and no
+  unit test could see it.
+  Evidence: `rescuable`, `expired`, and `expiry` are declared on
+  `GitStackRecordReader`, but the private helpers they call (`_orphan_tip`,
+  `_configured_expire`, `_expiry_cutoff`) were defined inside
+  `GitStackRecordWriter`, so a reader raised `AttributeError` the first time a
+  command asked it to sweep or prune. Every EP-M2 store test builds
+  `_writer(repo)`, and the doubles answer whatever they declare, so 113 unit
+  tests passed over the gap; the EP-M4 behavioural suite failed three of its
+  six scenarios on the first run.
+  Impact: the three helpers moved to the reader, where their callers are, and
+  `test_the_reader_answers_every_read_the_store_declares` now drives every
+  read the protocol declares from a reader built on a real repository. The
+  general lesson is stated as a decision below: a command that only reads must
+  be served by a reader that can answer every read on its own.
+- Observation: `make lint` had never reached its last three stages on this
+  branch, because the module-length failure that aborted it sat in stage 4.
+  Evidence: the chain is `ruff check` → `interrogate` → `pyscn` → `pylint`
+  (built-in) → `pylint --rcfile=.pylintrc-df12.toml` → `ambrleaks` →
+  `skylos`, and `make` stops at the first non-zero exit. The built-in pass
+  reported the two oversized modules and exited 24, so the df12 pass below it
+  never ran; once the split cleared that, the df12 pass reported four further
+  findings in two test modules — two `trivial-attribute-wrapper` methods on a
+  test double, and two assertions without failure messages. All four predate
+  this milestone's changes; none was visible until the stage above them
+  passed.
+  Impact: the two trailing stages were hand-run to prove they are clean
+  (`ambrleaks tests`, `skylos`), and the fix set was the four df12 findings
+  rather than the two modules. The general lesson for later milestones: a
+  green stage above is not evidence about a stage below it, so a lint failure
+  must be cleared before the stages behind it can be counted at all.
 
 ## Decision log
 
@@ -1000,6 +1111,106 @@ Stop and escalate rather than improvising when any of these is reached.
   `max_examples` and `stateful_step_count` because one step spawns a dozen Git
   subprocesses, which keeps the nightly profile from turning a bounded
   integration test into an hour-long one.
+  Date/Author: 2026-09-14, implementation agent.
+
+- Decision: `git plonk` calls `entomb` from `_clean_completed_candidate`, not
+  from `_GitWorktreeAdapter.delete_branch` as the interface sketch placed it.
+  Rationale: `delete_branch` reports one `bool`, so the three outcomes the
+  milestone needs — tombstoned and deleted, tombstoned and refused, and not
+  tombstoned so deliberately not deleted — would collapse into two, and
+  `_PlonkResult.entombed_branches` would have nothing to read. Keeping the
+  call in the orchestration also lets a unit double pin the ordering (`entomb`
+  before `git branch -D`) and lets a store double fail on demand; behind the
+  adapter's `bool` neither is observable without a real repository. The
+  adapter's own behaviour is unchanged.
+  Date/Author: 2026-09-14, implementation agent.
+- Decision: when the tombstone is written and the deletion is then refused,
+  the tombstone stands.
+  Rationale: INV-10 asks for exactly one of no record, a live record, or a
+  tombstone, and a live branch beside a tombstone is the tombstone state, not
+  a violation. Retiring it would be a second write that can itself fail, and
+  it would discard the only evidence of the tip — the fact the tombstone
+  exists to carry. The run names the entombed branch and the failed deletion
+  in separate sections, so the pair is reported rather than merged. The
+  documented cost is that the tombstone then names the tip the branch had
+  when plonk tried to delete it, which is also the tip it still has.
+  Date/Author: 2026-09-14, implementation agent.
+- Decision: the reader that reads `stack.tombstoneExpire` validates it, and
+  `prune` keeps its permissive contract for an explicit instant.
+  Rationale: `tests/unit/test_stack_store.py` pins `prune(<a future
+  instant>)` pruning every tombstone written before it, because an explicit
+  instant is a statement in its own right — stated as a number, never as a
+  phrase. The EP-M4 hazard is the _configured_ value, whose typo Git's date
+  grammar reads as "now". So `GitStackRecordReader.expiry()` reads the key
+  (default `90.days.ago`), probes `now` first and rejects `cutoff >= now`,
+  and `git plonk` asks for it before it touches anything: a typo exits 2 with
+  the offending value named instead of emptying the fleet's tombstones.
+  Date/Author: 2026-09-14, implementation agent.
+- Decision: the sweep and the prune run once per completed run, before the
+  first worktree is removed, and never in soft mode.
+  Rationale: soft mode's contract is that it leaves Git state untouched, so
+  neither belongs there. They precede the candidate loop because a record
+  repair is repository-wide rather than candidate-scoped: failing before any
+  worktree moves leaves a repository that is merely untidied, where failing
+  afterwards would leave one that is half-cleaned and unreported. The order
+  cannot change what they find, because a branch this command deletes is
+  entombed first and so never becomes an orphan, and the one branch it leaves
+  behind is one Git refused to delete, which still exists.
+  Date/Author: 2026-09-14, implementation agent.
+- Decision: a dry run classifies orphans and expired tombstones with reads
+  (`rescuable`, `expired`) rather than by simulating the writes.
+  Rationale: a preview that listed every orphan as rescued would claim a
+  rescue that would not happen, which is the same inaccuracy the real summary
+  is required to avoid; and the writer's own `sweep` and `prune` are built on
+  those same reads, so the report and the write cannot drift apart.
+  Date/Author: 2026-09-14, implementation agent.
+- Decision: every read the store declares is answered by the reader, on the
+  reader alone.
+  Rationale: the commands ask for a `StackRecordReader` and only a write needs
+  the writer — `git wheresat` reads records and writes none of them — so a read
+  whose implementation lives on the writer is a read two of the three commands
+  cannot make. The failure mode is worse than an omission: a protocol that
+  declares a read a reader cannot perform type-checks, and a double answers it,
+  so only a real repository exercises it. The reviewer's read half moved to
+  `GitStackRecordReader` (Surprises records the measurement), and the pin drives
+  every declared read from a reader. A writer that needs the same answer
+  composes the reader rather than reimplementing the rule.
+  Date/Author: 2026-09-14, implementation agent.
+- Decision: the behavioural feature grows a sixth scenario, and the two routes
+  by which a branch leaves Git are exercised apart rather than together.
+  Rationale: the milestone's fifth scenario as first written — "a stack record
+  whose branch was deleted outside git plonk" — reads as one case but names two
+  with different outcomes: deleting the branch ref alone leaves a record the
+  sweep can turn into a tombstone, while plain `git branch -D` destroys the
+  configuration and leaves the sweep nothing to preserve. Only the first is
+  reachable by a user's `git branch -D`; the second is the common case, and the
+  two must be reported in different sections. One scenario covering both would
+  have had to assert whichever route its fixture happened to take and would
+  have left the reporting split untested, so the feature keeps the rescue
+  scenario (fixtured through `git update-ref -d refs/heads/<name>`, the only
+  deletion that leaves a record behind) and adds "An orphan Git deleted alone is
+  cleared without a tombstone" for the plain case. Each Given step asserts the
+  fixture's premise through the production reader — `rescuable(...)` returns the
+  orphan for one and `()` for the other — so neither scenario can pass by having
+  built the other's state.
+  Date/Author: 2026-09-14, implementation agent.
+- Decision: split a module that breaches Pylint's 800-line limit along the seam
+  its tests already draw, rather than relaxing the limit or adding an
+  exception.
+  Rationale: the second-tier `pylint --rcfile=.pylintrc-df12.toml` pass and
+  the built-in `too-many-lines` check are deliberately active, and the two
+  oversized modules each had a seam waiting for them. `git_donkey/plonk.py`
+  split into the command entry point, `git_donkey/plonk_cleanup.py` (the
+  completed-cleanup workflow) and `git_donkey/plonk_worktree_adapter.py` (the
+  Git side of a removal) — the two units the test modules
+  `tests/unit/test_plonk_cleanup.py` and
+  `tests/unit/test_plonk_worktree_adapter.py` were already written against.
+  `tests/unit/test_stack_store.py` split into a writer suite, a reader suite,
+  and the shared builder module `tests/unit/stack_store_helpers.py`, which is
+  the same read/write seam the production store itself is built on. Both
+  splits keep the public behaviour and every existing assertion; only the
+  module boundaries moved. `_GIT_PLONK_PREFIX` was hoisted into
+  `git_donkey/_constants.py` so that no module imports upward to get it.
   Date/Author: 2026-09-14, implementation agent.
 
 ## Outcomes & retrospective
@@ -2698,6 +2909,25 @@ class StackRecordReader(typ.Protocol):
     def orphans(self) -> tuple[str, ...]:
         """Return branches with a record and no branch (INV-9 violations)."""
 
+    def rescuable(self, orphans: typ.Sequence[str]) -> tuple[str, ...]:
+        """Return the orphans whose recorded tip a sweep would preserve.
+
+        A read, so `git plonk`'s dry run reports the same split its real run
+        reports, and `sweep` is built on the same classification.
+        """
+
+    def expired(self, expire: str) -> tuple[str, ...]:
+        """Return the tombstones older than `expire`, without deleting them."""
+
+    def expiry(self) -> str:
+        """Return the configured retention window, validated as a past instant.
+
+        Reads `stack.tombstoneExpire`, defaulting to `DEFAULT_TOMBSTONE_EXPIRE`.
+        Raises `ValueError` for an empty value, one Git reports no cutoff for,
+        or one that names now or the future — the cases in which Git's date
+        grammar would turn a typo into a licence to prune everything.
+        """
+
 
 class StackRecordWriter(StackRecordReader, typ.Protocol):
     """Write access. Constructed only by a caller that will write."""
@@ -3442,17 +3672,21 @@ automatically.
   `git worktree add --no-track -b` writes no `branch.<name>` section at all.
 - `git_donkey/donkey.py`: pass the trunk already resolved for base selection
   into the record decision, so the trunk is not discovered twice.
-- `git_donkey/plonk.py`: in `_GitWorktreeAdapter.delete_branch` (line 160),
-  call `entomb` before `git branch -D`; the deletion is forced and always
-  succeeds, so there is no refusal to fall back on. In the run's outer
-  sequence, call `sweep` and `prune` once per invocation, guarded by the
-  existing `dry_run` flag in the same way every other mutation is.
+- `git_donkey/plonk.py`: in `_clean_completed_candidate`, call `entomb` before
+  `adapter.delete_branch`, and do not delete the branch when `entomb` raises;
+  `_GitWorktreeAdapter.delete_branch` itself is unchanged (see Decision log
+  for why the call sits in the orchestration rather than in the adapter). In
+  `_run_completed_cleanup`, resolve and validate the configured expiry before
+  the candidate loop, then sweep and prune, all guarded by the existing
+  `dry_run` flag in the same way every other mutation is.
 - `git_donkey/plonk_records.py`: extend `_PlonkResult` with
-  `entombed_branches`, `swept_records`, and `pruned_tombstones`, each a
-  `tuple[str, ...]`, following the existing `removed_branches` shape.
-- `git_donkey/plonk_summary.py`: render the three new tuples, using the
-  existing "Planned" versus past-tense convention driven by
-  `_PlonkResult.is_dry_run`.
+  `entombed_branches`, `failed_entombments`, `swept_records`,
+  `unrescuable_records`, and `pruned_tombstones`, each a `tuple[str, ...]`
+  following the existing `removed_branches` shape, plus `tombstone_expire:
+  str | None` so the summary can name the window it applied.
+- `git_donkey/plonk_summary.py`: render the new tuples, using the existing
+  "Planned" versus past-tense convention driven by `_PlonkResult.is_dry_run`,
+  and splitting the swept records by whether a tip survived them.
 - `pyproject.toml`: `git-wheresat = "git_donkey.cli:git_wheresat"` in
   `[project.scripts]`, one `rst2man` entry in the `build-scripts.scripts`
   array, and one `docs/man/git-wheresat.1` shared-data mapping.
