@@ -233,11 +233,12 @@ for a branch that never had a parent.
 Writing the record changes nothing about tracking — the new branch is still
 created with `--no-track` and inherits nothing. The record is local to one
 clone, because neither the configuration keys nor the anchor ref are pushed or
-fetched, and nothing reads it yet: `git wheresat` will treat it as boundary
-evidence and `git plonk` will turn it into a tombstone in later milestones.
-Its value today is that the boundary commit observed at birth is preserved
-rather than reconstructed by forensics. The
-[shared stack record](stack-records.md) design documents the full contract.
+fetched, and `git plonk` already turns it into a tombstone when it deletes the
+branch (see [`git plonk`](#git-plonk)); `git wheresat` will treat it as
+boundary evidence in a later milestone. Its value today is that the boundary
+commit observed at birth is preserved rather than reconstructed by forensics.
+The [shared stack record](stack-records.md) design documents the full
+contract.
 
 ## git track
 
@@ -463,6 +464,49 @@ Skipped worktrees:
 
 A run in which every candidate is skipped reports the skips rather than
 claiming that no matching worktrees were found.
+
+Hard mode also owns the end of a stack record's life. A branch that `git donkey`
+created from another branch carries a
+[stack record](#stack-records-at-branch-birth), and deleting it would take the
+one statement about where it began with it. So before `git plonk --hard`
+deletes such a branch, it writes the branch's tip to the tombstone ref
+`refs/stack-tombstones/<branch>` and then clears the live record and its
+anchor. A child branch that outlived its parent can still reach the commit the
+parent stood at when the child was cut, which is the one commit the parent's
+own history can no longer supply.
+
+Two honest limits come with that. A tombstone preserves the tip, not the
+reflog, so it restores the parent's identity but not fork-point recovery:
+`git merge-base --fork-point` reads a reflog, and the reflog went with the
+branch. And a branch deleted through Git alone, by `git branch -D` rather than
+by `git plonk --hard`, takes its whole configuration section with it, leaving
+an anchor ref that names a base but no tip.
+
+That last case belongs to the sweep. Before a completed run touches a
+worktree, it clears the records of branches that no longer exist. A record
+that still parses becomes a tombstone naming the tip it recorded, and an
+orphan whose configuration went with the branch is cleared without inventing
+anything in its place. The summary keeps the two apart, because reporting them
+alike would claim a rescue that did not happen:
+
+```text
+Entombed branches:
+- issue-123-fix
+Swept records (tip preserved):
+- issue-100-parent
+Swept records (no tip to preserve):
+- issue-101-plain-deleted
+Pruned tombstones (older than 90.days.ago):
+- issue-050-stale
+```
+
+Tombstones do not accumulate. Every completed run prunes the tombstones
+written before `stack.tombstoneExpire`, a Git date expression defaulting to
+`90.days.ago`, which is the same horizon as Git's own `gc.reflogExpire`. A
+value Git cannot parse stops the run before anything is touched, because Git
+reads an unparsable date as *now* and would prune every tombstone in the
+repository. The [shared stack record](stack-records.md) design documents the
+full lifecycle.
 
 ## git donkey-template
 
