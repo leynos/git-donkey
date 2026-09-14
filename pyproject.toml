@@ -20,6 +20,7 @@ git-donkey = "git_donkey.cli:git_donkey"
 git-track = "git_donkey.cli:git_track"
 git-fafo = "git_donkey.cli:git_fafo"
 git-plonk = "git_donkey.cli:git_plonk"
+git-wheresat = "git_donkey.cli:git_wheresat"
 git-donkey-template = "git_donkey.cli:git_donkey_template"
 git-incoming = "git_donkey.cli:git_incoming"
 git-in = "git_donkey.cli:git_in"
@@ -409,6 +410,10 @@ names = []
 
 [tool.skylos.whitelist.documented]
 "_git_failure" = "Called only from the except GitCommandError handlers in _write_anchor and _write_tombstone; Skylos does not credit a call in a handler body"
+"_per_run_namespace" = "Called only from GitWheresatRefWriter.release, which no console script reaches until a run fetches evidence; the fetch path lands with the forge evidence of EP-M10"
+"_slug_parts" = "Called only from parent_head_ref, which no console script reaches yet for the same reason"
+"parent_head_ref" = "Names the durable cache ref a fetched parent head is kept at; the fetch that writes one lands with the forge evidence of EP-M10"
+"per_run_ref" = "Names a fetch destination; reached from GitWheresatRefWriter.fetch_evidence and from the durability suite's fetched-boundary case, but no console script fetches yet, because the run transports nothing until the forge evidence of EP-M10 lands"
 
 [build-system]
 requires = ["hatchling", "hatch-build-scripts>=1.0.0,<2", "docutils>=0.22.4,<0.23"]
@@ -428,6 +433,7 @@ commands = [
     "rst2man --config=docutils.conf --output=git-track.1 git-track.rst",
     "rst2man --config=docutils.conf --output=git-fafo.1 git-fafo.rst",
     "rst2man --config=docutils.conf --output=git-plonk.1 git-plonk.rst",
+    "rst2man --config=docutils.conf --output=git-wheresat.1 git-wheresat.rst",
     "rst2man --config=docutils.conf --output=git-donkey-template.1 git-donkey-template.rst",
     "rst2man --config=docutils.conf --output=git-incoming.1 git-incoming.rst",
     "rst2man --config=docutils.conf --output=git-in.1 git-in.rst",
@@ -440,6 +446,7 @@ commands = [
 "docs/man/git-track.1" = "share/man/man1/git-track.1"
 "docs/man/git-fafo.1" = "share/man/man1/git-fafo.1"
 "docs/man/git-plonk.1" = "share/man/man1/git-plonk.1"
+"docs/man/git-wheresat.1" = "share/man/man1/git-wheresat.1"
 "docs/man/git-donkey-template.1" = "share/man/man1/git-donkey-template.1"
 "docs/man/git-incoming.1" = "share/man/man1/git-incoming.1"
 "docs/man/git-in.1" = "share/man/man1/git-in.1"

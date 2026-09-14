@@ -17,6 +17,9 @@ these as `git <subcommand>` when `git-<subcommand>` is available on the `PATH`.
 - `git plonk` (`git-plonk`) removes completed, clean worktrees or generated
   directories from worktrees created by `git donkey`, and reports any completed
   worktree it leaves in place.
+- `git wheresat` (`git-wheresat`) prints the boundary a stacked branch should
+  be rebased onto, so work already landed in the trunk is dropped, and changes
+  nothing in the repository.
 - `git donkey-template` (`git-donkey-template`) displays and creates the
   template directory for the current repository.
 
@@ -32,8 +35,8 @@ uv tool install git-donkey
 For an unreleased source checkout, run `uv tool install .` from the repository
 root instead. The wheel includes a section-one manual for every console script:
 `git-donkey(1)`, `git-track(1)`, `git-fafo(1)`, `git-plonk(1)`,
-`git-donkey-template(1)`, `git-incoming(1)`, `git-in(1)`, `git-outgoing(1)`, and
-`git-out(1)`.
+`git-wheresat(1)`, `git-donkey-template(1)`, `git-incoming(1)`, `git-in(1)`,
+`git-outgoing(1)`, and `git-out(1)`.
 
 ### Installation layout
 
@@ -53,6 +56,7 @@ result is:
 <uv-tool-dir>/git-donkey/share/man/man1/git-track.1
 <uv-tool-dir>/git-donkey/share/man/man1/git-fafo.1
 <uv-tool-dir>/git-donkey/share/man/man1/git-plonk.1
+<uv-tool-dir>/git-donkey/share/man/man1/git-wheresat.1
 <uv-tool-dir>/git-donkey/share/man/man1/git-donkey-template.1
 <uv-tool-dir>/git-donkey/share/man/man1/git-incoming.1
 <uv-tool-dir>/git-donkey/share/man/man1/git-in.1
@@ -234,9 +238,9 @@ Writing the record changes nothing about tracking — the new branch is still
 created with `--no-track` and inherits nothing. The record is local to one
 clone, because neither the configuration keys nor the anchor ref are pushed or
 fetched, and `git plonk` already turns it into a tombstone when it deletes the
-branch (see [`git plonk`](#git-plonk)); `git wheresat` will treat it as
-boundary evidence in a later milestone. Its value today is that the boundary
-commit observed at birth is preserved rather than reconstructed by forensics.
+branch (see [`git plonk`](#git-plonk)); `git wheresat` treats it as boundary
+evidence. Its value today is that the boundary commit observed at birth is
+preserved rather than reconstructed by forensics.
 The [shared stack record](stack-records.md) design documents the full
 contract.
 
@@ -507,6 +511,89 @@ value Git cannot parse stops the run before anything is touched, because Git
 reads an unparsable date as *now* and would prune every tombstone in the
 repository. The [shared stack record](stack-records.md) design documents the
 full lifecycle.
+
+## git wheresat
+
+`git wheresat` answers "where should this branch be rebased onto?" for a
+stacked branch. It locates the exclusive replay boundary — the commit before
+the branch's own work — and prints one command:
+`git rebase --onto <target> <old-base> <branch>`. Work already landed in the
+trunk (a squash merge, for example) is dropped by that replay.
+
+```shell
+# Report the replay boundary of the branch checked out here
+
+git wheresat
+
+# Report the boundary of another branch by name
+
+git wheresat --branch issue-123-fix
+```
+
+The command is read-only: it never moves a branch, never changes a worktree,
+and writes no record. The only refs it may add are evidence refs under
+`refs/wheresat/`; a boundary that nothing else reaches is retained at
+`refs/wheresat/boundary/<branch>` so a later `git gc` cannot collect it.
+
+It exits with one of four statuses:
+
+| Status | Meaning                                                                                                      |
+| ------ | ------------------------------------------------------------------------------------------------------------ |
+| `0`    | established: a boundary was found                                                                            |
+| `1`    | unresolved: the evidence refused a boundary, and the report says which check refused it                      |
+| `2`    | a usage, environment, or credential error                                                                    |
+| `3`    | indeterminate: the repository could not answer a question the procedure asked, so no answer is claimed       |
+
+*Table 1: the four exit statuses.*
+
+`--json` prints a versioned envelope (`"schema": "git-wheresat/1"`) on every
+exit status, refusals included.
+
+Options:
+
+- `--branch` names the branch to read; it defaults to the branch checked out
+  where the command runs, and a detached HEAD needs it named.
+- `--onto` names the replay target; it defaults to the principal remote's
+  default branch, resolved locally from `refs/remotes/<remote>/HEAD`, and is
+  required when the repository has no such alias.
+- `--parent OWNER/REPO#N` names a parent pull request to weigh as attested
+  evidence.
+- `--remote` names the principal remote to read.
+- `--limit` is accepted and has no effect yet: the report's own cap of `20`
+  commits per range is a fixed constant, not this option.
+- `--heuristic-window` is accepted and has no effect yet; it would bound the
+  fork-point search, and defaults to `200`.
+- `--explain` prints the gate table: every check, its outcome, and the reason
+  for it.
+- `--json` prints the versioned envelope described above.
+- `--op-id` names this run; an id that could escape the `refs/wheresat/op/`
+  namespace is refused with status 2.
+- `--record` is accepted and has no effect yet: no record is written.
+- `--expected-old` is accepted and has no effect yet; it will require the
+  existing stack record to name this commit before `--record` replaces it.
+
+`--no-fetch`, `--offline`, and `--deep` are accepted and change no answer yet
+as well: the local-evidence path fetches nothing and compares nothing deeply,
+so the forge-backed evidence and the deeper comparisons those options control
+are not wired yet. A named `--parent` still answers with status 3, because the
+parent pull request cannot be consulted.
+
+Evidence is weighted in tiers: attested (the stack record `git donkey` wrote
+at the branch's birth, a refreshed record, a fetched parent pull request
+head), derived (the merge base, the fork point), and inferred (tree identity,
+patch identity). Only attested and derived evidence can establish a boundary;
+inferred evidence is reported but never decides. `--explain` shows the tier of
+each line of evidence and the eight named checks.
+
+Warnings change neither the verdict nor the exit status. The run warns when
+the worktree holding the branch has uncommitted changes, and when a rebase,
+merge, cherry-pick, revert, or bisect is already in progress there. A
+worktree whose state cannot be read is warned about too, because a run that
+warned about nothing would be read as a run with nothing to warn about.
+
+The two honest limits documented under [`git plonk`](#git-plonk) still bound
+fork-point recovery here: a tombstone preserves a deleted branch's tip and not
+its reflog, so fork-point recovery for its children is still lost.
 
 ## git donkey-template
 

@@ -285,6 +285,120 @@ skips rather than forcing removal are recorded in the
 `syrupy` pins stable summary rendering. Hypothesis checks marker-shape
 invariants in the pure policy layer.
 
+## git-wheresat module boundaries
+
+`git-wheresat` answers one question — which commit is a branch's exclusive
+replay boundary — and its implementation is split so that each part of the
+answer lives where it can be read without doing anything else. The value
+vocabulary, the read-only Git port, the writing surface, the evidence rungs,
+the graph facts, the gates, the policy, and the two renderers are separate
+modules; `git_donkey.wheresat` is the only one that decides when each is
+called.
+
+- `git_donkey.wheresat_records` owns the value vocabulary every other
+  `wheresat` module exchanges: the evidence kinds and their tiers, the
+  candidate types a rung returns, `CommitRange` and `range_key()`, the eight
+  `GateName` values with `GateOutcome` and `GateResult`, `GraphFacts`,
+  `WorktreeState` and `GitOperation`, the three assessment arms, and the
+  `EXIT_CODES` map with `EXIT_USAGE`. It holds values only — no Git,
+  filesystem, network, or process — so a forensic path such as a superseded
+  record, a gate that could not be answered, or a stored tip that no longer
+  exists is a value a test builds without a repository. Its only
+  intra-package import is `stack_records`, for the pull request identity the
+  shared record carries.
+- `git_donkey.wheresat_graph` is the read-only Git port. It owns the
+  `WheresatGraph` protocol, the `GitWheresatGraph` adapter over GitPython, and
+  `WheresatGraphError` with its `ShallowHistoryError` subclass. Nothing here
+  can write: it resolves revisions, asks ancestry questions, lists ranges,
+  compares trees and patches, and reads what the worktree holding the child
+  branch is in the middle of. A worktree stopped mid-rebase is left behind by
+  its branch rather than holding it, so the port reads both the worktree
+  listing and the operation's own state directory before naming the worktree a
+  branch belongs to.
+- `git_donkey.wheresat_refs` is the only writing surface, and a run
+  constructs it only when it has to write. It owns the three evidence
+  namespaces — `refs/wheresat/op/<op-id>/` for one run's own fetches,
+  `refs/wheresat/parent-head/<owner>/<repo>/<n>`, and
+  `refs/wheresat/boundary/<branch>` for a boundary no other ref reaches — plus
+  `validate_op_id()`, the `WheresatRefWriter` protocol, and the
+  `GitWheresatRefWriter` adapter. `release()` deletes the per-run namespace and
+  nothing else, and the run calls it from a `finally` block; the namespace is
+  never swept wholesale, because refs live in the common ref store and every
+  worktree of a checkout shares `refs/wheresat/`.
+- `git_donkey.wheresat_collect` asks the evidence rungs in the procedure's
+  order: the stack record, the merge base, the fork point, and the inferred
+  comparisons behind `--deep`. A rung returns the candidates it found, or a
+  fault when it could not answer at all, because "there is no evidence here"
+  and "this question went unanswered" are different answers and only one of
+  them is a refusal. `ParentHead` is recovered here too, from the fetched pull
+  request head, the tombstone `git plonk` left behind, or the parent's
+  remote-tracking ref; the tombstone proposes no boundary of its own.
+- `git_donkey.wheresat_facts` asks every graph question the eight gates will
+  read, before any gate runs. The gates are then a pure function of a
+  `GraphFacts` value, which is what lets a property test hand the policy an
+  arbitrary graph. Nothing is asked speculatively: a run that recovered no
+  parent head pays for no question about one.
+- `git_donkey.wheresat_gates` owns the eight named gates, each with a
+  specified decision procedure and three answers. `ancestry_outcome()` decides
+  the "cannot tell is not no" rule once: an ancestry question Git could not
+  answer never becomes `FAILED`, so no refusal can rest on a question that was
+  never put.
+- `git_donkey.wheresat_policy` reads gate results into a verdict, and is pure:
+  no Git, filesystem, network, or process. `may_establish()` owns the
+  corroboration rule, and the module owns precedence — candidates at the
+  strongest tier a run found are the only ones that can serve, so a lone
+  derived candidate is not outranked by four inferred ones under it, and two
+  candidates left at the same tier are an ambiguity the run refuses rather
+  than a tie broken by source order. A record whose attested claim gate 8
+  refused is demoted to derived evidence rather than discarded, so it can
+  still support the commit it names once another source agrees with it.
+- `git_donkey.wheresat_report` renders an assessment as text or as the
+  versioned JSON envelope. Nothing in it reads anything: both renderers are
+  projections of the assessment and the request, so they cannot disagree about
+  what a run found, and a snapshot test can pin an established boundary, a
+  refusal, and an environment that could not answer without a repository.
+- `git_donkey.wheresat` keeps resolution, the exit status, and the bounded
+  observations. `run_git_wheresat()` resolves what the run was asked to
+  something immutable, calls the four modules above in the procedure's order,
+  and returns the exit code; `git_donkey.cli` exposes it as the `git-wheresat`
+  console script, from which Git discovers `git wheresat`.
+
+The report is deliberately wider than the verdict. A boundary that no durable
+ref reaches is retained under `refs/wheresat/boundary/<branch>` before it is
+reported, so a later `git gc` cannot take away an answer the report has already
+given, and the report warns when the worktree holding the branch would not
+accept the replay it prints. A warning is not evidence: an unreadable worktree
+is warned about rather than treated as a fault, because a run that warned about
+nothing would be read as a run with nothing to warn about, and a warning
+changes neither the verdict nor the exit status.
+
+The JSON envelope is spelled out key by key rather than produced by
+`dataclasses.asdict`. Renaming a field of the assessment is then a private
+refactor, and the wire format changes only when a key is deliberately added or
+retyped, which the schema string in the envelope records; `warnings` is always
+present, including when it is empty, so a consumer never has to tell a missing
+key from a run with nothing to say.
+
+The read-only guarantee is measured rather than asserted.
+`tests/integration/test_wheresat_read_only.py` runs an explicit matrix of
+argument vectors — the default run, each flag, a named branch, and the refusal
+and usage-error paths — against a real repository and compares refs, `HEAD`,
+the index, the working tree, `FETCH_HEAD`, the stash, and local configuration
+before and after. The fingerprint is exercised against a changed value so that
+an equality assertion cannot pass by measuring nothing, and evidence a run is
+entitled to write is classified as allowed rather than as a difference.
+`tests/integration/test_wheresat_end_to_end.py` runs the three commands in the
+order the feature exists for: `git donkey` cuts a child and records the
+boundary, `git plonk --hard` sweeps the merged parent and leaves a tombstone,
+and `git wheresat` has to answer for the child from what survived.
+
+`syrupy` pins the text report and the JSON envelope, and Hypothesis drives the
+pure policy over arbitrary gate corpora: `tests/unit/test_wheresat_report.py`,
+`tests/unit/test_wheresat_policy.py`, and
+`tests/unit/test_wheresat_properties.py`. `docs/man/git-wheresat.rst` is the
+man page source for the command, built and installed like the others and
+covered by `tests/unit/test_manpage_sources.py`.
+
 ## git-incoming and git-outgoing module boundaries
 
 `git-incoming` and `git-outgoing` answer the two questions a developer asks

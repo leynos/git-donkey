@@ -15,3 +15,4 @@ from __future__ import annotations
 
 PACKAGE_NAME = "git_donkey"
 GIT_PLONK_PREFIX = "git-plonk"
+GIT_WHERESAT_PREFIX = "git-wheresat"

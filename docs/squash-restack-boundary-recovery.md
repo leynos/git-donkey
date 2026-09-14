@@ -120,11 +120,13 @@ counted twice, not corroboration. The requirement exists because
 different commit, once that reflog expires, and `git plonk --hard` deletes
 reflogs.
 
-Precedence among sources is a fixed order: the stack record, the shared record,
-the pull request head, the merge base, the fork point, the tree identity, and
-the cumulative patch identity. A tombstone is not in that list. It supplies
-`PARENT_HEAD` to the gates and to the merge-base and fork-point sources, rather
-than proposing a boundary of its own.
+Precedence is by tier rather than by position in the list above. A candidate at
+a stronger tier makes every candidate at a weaker tier stop being an answer, so
+a lone derived candidate is not overruled by four inferred ones below it; two
+candidates left at the same tier are an **ambiguity**, which the run refuses
+rather than resolving by an arbitrary source order. A tombstone is not a source
+at all: it supplies `PARENT_HEAD` to the gates and to the merge-base and
+fork-point sources, rather than proposing a boundary of its own.
 
 ## Gates
 
@@ -168,13 +170,24 @@ boundary under evaluation.
    recorded child tip still exists and is an ancestor of the current
    `child_tip`, and no parent integration newer than the record is visible.
    `FAILED` demotes the record from attested to derived and records the reason;
-   it does not by itself refuse.
+   it does not by itself refuse, and the demoted record may still establish the
+   boundary once another independent source agrees with it.
 
 An `Established` result requires every **applicable** gate to return `PASSED`.
-Gates 1, 2, 3, 6, and 7 are not applicable when the evidence never needed a
-parent pull request; they are then recorded as `INDETERMINATE` and the result
-cannot be `Established`. This is why a local-evidence-only run reports
-indeterminate for anything it cannot confirm rather than guessing.
+A gate whose subject the run never set out to use is not applicable and takes no
+part in that conjunction: a run asked only for local evidence never consults a
+parent pull request, so gates 1, 2, 3, 6, and 7 have nothing to answer and are
+reported as not applicable. They are still reported, because a gate that
+disappeared from the report would read as a gate that passed. Applicability is
+decided from the run's inputs alone, so a fault cannot shrink the gate set.
+
+An applicable gate that Git could not answer is `INDETERMINATE`, which is not a
+refusal but a reason to stop: the run reports `Indeterminate` and exits `3`,
+and falls through to no weaker evidence. The distinction is what the
+local-evidence path rests on. A stack record that must answer for itself
+establishes a boundary, while a parent the user explicitly named and the
+repository cannot resolve is a question left open rather than a negative
+answer.
 
 ## The shared record
 

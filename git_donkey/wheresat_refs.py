@@ -1,0 +1,494 @@
+"""The only writing surface ``git wheresat`` holds, built only when it writes.
+
+A run that neither fetches evidence nor records a result constructs no object
+from this module, so the default path holds nothing that could change the
+repository (INV-1). A run that does construct one reaches only three ref
+namespaces:
+
+- ``refs/wheresat/op/<op-id>/`` holds the evidence this run fetched for
+  itself. :meth:`WheresatRefWriter.release` deletes that namespace and nothing
+  else, and the run calls it from a ``finally`` block. The namespace is never
+  swept wholesale: refs live in the common ref store, so every worktree of a
+  checkout shares ``refs/wheresat/``, and a blanket delete would take a
+  sibling worktree's in-flight evidence with it.
+- ``refs/wheresat/parent-head/<owner>/<repository>/<number>`` caches a fetched
+  pull request head, so a second run on the same pull request performs no
+  fetch at all.
+- ``refs/wheresat/boundary/<branch>`` is retained only for a boundary that is
+  otherwise reachable from the per-run refs alone, which is what keeps a
+  reported boundary alive across ``git gc --prune=now`` (INV-8).
+
+A stack record is the one write here that is not a ref of this module's own:
+:meth:`WheresatRefWriter.write_record` delegates to
+:mod:`git_donkey.stack_store`, so INV-7's create-only and expected-old
+semantics are written once for all three commands rather than re-derived here.
+
+Every value that reaches a ref path is validated first. A branch name and both
+components of a repository slug pass through
+:func:`git_donkey.stack_records.validate_ref_component`, and an operation id
+through :func:`validate_op_id`, which is stricter because an id that nested a
+namespace inside another run's would be deleted mid-fetch when the outer run
+released its own.
+
+See ``docs/execplans/git-wheresat-sub-command.md`` for the idempotence and
+recovery rules these namespaces implement.
+
+"""
+
+from __future__ import annotations
+
+import dataclasses
+import re
+import typing as typ
+
+from git_donkey import stack_records, stack_store
+
+if typ.TYPE_CHECKING:
+    from git import Repo
+
+_ANSWERED_YES: typ.Final = 0
+"""Exit status Git reports for a question whose answer is "yes"."""
+
+_REF_NAME_FORMAT: typ.Final = "--format=%(refname)"
+"""Format asking ``git for-each-ref`` for a ref's full name and nothing else."""
+
+_OPERATION_NAMESPACE: typ.Final = "refs/wheresat/op"
+"""Refs a run creates for its own evidence and deletes when it finishes."""
+
+_CACHE_NAMESPACE: typ.Final = "refs/wheresat/parent-head"
+"""Durable refs caching a fetched pull request head, one per pull request."""
+
+_BOUNDARY_NAMESPACE: typ.Final = "refs/wheresat/boundary"
+"""Durable refs retaining a boundary no other ref would outlive."""
+
+_SLUG_COMPONENTS: typ.Final = 2
+"""Number of components an ``owner/name`` repository slug is made of."""
+
+_OP_ID_PATTERN: typ.Final = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}\Z")
+"""What an operation id may look like, with nothing else permitted.
+
+The pattern is anchored at both ends by construction rather than by the
+caller's use of :func:`re.match`: a nested namespace, a leading hyphen a
+command line could read as another option, and a ``..`` that climbs out of the
+namespace are all refused by the character set and the first-character rule
+between them.
+"""
+
+
+class WheresatRefError(RuntimeError):
+    """A ref Git would not fetch, retain, or release.
+
+    Raised for every way a write of this module can fail, so the run reports
+    that it could not complete rather than continuing with evidence it does
+    not have (INV-5). Record writes are not wrapped: they raise
+    :class:`git_donkey.stack_store.StackRecordError` from the store that owns
+    their semantics.
+
+    """
+
+
+EvidenceRef = typ.NewType("EvidenceRef", str)
+"""A ref of the evidence namespaces, built only by the factories below."""
+
+
+def per_run_ref(op_id: str, name: str) -> EvidenceRef:
+    """Return ``refs/wheresat/op/<op-id>/<name>``.
+
+    Parameters
+    ----------
+    op_id : str
+        Name of this run's namespace, from ``--op-id`` or a generated
+        identifier.
+    name : str
+        Name of the ref within that namespace, such as ``parent-head``.
+
+    Returns
+    -------
+    EvidenceRef
+        The ref, safe to use as a fetch refspec destination.
+
+    Raises
+    ------
+    ValueError
+        If either component would be unsafe in a ref path, or if ``op_id``
+        would nest one run's namespace inside another's.
+
+    """
+    return EvidenceRef(
+        f"{_per_run_namespace(op_id)}/{stack_records.validate_ref_component(name)}"
+    )
+
+
+def parent_head_ref(identity: stack_records.PullRequestIdentity) -> EvidenceRef:
+    """Return the durable cache ref for a pull request head.
+
+    Parameters
+    ----------
+    identity : stack_records.PullRequestIdentity
+        Pull request whose head the ref caches. The number is an ``int`` and
+        so cannot carry a refspec separator; only the slug's two components
+        need validating.
+
+    Returns
+    -------
+    EvidenceRef
+        ``refs/wheresat/parent-head/<owner>/<repository>/<number>``.
+
+    Raises
+    ------
+    ValueError
+        If the repository is not a two-component ``owner/name`` slug, or
+        either of its components would be unsafe in a ref path.
+
+    """
+    owner, name = _slug_parts(identity.repository)
+    return EvidenceRef(f"{_CACHE_NAMESPACE}/{owner}/{name}/{identity.number}")
+
+
+def validate_op_id(op_id: str) -> str:
+    """Return ``op_id``, refusing one that may not name a run's namespace.
+
+    The operation id is the one command-line value that reaches a ref path, so
+    it is checked before anything is built from it: an id that could escape the
+    evidence namespace, nest one run inside another, or be read as an option
+    would have the run write refs a later release cannot recognize as its own.
+
+    Parameters
+    ----------
+    op_id : str
+        Operation id from ``--op-id``, or a generated identifier.
+
+    Returns
+    -------
+    str
+        The id, unchanged.
+
+    Raises
+    ------
+    ValueError
+        If the id is empty, longer than 64 characters, or holds a character
+        outside letters, digits, dots, hyphens, and underscores, or does not
+        start with a letter or digit.
+
+    """
+    if not _OP_ID_PATTERN.match(op_id):
+        msg = (
+            f"invalid operation id {op_id!r}: an op-id must start with a letter "
+            "or digit and hold only letters, digits, dots, hyphens, and "
+            "underscores, in at most 64 characters"
+        )
+        raise ValueError(msg)
+    return op_id
+
+
+def _per_run_namespace(op_id: str) -> str:
+    """Return ``refs/wheresat/op/<op-id>``, refusing an op-id that nests.
+
+    Parameters
+    ----------
+    op_id : str
+        Name of the run's namespace.
+
+    Returns
+    -------
+    str
+        The namespace every ref the run creates sits under.
+
+    Raises
+    ------
+    ValueError
+        If ``op_id`` may not name a run's namespace, which is every way one
+        could escape the namespace or nest another run inside it.
+
+    """
+    return f"{_OPERATION_NAMESPACE}/{validate_op_id(op_id)}"
+
+
+def _slug_parts(repository: str) -> tuple[str, str]:
+    """Return the validated owner and name of an ``owner/name`` slug.
+
+    Parameters
+    ----------
+    repository : str
+        Fully qualified repository slug.
+
+    Returns
+    -------
+    tuple[str, str]
+        The owner and the repository name.
+
+    Raises
+    ------
+    ValueError
+        If the slug is not exactly two non-empty components, or either of
+        them would be unsafe in a ref path.
+
+    """
+    parts = repository.split("/")
+    if len(parts) != _SLUG_COMPONENTS or not all(parts):
+        msg = f"invalid repository slug {repository!r}: expected owner/name"
+        raise ValueError(msg)
+    owner, name = parts
+    return (
+        stack_records.validate_ref_component(owner),
+        stack_records.validate_ref_component(name),
+    )
+
+
+def _reported(stderr: str, status: object) -> str:
+    """Return the most specific line Git reported for a failed command.
+
+    Parameters
+    ----------
+    stderr : str
+        What the command wrote to standard error.
+    status : object
+        Exit status the command reported. It is typed loosely because
+        GitPython types its exit status as a union wide enough to hold the
+        message a command-not-found failure carries, and only its rendering
+        matters here.
+
+    Returns
+    -------
+    str
+        The first line Git reported, or the exit status when it reported
+        nothing.
+
+    """
+    lines = (stderr or "").strip().splitlines()
+    if lines:
+        return lines[0]
+    return f"git exited with status {status}"
+
+
+class WheresatRefWriter(typ.Protocol):
+    """The only Git surface in this command that mutates anything."""
+
+    def fetch_evidence(
+        self, remote: str, source_ref: str, destination: EvidenceRef
+    ) -> None:
+        """Fetch one ref into the evidence namespace and nowhere else."""
+
+    def retain_boundary(self, branch: str, commit: str) -> str:
+        """Keep a durable ref for an otherwise unreachable boundary (INV-8)."""
+
+    def release(self, op_id: str) -> None:
+        """Delete this run's per-run namespace, and only that namespace."""
+
+    def write_record(
+        self, record: stack_records.StackRecord, expected_old: str | None
+    ) -> None:
+        """Write a stack record through ``stack_store``, honouring INV-7."""
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class GitWheresatRefWriter:
+    """Git-backed evidence fetches, boundary retainers, and record writes.
+
+    Parameters
+    ----------
+    repo : Repo
+        Repository to write to. This is the one object in the command that
+        may change a repository, and a run builds it only when it has
+        something to fetch or to record.
+
+    """
+
+    repo: Repo
+
+    def fetch_evidence(
+        self, remote: str, source_ref: str, destination: EvidenceRef
+    ) -> None:
+        """Fetch one ref into the evidence namespace and nowhere else.
+
+        A destination that already names a commit is left alone, which is
+        what makes a second run on the same pull request perform no fetch at
+        all. The fetch itself is confined to the refspec: nothing else is
+        pruned, no tag is brought down, no ``FETCH_HEAD`` is written, and
+        submodule recursion is refused, so a populated submodule's repository
+        is not written to either. The refspec is not forced, so a destination
+        that appeared between the check and the fetch is reported rather than
+        silently replaced.
+
+        Parameters
+        ----------
+        remote : str
+            Remote to fetch from, by name.
+        source_ref : str
+            Ref at the remote holding the evidence, such as
+            ``refs/pull/123/head``.
+        destination : EvidenceRef
+            Ref of this run's evidence namespace to fetch it into.
+
+        Raises
+        ------
+        WheresatRefError
+            If Git refuses the fetch, or if the fetch leaves the destination
+            without a commit. The run has no parent head to reason from in
+            either case, and must not read that absence as an answer.
+
+        """
+        if self._holds_commit(destination):
+            return
+        status, _, stderr = self.repo.git.fetch(
+            "--no-prune",
+            "--no-tags",
+            "--no-write-fetch-head",
+            "--no-recurse-submodules",
+            "--end-of-options",
+            remote,
+            f"{source_ref}:{destination}",
+            with_extended_output=True,
+            with_exceptions=False,
+        )
+        if status != _ANSWERED_YES:
+            reported = _reported(stderr, status)
+            msg = f"cannot fetch {source_ref} from {remote!r}: {reported}"
+            raise WheresatRefError(msg)
+        if not self._holds_commit(destination):
+            msg = (
+                f"the fetch of {source_ref} from {remote!r} left no commit at "
+                f"{destination}"
+            )
+            raise WheresatRefError(msg)
+
+    def retain_boundary(self, branch: str, commit: str) -> str:
+        """Keep a durable ref for an otherwise unreachable boundary (INV-8).
+
+        An existing ref for the branch is rewritten rather than left alone:
+        the boundary a branch was cut at is that branch's answer, and a later
+        run may establish a different one.
+
+        Parameters
+        ----------
+        branch : str
+            Branch whose boundary is being retained.
+        commit : str
+            Commit established as the boundary, already resolved through the
+            graph, so it is written by object ID and cannot be misread.
+
+        Returns
+        -------
+        str
+            The ref that now retains ``commit``, for the report to name.
+
+        Raises
+        ------
+        WheresatRefError
+            If Git refuses to write the ref.
+        ValueError
+            If the branch name would be unsafe in a ref path.
+
+        """
+        ref = f"{_BOUNDARY_NAMESPACE}/{stack_records.validate_ref_component(branch)}"
+        status, _, stderr = self.repo.git.update_ref(
+            "--create-reflog",
+            ref,
+            commit,
+            with_extended_output=True,
+            with_exceptions=False,
+        )
+        if status != _ANSWERED_YES:
+            reported = _reported(stderr, status)
+            msg = f"cannot retain the boundary for {branch!r}: {reported}"
+            raise WheresatRefError(msg)
+        return ref
+
+    def release(self, op_id: str) -> None:
+        """Delete this run's per-run namespace, and only that namespace.
+
+        The refs are enumerated and deleted one at a time rather than by
+        prefix, because Git refuses to delete a name that only has refs
+        beneath it, and because enumerating leaves the deletion set exactly
+        the refs this run created. Git matches the namespace at a slash
+        boundary, so a sibling run whose op-id merely starts with this one's
+        is not touched.
+
+        Parameters
+        ----------
+        op_id : str
+            Name of this run's namespace, the one its refs were created
+            under.
+
+        Raises
+        ------
+        WheresatRefError
+            If Git refuses to delete one of the refs.
+        ValueError
+            If ``op_id`` is not one a per-run namespace can be named by.
+
+        """
+        for ref in self._refs_under(_per_run_namespace(op_id)):
+            status, _, stderr = self.repo.git.update_ref(
+                "-d",
+                ref,
+                with_extended_output=True,
+                with_exceptions=False,
+            )
+            if status != _ANSWERED_YES:
+                reported = _reported(stderr, status)
+                msg = f"cannot release the evidence ref {ref}: {reported}"
+                raise WheresatRefError(msg)
+
+    def write_record(
+        self, record: stack_records.StackRecord, expected_old: str | None
+    ) -> None:
+        """Write a stack record through ``stack_store``, honouring INV-7.
+
+        An expected value of ``None`` means the caller saw no record at all,
+        and only a create can follow: ``stack_store`` refuses to create over a
+        record that exists, so a record written between the run's read and
+        this call is not silently replaced. A supplied value is the one the
+        caller read from the anchor ref, and Git's compare-and-swap refuses
+        the write when the anchor has moved since.
+
+        Parameters
+        ----------
+        record : stack_records.StackRecord
+            The record to store.
+        expected_old : str | None
+            Commit the caller observed in the anchor ref, or ``None`` when it
+            observed no record at all.
+
+        Raises
+        ------
+        stack_store.StackRecordError
+            If the record cannot be written, including the conflict raised
+            when a create finds a record already there, or a refresh finds a
+            different anchor value. Nothing has been written in that case.
+        ValueError
+            If the record is not one the reader reads back, or the branch
+            name would be unsafe in a ref path.
+
+        """
+        writer = stack_store.GitStackRecordWriter(self.repo)
+        if expected_old is None:
+            writer.create(record)
+            return
+        writer.refresh(record, expected_old)
+
+    def _holds_commit(self, ref: str) -> bool:
+        """Return whether ``ref`` exists and names a commit."""
+        status, _, _ = self.repo.git.rev_parse(
+            "--verify",
+            "--quiet",
+            "--end-of-options",
+            f"{ref}^{{commit}}",
+            with_extended_output=True,
+            with_exceptions=False,
+        )
+        return status == _ANSWERED_YES
+
+    def _refs_under(self, namespace: str) -> tuple[str, ...]:
+        """Return every ref at or below ``namespace``, in Git's own order."""
+        status, output, stderr = self.repo.git.for_each_ref(
+            _REF_NAME_FORMAT,
+            namespace,
+            with_extended_output=True,
+            with_exceptions=False,
+        )
+        if status != _ANSWERED_YES:
+            reported = _reported(stderr, status)
+            msg = f"cannot list the refs under {namespace}: {reported}"
+            raise WheresatRefError(msg)
+        return tuple(line for line in str(output).splitlines() if line)
