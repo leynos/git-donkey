@@ -1,9 +1,13 @@
-"""The failures a read of the repository can report, and how Git words one.
+"""The failures a ``git wheresat`` run can report, and how Git words one.
 
-Both halves of the read-only Git port raise these, and the refusal a shallow
-clone produces has to be the same class whichever half asked the question, so
-the vocabulary lives below both rather than in the reader that history
-questions happen to be asked through.
+The graph failures are the ones a read of the repository produces: both halves
+of the read-only Git port raise them, and the refusal a shallow clone produces
+has to be the same class whichever half asked the question, so the vocabulary
+lives below both rather than in the reader that history questions happen to be
+asked through. The usage failure is the one the command itself produces, and it
+lives here because two parts of the command raise it — the resolution that
+turns the command line into object IDs, and the writes a run was asked to
+make — and the workflow that reports it must not have to name either.
 
 Nothing here reads anything. :func:`_reported` turns one failed command into
 the single line a message can carry: a read that fails is reported as
@@ -35,6 +39,19 @@ class ShallowHistoryError(WheresatGraphError):
     shallow refusal carries the same weight as any other fault — the run is
     indeterminate — so this class changes what a record names, never what a
     verdict may conclude.
+
+    """
+
+
+class WheresatUsageError(RuntimeError):
+    """The run could not start, or could not carry out what it was asked to write.
+
+    Distinct from a graph failure in what the run reports: a question the
+    repository could not answer withholds the answer as indeterminate, while an
+    unusable command line, a missing remote, and a record that cannot be written
+    where the user said it must are all the same thing to the operator — the
+    run never became a question about a boundary, so it exits with the usage
+    status and says what it was missing.
 
     """
 

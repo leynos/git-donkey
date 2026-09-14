@@ -44,6 +44,14 @@ TOMBSTONE_NAMESPACE: typ.Final = "refs/stack-tombstones"
 EVIDENCE_BIRTH: typ.Final = "stack-record-birth"
 """Evidence kind written when the record is created at branch birth."""
 
+EVIDENCE_REFRESHED: typ.Final = "stack-record-refreshed"
+"""Evidence kind written when ``git wheresat --record`` moves a record.
+
+The value is what distinguishes a record that still says what was true at
+branch birth from one a later run deliberately re-stated, and it is read back
+as attested evidence either way: both are statements someone made on purpose.
+"""
+
 DEFAULT_TOMBSTONE_EXPIRE: typ.Final = "90.days.ago"
 """Retention window used when ``stack.tombstoneExpire`` is unset.
 

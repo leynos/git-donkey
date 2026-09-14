@@ -95,6 +95,17 @@ class StackRecordReader(typ.Protocol):
     def read(self, branch: str) -> stack_records.RecordResult:
         """Return the reconciled record for one branch."""
 
+    def anchor(self, branch: str) -> str | None:
+        """Return the commit ``branch``'s anchor ref names, if it has one.
+
+        A record's configuration and its anchor can disagree, and the
+        reconciliation :meth:`read` performs is deliberately blind to which of
+        the two a caller must compare against: a record whose anchor has gone
+        still reconciles as a record. A caller about to write one therefore
+        reads the ref itself, which is what it passes to the writer as the
+        value it expects to find (INV-7).
+        """
+
     def tombstone(self, branch: str) -> str | None:
         """Return the tip preserved when ``branch`` was deleted, if any."""
 
@@ -206,6 +217,28 @@ class GitStackRecordReader:
             anchor,
             branch_exists=self._branch_exists(branch),
         )
+
+    def anchor(self, branch: str) -> str | None:
+        """Return the commit ``branch``'s anchor ref names, if it has one.
+
+        Parameters
+        ----------
+        branch : str
+            Branch whose anchor is wanted.
+
+        Returns
+        -------
+        str | None
+            The commit at ``refs/stack-bases/<branch>``, or ``None`` when that
+            ref does not exist.
+
+        Raises
+        ------
+        ValueError
+            If the branch name would be unsafe in a ref path.
+
+        """
+        return self._ref_value(stack_records.base_ref_path(branch))
 
     def tombstone(self, branch: str) -> str | None:
         """Return the tip preserved for ``branch``, or ``None`` when unrecorded.

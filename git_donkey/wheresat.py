@@ -20,30 +20,39 @@ neither the verdict nor the exit status. Reading it is a read like any other
 run that warns about nothing is read as a run with nothing to warn about.
 
 Until a boundary is known to be one that no durable ref reaches, everything
-here that touches the repository is a read. The writer of
-:mod:`git_donkey.wheresat_refs` is constructed for the one write that a reported
-boundary may need — a ref of its own, so that ``git gc`` cannot take the answer
-with the run (INV-8) — and never for a run that has nothing to retain, which is
-what keeps the default path free of anything that could change the repository
-(INV-1).
+here that touches the repository is a read. The two writes a run may make — the
+ref a reported boundary needs when nothing else reaches it, so that ``git gc``
+cannot take the answer with the run (INV-8), and the record ``--record``
+refreshes (INV-7) — belong to :mod:`git_donkey.wheresat_writes`, which is the
+one module of the command that can change a repository and which writes nothing
+at all unless the run asks it to. A run that asks for neither therefore
+constructs nothing that can write, which is what keeps the default path free of
+anything that could change the repository (INV-1).
+
+That order matters to INV-8 as well as to INV-1: the record write happens
+before the boundary's reachability is checked, so a run whose own record now
+names the boundary reports it as already durable rather than retaining it a
+second time under an evidence ref.
 
 The exit status follows the assessment rather than the run's plumbing: ``0``
 when a boundary was established, ``1`` when complete evidence refused one, and
 ``3`` when a question the procedure asked could not be answered. ``2`` is
-reserved for a run that could not start at all — a branch or target that does
-not resolve, a malformed ``--parent``, or a repository with no remote to name a
-default branch — and every one of those paths still writes the JSON envelope
-when ``--json`` asked for one, so a consumer never has to parse prose.
+reserved for a run that could not start, or could not carry out what it was
+asked to write — a branch or target that does not resolve, a malformed
+``--parent``, a repository with no remote to name a default branch, or a
+``--record`` whose expectation the anchor does not meet — and every one of
+those paths still writes the JSON envelope when ``--json`` asked for one, so a
+consumer never has to parse prose.
 
 This milestone answers from local evidence alone. There is no forge port yet, so
 a run that names a parent pull request resolves nothing for it: the gates about
 a parent report that they went unanswered and the run exits ``3``. ``--no-fetch``,
-``--offline``, ``--limit``, ``--heuristic-window``, ``--deep``, ``--record``,
-and ``--expected-old`` are accepted and inert, because the local evidence path
-neither fetches evidence nor writes a record, and the deeper comparisons they
-control arrive with the forge evidence they compare against. ``--op-id`` is
-checked as it is read, so a hostile id is refused before a run could write a
-ref built from it, and is otherwise inert for the same reason.
+``--offline``, ``--limit``, ``--heuristic-window``, and ``--deep`` are accepted
+and inert, because the local evidence path fetches nothing and compares nothing
+deeply, and the deeper comparisons they control arrive with the forge evidence
+they compare against. ``--op-id`` is checked as it is read, so a hostile id is
+refused before a run could write a ref built from it, and is otherwise inert
+for the same reason.
 """
 
 from __future__ import annotations
@@ -66,9 +75,10 @@ from git_donkey import (
     wheresat_records,
     wheresat_refs,
     wheresat_report,
+    wheresat_writes,
 )
 from git_donkey._constants import GIT_WHERESAT_PREFIX
-from git_donkey.wheresat_errors import WheresatGraphError
+from git_donkey.wheresat_errors import WheresatGraphError, WheresatUsageError
 from git_donkey.wheresat_graph import GitWheresatGraph, WheresatGraph
 
 _PARENT_IDENTIFICATION: typ.Final[observability.Operation] = "parent_identification"
@@ -95,11 +105,12 @@ not answer is recorded as ``unavailable``.
 class WheresatOptions:
     """Every command-line input, before resolution to object IDs.
 
-    ``--op-id`` is checked as it is read and changes no answer yet; the
-    remaining flags past ``--explain`` are accepted and inert at this
-    milestone, because the local evidence path fetches nothing, records
-    nothing, and compares nothing deeply, and the inputs that control those
-    paths arrive with the evidence they compare against.
+    ``--op-id`` is checked as it is read and changes no answer yet, and
+    ``--record`` with ``--expected-old`` now write the one record this command
+    owns; the remaining flags past ``--explain`` are accepted and inert at this
+    milestone, because the local evidence path fetches nothing and compares
+    nothing deeply, and the inputs that control those paths arrive with the
+    evidence they compare against.
 
     """
 
@@ -126,10 +137,6 @@ Cyclopts reads the fields of :class:`WheresatOptions` off the signature of the
 command-line wrapper, so the wrapper needs an instance to default to. It is
 built here, beside the class, so a field added to one is visible in the other.
 """
-
-
-class _UsageError(RuntimeError):
-    """The run could not start: what it was asked for does not resolve."""
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -169,13 +176,23 @@ def run_git_wheresat(
         repository could not answer a question the procedure asked.
 
     """
+    # Resolution, assessment, and the record write are one sequence because
+    # each can refuse the run before there is a report to print, and every one
+    # of those refusals is reported as the same usage failure.
     try:
         session = _session(options, repo=repo, graph=graph)
-    except _UsageError as exc:
+        assessment = _assess(session)
+        writes = wheresat_writes.WheresatWrites(session.repo, session.context)
+        recorded = writes.record(
+            assessment,
+            requested=options.record,
+            expected=_expectation(session),
+        )
+    except WheresatUsageError as exc:
         return _failed(options, str(exc))
-    assessment = _retained(session, _assess(session))
+    assessment = writes.retain(assessment)
     _observe(assessment)
-    _write(options, assessment, session.context.request, _warnings(session))
+    _write(options, assessment, session.context.request, _warnings(session) + recorded)
     return wheresat_records.EXIT_CODES[type(assessment)]
 
 
@@ -199,12 +216,13 @@ def _session(
 
     Raises
     ------
-    _UsageError
+    WheresatUsageError
         If a name the run was asked for does not resolve, or if the default
         branch of the remote cannot be named locally.
 
     """
     _validate_op_id(options)
+    _validate_record_options(options)
     repository = repo if repo is not None else _open_repo()
     questions = graph if graph is not None else GitWheresatGraph(repository)
     branch = _branch(options, repository)
@@ -242,7 +260,7 @@ def _validate_op_id(options: WheresatOptions) -> None:
 
     Raises
     ------
-    _UsageError
+    WheresatUsageError
         If ``--op-id`` was given and may not name a run's namespace.
 
     """
@@ -251,7 +269,29 @@ def _validate_op_id(options: WheresatOptions) -> None:
     try:
         wheresat_refs.validate_op_id(options.op_id)
     except ValueError as exc:
-        raise _UsageError(str(exc)) from exc
+        raise WheresatUsageError(str(exc)) from exc
+
+
+def _validate_record_options(options: WheresatOptions) -> None:
+    """Refuse an expectation that no record write would consult.
+
+    ``--expected-old`` names the value the anchor ref must still hold for the
+    record to be replaced, so it is meaningless without ``--record``. Accepting
+    it silently would let a user believe a record that this run never touches
+    was protected by it, which is the one thing the option is for.
+
+    Raises
+    ------
+    WheresatUsageError
+        If ``--expected-old`` was given without ``--record``.
+
+    """
+    if options.expected_old is not None and not options.record:
+        msg = (
+            "--expected-old has no meaning without --record: it names the value "
+            "the stack record must still hold for --record to replace it"
+        )
+        raise WheresatUsageError(msg)
 
 
 def _open_repo() -> Repo:
@@ -265,7 +305,7 @@ def _open_repo() -> Repo:
 
     Raises
     ------
-    _UsageError
+    WheresatUsageError
         If the current directory is not inside a Git repository.
 
     """
@@ -273,7 +313,7 @@ def _open_repo() -> Repo:
         return Repo(Path.cwd(), search_parent_directories=True)
     except (InvalidGitRepositoryError, NoSuchPathError) as exc:
         msg = "not inside a Git repository"
-        raise _UsageError(msg) from exc
+        raise WheresatUsageError(msg) from exc
 
 
 def _branch(options: WheresatOptions, repo: Repo) -> str:
@@ -286,7 +326,7 @@ def _branch(options: WheresatOptions, repo: Repo) -> str:
 
     Raises
     ------
-    _UsageError
+    WheresatUsageError
         If HEAD is detached and no ``--branch`` was given, because a boundary
         read for a detached HEAD would name a branch that does not exist.
 
@@ -298,7 +338,7 @@ def _branch(options: WheresatOptions, repo: Repo) -> str:
             "HEAD is detached in the current directory, so no child branch can be "
             "read from it; name one with --branch"
         )
-        raise _UsageError(msg)
+        raise WheresatUsageError(msg)
     return repo.active_branch.name
 
 
@@ -325,7 +365,7 @@ def _target(
 
     Raises
     ------
-    _UsageError
+    WheresatUsageError
         If the named revision does not resolve, or if no local ref records the
         remote's default branch.
 
@@ -349,7 +389,7 @@ def _principal_remote(repo: Repo) -> str:
 
     Raises
     ------
-    _UsageError
+    WheresatUsageError
         If the repository configures no remote, because the default branch the
         target would default to cannot then be named at all.
 
@@ -360,7 +400,7 @@ def _principal_remote(repo: Repo) -> str:
             "this repository has no remote to name a default branch; pass --onto "
             "to name the replay target"
         )
-        raise _UsageError(msg)
+        raise WheresatUsageError(msg)
     return remotes[0]
 
 
@@ -375,7 +415,7 @@ def _default_branch_ref(remote: str, graph: WheresatGraph) -> str:
 
     Raises
     ------
-    _UsageError
+    WheresatUsageError
         If the remote-tracking ``HEAD`` is not a symbolic ref, which is the case
         for a remote that was never fetched from.
 
@@ -387,7 +427,7 @@ def _default_branch_ref(remote: str, graph: WheresatGraph) -> str:
             f"{alias} is not a symbolic ref, so the default branch of {remote!r} "
             "cannot be named locally; pass --onto to name the replay target"
         )
-        raise _UsageError(msg)
+        raise WheresatUsageError(msg)
     return ref
 
 
@@ -407,7 +447,7 @@ def _parent(options: WheresatOptions) -> stack_records.PullRequestIdentity | Non
 
     Raises
     ------
-    _UsageError
+    WheresatUsageError
         If ``--parent`` is not spelled ``OWNER/REPOSITORY#NUMBER``.
 
     """
@@ -421,7 +461,7 @@ def _parent(options: WheresatOptions) -> stack_records.PullRequestIdentity | Non
     identity = stack_records.parse_pull_request_identity(options.parent)
     if identity is None:
         msg = f"--parent must be OWNER/REPOSITORY#NUMBER, not {options.parent!r}"
-        raise _UsageError(msg)
+        raise WheresatUsageError(msg)
     observability.get_recorder().record(
         observability.Observation(
             operation=_PARENT_IDENTIFICATION, outcome="unavailable"
@@ -440,7 +480,7 @@ def _resolved(graph: WheresatGraph, rev: str, *, what: str) -> str:
 
     Raises
     ------
-    _UsageError
+    WheresatUsageError
         If the revision does not resolve, or if Git cannot be asked. The
         question is put before there is any evidence to assess, so an
         unanswerable one is a configuration failure rather than an
@@ -451,7 +491,33 @@ def _resolved(graph: WheresatGraph, rev: str, *, what: str) -> str:
         return graph.resolve(rev)
     except WheresatGraphError as exc:
         msg = f"{what} could not be resolved: {exc}"
-        raise _UsageError(msg) from exc
+        raise WheresatUsageError(msg) from exc
+
+
+def _expectation(session: _Session) -> str | None:
+    """Return ``--expected-old`` resolved, or ``None`` when none was given.
+
+    The expectation is resolved here rather than by the write that compares it,
+    because resolution is a question about the repository and belongs beside the
+    other names the run resolves. A run that named no expectation resolves
+    nothing, so the default path asks the repository no extra question.
+
+    Returns
+    -------
+    str | None
+        The commit ``--expected-old`` names, or ``None`` when the run named
+        none.
+
+    Raises
+    ------
+    WheresatUsageError
+        If the expectation does not resolve.
+
+    """
+    expected = session.options.expected_old
+    if expected is None:
+        return None
+    return _resolved(session.graph, expected, what=f"--expected-old {expected!r}")
 
 
 def _assess(session: _Session) -> wheresat_records.Assessment:
@@ -474,81 +540,6 @@ def _assess(session: _Session) -> wheresat_records.Assessment:
     )
     return wheresat_policy.apply_collection_faults(
         assessment, evidence.faults + facts.faults
-    )
-
-
-def _retained(
-    session: _Session, assessment: wheresat_records.Assessment
-) -> wheresat_records.Assessment:
-    """Return the assessment with its boundary retained, if it needs retaining.
-
-    A boundary that only this run's own refs reach would be collected by the
-    next ``git gc --prune=now``, so it is written under a ref of its own before
-    it is reported (INV-8). A boundary some other ref already reaches is left
-    exactly as it is: the ref count of the repository is part of what a run
-    without ``--record`` must not change.
-
-    Returns
-    -------
-    wheresat_records.Assessment
-        The assessment, with the retaining ref named when one was written, or an
-        indeterminate result when the boundary could not be kept.
-
-    """
-    if not isinstance(assessment, wheresat_records.Established):
-        return assessment
-    try:
-        reaches = session.graph.is_reachable_from_durable_ref(assessment.old_base)
-    except WheresatGraphError as exc:
-        return _indeterminate(
-            assessment, f"cannot tell whether the boundary is retained: {exc}"
-        )
-    if reaches:
-        return assessment
-    return _retain(session, assessment)
-
-
-def _retain(
-    session: _Session, assessment: wheresat_records.Established
-) -> wheresat_records.Assessment:
-    """Return the assessment with a durable ref written for its boundary.
-
-    Returns
-    -------
-    wheresat_records.Assessment
-        The assessment naming the ref that now retains the boundary, or an
-        indeterminate result when the ref could not be written: a boundary the
-        run cannot keep must not be reported as an answer that outlives it.
-
-    """
-    branch = session.context.request.branch
-    writer = wheresat_refs.GitWheresatRefWriter(session.repo)
-    try:
-        ref = writer.retain_boundary(branch, assessment.old_base)
-    except (wheresat_refs.WheresatRefError, ValueError) as exc:
-        return _indeterminate(assessment, f"the boundary could not be retained: {exc}")
-    return dataclasses.replace(assessment, durable_ref=ref)
-
-
-def _indeterminate(
-    assessment: wheresat_records.Established, reason: str
-) -> wheresat_records.Indeterminate:
-    """Return the indeterminate result a run that cannot keep its answer reports.
-
-    The boundary's own evidence is reported as the candidates the run
-    collected, because that evidence is what the run was about to answer with
-    and a reader of the refusal needs it to see which boundary went unreported.
-
-    Returns
-    -------
-    wheresat_records.Indeterminate
-        The verdict, with the reason it could not be established.
-
-    """
-    return wheresat_records.Indeterminate(
-        candidates=tuple(assessment.support),
-        gates=assessment.gates,
-        reasons=(reason,),
     )
 
 
