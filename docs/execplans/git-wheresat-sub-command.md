@@ -479,7 +479,11 @@ Stop and escalate rather than improvising when any of these is reached.
     recorded under Surprises.
   - Reviewed: `coderabbit review --agent --base origin/main` reports
     `review_completed` with zero findings over 45 changed files (log
-    `/tmp/coderabbit-git-donkey-git-wheresat-sub-command-2.out`), taken at
+    `/tmp/coderabbit-git-donkey-git-wheresat-sub-command-2.out`; that path was
+    later overwritten by EP-M8's first pass and now lists 73, so the reading it
+    held is no longer at it — the 45 is checked against
+    `git diff --name-only origin/main...d45762d`, not against the file today,
+    see the EP-M9 finding on reused log names), taken at
     `1b268c3`, the commit this entry describes. Six deterministic gates were
     green first on that same commit (logs
     `/tmp/{check-fmt,lint,typecheck,test,markdownlint,nixie}-git-donkey-git-wheresat-sub-command-4.out`):
@@ -709,7 +713,7 @@ Stop and escalate rather than improvising when any of these is reached.
     a sixty-second pass over roughly 11.6k new lines is a weak signal, which is
     why the deterministic substitute above was run as well. Log
     `/tmp/coderabbit-git-donkey-git-wheresat-sub-command.out`.
-- [ ] EP-M9 `git wheresat --record` refreshes the shared record.
+- [x] EP-M9 `git wheresat --record` refreshes the shared record.
   - The production half is committed as `5e49716` ("Write the record a run was
     asked to refresh"), five files: `git_donkey/stack_store.py` gains the
     reader's `anchor`, which is the read a refresh makes before it replaces
@@ -814,7 +818,45 @@ Stop and escalate rather than improvising when any of these is reached.
     `wheresat_report.py`'s `type _Payload` already has. A shared helper is gated
     by the second Pylint pass and a new test module by all three, so the two new
     suites and the one helper they share only converged in that order. The
-    Markdown-reading gates were re-run once this entry was written.
+    Markdown-reading gates were then re-run over this entry and the two bullets
+    that follow it, in three rounds: the first was red on one MD049 that this
+    entry introduced — an asterisk emphasis where the file's consistent style is
+    underscore — and the third is green, with `typos.toml` unmodified and no
+    asterisk emphasis left anywhere in the added lines (log
+    `/tmp/{markdownlint,spelling,nixie}-git-donkey-git-wheresat-sub-command-19.out`).
+  - Reviewed: `coderabbit review --agent --base origin/main` reports
+    `review_completed` with zero findings over 77 changed files (log
+    `/tmp/coderabbit-git-donkey-git-wheresat-sub-command-5.out`), taken at
+    `1656db6`, the commit this entry describes, on the first attempt and without
+    meeting a rate limit, so no `vsleep` retry was needed. The reviewer's list
+    of paths is an exact set match against `git diff --name-only
+    origin/main...HEAD` at that commit — 77 each way, no path in one list and
+    not the other — so the four paths this milestone adds are among those read
+    rather than only the ones it changes: `git_donkey/wheresat_writes.py` and
+    the three behavioural artefacts. The review is taken against `origin/main`
+    rather than `main`, because the local `main` in a worktree can lag the
+    remote by dozens of commits and inflate the diff.
+  - Finding: the milestone's review is _not_ at the path the convention
+    suggests, and the reason matters for every citation in this plan. The `tee`
+    name is per branch rather than per milestone, so
+    `/tmp/coderabbit-git-donkey-git-wheresat-sub-command.out` had already been
+    taken by EP-M8's retry, and the path that EP-M4's entry cites (`-2.out`)
+    had been overwritten by EP-M8's first pass before this milestone began.
+    Both were verified rather than assumed: `-2.out` now lists 73 paths where
+    EP-M4's citation says 45, and `git diff --name-only origin/main...d45762d`
+    — the commit that closed EP-M4 — is exactly 45, so the citation was true
+    when written and the file has since come to mean a different review. The
+    review was therefore run to the next free suffix, `-5.out`, and EP-M4's
+    citation is annotated where it stands rather than deleted, because what it
+    records is what was measured, not what is readable there now. The rule this
+    entry now follows, and the reason each citation in this plan gives a file
+    count and a commit beside its path: a log path identifies a file, not a
+    measurement, and only the content can be checked. The byte-identical pair
+    is the same lesson from the other side — EP-M8's two passes produced
+    identical completion streams because the stream carries the status, the
+    finding count, and the path list, and none of the three changed between
+    them — which is why this entry's evidence is the path set compared against
+    the diff rather than the reviewer's own count.
 - [ ] EP-M10 GitHub evidence, `--json`, behavioural scenarios, and the
       remaining documentation.
 
@@ -1523,6 +1565,27 @@ Stop and escalate rather than improvising when any of these is reached.
   for one run is sliced to that run, and a capture read for one run is drained
   before it — is recorded in the two helpers' docstrings so the next suite does
   not re-learn it.
+
+- Observation: the `tee` log names this project's convention prescribes are per
+  branch rather than per milestone, so a later run silently replaces an earlier
+  milestone's evidence at the same path.
+  Evidence: EP-M4's review is cited at
+  `/tmp/coderabbit-git-donkey-git-wheresat-sub-command-2.out` as 45 changed
+  files, and `git diff --name-only origin/main...d45762d` — the commit that
+  closed EP-M4 — is exactly 45, but the file now lists 73, having been
+  overwritten by EP-M8's first pass an hour before this milestone's review. The
+  unsuffixed canonical path was occupied the same way, so EP-M9's review went to
+  the next free suffix (`-5.out`). Two of EP-M8's logs are byte-identical for
+  the related reason that the completion stream carries only the status, the
+  finding count, and the path list, none of which changed between its passes.
+  Impact: a log path identifies a file, not a measurement. Every review citation
+  in this plan now carries a file count and a commit beside its path, the
+  count being checked against `git diff --name-only origin/main...<commit>`
+  rather than against the reviewer's own list or against what the path holds
+  today, and the EP-M4 citation is annotated in place instead of deleted. The
+  next milestone should claim its suffix before running the review, not after,
+  and should treat a cached review as a hypothesis about the diff rather than as
+  evidence for it.
 
 ## Decision log
 
@@ -3464,10 +3527,14 @@ write nothing else. The users' guide explains when to refresh, and why a
 birth record goes stale after a later parent integration.
 Requirements: REQ-record-refresh.
 Acceptance evidence: `tests/integration/test_wheresat_record.py` passes all
-five cases of INV-7.
+thirteen tests that state INV-7 — the five cases, the property over the space of
+pairs those cases are examples of, and four that keep the five from passing
+vacuously. What each one holds is under the Progress entry; that the suite
+states the invariant as a property rather than as a matrix is the part worth
+repeating here.
 Conformance check: INV-1's matrix still passes unchanged, and a separate
-assertion proves `--record` is the only path that constructs the writer for
-anything other than a fetch.
+assertion counts the writer's constructions across two runs, proving that a run
+asked for no write builds none and the run asked for one builds exactly one.
 Recovery: revert; a refreshed record is restored from its ref reflog.
 Remaining gaps: no GitHub evidence.
 As built: the refresh is the only record write the command has, and a record is
