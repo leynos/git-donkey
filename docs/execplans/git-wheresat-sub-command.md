@@ -3323,4 +3323,5 @@ panel before delivery. What changed, and why:
   the very evidence this command depends on. Revision 3 resequenced the
   milestones again and made the tombstones mandatory.
 
-No implementation work has begun. The plan awaits approval before Stage B.
+No implementation work has begun. The plan awaits approval before Stage A;
+Stage A is documentation only, so the first code lands in Stage B.
