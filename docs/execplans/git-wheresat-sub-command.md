@@ -367,8 +367,16 @@ Stop and escalate rather than improvising when any of these is reached.
 
 ## Progress
 
-- [ ] EP-M1 Write the two design documents and the two architectural
+- [x] EP-M1 Write the two design documents and the two architectural
       decision records — the specification this plan implements.
+  - Evidence: `make markdownlint` reports `Summary: 0 error(s)` over 29
+    files and `make nixie` reports `All diagrams validated successfully!`
+    (logs `/tmp/markdownlint-git-wheresat-sub-command.out` and
+    `/tmp/nixie-git-wheresat-sub-command.out`). `docs/contents.md` links all
+    four documents. Each design document's `## Verification contract` names
+    the test modules this plan creates. Both ADRs carry the template's
+    Status, Date, Context and Problem Statement, Decision Drivers, Options
+    Considered, Decision Outcome, Consequences, and Known Risks sections.
 - [ ] EP-M2 `git_donkey/stack_records.py` and `git_donkey/stack_store.py`:
       the shared format, lifecycle decisions, and Git access. No command
       changes.
@@ -501,6 +509,15 @@ Stop and escalate rather than improvising when any of these is reached.
   ancestor, `1` for a non-ancestor, `128` for a nonexistent object ID.
   Impact: the adapter must treat any status other than `0` or `1` as
   indeterminate rather than assuming a specific error code.
+- Observation: `scripts/mdformat-all.sh` ignores `--help` and reformats every
+  Markdown file in the repository.
+  Evidence: invoking it with `--help` printed its own source and then ran
+  `mdtablefix` and `markdownlint-cli2 --fix` over the whole tree; it rewrote
+  twelve tracked files this change does not own and introduced an MD013
+  violation at `docs/execplans/git-wheresat-sub-command.md:3071:81` by
+  reflowing an 80-column URL line. Reverted with `git checkout --`.
+  Impact: never run that script, including with `--help`. Format only the
+  files this change owns. `make markdownlint` is safe and is the gate.
 
 ## Decision log
 
