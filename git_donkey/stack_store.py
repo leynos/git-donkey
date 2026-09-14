@@ -31,6 +31,10 @@ Three properties are maintained here rather than left to the callers.
   lose the tip outright. The reverse case is ``create``, which retires any
   tombstone still naming the branch, so no pair of artefacts ever describes one
   branch as both live and deleted (INV-10).
+- **The retention window is validated before it is applied.** ``expiry`` reads
+  ``stack.tombstoneExpire`` and refuses one that is empty or that names no past
+  instant, because Git's date grammar reads an expression it cannot parse as
+  *now* and a window of no length prunes every tombstone in the repository.
 
 Configuration is read once per call through ``git config --local --list -z``
 and written through ``git config --local``, so Git itself quotes a hierarchical
@@ -62,8 +66,11 @@ from git import GitCommandError, Repo
 from git_donkey import stack_records
 
 _ENTRY_SEPARATOR: typ.Final = "\0"
+_ABSENT_CONFIG_KEY: typ.Final = 1
 _MISSING_CONFIG_KEY: typ.Final = 5
 _MISSING_REF: typ.Final = 1
+TOMBSTONE_EXPIRE_KEY: typ.Final = "stack.tombstoneExpire"
+"""Repository-local key naming how long a tombstone is kept."""
 _REF_NAME_FORMAT: typ.Final = "--format=%(refname)"
 _RECORD_BRANCH_KEY: typ.Final = re.compile(r"^branch\.(?P<branch>.+)\.(?P<key>[^.]+)$")
 _RELOG_ENTRY_TIME: typ.Final = re.compile(r"@\{(?P<timestamp>\d+)\}$")
@@ -93,6 +100,31 @@ class StackRecordReader(typ.Protocol):
 
     def orphans(self) -> tuple[str, ...]:
         """Return branches with a record and no branch (INV-9 violations)."""
+
+    def branch_tip(self, branch: str) -> str | None:
+        """Return the commit ``refs/heads/<branch>`` names, if it still exists."""
+
+    def rescuable(self, orphans: typ.Sequence[str]) -> tuple[str, ...]:
+        """Return the orphans whose recorded tip a sweep would preserve.
+
+        The read half of :meth:`sweep`, so a caller that must not write — a
+        dry run — can still say which orphans would be rescued rather than
+        describing every orphan as if its tip survived.
+        """
+
+    def expired(self, expire: str) -> tuple[str, ...]:
+        """Return the tombstones older than ``expire``, without deleting them."""
+
+    def expiry(self) -> str:
+        """Return the configured retention window, once it is known usable.
+
+        Raises
+        ------
+        ValueError
+            If the window is empty, names no cutoff, or names an instant that
+            is not in the past, which is how Git reads an expression it cannot
+            parse and is therefore a typo rather than a window.
+        """
 
 
 class StackRecordWriter(StackRecordReader, typ.Protocol):
@@ -215,6 +247,124 @@ class GitStackRecordReader:
         names.update(self._anchored_branches())
         return tuple(sorted(name for name in names if not self._branch_exists(name)))
 
+    def branch_tip(self, branch: str) -> str | None:
+        """Return the commit ``branch`` names now, or ``None`` when it is gone.
+
+        This is the tip a caller preserves before deleting the branch, read
+        from the branch itself rather than from any record of it, because the
+        record describes a boundary and the tombstone must name a commit.
+
+        Parameters
+        ----------
+        branch : str
+            Local branch whose tip is wanted.
+
+        Returns
+        -------
+        str | None
+            The commit ``refs/heads/<branch>`` names, or ``None`` when the
+            branch does not exist.
+
+        """
+        return self._ref_value(f"refs/heads/{branch}")
+
+    def rescuable(self, orphans: typ.Sequence[str]) -> tuple[str, ...]:
+        """Return the orphans whose recorded tip is still readable.
+
+        Parameters
+        ----------
+        orphans : typ.Sequence[str]
+            Branch names to classify, as reported by ``orphans``. Names
+            without a record are ignored, so a caller may pass a stale list.
+
+        Returns
+        -------
+        tuple[str, ...]
+            The orphans a sweep would preserve a tip for, in the order they
+            were supplied. The rest are cleared by a sweep all the same: their
+            record did not survive the deletion that orphaned them, so there is
+            no tip left to preserve and none is invented.
+
+        """
+        return tuple(
+            branch for branch in orphans if self._orphan_tip(branch) is not None
+        )
+
+    def expired(self, expire: str) -> tuple[str, ...]:
+        """Return the tombstones written before ``expire``, in sorted order.
+
+        A tombstone whose age cannot be read is not among them: an unreadable
+        timestamp shortens no parent's life, so it is retained rather than
+        guessed at.
+
+        Parameters
+        ----------
+        expire : str
+            A Git date expression, such as ``90.days.ago``.
+
+        Returns
+        -------
+        tuple[str, ...]
+            The branches whose tombstones are older than ``expire``.
+
+        Raises
+        ------
+        ValueError
+            If ``expire`` is empty or Git reports no cutoff for it.
+
+        """
+        cutoff = self._expiry_cutoff(expire)
+        stale: list[str] = []
+        for branch in self._tombstoned_branches():
+            timestamp = self._tombstone_timestamp(branch)
+            if timestamp is not None and timestamp < cutoff:
+                stale.append(branch)
+        return tuple(sorted(stale))
+
+    def expiry(self) -> str:
+        """Return the configured retention window for tombstones.
+
+        Git reads a date expression it cannot parse as *now*, and a window of
+        no length prunes every tombstone in the repository. The window is
+        therefore measured before it is used: the reader asks Git for the
+        instant *now* names first and for the configured expression second, so
+        a window that is not strictly in the past is refused rather than
+        applied. A partially parsable expression is read by Git as its
+        parsable prefix and cannot be detected here; the caller reports the
+        window it used, which is the mitigation for that case.
+
+        Returns
+        -------
+        str
+            The configured window, or ``DEFAULT_TOMBSTONE_EXPIRE`` when the
+            key is unset.
+
+        Raises
+        ------
+        ValueError
+            If the configured window is empty or names no cutoff, or if the
+            instant it names is now or later.
+
+        """
+        expire = self._configured_expire()
+        if not expire.strip():
+            msg = (
+                f"the configured {TOMBSTONE_EXPIRE_KEY} is empty: a retention "
+                "window is required, and every window read from an empty value "
+                "would prune every tombstone"
+            )
+            raise ValueError(msg)
+        now = self._expiry_cutoff("now")
+        cutoff = self._expiry_cutoff(expire)
+        if cutoff >= now:
+            msg = (
+                f"the configured {TOMBSTONE_EXPIRE_KEY} ({expire!r}) names no "
+                "past instant: Git reads an expression it cannot parse as now, "
+                "which would prune every tombstone in the repository"
+            )
+            raise ValueError(msg)
+        return expire
+
     def _config_entries(self) -> tuple[tuple[str, str], ...]:
         """Return every key and value in the repository's local configuration."""
         output = self.repo.git.config("--local", "--list", "-z")
@@ -288,7 +438,43 @@ class GitStackRecordReader:
 
     def _branch_exists(self, branch: str) -> bool:
         """Return whether ``refs/heads/<branch>`` exists."""
-        return self._ref_value(f"refs/heads/{branch}") is not None
+        return self.branch_tip(branch) is not None
+
+    def _orphan_tip(self, branch: str) -> str | None:
+        """Return the tip ``branch``'s orphaned record still carries, if any."""
+        config = self._branch_config(branch)
+        anchor = self._ref_value(stack_records.base_ref_path(branch))
+        if not config and anchor is None:
+            return None
+        # Reconciliation is asked as though the branch still existed, because
+        # the orphan state is the caller's list and what the sweep wants here
+        # is the parsed record, not the orphan report.
+        result = stack_records.reconcile(branch, config, anchor, branch_exists=True)
+        if isinstance(result, stack_records.StackRecord):
+            return result.recorded_from
+        return None
+
+    def _configured_expire(self) -> str:
+        """Return the retention window as configured, or the default."""
+        try:
+            value = self.repo.git.config("--local", "--get", TOMBSTONE_EXPIRE_KEY)
+        except GitCommandError as exc:
+            if exc.status == _ABSENT_CONFIG_KEY:
+                return stack_records.DEFAULT_TOMBSTONE_EXPIRE
+            raise
+        return str(value).strip()
+
+    def _expiry_cutoff(self, expire: str) -> int:
+        """Return the instant ``expire`` names, in seconds since the epoch."""
+        if not expire.strip():
+            msg = "a tombstone expiry must not be empty"
+            raise ValueError(msg)
+        output = self.repo.git.rev_parse(f"--since={expire}")
+        _, separator, value = str(output).partition("=")
+        if not separator or not value.isdigit():
+            msg = f"git reported no expiry cutoff for {expire!r}"
+            raise ValueError(msg)
+        return int(value)
 
     def _tombstone_timestamp(self, branch: str) -> int | None:
         """Return when ``branch``'s tombstone was written, if it can be read."""
@@ -473,32 +659,14 @@ class GitStackRecordWriter(GitStackRecordReader):
             If ``expire`` is empty or Git reports no cutoff for it.
 
         """
-        cutoff = self._expiry_cutoff(expire)
-        pruned = []
-        for branch in self._tombstoned_branches():
-            timestamp = self._tombstone_timestamp(branch)
-            if timestamp is not None and timestamp < cutoff:
-                self._delete_ref(stack_records.tombstone_ref_path(branch))
-                pruned.append(branch)
-        return tuple(sorted(pruned))
+        expired = self.expired(expire)
+        for branch in expired:
+            self._delete_ref(stack_records.tombstone_ref_path(branch))
+        return expired
 
     def _sweep_one(self, branch: str) -> bool:
         """Clear one orphan's record, reporting whether a tombstone stands."""
-        config = self._branch_config(branch)
-        anchor = self._ref_value(stack_records.base_ref_path(branch))
-        if not config and anchor is None:
-            return False
-        # Reconciliation is asked as though the branch still existed, because
-        # the orphan state is the caller's list and what the sweep wants here
-        # is the parsed record, not the orphan report.
-        result = stack_records.reconcile(branch, config, anchor, branch_exists=True)
-        if isinstance(result, stack_records.RecordAbsent):
-            return False
-        tip = (
-            result.recorded_from
-            if isinstance(result, stack_records.StackRecord)
-            else None
-        )
+        tip = self._orphan_tip(branch)
         if tip is not None and self.tombstone(branch) is None:
             self._write_tombstone(branch, tip)
         self._remove_live_record(branch)
@@ -564,15 +732,3 @@ class GitStackRecordWriter(GitStackRecordReader):
         except GitCommandError as exc:
             if exc.status != _MISSING_CONFIG_KEY:
                 raise
-
-    def _expiry_cutoff(self, expire: str) -> int:
-        """Return the instant ``expire`` names, in seconds since the epoch."""
-        if not expire.strip():
-            msg = "a tombstone expiry must not be empty"
-            raise ValueError(msg)
-        output = self.repo.git.rev_parse(f"--since={expire}")
-        _, separator, value = str(output).partition("=")
-        if not separator or not value.isdigit():
-            msg = f"git reported no expiry cutoff for {expire!r}"
-            raise ValueError(msg)
-        return int(value)

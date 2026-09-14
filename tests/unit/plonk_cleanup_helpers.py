@@ -3,24 +3,47 @@
 The cleanup workflow is exercised twice over: ``test_plonk_cleanup.py`` pins the
 contract with readable one- and two-candidate examples, and
 ``test_plonk_cleanup_properties.py`` generalises the same rules over generated
-batches. Both compose one Git double, so the rule the double enforces — hard
-mode deletes a branch only once its worktree is gone — holds for every example
-and every generated batch alike, and a change to how a candidate is described
-cannot leave the two suites asserting against differently shaped adapters.
+batches. Both compose one Git double and one stack record double, so the rules
+the doubles enforce — hard mode deletes a branch only once its worktree is gone
+and only after its tip has been preserved — hold for every example and every
+generated batch alike. A change to how a candidate or a record is described
+therefore cannot leave the two suites asserting against differently shaped
+adapters.
 """
 
 from __future__ import annotations
 
+import dataclasses
 import typing as typ
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
-from git_donkey import plonk, plonk_records
+from git_donkey import (
+    plonk,
+    plonk_cleanup,
+    plonk_records,
+    stack_records,
+    stack_store,
+)
 
 if typ.TYPE_CHECKING:
+    import collections.abc as cabc
+
     from git import Repo
+
+    from git_donkey import plonk_worktree_adapter
+
+# A full object ID is all the lifecycle asks of a tip, and the double reports
+# the same one for every branch, because no unit test inspects the commit a
+# tombstone names.
+RECORDED_TIP = "0" * 40
+
+# The record work the read-only double reports, so a dry run's plan is visible
+# without either record existing.
+PLANNED_ORPHAN = "issue-456-orphaned"
+PLANNED_STALE_TOMBSTONE = "issue-789-stale"
 
 # Trunk ref shape a real run resolves: the fetched remote-tracking ref of the
 # default branch the principal remote advertises.
@@ -49,7 +72,7 @@ class FailingGitAdapter:
         yield marker_for(candidate(WORKTREE_BRANCH, 123))
 
     @staticmethod
-    def skip_reason(worktree_path: Path) -> plonk._SkipReason | None:
+    def skip_reason(worktree_path: Path) -> plonk_records._SkipReason | None:
         """Report every candidate as clean, so planning reaches the mutations."""
         return None
 
@@ -78,7 +101,7 @@ class RecordingGitAdapter:
         self,
         markers: typ.Iterable[str],
         *,
-        skip_reasons: dict[Path, plonk._SkipReason] | None = None,
+        skip_reasons: dict[Path, plonk_records._SkipReason] | None = None,
         removal_failures: typ.Iterable[Path] = (),
         deletion_failures: typ.Iterable[str] = (),
     ) -> None:
@@ -96,7 +119,7 @@ class RecordingGitAdapter:
             raise AssertionError(msg)
         yield from self._markers
 
-    def skip_reason(self, worktree_path: Path) -> plonk._SkipReason | None:
+    def skip_reason(self, worktree_path: Path) -> plonk_records._SkipReason | None:
         """Return the configured reason for ``worktree_path``, if it has one."""
         if worktree_path in self.skip_reasons:
             return self.skip_reasons[worktree_path]
@@ -119,6 +142,159 @@ class RecordingGitAdapter:
             return False
         self.deleted.append(branch_name)
         return True
+
+
+class FailingStackStore:
+    """Stack record double that answers reads but refuses to write.
+
+    A dry run must classify orphans and expired tombstones with reads alone, so
+    the reads report work to plan — one orphan whose record still parses, and
+    one tombstone past every window — while ``entomb``, ``sweep``, and ``prune``
+    fail the test if the planner reaches them. A dry run that reports neither
+    the sweep nor the prune has quietly skipped the classification.
+    """
+
+    @staticmethod
+    def expiry() -> str:
+        """Report the documented retention window, applied to the stale tombstone."""
+        return stack_records.DEFAULT_TOMBSTONE_EXPIRE
+
+    @staticmethod
+    def orphans() -> tuple[str, ...]:
+        """Report one orphaned record for the sweep to classify."""
+        return (PLANNED_ORPHAN,)
+
+    @staticmethod
+    def rescuable(orphans: cabc.Sequence[str]) -> tuple[str, ...]:
+        """Report every orphan as rescuable, since the planner writes nothing."""
+        return tuple(orphans)
+
+    @staticmethod
+    def branch_tip(branch: str) -> str | None:
+        """Report the tip a candidate's branch would have."""
+        return RECORDED_TIP
+
+    @staticmethod
+    def expired(expire: str) -> tuple[str, ...]:
+        """Report one tombstone for the prune to classify."""
+        return (PLANNED_STALE_TOMBSTONE,)
+
+    @staticmethod
+    def entomb(branch: str, tip: str) -> None:
+        """Fail the test unconditionally — a dry run writes no tombstone."""
+        pytest.fail(f"dry run should not entomb {branch} at {tip}")
+
+    @staticmethod
+    def sweep(orphans: cabc.Sequence[str]) -> tuple[str, ...]:
+        """Fail the test unconditionally — a dry run clears no record."""
+        pytest.fail(f"dry run should not sweep orphans {orphans}")
+
+    @staticmethod
+    def prune(expire: str) -> tuple[str, ...]:
+        """Fail the test unconditionally — a dry run deletes no tombstone."""
+        pytest.fail(f"dry run should not prune tombstones older than {expire!r}")
+
+
+class EntombFirstAdapter(RecordingGitAdapter):
+    """Adapter that refuses to delete a branch the store has not entombed.
+
+    The order of the two writes is the whole point of entombing before deleting
+    — the tip is only readable while the branch names it — and neither double
+    can observe the order alone. This one carries the store, so the rule is
+    checked at the moment Git is asked for the deletion.
+    """
+
+    def __init__(
+        self,
+        markers: typ.Iterable[str],
+        records: RecordingStackStore,
+        *,
+        deletion_failures: cabc.Iterable[str] = (),
+    ) -> None:
+        super().__init__(markers, deletion_failures=deletion_failures)
+        self.records = records
+
+    def delete_branch(self, branch_name: str) -> bool:
+        """Assert the tombstone exists, then delete the branch."""
+        if not self.records.entombed:
+            msg = "hard mode preserves a branch's tip before deleting it"
+            raise AssertionError(msg)
+        return super().delete_branch(branch_name)
+
+
+@dataclasses.dataclass(slots=True)
+class RecordingStackStore:
+    """Stack record double that records the lifecycle calls it receives.
+
+    ``branch_tips`` decides which branches ``branch_tip`` finds; a branch it
+    does not name is reported present at ``RECORDED_TIP``, because a candidate
+    that reaches the branch stage of a real run is one whose branch exists.
+    ``preservable`` names the orphans whose record still parses, so one sweep
+    can mix the orphan it rescues with the one it only clears. ``stale`` names
+    the tombstones the retention window reaches, so a test configures the
+    answer to that comparison rather than a clock. ``unusable_expiry`` makes
+    ``expiry`` refuse the configured window, which is the one read a run cannot
+    recover from.
+
+    The fields are named for what the reader reports rather than for the
+    methods that report them: ``orphaned`` and ``stale`` cannot both be a field
+    and a protocol method, and the method is the half the production store
+    declares.
+    """
+
+    branch_tips: dict[str, str | None] = dataclasses.field(default_factory=dict)
+    orphaned: cabc.Iterable[str] = ()
+    preservable: cabc.Iterable[str] = ()
+    stale: cabc.Iterable[str] = ()
+    expire: str = stack_records.DEFAULT_TOMBSTONE_EXPIRE
+    entomb_failures: cabc.Iterable[str] = ()
+    unusable_expiry: bool = False
+    entombed: list[tuple[str, str]] = dataclasses.field(default_factory=list)
+    swept: list[tuple[str, ...]] = dataclasses.field(default_factory=list)
+    pruned: list[str] = dataclasses.field(default_factory=list)
+
+    def expiry(self) -> str:
+        """Return the configured window, or refuse it as a reader would."""
+        if self.unusable_expiry:
+            msg = (
+                f"the configured {stack_store.TOMBSTONE_EXPIRE_KEY} names no "
+                "past instant"
+            )
+            raise ValueError(msg)
+        return self.expire
+
+    def orphans(self) -> tuple[str, ...]:
+        """Return the configured orphans as the tuple the protocol answers with."""
+        return tuple(self.orphaned)
+
+    def rescuable(self, orphans: cabc.Sequence[str]) -> tuple[str, ...]:
+        """Return the orphans of ``orphans`` whose record still parses."""
+        return tuple(branch for branch in orphans if branch in self.preservable)
+
+    def branch_tip(self, branch: str) -> str | None:
+        """Return the tip configured for ``branch``, or the default one."""
+        return self.branch_tips.get(branch, RECORDED_TIP)
+
+    def expired(self, expire: str) -> tuple[str, ...]:
+        """Return the stale tombstones as the tuple the protocol answers with."""
+        return tuple(self.stale)
+
+    def entomb(self, branch: str, tip: str) -> None:
+        """Record a tombstone, reporting failure for the configured branches."""
+        if branch in self.entomb_failures:
+            msg = f"cannot write the tombstone for {branch!r}"
+            raise stack_store.StackRecordError(msg)
+        self.entombed.append((branch, tip))
+
+    def sweep(self, orphans: cabc.Sequence[str]) -> tuple[str, ...]:
+        """Record a sweep, preserving the orphans whose record still parses."""
+        self.swept.append(tuple(orphans))
+        return self.rescuable(orphans)
+
+    def prune(self, expire: str) -> tuple[str, ...]:
+        """Record a prune, deleting the tombstones the window reaches."""
+        self.pruned.append(expire)
+        return tuple(self.stale)
 
 
 def candidate(branch_name: str, issue_number: int) -> plonk_records._PlonkCandidate:
@@ -181,25 +357,55 @@ def cleanup_context(
     )
 
 
+def cleanup_surfaces(
+    adapter: object,
+    records: object | None = None,
+) -> plonk_cleanup._CleanupSurfaces:
+    """Return the Git surfaces a cleanup run over ``adapter`` cleans through.
+
+    Parameters
+    ----------
+    adapter : object
+        Any double exposing the adapter's history, skip, and mutation surface.
+    records : object | None, optional
+        Any double exposing the stack record surface the lifecycle uses,
+        defaulting to one holding no orphans, no tombstones, and a branch for
+        every candidate.
+
+    Returns
+    -------
+    plonk_cleanup._CleanupSurfaces
+        The adapter double beside the record double the run reads and writes.
+
+    """
+    return plonk_cleanup._CleanupSurfaces(
+        adapter=typ.cast("plonk_worktree_adapter._GitWorktreeAdapter", adapter),
+        records=typ.cast(
+            "stack_store.StackRecordWriter",
+            RecordingStackStore() if records is None else records,
+        ),
+    )
+
+
 def run_cleanup(
     candidates: typ.Iterable[plonk_records._PlonkCandidate],
-    adapter: object,
-    *,
+    surfaces: plonk_cleanup._CleanupSurfaces,
     mode: plonk._PlonkMode,
+    *,
     dry_run: bool = False,
 ) -> plonk._PlonkResult:
-    """Run completed cleanup for ``candidates`` against an adapter double.
+    """Run completed cleanup for ``candidates`` against doubles.
 
     Parameters
     ----------
     candidates : collections.abc.Iterable[plonk_records._PlonkCandidate]
         Candidates to clean up.
-    adapter : object
-        Any double exposing the adapter's history, skip, and mutation surface.
+    surfaces : plonk_cleanup._CleanupSurfaces
+        Git and record doubles the run cleans through.
     mode : plonk._PlonkMode
         Cleanup mode to run.
     dry_run : bool, optional
-        Whether to plan the work without mutating the adapter.
+        Whether to plan the work without mutating either double.
 
     Returns
     -------
@@ -207,9 +413,9 @@ def run_cleanup(
         What the run reports it removed and skipped.
 
     """
-    return plonk._run_completed_cleanup(
+    return plonk_cleanup._run_completed_cleanup(
         cleanup_context(candidates),
         mode,
-        typ.cast("plonk._GitWorktreeAdapter", adapter),
+        surfaces,
         dry_run=dry_run,
     )

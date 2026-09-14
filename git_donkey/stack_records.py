@@ -44,6 +44,13 @@ TOMBSTONE_NAMESPACE: typ.Final = "refs/stack-tombstones"
 EVIDENCE_BIRTH: typ.Final = "stack-record-birth"
 """Evidence kind written when the record is created at branch birth."""
 
+DEFAULT_TOMBSTONE_EXPIRE: typ.Final = "90.days.ago"
+"""Retention window used when ``stack.tombstoneExpire`` is unset.
+
+The same horizon as Git's own ``gc.reflogExpire``, so a tombstone lasts exactly
+as long as the reflog it stands in for would have.
+"""
+
 
 class RecordKey(enum.StrEnum):
     """The per-branch configuration keys, without the ``branch.<name>.`` prefix.

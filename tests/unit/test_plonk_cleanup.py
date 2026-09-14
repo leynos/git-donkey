@@ -20,18 +20,31 @@ from pathlib import Path
 
 import pytest
 
-from git_donkey import plonk
+from git_donkey import plonk, plonk_records, stack_store
 from tests.unit.plonk_cleanup_helpers import (
+    PLANNED_ORPHAN,
+    PLANNED_STALE_TOMBSTONE,
+    RECORDED_TIP,
     WORKTREE_BRANCH,
+    EntombFirstAdapter,
     FailingGitAdapter,
+    FailingStackStore,
     RecordingGitAdapter,
+    RecordingStackStore,
     candidate,
+    cleanup_surfaces,
     marker_for,
     run_cleanup,
 )
 
 if typ.TYPE_CHECKING:
     from tests.observability_helpers import RecordingRecorder
+
+# Exit codes the command reports a completed cleanup with: everything asked for
+# was done, something asked for was not, and the run was never usable at all.
+_SUCCESS_EXIT_CODE = 0
+_FAILURE_EXIT_CODE = 1
+_USAGE_EXIT_CODE = 2
 
 
 def test_dirty_candidate_does_not_abandon_its_clean_siblings() -> None:
@@ -40,20 +53,22 @@ def test_dirty_candidate_does_not_abandon_its_clean_siblings() -> None:
     clean = candidate("issue-123-clean", 123)
     adapter = RecordingGitAdapter(
         [marker_for(dirty), marker_for(clean)],
-        skip_reasons={dirty.worktree_path: plonk._SkipReason.DIRTY},
+        skip_reasons={dirty.worktree_path: plonk_records._SkipReason.DIRTY},
     )
 
     result = run_cleanup(
         [dirty, clean],
-        adapter,
-        mode=plonk._PlonkMode.DEFAULT,
+        cleanup_surfaces(adapter),
+        plonk._PlonkMode.DEFAULT,
     )
 
     assert result.removed_worktrees == (clean.worktree_path,), (
         "the clean worktree is removed even though its sibling was skipped"
     )
     assert result.skipped_worktrees == (
-        plonk._SkippedWorktree(dirty.worktree_path, plonk._SkipReason.DIRTY),
+        plonk_records._SkippedWorktree(
+            dirty.worktree_path, plonk_records._SkipReason.DIRTY
+        ),
     ), "the dirty worktree is reported with the reason it was left alone"
     assert adapter.removed == [clean.worktree_path], (
         "the dirty worktree is never handed to Git for removal"
@@ -66,10 +81,12 @@ def test_hard_mode_keeps_the_branch_of_a_skipped_worktree() -> None:
     dirty = candidate("issue-456-dirty", 456)
     adapter = RecordingGitAdapter(
         [marker_for(clean), marker_for(dirty)],
-        skip_reasons={dirty.worktree_path: plonk._SkipReason.DIRTY},
+        skip_reasons={dirty.worktree_path: plonk_records._SkipReason.DIRTY},
     )
 
-    result = run_cleanup([clean, dirty], adapter, mode=plonk._PlonkMode.HARD)
+    result = run_cleanup(
+        [clean, dirty], cleanup_surfaces(adapter), plonk._PlonkMode.HARD
+    )
 
     assert result.removed_branches == (clean.branch_name,), (
         "only the branch whose worktree was actually removed is deleted"
@@ -85,13 +102,13 @@ def test_dry_run_reports_skips_without_mutating() -> None:
     gone = candidate("issue-456-gone", 456)
     adapter = RecordingGitAdapter(
         [marker_for(clean), marker_for(gone)],
-        skip_reasons={gone.worktree_path: plonk._SkipReason.UNAVAILABLE},
+        skip_reasons={gone.worktree_path: plonk_records._SkipReason.UNAVAILABLE},
     )
 
     result = run_cleanup(
         [clean, gone],
-        adapter,
-        mode=plonk._PlonkMode.HARD,
+        cleanup_surfaces(adapter),
+        plonk._PlonkMode.HARD,
         dry_run=True,
     )
 
@@ -103,7 +120,9 @@ def test_dry_run_reports_skips_without_mutating() -> None:
         "the clean branch is planned for deletion in hard mode"
     )
     assert result.skipped_worktrees == (
-        plonk._SkippedWorktree(gone.worktree_path, plonk._SkipReason.UNAVAILABLE),
+        plonk_records._SkippedWorktree(
+            gone.worktree_path, plonk_records._SkipReason.UNAVAILABLE
+        ),
     ), "the missing worktree is reported as skipped"
     assert not adapter.removed, "a dry run removes no worktree"
     assert not adapter.deleted, "a dry run deletes no branch"
@@ -118,7 +137,9 @@ def test_failed_removal_is_skipped_and_the_batch_continues() -> None:
         removal_failures=[stubborn.worktree_path],
     )
 
-    result = run_cleanup([stubborn, clean], adapter, mode=plonk._PlonkMode.HARD)
+    result = run_cleanup(
+        [stubborn, clean], cleanup_surfaces(adapter), plonk._PlonkMode.HARD
+    )
 
     assert result.removed_worktrees == (clean.worktree_path,), (
         "the following clean candidate is still removed"
@@ -127,8 +148,8 @@ def test_failed_removal_is_skipped_and_the_batch_continues() -> None:
         "a branch is only deleted once its worktree is gone"
     )
     assert result.skipped_worktrees == (
-        plonk._SkippedWorktree(
-            stubborn.worktree_path, plonk._SkipReason.REMOVAL_FAILED
+        plonk_records._SkippedWorktree(
+            stubborn.worktree_path, plonk_records._SkipReason.REMOVAL_FAILED
         ),
     ), "the failed removal is reported with its own reason"
 
@@ -147,7 +168,12 @@ def test_dry_run_completed_mode_reports_plans_without_mutating(
     """Dry-run completed cleanup should plan work without destructive Git APIs."""
     completed = candidate(WORKTREE_BRANCH, 123)
 
-    result = run_cleanup([completed], FailingGitAdapter(), mode=mode, dry_run=True)
+    result = run_cleanup(
+        [completed],
+        cleanup_surfaces(FailingGitAdapter(), FailingStackStore()),
+        mode,
+        dry_run=True,
+    )
 
     assert result.mode is mode, "expected completed dry-run mode to be preserved"
     assert result.is_dry_run, "expected dry-run result marker"
@@ -156,6 +182,21 @@ def test_dry_run_completed_mode_reports_plans_without_mutating(
     )
     assert result.removed_branches == expected_branches, (
         f"expected planned branch deletion for {mode.value} mode"
+    )
+    expected_entombments = (
+        (completed.branch_name,) if mode is plonk._PlonkMode.HARD else ()
+    )
+    assert result.entombed_branches == expected_entombments, (
+        "a hard dry run plans the tombstone it would write, and writes none of it"
+    )
+    assert result.swept_records == (PLANNED_ORPHAN,), (
+        "a dry run classifies orphans with reads rather than skipping them"
+    )
+    assert not result.unrescuable_records, (
+        "the double reports every orphan as rescuable, and nothing was written"
+    )
+    assert result.pruned_tombstones == (PLANNED_STALE_TOMBSTONE,), (
+        "a dry run classifies stale tombstones with reads too"
     )
 
 
@@ -168,7 +209,9 @@ def test_failed_branch_deletion_is_reported_and_the_batch_continues() -> None:
         deletion_failures=[stubborn.branch_name],
     )
 
-    result = run_cleanup([stubborn, clean], adapter, mode=plonk._PlonkMode.HARD)
+    result = run_cleanup(
+        [stubborn, clean], cleanup_surfaces(adapter), plonk._PlonkMode.HARD
+    )
 
     assert result.removed_worktrees == (stubborn.worktree_path, clean.worktree_path), (
         "both worktrees are still removed"
@@ -194,10 +237,10 @@ def test_skipped_candidate_records_its_bounded_reason(
     dirty = candidate("issue-456-dirty", 456)
     adapter = RecordingGitAdapter(
         [marker_for(dirty)],
-        skip_reasons={dirty.worktree_path: plonk._SkipReason.DIRTY},
+        skip_reasons={dirty.worktree_path: plonk_records._SkipReason.DIRTY},
     )
 
-    run_cleanup([dirty], adapter, mode=plonk._PlonkMode.DEFAULT)
+    run_cleanup([dirty], cleanup_surfaces(adapter), plonk._PlonkMode.DEFAULT)
 
     assert len(recording_recorder.observations) == 1, (
         "a skipped candidate records the preflight and nothing else"
@@ -224,7 +267,9 @@ def test_refused_removal_and_deletion_record_bounded_failures(
         deletion_failures=[branchless.branch_name],
     )
 
-    run_cleanup([stubborn, branchless], adapter, mode=plonk._PlonkMode.HARD)
+    run_cleanup(
+        [stubborn, branchless], cleanup_surfaces(adapter), plonk._PlonkMode.HARD
+    )
 
     assert recording_recorder.outcomes("worktree_removal") == ["failure", "success"], (
         "the refused removal is recorded before the removal that succeeded"
@@ -247,23 +292,30 @@ def test_refused_removal_and_deletion_record_bounded_failures(
 
 
 @pytest.mark.parametrize(
-    ("failed_branch_deletions", "expected_exit_code"),
+    ("failed_branch_deletions", "failed_entombments"),
     [
-        pytest.param((), 0, id="complete-sweep"),
-        pytest.param(("issue-123-fix",), 1, id="surviving-branch"),
+        pytest.param((), (), id="complete-sweep"),
+        pytest.param(("issue-123-fix",), (), id="surviving-branch"),
+        pytest.param((), ("issue-123-fix",), id="unpreserved-tip"),
     ],
 )
 def test_run_git_plonk_reports_partial_sweeps(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
     failed_branch_deletions: tuple[str, ...],
-    expected_exit_code: int,
+    failed_entombments: tuple[str, ...],
 ) -> None:
-    """A branch the sweep could not delete should reach the caller's exit code."""
+    """A branch the sweep could not finish with should reach the caller's code."""
+    expected_exit_code = (
+        _FAILURE_EXIT_CODE
+        if failed_branch_deletions or failed_entombments
+        else _SUCCESS_EXIT_CODE
+    )
     result = plonk._PlonkResult(
         mode=plonk._PlonkMode.HARD,
         removed_worktrees=(Path("/repo.worktrees/issue-123-fix"),),
         failed_branch_deletions=failed_branch_deletions,
+        failed_entombments=failed_entombments,
     )
     monkeypatch.setattr(plonk, "_load_plonk_context", lambda: None)
     monkeypatch.setattr(
@@ -276,4 +328,170 @@ def test_run_git_plonk_reports_partial_sweeps(
     summary = capsys.readouterr().out
     assert ("Failed branch deletions:" in summary) is bool(failed_branch_deletions), (
         "the summary names the branch that survived, and only then"
+    )
+    assert ("Failed entombments:" in summary) is bool(failed_entombments), (
+        "the summary names the branch whose tip could not be preserved, and only then"
+    )
+
+
+def test_hard_mode_preserves_the_tip_before_deleting_the_branch() -> None:
+    """The tombstone is written while the branch still names the tip."""
+    completed = candidate(WORKTREE_BRANCH, 123)
+    records = RecordingStackStore()
+    adapter = EntombFirstAdapter([marker_for(completed)], records)
+
+    result = run_cleanup(
+        [completed],
+        cleanup_surfaces(adapter, records),
+        plonk._PlonkMode.HARD,
+    )
+
+    assert records.entombed == [(completed.branch_name, RECORDED_TIP)], (
+        "the branch's tip is preserved as its tombstone"
+    )
+    assert result.entombed_branches == (completed.branch_name,), (
+        "the entombment is reported beside the deletion it made safe"
+    )
+    assert result.removed_branches == (completed.branch_name,), (
+        "the branch is still reported as deleted"
+    )
+    assert not result.failed_entombments, "a written tombstone is not a failure"
+
+
+def test_default_mode_preserves_no_tip() -> None:
+    """Default mode deletes no branch, so it has no tip to preserve."""
+    completed = candidate(WORKTREE_BRANCH, 123)
+    records = RecordingStackStore()
+    adapter = RecordingGitAdapter([marker_for(completed)])
+
+    result = run_cleanup(
+        [completed],
+        cleanup_surfaces(adapter, records),
+        plonk._PlonkMode.DEFAULT,
+    )
+
+    assert not records.entombed, "a branch that survives keeps naming its own tip"
+    assert not result.entombed_branches, "nothing was preserved and nothing is claimed"
+
+
+def test_an_unpreservable_tip_keeps_the_branch_and_fails_the_run() -> None:
+    """A branch is never deleted without the tombstone that survives it."""
+    completed = candidate(WORKTREE_BRANCH, 123)
+    records = RecordingStackStore(entomb_failures=[completed.branch_name])
+    adapter = RecordingGitAdapter([marker_for(completed)])
+
+    result = run_cleanup(
+        [completed],
+        cleanup_surfaces(adapter, records),
+        plonk._PlonkMode.HARD,
+    )
+
+    assert result.failed_entombments == (completed.branch_name,), (
+        "the branch whose tip could not be preserved is reported"
+    )
+    assert result.removed_worktrees == (completed.worktree_path,), (
+        "the worktree really did go; only the branch was held back"
+    )
+    assert not result.removed_branches, "a branch with no tombstone is not deleted"
+    assert not result.failed_branch_deletions, (
+        "nothing was asked of Git, so no deletion failed"
+    )
+    assert not adapter.deleted, "Git is never asked to delete the branch"
+    assert result.is_incomplete(), "the run did not do everything it was asked to"
+
+
+def test_a_branch_already_gone_is_reported_as_a_failed_deletion() -> None:
+    """A branch that vanished before the run is not a branch to entomb."""
+    completed = candidate(WORKTREE_BRANCH, 123)
+    records = RecordingStackStore(branch_tips={completed.branch_name: None})
+    adapter = RecordingGitAdapter([marker_for(completed)])
+
+    result = run_cleanup(
+        [completed],
+        cleanup_surfaces(adapter, records),
+        plonk._PlonkMode.HARD,
+    )
+
+    assert result.failed_branch_deletions == (completed.branch_name,), (
+        "the deletion the run could not do is what is reported"
+    )
+    assert not records.entombed, "no tombstone is invented for a tip nobody read"
+    assert not result.entombed_branches, "nothing was preserved, so nothing is claimed"
+    assert not adapter.deleted, "Git is never asked to delete a branch that is gone"
+
+
+def test_a_sweep_separates_the_orphan_it_rescued_from_the_one_it_cleared() -> None:
+    """An orphan with no record left has no tip, and is not reported as rescued."""
+    completed = candidate(WORKTREE_BRANCH, 123)
+    rescued, cleared = "issue-456-orphaned", "issue-789-cleared"
+    records = RecordingStackStore(
+        orphaned=(rescued, cleared),
+        preservable={rescued},
+    )
+    adapter = RecordingGitAdapter([marker_for(completed)])
+
+    result = run_cleanup(
+        [completed],
+        cleanup_surfaces(adapter, records),
+        plonk._PlonkMode.DEFAULT,
+    )
+
+    assert records.swept == [(rescued, cleared)], (
+        "one sweep clears every orphan the reader found"
+    )
+    assert result.swept_records == (rescued,), "only the parsed record yields a tip"
+    assert result.unrescuable_records == (cleared,), (
+        "the orphan Git deleted alone is reported as having no tip to preserve"
+    )
+
+
+def test_a_prune_names_the_window_it_applied() -> None:
+    """The summary must say what the tombstones were pruned by."""
+    completed = candidate(WORKTREE_BRANCH, 123)
+    records = RecordingStackStore(stale=("issue-456-stale",), expire="30.days.ago")
+    adapter = RecordingGitAdapter([marker_for(completed)])
+
+    result = run_cleanup(
+        [completed],
+        cleanup_surfaces(adapter, records),
+        plonk._PlonkMode.DEFAULT,
+    )
+
+    assert records.pruned == ["30.days.ago"], "the configured window is what prunes"
+    assert result.pruned_tombstones == ("issue-456-stale",), (
+        "the pruned tombstones are reported"
+    )
+    assert result.tombstone_expire == "30.days.ago", (
+        "the window actually used is reported beside them"
+    )
+    summary = plonk._render_summary(result)
+    assert "Pruned tombstones (older than 30.days.ago):" in summary, (
+        "a mistyped window is visible in the summary rather than silently effective"
+    )
+
+
+def test_an_unusable_window_stops_the_run_before_anything_is_touched(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A window Git reads as *now* would prune every tombstone, so it is refused."""
+    completed = candidate(WORKTREE_BRANCH, 123)
+    records = RecordingStackStore(unusable_expiry=True)
+    adapter = RecordingGitAdapter([marker_for(completed)])
+
+    with pytest.raises(SystemExit) as excinfo:
+        run_cleanup(
+            [completed],
+            cleanup_surfaces(adapter, records),
+            plonk._PlonkMode.HARD,
+        )
+
+    assert excinfo.value.code == _USAGE_EXIT_CODE, (
+        "an unusable configuration is a usage error"
+    )
+    assert not adapter.removed, "no worktree is removed before the window is read"
+    assert not records.swept, "no orphan is swept behind a broken window"
+    assert not records.pruned, "no tombstone is pruned behind a broken window"
+    assert not records.entombed, "the branch is not entombed behind a broken window"
+    assert stack_store.TOMBSTONE_EXPIRE_KEY in capsys.readouterr().err, (
+        "the error names the configuration key the user has to fix"
     )
