@@ -1572,9 +1572,9 @@ Acceptance evidence: `uv run pytest tests/unit/test_stack_records.py
 tests/integration/test_stack_record_lifecycle.py -q` passes, having failed
 first; INV-10's state machine reaches a tombstone, a refresh, and an orphan
 across its generated sequences.
-Conformance check: `stack_records` imports nothing from `git_donkey` except
-type-only references; the store is the only module that writes; the record is
-versioned from the first commit.
+Conformance check: `stack_records` imports nothing else from `git_donkey`
+at all — it is the bottom of the dependency order; the store is the only
+module that writes; the record is versioned from the first commit.
 Recovery: both modules are unreferenced; revert.
 Remaining gaps: no command writes or reads a record.
 
@@ -1656,7 +1656,8 @@ first. `uv run ty check` rejects a deliberately added
 `Established(support=(InferredCandidate(...),))` — the type-level half of
 INV-2.
 Conformance check: both modules' docstrings state the purity rule; no
-dependency added; `wheresat_records` imports only `stack_records`.
+dependency added; `wheresat_records` imports only `stack_records`, and the
+dependency runs one way.
 Recovery: the modules are unreferenced; revert.
 Remaining gaps: no Git ports, no GitHub, no command.
 
@@ -2211,10 +2212,11 @@ for generics and type aliases.
 
 ### `git_donkey/stack_records.py`
 
-The shared contract's format and decisions. Pure: no GitPython, filesystem,
-network, or process access, and no imports from elsewhere in `git_donkey`
-except type-only references. All three commands depend on this module; none
-of them parses a key, builds a ref path, or decides the lifecycle itself.
+The shared contract's format and decisions, and the bottom of this package's
+dependency order: pure, with no GitPython, filesystem, network, or process
+access, and no imports from anywhere else in `git_donkey`. All three commands
+depend on it; none of them parses a key, builds a ref path, or decides the
+lifecycle itself.
 
 ```python
 RECORD_VERSION: typ.Final = "v1"
@@ -2234,6 +2236,18 @@ class RecordKey(enum.StrEnum):
     BASE = "stackbase"
     RECORDED_FROM = "stackbaserecordedfrom"
     EVIDENCE = "stackbaseevidence"
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class PullRequestIdentity:
+    """A pull request named by repository and number.
+
+    Defined here rather than in `wheresat_records` because `StackParent`
+    needs it and `stack_records` must not depend on anything above it.
+    """
+
+    repository: str
+    number: int
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -2392,19 +2406,14 @@ under `--record`.
 
 ### `git_donkey/wheresat_records.py`
 
-Shared value types. No Git, filesystem, network, or process access, and no
-imports from anywhere else in `git_donkey`. Every type any other wheresat
-module exchanges is defined here, so no adapter's types leak into the policy.
+`git wheresat`'s value types. No Git, filesystem, network, or process access.
+Its only intra-package import is `git_donkey.stack_records`, for
+`PullRequestIdentity` and `StackRecord`; the dependency runs one way, from
+the command's types towards the shared contract, never back. Every type any
+other wheresat module exchanges is defined here, so no adapter's types leak
+into the policy.
 
 ```python
-@dataclasses.dataclass(frozen=True, slots=True)
-class PullRequestIdentity:
-    """A pull request named by repository and number."""
-
-    repository: str
-    number: int
-
-
 class Ancestry(enum.StrEnum):
     """Answer to one ancestry question, including "could not tell"."""
 
