@@ -6,7 +6,7 @@ This ExecPlan (execution plan) is a living document. The sections
 `Conformance basis`, and `Verification plan` must be kept up to date as work
 proceeds.
 
-Status: DRAFT
+Status: IN PROGRESS
 
 ## Purpose / big picture
 
@@ -532,15 +532,20 @@ Stop and escalate rather than improvising when any of these is reached.
     linting 30 files with 0 errors. The review is taken against `origin/main`
     rather than `main`, because the local `main` in a worktree can lag the
     remote by dozens of commits and inflate the diff.
-- [ ] EP-M6–EP-M8, one plateau and one commit: `git wheresat` pure value types,
+- [x] EP-M6–EP-M8, one plateau and one commit: `git wheresat` pure value types,
       gates, and assessment (EP-M6); the read-only Git query port and the
       separate ref writer (EP-M7); collection, report, CLI, console script,
       manual page, and the documentation entries — local evidence only (EP-M8).
       Shippable plateau. The three land together because the dead-code gate
       refuses a module no console script reaches; each keeps its own acceptance
-      evidence. See the Decision log.
-  - EP-M6 (value types, gates, assessment) is written and accepted in the
-    working tree, not yet committed: `git_donkey/wheresat_records.py`,
+      evidence. See the Decision log. Landed as `9416683` ("Land the wheresat
+      local-evidence plateau"), with its code-health corrections in `321de11`
+      ("Raise the plateau's five flagged files to the house code health"); all
+      eight commit gates are green over the latter, the review gate returned no
+      findings over the whole branch diff, and `cs delta origin/main` reports
+      `No issues found!`.
+  - EP-M6 (value types, gates, assessment) is written and accepted, committed
+    in `9416683`: `git_donkey/wheresat_records.py`,
     `git_donkey/wheresat_policy.py`, `tests/unit/wheresat_helpers.py`,
     `tests/unit/test_wheresat_policy.py`, and
     `tests/unit/test_wheresat_properties.py`. Red first: both suites failed on
@@ -567,7 +572,7 @@ Stop and escalate rather than improvising when any of these is reached.
     because the property suite is what catches a policy that is total only on
     the corpora a repository can present.
   - EP-M7 (the read-only query port and the separate ref writer) is written and
-    accepted in the working tree, not yet committed:
+    accepted, committed in `9416683`:
     `git_donkey/wheresat_graph.py` and `git_donkey/wheresat_refs.py`. Both are
     clean under `uv run ruff check`, `uv run ruff format --check`, and `uv run
     ty check --extra-search-path scripts` over the two modules (log
@@ -584,7 +589,7 @@ Stop and escalate rather than improvising when any of these is reached.
     milestone names — are the next thing written, and they are what turns those
     observations into acceptance evidence.
   - EP-M8 (collection, report, command line, manual page, and documentation) is
-    written and accepted in the working tree, not yet committed:
+    written and accepted, committed in `9416683`:
     `git_donkey/wheresat_collect.py`, `git_donkey/wheresat_report.py`, and
     `git_donkey/wheresat.py`, beside the console-script entry and constants in
     `git_donkey/cli.py` and `git_donkey/_constants.py`, the observability
@@ -653,6 +658,57 @@ Stop and escalate rather than improvising when any of these is reached.
     `lint`, whose Skylos stage reported four unreached functions in
     `wheresat_refs` — and both corrections are recorded in the Decision log and
     the Surprises above.
+  - CodeScene reviewed the plateau's change surface, and was red on five files.
+    The PR's Code Health Review is the one gate `make` does not reproduce, and
+    `cs delta origin/main` is its local equivalent — it scores the branch as a
+    whole, unlike `cs check <file>`, which scores one file. Its first run
+    reported `plonk_cleanup.py` 9.00, `stack_records.py` 9.38,
+    `wheresat_gates.py` 9.68, `tests/unit/wheresat_helpers.py` 9.38, and
+    `tests/unit/test_stack_records.py` 9.68, against the 10.00 the repository's
+    existing modules hold. All five were fixed by removing the duplication
+    rather than by suppressing the finding: the two loggers in `plonk_cleanup`
+    became one `_log_planned_step` taking `removing_worktree` as a keyword,
+    with every message it emits byte-identical to the one it replaced, and
+    that module's cleanup then split into `_default_surfaces`, `_sweep_records`
+    — returning one `_RecordSweep` value where four locals had been — and
+    `_removable_candidates`; `stack_records` gained a shared `_ref_path` for
+    both namespaces; `wheresat_gates` gained the `_landed_work_is_in_scope`
+    predicate the seventh gate was carrying inline; `test_stack_records`'
+    five-argument `_config` became keyword-only and keyed by `RecordKey`; and
+    the five functions `wheresat_helpers` was reported as similar were given
+    descriptions of their own, the extraction that came first having changed
+    the score not at all (see the Surprises). `cs delta origin/main` now
+    reports `No issues found!` for the whole branch.
+    Gate note: the first run of the gates after those fixes was red on `make
+    lint`, which stopped at stage 5 of its seven — the df12 Pylint pass — over
+    the new `_RecordSweep`, whose `@dataclasses.dataclass(frozen=True)` lacked
+    `slots=True` (R9111). One keyword was added, and `make lint` then reached
+    all seven stages for the second time in this branch, ending in a silent
+    Skylos dead-code verdict. The four gates re-run over the fixed tree:
+    `check-fmt` `141 files already formatted`, `lint` green through all seven
+    stages, `typecheck` `All checks passed!` under ty 0.0.79, and `test` `724
+    passed, 211 warnings` over 21 snapshots — logs
+    `/tmp/{check-fmt,lint,typecheck,test}-git-donkey-git-wheresat-sub-command.out`.
+    `build`, `spelling`, `markdownlint`, and `nixie` were green on the revision
+    immediately before it, and a decorator keyword does not reach them; the
+    three of those that read Markdown were re-run once this entry was written.
+    Committed as `321de11`, "Raise the plateau's five flagged files to the
+    house code health".
+  - CodeRabbit over the plateau, the milestone's review gate, run through the
+    gate-runner sub-agent: the first pass, over `9416683` before the
+    code-health work, returned no findings and was not rate limited. Because
+    the five corrections followed it, the review was repeated over `321de11`,
+    and it too returned zero findings — over all 73 files of the branch's diff,
+    the reviewer's list of reviewed paths being an exact set match against
+    `git diff --name-only origin/main...HEAD`, so nothing was skipped. Its
+    first attempt at the second pass died on a transient WebSocket connection
+    error the tool marked recoverable, and the retry that succeeded is the
+    result recorded here; the failed attempt's output is kept beside the
+    canonical log rather than mistaken for one. The reviewer's own caveat from
+    the first pass is kept because it is the honest reading of a clean result:
+    a sixty-second pass over roughly 11.6k new lines is a weak signal, which is
+    why the deterministic substitute above was run as well. Log
+    `/tmp/coderabbit-git-donkey-git-wheresat-sub-command.out`.
 - [ ] EP-M9 `git wheresat --record` refreshes the shared record.
 - [ ] EP-M10 GitHub evidence, `--json`, behavioural scenarios, and the
       remaining documentation.
@@ -1273,6 +1329,33 @@ Stop and escalate rather than improvising when any of these is reached.
   Decision log) in the knowledge that the gate will not raise the same
   question about the three methods when the forge evidence of EP-M10 lands and
   the surface becomes reachable.
+
+- Observation: the code-health reviewer's similarity detector reads docstrings,
+  so a group of short sibling functions is broken by giving each one its own
+  description rather than by extracting the code they share.
+  Evidence: five functions in `tests/unit/wheresat_helpers.py` were reported as
+  a single group of similar structure — the three tier factories `attested`,
+  `derived`, `inferred` and the two gate readers `failed_gates`,
+  `undecided_gates`. Extracting the factories' shared construction into a
+  `_candidate` builder first, which is the fix the production modules needed,
+  left both the score and the flagged line numbers exactly where they were at
+  9.38, so their bodies were not what grouped them; the module was still 9.38
+  when the builder's `TypeVar` became a PEP 695 type parameter. What the five
+  did share was boilerplate prose: each factory described its parameters with
+  the same three sentences and each reader with the same two. Replacing that
+  with text specific to the function — what that tier's evidence is worth as
+  support, which outcome that reader sifts for — took the file to 10.00 with no
+  change to its code. The counter-example sits in the same file: the one
+  function the detector never flagged, `assessment_of`, is also the one whose
+  docstring is not copied from a neighbour's.
+  Impact: for a fixture module, whose functions exist to be read at their call
+  sites, this is the lever that improves the file rather than the metric — what
+  those descriptions duplicated was a comment, not a computation, whereas the
+  flagged `git_donkey/` modules needed the opposite fix because what they
+  duplicated was behaviour. The corollary is a limit on the gate: a green delta
+  is not evidence that a module's sibling functions are distinct in what they
+  do, only that no group of them reads alike, so each of the four production
+  fixes was checked against its own suite rather than trusted to the score.
 
 ## Decision log
 
