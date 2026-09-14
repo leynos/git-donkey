@@ -144,6 +144,9 @@ failure.
 - `base_update`: `not_requested`, `not_behind`, `declined`, `started`,
   `success`, or `failure` with `git_command_error` or `base_not_in_worktree`.
 - `worktree_creation`: `started`, `success`, or `failure`.
+- `stack_record_write`: `started`, `success`, or `failure` with
+  `stack_record_conflict` when the branch already had a record or the anchor
+  ref could not be created.
 - `template_overlay`: `unavailable` (with `selection_error` when the template
   directory cannot be selected), `started`, `success`, or `failure` with
   `os_error`.
@@ -160,9 +163,9 @@ failure.
   records `mode`.
 
 Remote default discovery, the default-branch fetch, pull execution, worktree
-creation, the comparison fetch, the comparison, and the cleanup boundaries
-(worktree preflight, worktree removal, and branch deletion) are also timed; a
-span reports its operation name and duration only.
+creation, the stack-record write, the comparison fetch, the comparison, and the
+cleanup boundaries (worktree preflight, worktree removal, and branch deletion)
+are also timed; a span reports its operation name and duration only.
 
 Every attribute comes from a fixed vocabulary, so records stay aggregatable.
 Branch names, filesystem paths, remote URLs, Git output, exception text, and
@@ -529,6 +532,15 @@ The root `conftest.py` provides GitHub API stubs shared by unit and integration
 tests. Integration-specific Git repository helpers live in
 `tests/integration/conftest.py`.
 
+The same file registers two Hypothesis profiles, `default` (fifty examples) and
+`nightly` (five hundred), and selects one with `HYPOTHESIS_PROFILE`. Both
+disable the deadline and suppress the `too_slow` health check, because every
+property here builds a repository or runs a Git command: a deadline would fail
+on a slow machine rather than on a defect. A property test that pins its own
+example budget, as the record lifecycle's state machine does, overrides the
+profile's count on purpose — one generated step of that machine is a dozen Git
+subprocesses.
+
 `tests/git_repo_helpers.py` provides shared builders that create real
 repositories: `configure_repo()`, `seed_repo()`, and
 `repo_with_remote_default()`. Both the unit and integration suites use them,
@@ -536,6 +548,18 @@ because these tests pin Git's own behaviour (which remote default a repository
 advertises, and what `git worktree remove` refuses) rather than a Python
 double's idea of it. The builders configure a local commit identity, so tests
 never read or write the runner's global Git configuration.
+
+Behavioural scenarios live in `tests/integration/features/`, each bound by a
+`test_*_bdd.py` module that names it in a single `scenarios(...)` call at the
+end. Give every step a wording of its own. A `parsers.parse` pattern matches a
+step name with `fullmatch`, and a `{placeholder}` matches any run of
+characters, so a pattern that leaves a phrase optional also accepts the text of
+the step that spells it out, capturing the extra words as part of the
+placeholder instead of failing to match. Two steps that both accept one line of
+Gherkin therefore do not split it tidily and the collision is silent: the
+scenario runs the wrong step with a plausible-looking argument. When two steps
+differ only in what is absent, word them apart — "naming no base" rather than a
+shared pattern with the base omitted.
 
 `tests/observability_helpers.py` holds the recording recorder used to assert
 bounded workflow records, plus `declared_attribute_values()`, which derives the

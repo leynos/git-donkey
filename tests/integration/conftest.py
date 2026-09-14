@@ -118,6 +118,11 @@ def _setup_repo(tmp_path: Path) -> tuple[Path, Path]:
     local_repo.git.branch("-M", "main")
     local_repo.remote("origin").push("main")
     remote_repo.git.symbolic_ref("HEAD", "refs/heads/main")
+    # The remote-tracking default alias, spelled out rather than imported.
+    # Cloning creates it; fetching does not, and the alias is what lets the
+    # commands identify the trunk from local refs alone, so a fixture that
+    # omits it is not shaped like a clone.
+    local_repo.git.symbolic_ref("refs/remotes/origin/HEAD", "refs/remotes/origin/main")
 
     return local_path, remote_path
 

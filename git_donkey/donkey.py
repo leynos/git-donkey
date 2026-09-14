@@ -26,6 +26,8 @@ from git_donkey import (
     helpers,
     observability,
     remote_default,
+    stack_records,
+    stack_store,
     templates,
 )
 from git_donkey.helpers import _GIT_DONKEY_PREFIX as _GIT_DONKEY_PREFIX
@@ -85,7 +87,27 @@ def choose_base_branch(saved_cwd_branch: str, origin_arg: str) -> str:
     return origin_arg
 
 
-def _fetch_remote_default_ref(context: _DonkeyContext) -> str:
+@dataclasses.dataclass(frozen=True, slots=True)
+class _Trunk:
+    """The principal remote's default branch, as selected and as resolved.
+
+    Parameters
+    ----------
+    ref
+        Fully qualified remote-tracking ref of the default branch. This is
+        always the remote-tracking form rather than whichever form the base
+        happened to be named by, so the two refs compared when deciding
+        whether a branch is stacked are directly comparable.
+    commit
+        Commit the ref resolved to, frozen before the branch is created.
+
+    """
+
+    ref: str
+    commit: str
+
+
+def _fetch_remote_default_ref(context: _DonkeyContext) -> tuple[str, str]:
     """Fetch the principal remote's advertised default branch.
 
     This is a command, not a query: it discovers the branch the remote's
@@ -101,8 +123,9 @@ def _fetch_remote_default_ref(context: _DonkeyContext) -> str:
 
     Returns
     -------
-    str
-        The fully qualified remote-tracking ref of the fetched default branch.
+    tuple[str, str]
+        The advertised branch name, and the fully qualified remote-tracking ref
+        it was fetched into.
 
     Raises
     ------
@@ -117,12 +140,100 @@ def _fetch_remote_default_ref(context: _DonkeyContext) -> str:
         _GIT_DONKEY_PREFIX,
         missing_advice="specify a base branch explicitly",
     )
-    return remote_default.fetch_default_branch_ref(
+    return branch, remote_default.fetch_default_branch_ref(
         context.repo_home,
         context.remote,
         branch,
         _GIT_DONKEY_PREFIX,
     )
+
+
+def _local_trunk(
+    context: _DonkeyContext,
+    *,
+    default_branch: str,
+    base_branch: str,
+) -> _Trunk | None:
+    """Return the trunk from local refs only, or ``None`` when it is unknown.
+
+    No remote is contacted. The default branch arrives from the advertised
+    default when the workflow selected the base itself, and from the remote's
+    own ``HEAD`` alias otherwise, so that a branch created by an explicit base
+    costs no network beyond the fetch every run already performs.
+
+    An unknown trunk is not an error. It is the absence of the comparison that
+    decides whether a branch is stacked, and an unverifiable record is worse
+    than no record, so the branch is still created and simply goes unrecorded.
+    The same is true of a trunk whose commit will not resolve: a repository
+    this cannot reason about is not one to write evidence about.
+
+    Parameters
+    ----------
+    context : _DonkeyContext
+        Resolved repository state, including the repository holding the trunk.
+    default_branch : str
+        Name of the branch that would be the trunk, as discovered or as the
+        remote's ``HEAD`` alias names it.
+    base_branch : str
+        Ref the new branch's base was selected by. A base that is the default
+        branch by name needs no further comparison.
+
+    Returns
+    -------
+    _Trunk | None
+        The trunk and its commit, or ``None`` when either is unknown.
+
+    """
+    if not default_branch or base_branch == default_branch:
+        return None
+    trunk_ref = f"refs/remotes/{context.remote}/{default_branch}"
+    if not helpers._ref_exists(context.repo_home, trunk_ref):
+        return None
+    try:
+        return _Trunk(ref=trunk_ref, commit=context.repo_home.commit(trunk_ref).hexsha)
+    except (GitCommandError, ValueError):
+        # GitPython reports an unresolvable revision as either, and a ref that
+        # resolves to something that is not a commit is one this cannot reason
+        # about either.
+        return None
+
+
+def _remote_head_alias(context: _DonkeyContext) -> str:
+    """Return the branch the remote's own ``HEAD`` alias names, if any.
+
+    This is a local symbolic ref, never a query, and it can be stale: the plan
+    records that ``git donkey`` deliberately does not trust it in place of the
+    advertised default, and the explicit-base path deliberately avoids the
+    advertised default so that a remote which advertises nothing is still
+    usable. A stale alias costs nothing here: the only question asked of it is
+    whether the base a caller named is the branch the remote treats as its
+    default, and the range comparison is what decides the rest.
+
+    ``--short`` renders the target as ``<remote>/<branch>``, so the remote
+    prefix is removed rather than the branch name being split off after the
+    first slash: a branch may itself contain slashes, as ``feature/deep`` does,
+    and only the leading ``<remote>/`` is known to be a separator.
+
+    Returns
+    -------
+    str
+        The default branch name, or the empty string when the repository has no
+        alias to read.
+
+    """
+    prefix = f"{context.remote}/"
+    try:
+        target = context.repo_home.git.symbolic_ref(
+            "--short", f"refs/remotes/{context.remote}/HEAD"
+        ).strip()
+    except GitCommandError:
+        # No alias: a clone that never had one, or a remote added by hand.
+        return ""
+    if not target.startswith(prefix):
+        # The alias names a branch of some other remote, which this context is
+        # in no position to compare a base against.
+        return ""
+    return target.removeprefix(prefix)
 
 
 def _pull_mode_label(pull_mode: _PullMode | None) -> observability.PullModeLabel:
@@ -378,14 +489,83 @@ def _worktrees_root(home_dir: Path) -> Path:
     return (home_dir.parent / f"{home_dir.name}.worktrees").resolve()
 
 
+def _stack_context(
+    context: _DonkeyContext,
+    *,
+    trunk: _Trunk | None,
+    base_branch: str,
+) -> donkey_worktrees._StackContext | None:
+    """Return what to record for a branch created from ``base_branch``.
+
+    A branch created at the trunk commit is not stacked (INV-11), so it is not
+    recorded and no writer is constructed for it. Every other base is the
+    parent the record names, as the caller selected it.
+
+    Parameters
+    ----------
+    context : _DonkeyContext
+        Resolved repository state, including the repository the record is
+        written to.
+    trunk : _Trunk | None
+        The resolved trunk, or ``None`` when it could not be resolved.
+    base_branch : str
+        Ref the new branch's base was selected by.
+
+    Returns
+    -------
+    donkey_worktrees._StackContext | None
+        The record to write, or ``None`` when the branch is not stacked.
+
+    """
+    if trunk is None:
+        return None
+    base_commit = context.repo_home.commit(base_branch).hexsha
+    if not stack_records.should_record(
+        base_branch, base_commit, trunk.ref, trunk.commit
+    ):
+        return None
+    return donkey_worktrees._StackContext(
+        parent=base_branch,
+        writer=stack_store.GitStackRecordWriter(context.repo_home),
+    )
+
+
 def _create_worktree(
     context: _DonkeyContext,
     *,
     branch_name: str,
     base_branch: str,
-    target_path: Path,
+    trunk: _Trunk | None,
 ) -> None:
-    """Create a new worktree for the specified branch."""
+    """Create a new worktree for the specified branch.
+
+    The stack record to write is decided here, from the resolved trunk and the
+    base's resolved commit, and handed to the creation step as part of the
+    request. Deciding it here rather than inside that step keeps the one place
+    that resolves the base and the one place that freezes the start point
+    adjacent, so neither can observe a different commit from the other.
+
+    Parameters
+    ----------
+    context : _DonkeyContext
+        Resolved repository state, including the root the new worktree is
+        created under.
+    branch_name : str
+        Branch the new worktree checks out.
+    base_branch : str
+        Ref the new branch is created from.
+    trunk : _Trunk | None
+        Trunk the base is compared against to decide whether a record is
+        written, or ``None`` when the trunk could not be identified.
+
+    Raises
+    ------
+    SystemExit
+        Propagated from the creation step when the branch is already checked
+        out elsewhere, the target path exists, ``git worktree add`` fails, or
+        the branch was created but its stack record could not be written.
+
+    """
     worktree_context = donkey_worktrees._WorktreeContext(
         repo_home=context.repo_home,
         remote=context.remote,
@@ -394,7 +574,8 @@ def _create_worktree(
     request = donkey_worktrees._WorktreeRequest(
         branch_name=branch_name,
         base_branch=base_branch,
-        target_path=target_path,
+        target_path=(context.worktrees_root / branch_name).resolve(),
+        stack=_stack_context(context, trunk=trunk, base_branch=base_branch),
     )
     _record(Observation(operation="worktree_creation", outcome="started"))
     with observability.get_recorder().span("worktree_creation"):
@@ -544,10 +725,17 @@ def run_git_donkey(
     base_kind: observability.BaseKind = (
         "implicit_remote_default" if origin_branch is None else "explicit"
     )
-    base_branch = (
-        _fetch_remote_default_ref(context)
-        if origin_branch is None
-        else choose_base_branch(saved_cwd_branch, origin_branch)
+    if origin_branch is None:
+        # The base selection already discovered the default and fetched it, so
+        # the trunk is that ref and the remote is not consulted a second time.
+        default_branch, base_branch = _fetch_remote_default_ref(context)
+    else:
+        base_branch = choose_base_branch(saved_cwd_branch, origin_branch)
+        default_branch = _remote_head_alias(context)
+    trunk = _local_trunk(
+        context,
+        default_branch=default_branch,
+        base_branch=base_branch,
     )
 
     _maybe_update_base_branch(
@@ -558,15 +746,15 @@ def run_git_donkey(
     )
 
     context.worktrees_root.mkdir(parents=True, exist_ok=True)
-    target_path = (context.worktrees_root / branch_name).resolve()
 
     _create_worktree(
         context,
         branch_name=branch_name,
         base_branch=base_branch,
-        target_path=target_path,
+        trunk=trunk,
     )
 
+    target_path = (context.worktrees_root / branch_name).resolve()
     if not _apply_template_overlay(context, target_path):
         return 1
 

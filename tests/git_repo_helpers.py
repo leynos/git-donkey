@@ -58,6 +58,52 @@ def seed_repo(repo_path: Path, *, branch: str = "main") -> Repo:
     return repo
 
 
+def advance(repo: Repo, *, message: str = "Advance") -> str:
+    """Commit an empty change on the checked-out branch and return its ID.
+
+    Parameters
+    ----------
+    repo : Repo
+        Repository to commit in.
+    message : str, optional
+        Commit message.
+
+    Returns
+    -------
+    str
+        The new commit's ID, so a caller can name it as a boundary.
+
+    """
+    repo.git.commit("--allow-empty", "-m", message)
+    return repo.head.commit.hexsha
+
+
+def commit_on(repo: Repo, branch: str) -> str:
+    """Commit an empty change on ``branch`` and return the new commit's ID.
+
+    The branch is checked out to commit on it and the previous branch is
+    checked out again, so the repository is left with the ``HEAD`` it had.
+
+    Parameters
+    ----------
+    repo : Repo
+        Repository to commit in.
+    branch : str
+        Branch to advance. It must already exist.
+
+    Returns
+    -------
+    str
+        The new commit's ID, so a caller can name it as an observed tip.
+
+    """
+    previous = repo.head.ref.name
+    repo.git.checkout(branch)
+    commit = advance(repo, message=f"Advance {branch}")
+    repo.git.checkout(previous)
+    return commit
+
+
 def repo_with_remote_default(
     repo_path: Path,
     remote_path: Path,

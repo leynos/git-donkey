@@ -131,6 +131,30 @@ directory, including when called from a linked worktree. If the requested
 branch already exists locally or on the remote, it is reused with its
 existing tracking rules; the base is used only when creating a new branch.
 
+### Stack records for new branches
+
+`git donkey` now writes a stack record at branch birth, when it creates a
+branch from a base that is not the trunk: four configuration keys in the
+branch's own section — `branch.<branch>.stackParent`, `.stackBase`,
+`.stackBaseRecordedFrom`, and `.stackBaseEvidence` — and the anchor ref
+`refs/stack-bases/<branch>`, which keeps the boundary commit reachable from
+`git gc`. The record is local to the clone; it is not pushed or fetched. A
+branch created from the trunk is unaffected, and a branch created before this
+change has no record and is not expected to. Readers treat a missing record as
+ordinary, not an error.
+
+Remove a record by hand with:
+
+```shell
+git update-ref -d "refs/stack-bases/$BRANCH"
+git config --local --remove-section "branch.$BRANCH" 2>/dev/null || true
+```
+
+Prefer unsetting the four individual `branch.$BRANCH.stack*` keys when the
+branch section holds other settings, because `--remove-section` takes all of
+them. The [shared stack record](stack-records.md) design documents the full
+contract.
+
 ### git plonk cleanup policy
 
 In 0.1.0 `git plonk` removed completed worktrees with `git worktree remove

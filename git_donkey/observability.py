@@ -49,6 +49,7 @@ type Operation = typ.Literal[
     "base_update",
     "pull_execution",
     "worktree_creation",
+    "stack_record_write",
     "template_overlay",
     "comparison_fetch",
     "comparison",
@@ -87,6 +88,7 @@ type ErrorKind = typ.Literal[
     "os_error",
     "selection_error",
     "worktree_creation_error",
+    "stack_record_conflict",
 ]
 """Fixed labels for the class of failure an operation reported."""
 

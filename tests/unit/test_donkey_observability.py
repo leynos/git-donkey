@@ -177,8 +177,9 @@ def test_discovered_default_records_discovery_and_fetch_success(
     """A discovered default branch records both successful steps."""
     context = _stub_context(tmp_path, monkeypatch, _DEFAULT_ADVERTISEMENT)
 
-    remote_ref = donkey._fetch_remote_default_ref(context)
+    branch, remote_ref = donkey._fetch_remote_default_ref(context)
 
+    assert branch == "trunk", "the advertised branch name is returned unnamed"
     assert remote_ref == "refs/remotes/origin/trunk", "the fetched ref is returned"
     assert recording_recorder.outcomes("remote_default_discovery") == ["success"], (
         "discovery reports success"

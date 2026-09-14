@@ -215,6 +215,30 @@ On other platforms, the template directory follows the platform's conventions
 for user data storage (e.g., `~/.local/share/git-donkey/template` on Linux or
 `~/Library/Application Support/git-donkey/template` on macOS).
 
+### Stack records at branch birth
+
+When `git donkey` creates a branch from a base that is not the trunk, it writes
+a stack record at the moment of birth. The record is four configuration keys in
+the branch's own section — `branch.<branch>.stackParent`, `.stackBase`,
+`.stackBaseRecordedFrom`, and `.stackBaseEvidence` — together with the anchor
+ref `refs/stack-bases/<branch>`, which keeps the boundary commit reachable from
+`git gc`. `stackBase` and `stackBaseRecordedFrom` are both the commit the new
+branch was created at, `stackBaseEvidence` is `stack-record-birth`, and
+`stackParent` names the base branch it was selected from as `v1:branch:<name>`.
+
+A branch created from the trunk is not recorded, however it is named. That is
+deliberate: a record would make it look stacked, and would offer a boundary
+for a branch that never had a parent.
+
+Writing the record changes nothing about tracking — the new branch is still
+created with `--no-track` and inherits nothing. The record is local to one
+clone, because neither the configuration keys nor the anchor ref are pushed or
+fetched, and nothing reads it yet: `git wheresat` will treat it as boundary
+evidence and `git plonk` will turn it into a tombstone in later milestones.
+Its value today is that the boundary commit observed at birth is preserved
+rather than reconstructed by forensics. The
+[shared stack record](stack-records.md) design documents the full contract.
+
 ## git track
 
 Fetch the first remote, then switch to or create a tracking branch from

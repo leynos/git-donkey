@@ -377,11 +377,31 @@ Stop and escalate rather than improvising when any of these is reached.
     the test modules this plan creates. Both ADRs carry the template's
     Status, Date, Context and Problem Statement, Decision Drivers, Options
     Considered, Decision Outcome, Consequences, and Known Risks sections.
-- [ ] EP-M2 `git_donkey/stack_records.py` and `git_donkey/stack_store.py`:
+- [x] EP-M2 `git_donkey/stack_records.py` and `git_donkey/stack_store.py`:
       the shared format, lifecycle decisions, and Git access. No command
       changes.
-- [ ] EP-M3 `git donkey` writes a stack record at branch birth. Shippable on
+  - Evidence: `uv run pytest tests/unit/test_stack_records.py
+    tests/unit/test_stack_store.py
+    tests/integration/test_stack_record_lifecycle.py -q` reports
+    `113 passed in 11.81s` (log
+    `/tmp/test-git-wheresat-sub-command.out`). `uv run ruff check` over the
+    three modules and the changed test files reports `All checks passed!`
+    (log `/tmp/ruff-git-wheresat-sub-command.out`). The state machine's
+    required classes — a tombstone, a refresh, and an orphan — were reached
+    in twenty of twenty independent runs; the other ten operations were
+    reached in between three and twenty of them. `docs/stack-records.md`
+    gained the plain-deletion limitation and a Verification contract that
+    describes this machine; `docs/developers-guide.md` gained the Hypothesis
+    profiles under `## Test infrastructure`.
+- [x] EP-M3 `git donkey` writes a stack record at branch birth. Shippable on
       its own.
+  - Evidence: `uv run pytest tests/integration/test_git_donkey_stack_bdd.py
+    -q` reports `4 passed`, and the three EP-M2 suites still report
+    `13 passed` and `113 passed` (log
+    `/tmp/test-git-wheresat-sub-command.out`). `uv run ty check` reports
+    `All checks passed!`. The record is written from inside
+    `_add_worktree_for_new_branch`, from the same `start_point` the worktree
+    is created at, so no second observation of the base can disagree with it.
 - [ ] EP-M4 `git plonk` tombstones, sweeps, prunes, and reports stack
       records. Shippable on its own.
 - [ ] EP-M5 Build the hard fixtures: squash-merged, advanced, and rewritten
@@ -509,6 +529,55 @@ Stop and escalate rather than improvising when any of these is reached.
   ancestor, `1` for a non-ancestor, `128` for a nonexistent object ID.
   Impact: the adapter must treat any status other than `0` or `1` as
   indeterminate rather than assuming a specific error code.
+- Observation: the sweep can salvage a tip only when the record outlives the
+  ref that recorded it.
+  Evidence: measured through the EP-M2 state machine. A branch whose record
+  was written and then deleted with `git branch -D` leaves an anchor and
+  nothing else, because Git destroyed the configuration section with the ref;
+  `reconcile` reports that as `RecordMalformed`, and `_sweep_one` has no tip
+  to preserve, so it clears the anchor and reports nothing. A branch deleted
+  with `git update-ref -d refs/heads/<name>` leaves the configuration behind,
+  and the sweep does convert the tip it recorded into a tombstone.
+  Impact: the machine needs both deletion rules — the plain-`git branch -D`
+  one because it is the common case and its orphan must still be cleared, and
+  the ref-surgery one because it is the only route by which a foreign deletion
+  leaves anything worth preserving. The limitation is now stated in
+  `docs/stack-records.md`: a parent deleted through plain Git cannot be
+  resurrected by the sweep, only reported.
+- Observation: a foreign rename onto a tombstoned name puts one name in two of
+  INV-10's states, and nothing repairs it.
+  Evidence: the machine reached, before this was fenced off,
+  `entomb_unrecorded(child)` (a tombstone for `child`), then a rename of a
+  recorded `parent` whose first unused target was `child`, and the exclusivity
+  check reported "`'child' has a live record and a tombstone at the same
+  time`".
+  Impact: `_reusable_names()` (for a new branch) and `_unused_names()` (for a
+  rename target) are deliberately different sets, and the machine never asks
+  the question the design has not answered. The gap is real for users of plain
+  Git, and the follow-up belongs to EP-M4 or EP-M6: retire a tombstone whose
+  name is live again, and never read a tombstone for a name that still has a
+  branch. Only `create` retires a tombstone today, and a rename does not reach
+  `create`.
+- Observation: Hypothesis does not sample its stateful rules uniformly, and
+  coverage cannot be forced through preconditions.
+  Evidence: over twenty runs of thirty examples and fifteen steps, a refresh
+  was reached in fifteen and a swept tip in eight, and one run's first twelve
+  draws were twelve draws of the same no-argument rule (`prune`, which sorts
+  first among the rules). Narrowing the enabled rules to the ones that reach a
+  missing class — the obvious fix — failed twice: with the gate reading a set
+  that outlived the example, Hypothesis raised `FlakyStrategyDefinition`
+  ("while selecting a rule to run"), and with the gate narrowed to a single
+  valid rule it raised `FailedHealthCheck: filter_too_much` (seven inputs
+  generated against fifty filtered out), because a step must draw from a
+  subset of the enabled rules and the filter then rejects it. A related
+  finding for any future instrumentation: `RuleStrategy._setup_for` is
+  `@lru_cache`d per machine class and each `Rule` holds `function=<original>`,
+  so wrapping rule functions to count calls has no effect.
+  Impact: the machine reaches its required classes from a deterministic
+  `start` rule instead, calling the same rules a generated step calls with
+  the same check after each. Anti-vacuity is guaranteed by construction
+  rather than asked of the generator, and the requirement to reach each class
+  is still asserted at the end of the run.
 - Observation: `scripts/mdformat-all.sh` ignores `--help` and reformats every
   Markdown file in the repository.
   Evidence: invoking it with `--help` printed its own source and then ran
@@ -518,6 +587,97 @@ Stop and escalate rather than improvising when any of these is reached.
   reflowing an 80-column URL line. Reverted with `git checkout --`.
   Impact: never run that script, including with `--help`. Format only the
   files this change owns. `make markdownlint` is safe and is the gate.
+- Observation: the `skylos` dead-code gate counts liveness only from the
+  production roots, so a module that only its tests call is dead code.
+  Evidence: `make lint`'s last stage runs `skylos git_donkey --category
+  dead_code --gate` (Makefile:117, strict per `pyproject.toml:404-405`). EP-M2
+  first landed `stack_records.py` whole and the gate refused the parts no
+  command reached. There is no inline pragma: the only escapes are
+  `[[tool.skylos.dead_code.entrypoints]]` and
+  `[tool.skylos.whitelist.documented]`, and
+  `tests/unit/test_skylos_lint_contract.py` pins both sets. Reachability is
+  not transitive through test code, and a dead caller does not confer
+  liveness on its callee. Class methods are shielded — `NullRecorder`'s are
+  entry points for exactly this reason — while module-level functions and
+  constants are not.
+  Impact: the contract could not land ahead of its first consumer. EP-M2
+  therefore landed `EVIDENCE_BIRTH` only because EP-M3 was sliced to consume
+  it in the same pull request, and deferred `EVIDENCE_REFRESHED` to EP-M9 and
+  `DEFAULT_TOMBSTONE_EXPIRE` to EP-M4; the lifecycle tests spell those two
+  values locally rather than importing a constant that does not exist yet.
+  Corollary, and the reason it matters beyond EP-M2: **a milestone cannot be
+  sliced by layer.** The interface sketch below lists `wheresat_records.py`
+  and `wheresat_policy.py` as EP-M6 with no command reaching them until
+  EP-M8, and `wheresat_graph.py` as EP-M7 with no consumer until EP-M8. Those
+  milestones are now sliced so that each lands code a command reaches — the
+  pure core and its ports land with, or behind, the collection step that
+  calls them — even where that means a larger single milestone than the plan
+  first described. The alternative was a whitelist entry per deferred symbol,
+  which would have to be removed again when the consumer arrived.
+- Observation: a branch created _at_ the trunk commit is not stacked, even
+  when the base it was selected from is a feature branch.
+  Evidence: measured through the EP-M3 behavioural suite. Its first version
+  created `parent` from `main` with no commit of its own and then asked
+  `git donkey` for `child` from `parent`; the run wrote no record, because
+  `should_record` compares the frozen base commit against the trunk commit
+  and both were the same commit. `INV-11` is satisfied in the letter — the
+  base ref differs from the trunk ref — while the branch has no stack in the
+  sense the design means.
+  A third deviation followed from covering the implicit base: the new
+  ``When`` step needed wording of its own, because ``parsers.parse`` matches
+  step names with a greedy ``{branch}`` and ``fullmatch``, so
+  ``I create a branch {branch} with git donkey`` also accepts the explicit
+  step's text and captures ``child from parent`` as the branch. Registering
+  both made the three explicit scenarios fail with no base at all; the
+  scenarios now say "naming no base". Relevant to every ``git wheresat``
+  scenario that follows: two steps that both accept one piece of Gherkin do
+  not split it tidily, and pytest-bdd will not report the collision.
+  Impact: this is the decision working as specified, not a defect, but it has
+  two consequences the plan did not anticipate. The BDD fixture's Given step
+  now advances `parent` by one commit, which is what EP-M5's
+  `advanced_parent_stack()` will do; and every future scenario about a
+  stacked branch must advance its parent, or it is silently testing the
+  trunk case. The scenario text records this: it reads "a feature branch
+  parent one commit ahead of main" rather than the plan's "created from
+  main". A second deliberate deviation from the plan's verbatim Gherkin:
+  each scenario gained an explicit `Then git donkey succeeds`, so a run that
+  fails before writing anything fails on the exit code rather than on a
+  confusing missing-record assertion.
+- Observation: `git symbolic-ref --short` renders a remote-tracking alias as
+  `<remote>/<branch>`, not as `<branch>`.
+  Evidence: measured directly. With `refs/remotes/origin/HEAD` pointing at
+  `refs/remotes/origin/main`, `git symbolic-ref --short refs/remotes/origin/HEAD`
+  prints `origin/main`. EP-M3's explicit-base path reads that alias to learn
+  the remote's default branch without contacting it, and the first version
+  passed the result straight into `refs/remotes/<remote>/<default>`, producing
+  `refs/remotes/origin/origin/main`. The ref does not exist, the trunk came
+  back unknown, and the stacked-branch scenario failed with `RecordAbsent()`.
+  Impact: a silent wrong answer rather than an error, and one that no unit
+  test caught — the stubbed discovery tests never exercised the alias path at
+  all, and only a real repository with a real alias exposes it. The prefix is
+  now removed with `str.removeprefix` against the known
+  `f"{remote}/"` and only when the target really starts with it; a branch name
+  may itself contain slashes (`feature/deep`), so splitting on the first slash
+  would be wrong, and an alias naming a different remote is refused rather
+  than guessed at. Worth remembering for EP-M7, which reads refs directly.
+- Observation: `ty` must be run at the pinned version, and GitPython's
+  published `execute` overloads omit `with_exceptions`.
+  Evidence: two separate measurements from the same gate run. `make typecheck`
+  runs `uv tool run ty@0.0.79`, and `uv run ty check` inside the virtualenv
+  resolves a different `ty` that reports a diagnostic in
+  `git_donkey/incoming_outgoing_policy.py:55` — a file this branch never
+  touches, and one the pinned release accepts. Separately, `git/cmd.py` in the
+  installed GitPython overloads `execute` five times and not one overload
+  carries `with_exceptions`, so a correctly typed call to it is rejected even
+  though the implementation accepts the keyword and returns stdout without
+  raising (measured at `git/cmd.py:1406`: `if with_exceptions and status != 0`).
+  Impact: an unpinned `ty` invocation is a false alarm generator, and the
+  pinned one is the only verdict that counts. The fix for the overload gap is
+  dynamic dispatch — `repo.git.config(..., with_exceptions=False)` — which is
+  already how this codebase issues every Git command and how
+  `stack_store._config_entries` reads configuration. A test that needs a
+  non-raising Git query should reach for that form directly rather than for
+  `execute`, which only ever typechecks in its raising form.
 
 ## Decision log
 
@@ -741,6 +901,54 @@ Stop and escalate rather than improvising when any of these is reached.
   and the ambiguity tolerance cannot fire against a document that has not
   been written.
   Date/Author: 2026-09-14, planning agent.
+- Decision: age a tombstone by its own reflog, and keep a tombstone whose age
+  cannot be read.
+  Rationale: every write through `stack_store` passes `--create-reflog`,
+  because a ref outside `refs/heads/` gets no reflog by default and a
+  tombstone with no reflog has no age to compare against `expire`.
+  `prune()` therefore reads `%gd --date=unix` from the tombstone's reflog and
+  keeps anything it cannot parse, so an unreadable timestamp shortens no
+  parent's life. Git parses `expire` with its own date grammar, in which an
+  unparsable expression means "now"; `prune` rejects an empty or cutoff-less
+  value with `ValueError` so a caller that takes the value from configuration
+  can validate it first. This is the unvalidated half of EP-M4's
+  `stack.tombstoneExpire` mitigation and is recorded there as a gap.
+  Date/Author: 2026-09-14, implementation agent.
+- Decision: `create` retires a tombstone standing at the same name, and
+  nothing else does.
+  Rationale: a name whose branch was entombed is a name a new branch may
+  legitimately take, and the tombstone of the earlier incarnation must not
+  describe the new one. Retiring it at creation keeps the single-owner
+  lifecycle: the name moves from tombstone to live record in one step. The
+  corollary, measured rather than assumed, is that a _rename_ onto a
+  tombstoned name produces a live record beside a tombstone, which INV-10
+  forbids; the design has no answer for it yet, so EP-M2's machine never
+  generates it, and the finding is recorded above for EP-M4 or EP-M6 to
+  close.
+  Date/Author: 2026-09-14, implementation agent.
+- Decision: the sweep preserves a tip only from an orphan whose record still
+  parses, and reports which orphans it could not preserve.
+  Rationale: the alternative — inventing a tombstone from the anchor — would
+  record the base as the branch's tip, which is a confidently wrong answer
+  about the very fact the tombstone exists to carry. `sweep()` returns the
+  branches it tombstoned so `git plonk` can report the difference between a
+  parent it rescued and one plain Git destroyed, and the two-sided
+  `orphans == identified - branches` assertion in the state machine pins that
+  neither kind is left behind.
+  Date/Author: 2026-09-14, implementation agent.
+- Decision: the state machine's INV-10 anti-vacuity requirement is met by a
+  deterministic `start` rule, not by requiring the generator to reach the
+  classes.
+  Rationale: requiring them of the sampler failed in measurement, and forcing
+  them through preconditions failed in two different ways (see Surprises).
+  The `start` rule calls the same rules a generated step would and runs the
+  same check after each, so the classes are reached and checked in every
+  example, and the assertion that they were reached is kept as the statement
+  of the requirement rather than as a hope. The test pins its own
+  `max_examples` and `stateful_step_count` because one step spawns a dozen Git
+  subprocesses, which keeps the nightly profile from turning a bounded
+  integration test into an hour-long one.
+  Date/Author: 2026-09-14, implementation agent.
 
 ## Outcomes & retrospective
 
@@ -1583,37 +1791,66 @@ Outcome: `git_donkey/stack_records.py` holds the format, the key names, the
 ref-path derivation, the reconciliation rule, and the lifecycle decisions as
 pure functions. `git_donkey/stack_store.py` holds the only code that reads or
 writes a record over GitPython, behind a read protocol and a write protocol.
-No command uses them yet.
+No command used them at the point this milestone landed; EP-M3's `git donkey`
+is their first consumer.
 Requirements: REQ-record-format.
 Acceptance evidence: `uv run pytest tests/unit/test_stack_records.py
+tests/unit/test_stack_store.py
 tests/integration/test_stack_record_lifecycle.py -q` passes, having failed
-first; INV-10's state machine reaches a tombstone, a refresh, and an orphan
-across its generated sequences.
+first; INV-10's state machine reaches a tombstone, a refresh, and an orphan —
+reached by its `start` rule rather than by its generated steps, for the reason
+recorded under Surprises — and asserts that it reached them.
 Conformance check: `stack_records` imports nothing else from `git_donkey`
 at all — it is the bottom of the dependency order; the store is the only
 module that writes; the record is versioned from the first commit.
-Recovery: both modules are unreferenced; revert.
-Remaining gaps: no command writes or reads a record.
+Recovery: revert; EP-M3 and EP-M4 are the only consumers, and a revert takes
+them with it.
+Remaining gaps: no command reads a record (EP-M3 writes one; EP-M6 reads
+one). Two constants the sketch below names are deferred to their first
+consumer, for the dead-code reason recorded under Surprises:
+`EVIDENCE_REFRESHED` to EP-M9 and `DEFAULT_TOMBSTONE_EXPIRE` to EP-M4, which
+also validates the configured expiration before it reaches `prune`. Until
+then the lifecycle tests spell those two values locally, so the store is
+exercised against the values the commands will pass rather than against the
+constants they will import.
 
 **EP-M3 — `git donkey` records at birth. Shippable on its own.**
 Outcome: when `git donkey` creates a branch from a base that is not the
-trunk, it writes the stack record through `stack_store`. `docs/users-guide.md`
-explains what is recorded and why, `docs/developers-guide.md` gains the
-module-boundaries entry, and `docs/v0-2-0-migration-guide.md` notes the new
-local state.
+trunk, it writes the stack record through `stack_store`, from the same frozen
+start point the worktree is created at. `docs/users-guide.md` gained a
+`### Stack records at branch birth` subsection explaining what is recorded
+and why, `docs/developers-guide.md` gained the `stack_record_write`
+observability entry and the timed-span mention, and
+`docs/v0-2-0-migration-guide.md` gained `### Stack records for new branches`
+with the new local state and the removal recipe. `docs/stack-records.md`
+received a clarification rather than a change: `stackParent` stores the base
+ref _as the caller selected it_, so the stored value for an implicit base is
+the remote-tracking ref `refs/remotes/<remote>/<default>`, not the bare branch
+name. The plan's milestone text also named a "module-boundaries entry" in the
+developers' guide; that entry belongs to the module it describes and is not
+needed to explain the behaviour, so the observability entry stands in its
+place.
 Requirements: REQ-record-birth, REQ-record-trunk.
 Acceptance evidence:
-`tests/integration/features/git_donkey_stack.feature` passes both directions
-of INV-11; creating a branch from `main` writes no record, and creating one
-from another feature branch writes `branch.<new>.stackParent` and
-`refs/stack-bases/<new>`.
+`tests/integration/features/git_donkey_stack.feature` passes four scenarios
+covering both directions of INV-11 by three routes: a branch from an advanced
+feature branch is recorded; a branch from the named trunk is not; and a branch
+whose base the workflow selected itself is not either, because that selection
+resolves to the same remote-tracking ref the decision compares against.
+Requirements on the stored artefacts — `branch.<new>.stackParent` and
+`refs/stack-bases/<new>`, the anchor naming the parent's former tip, and the
+recorded boundary equalling the frozen commit — are asserted separately from
+the branch-tracking non-regression, which reads the branch's configuration
+back and checks nothing in it names `branch`, `remote`, or `merge`.
 Conformance check: the `--no-track` decision at
 `git_donkey/donkey_worktrees.py:184-192` is unchanged, and no existing
 `git donkey` behavioural scenario needed modification; the observability
 vocabulary additions match those listed in `Interfaces and dependencies`.
 Recovery: revert; records already written are inert and are swept by EP-M4
 or removed with `git update-ref -d` and `git config --local --unset`.
-Remaining gaps: nothing reads the record; nothing cleans it up.
+Remaining gaps: nothing reads the record; nothing cleans it up. The
+documentation states both, so a reader is not left expecting a command that
+does not exist yet.
 Compatibility decision: **one genuine case**. Branches created before this
 milestone have no record, and branches created after it do. Both must be
 readable forever, so the record is versioned from EP-M2 and every reader
@@ -1628,7 +1865,11 @@ tombstones older than `stack.tombstoneExpire` (default 90 days). The summary
 names each action, dry runs report them without performing them, and
 `docs/plonk-cleanup-policy.md` and `docs/users-guide.md` record the
 behaviour — including the honest limitation that a tombstone preserves the
-tip, not the reflog, so fork-point recovery is still lost.
+tip, not the reflog, so fork-point recovery is still lost, and the second
+limitation EP-M2 measured: a branch deleted through plain Git leaves an anchor
+and no record, so the sweep clears that orphan but has no tip to preserve for
+it. The summary must distinguish the orphan it rescued from the one it could
+not, because reporting them alike would claim a rescue that did not happen.
 Requirements: REQ-record-death, REQ-record-sweep.
 Acceptance evidence:
 `tests/integration/features/git_plonk_stack.feature` passes; after
@@ -1639,7 +1880,13 @@ Conformance check: no change to which worktrees plonk removes or which
 branches it deletes — only to what it records and reports; the existing plonk
 behavioural suites pass unmodified.
 Recovery: revert; tombstones are inert refs.
-Remaining gaps: nothing reads records or tombstones yet.
+Remaining gaps: nothing reads records or tombstones yet. The configured
+`stack.tombstoneExpire` is unvalidated: `prune()` refuses an empty value and
+one Git reports no cutoff for, but Git's own date grammar reads an unparsable
+expression as _now_, which under `timestamp < cutoff` would prune every
+tombstone on the machine. EP-M4 must validate the configured value before it
+reaches `prune`, and must report the value it used, so a typo cannot silently
+discard the fleet's tombstones.
 
 **EP-M5 — the hard fixtures.**
 Outcome: `tests/git_repo_helpers.py` gains `squash_merged_stack()`,
@@ -2246,7 +2493,9 @@ lifecycle itself.
 RECORD_VERSION: typ.Final = "v1"
 BASE_NAMESPACE: typ.Final = "refs/stack-bases"
 TOMBSTONE_NAMESPACE: typ.Final = "refs/stack-tombstones"
-DEFAULT_TOMBSTONE_EXPIRE: typ.Final = "90.days.ago"
+EVIDENCE_BIRTH: typ.Final = "stack-record-birth"
+EVIDENCE_REFRESHED: typ.Final = "stack-record-refreshed"  # EP-M9's consumer
+DEFAULT_TOMBSTONE_EXPIRE: typ.Final = "90.days.ago"  # EP-M4's consumer
 
 
 class RecordKey(enum.StrEnum):
@@ -2333,7 +2582,9 @@ def reconcile(
     """
 
 
-def should_record(base_ref: str, base_commit: str, trunk_ref: str, trunk_commit: str) -> bool:
+def should_record(
+    base_ref: str, base_commit: str, trunk_ref: str, trunk_commit: str
+) -> bool:
     """Return whether a branch created from this base is stacked.
 
     False when the base resolves to the trunk, by ref name or by commit.
@@ -2834,7 +3085,9 @@ default path has no object that can write.
 class WheresatRefWriter(typ.Protocol):
     """The only Git surface in this command that mutates anything."""
 
-    def fetch_evidence(self, remote: str, source_ref: str, destination: EvidenceRef) -> None:
+    def fetch_evidence(
+        self, remote: str, source_ref: str, destination: EvidenceRef
+    ) -> None:
         """Fetch one ref into the evidence namespace and nowhere else."""
 
     def retain_boundary(self, branch: str, commit: str) -> str:
@@ -3112,8 +3365,10 @@ automatically.
   `## Test infrastructure`.
 - Integration tests that build repositories carry
   `@pytest.mark.timeout(120)`, overriding the global `timeout = 30`.
-- `tests/git_repo_helpers.py` gains `squash_merged_stack()`,
-  `advanced_parent_stack()`, and `rewritten_parent_stack()` in EP-M5.
+- `tests/git_repo_helpers.py` gains `advance()` and `commit_on()` in EP-M2,
+  so a test can name a commit it has just made rather than re-reading `HEAD`,
+  and gains `squash_merged_stack()`, `advanced_parent_stack()`, and
+  `rewritten_parent_stack()` in EP-M5.
 - New cassettes use `allow_playback_repeats=True` where one cassette serves
   several parameterized cases.
 - New syrupy snapshots use a `syrupy.matchers.path_type` matcher redacting
