@@ -13,6 +13,7 @@ dependencies = [
     "platformdirs>=4.10.0",
     "plumbum>=1.8",
     "python-slugify>=8.0.0",
+    "requests>=2.32.0",
 ]
 
 [project.scripts]
@@ -409,11 +410,12 @@ strict = true
 names = []
 
 [tool.skylos.whitelist.documented]
+"_commit_pulls_path" = "Called only from ApiWheresatGitHub.associated_pull_requests, which Skylos cannot reach for the reason given for _slug"
+"_pull_path" = "Called only from the ApiWheresatGitHub methods whose URLs it builds, which Skylos cannot reach for the reason given for _slug"
+"_slug" = "Called only from _pull_path, _commit_pulls_path and ApiWheresatGitHub._stack_members; Skylos credits no reference to any method of ApiWheresatGitHub, because the client is reached through the WheresatGitHub protocol and a call on a Protocol-typed parameter is not a reference it follows, so nothing below those methods is credited either"
 "_git_failure" = "Called only from the except GitCommandError handlers in _write_anchor and _write_tombstone; Skylos does not credit a call in a handler body"
-"_per_run_namespace" = "Called only from GitWheresatRefWriter.release, which no console script reaches until a run fetches evidence; the fetch path lands with the forge evidence of EP-M10"
-"_slug_parts" = "Called only from parent_head_ref, which no console script reaches yet for the same reason"
-"parent_head_ref" = "Names the durable cache ref a fetched parent head is kept at; the fetch that writes one lands with the forge evidence of EP-M10"
-"per_run_ref" = "Names a fetch destination; reached from GitWheresatRefWriter.fetch_evidence and from the durability suite's fetched-boundary case, but no console script fetches yet, because the run transports nothing until the forge evidence of EP-M10 lands"
+"_per_run_namespace" = "Called only from per_run_ref and GitWheresatRefWriter.release. No console script reaches either: the fetch this command performs writes the durable cache ref, so nothing a run does creates refs/wheresat/op/<op-id>/, and the namespace stays the surface a run that transported a boundary into one would use"
+"per_run_ref" = "Builds the destination such a transported boundary would be fetched into; the durability suite reaches it from outside the scanned set, and no console script does, for the same reason as _per_run_namespace"
 
 [build-system]
 requires = ["hatchling", "hatch-build-scripts>=1.0.0,<2", "docutils>=0.22.4,<0.23"]

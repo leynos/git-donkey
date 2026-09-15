@@ -108,7 +108,8 @@ class CollectionContext:
         Full ref path the target was resolved from, when it was resolved from
         one, because a fork point is read out of a ref's reflog.
     parent : ParentPullRequest | None
-        The parent pull request, when one was resolved.
+        The parent pull request the run identified, as the forge reported it
+        and with the head the run fetched set on it.
     graph : WheresatGraph
         Read-only history questions.
     records : stack_store.StackRecordReader
@@ -119,15 +120,19 @@ class CollectionContext:
         cannot read a different record than the one the pipeline provisioned
         the parent head from.
     parent_head : ParentHead | None, optional
-        The parent's tip, recovered by the pipeline before the first rung runs.
+        The parent's tip: the head the run fetched, or the one the tombstone
+        names when it fetched none.
 
     Notes
     -----
-    The last two fields are filled by :func:`collect_evidence`; a caller leaves
-    them at their defaults. They live here rather than in a second object
-    because a rung's whole input is the context, and a rung that had to be
-    handed two records would be a rung whose signature changes every time the
-    ladder grows a question.
+    ``record`` is filled by :func:`collect_evidence`; a caller leaves it at its
+    default. The other two are the run's own answers and are handed in, because
+    the parent is identified and its head fetched before a rung runs: a rung
+    that asked the forge would be a rung this module would have to give a
+    network to. They live here rather than in a second object because a rung's
+    whole input is the context, and a rung that had to be handed two records
+    would be a rung whose signature changes every time the ladder grows a
+    question.
 
     """
 
@@ -483,20 +488,26 @@ def _parent_head(
     """Return the parent's tip, sought in the order the procedure fixes.
 
     The order is the fetched pull request head, then the tombstone ``git plonk``
-    wrote for the parent branch, then the parent's remote-tracking ref. A run
-    that reads no forge can only reach the middle one, which is the one that
-    survives the parent branch being deleted — the degradation this command
-    exists for. A tombstone that cannot be read is a fault and not an absence:
-    "no tombstone" and "the tombstone would not open" are different answers.
+    wrote for the parent branch. A head the run already has is the procedure's
+    first answer and is taken as given: it was fetched from the pull request
+    the run identified, so seeking a tombstone below it would be asking a
+    weaker question after a stronger one was answered. A run that reads no
+    forge reaches the tombstone instead, which is the one that survives the
+    parent branch being deleted — the degradation this command exists for. A
+    tombstone that cannot be read is a fault and not an absence: "no tombstone"
+    and "the tombstone would not open" are different answers.
 
     Returns
     -------
     tuple[ParentHead | None, str | None]
         The parent's head and the ref it was read from, or no head and the
         reason it could not be recovered. No head and no reason is the honest
-        answer for a run whose child names no parent branch.
+        answer for a run whose child names no parent branch and whose parent
+        pull request named no head.
 
     """
+    if context.parent_head is not None:
+        return context.parent_head, None
     branch = _parent_branch(context.record)
     if branch is None:
         return None, None

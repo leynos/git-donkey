@@ -112,16 +112,27 @@ _EXPECTED_SKYLOS_WHITELIST_NAMES: typ.Final = frozenset[str]()
 # caller, yet no production call graph sees it. ``_git_failure`` is a false
 # positive: its only callers are the ``except GitCommandError`` handlers in
 # ``stack_store._write_anchor`` and ``stack_store._write_tombstone``, and
-# Skylos does not credit a call made from a handler body as a use. The four
-# ``wheresat_refs`` names are the per-run evidence namespace and the two
-# factories that build refs under it: ``fetch_evidence`` calls them, and the
-# durability suite's fetched-boundary case reaches them from outside the
-# scanned set, but no console script fetches until the forge evidence lands.
+# Skylos does not credit a call made from a handler body as a use. The two
+# ``wheresat_refs`` names are the per-run evidence namespace and the factory
+# that builds refs under it: the factory is called by the durability suite's
+# fetched-boundary case and by nothing else, and the namespace by that factory
+# and by ``release``, which no console script reaches either — the fetch this
+# command performs writes the durable cache ref, so a run creates no per-run
+# ref for a release to delete. The three ``wheresat_github`` names are the same
+# kind of false positive one level down: Skylos records their call sites but
+# credits no reference to them, because every caller is a method of
+# ``ApiWheresatGitHub`` and the client is reached through the ``WheresatGitHub``
+# protocol — a call on a Protocol-typed parameter is not a reference Skylos
+# follows, so nothing below those methods is credited. ``_decoded`` in the same
+# module is the contrast that shows the limit rather than a dead helper: it is
+# named by a docstring cross-reference, which Skylos does count, and that alone
+# keeps it — and the two helpers it calls — alive.
 _EXPECTED_SKYLOS_DOCUMENTED_WHITELIST_NAMES: typ.Final = frozenset({
+    "_commit_pulls_path",
     "_git_failure",
     "_per_run_namespace",
-    "_slug_parts",
-    "parent_head_ref",
+    "_pull_path",
+    "_slug",
     "per_run_ref",
 })
 # Every symbol the workflow or an embedder reaches through the recorder that

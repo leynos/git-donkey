@@ -36,7 +36,8 @@ from pathlib import Path
 
 from git import GitCommandError, Repo
 
-from git_donkey import stack_records, wheresat
+from git_donkey import stack_records, wheresat, wheresat_github
+from git_donkey.wheresat_errors import WheresatGitHubError
 from tests import git_repo_helpers
 from tests.integration.conftest import _setup_repo
 from tests.integration.plonk_helpers import (
@@ -48,6 +49,8 @@ if typ.TYPE_CHECKING:
     import collections.abc as cabc
 
     import pytest
+
+    from git_donkey.wheresat_records import ParentPullRequest
 
 CHILD: typ.Final = "child"
 """Branch the suites ask ``git wheresat`` about."""
@@ -262,6 +265,61 @@ class WheresatRun:
         return json.loads(self.stdout)
 
 
+_UNANSWERED: typ.Final = "this suite's forge answers nothing about a pull request"
+"""Why the suite's double refuses every question about a pull request."""
+
+
+class _AssociationsOnlyForge(wheresat_github.WheresatGitHub):
+    """The forge the local suites hand the run in place of GitHub.
+
+    The command opens the real port for a run that was handed none and is not
+    ``--offline``, so a suite that ran the whole command line would attempt live
+    traffic. This is what it is handed instead, and its two halves are the two
+    states the local suites are entitled to. The association search answers —
+    nothing is associated with the child's commits — so a refusal the run
+    reaches locally stays a local refusal rather than becoming a question the
+    forge could not answer. Every question about a pull request goes unanswered,
+    so a run that named a parent reports the gates about it as unanswered. A
+    double that refused everything would make every local refusal indeterminate,
+    because a fault means the evidence set is not known to be complete.
+
+    """
+
+    @typ.override
+    def pull_request(
+        self, identity: stack_records.PullRequestIdentity
+    ) -> ParentPullRequest:
+        """Refuse: this forge knows nothing about any pull request."""
+        raise WheresatGitHubError(_UNANSWERED)
+
+    @typ.override
+    def pull_request_body(self, identity: stack_records.PullRequestIdentity) -> str:
+        """Refuse, for the same reason."""
+        raise WheresatGitHubError(_UNANSWERED)
+
+    @typ.override
+    def stack_parent(
+        self, identity: stack_records.PullRequestIdentity
+    ) -> stack_records.PullRequestIdentity | None:
+        """Refuse, for the same reason."""
+        raise WheresatGitHubError(_UNANSWERED)
+
+    @typ.override
+    def associated_pull_requests(
+        self, repository: str, commits: typ.Sequence[str]
+    ) -> wheresat_github.AssociationPage:
+        """Return the page of a search that examined every commit and found none."""
+        return wheresat_github.AssociationPage(
+            associations=dict.fromkeys(commits, ()),
+            commits_examined=len(commits),
+            truncated=False,
+        )
+
+
+_THE_FORGE: typ.Final = _AssociationsOnlyForge()
+"""The singleton double every run from this module is handed."""
+
+
 def run_wheresat(
     options: wheresat.WheresatOptions,
     capsys: pytest.CaptureFixture[str],
@@ -271,7 +329,10 @@ def run_wheresat(
     The repository is the current directory's, so a caller enters a checkout
     before calling this; nothing here reaches for the scenario the suite built,
     which is what keeps the measurement honest about what the command line can
-    see for itself.
+    see for itself. The forge is the one exception, and it is not a shortcut:
+    the command consults GitHub, so the choice is between a double and live
+    traffic, and :class:`_AssociationsOnlyForge` is the double whose answers
+    leave the local suites' refusals local.
 
     Parameters
     ----------
@@ -286,7 +347,7 @@ def run_wheresat(
         The exit status and both output streams.
 
     """
-    exit_code = wheresat.run_git_wheresat(options)
+    exit_code = wheresat.run_git_wheresat(options, github=_THE_FORGE)
     captured = capsys.readouterr()
     return WheresatRun(
         exit_code=exit_code,

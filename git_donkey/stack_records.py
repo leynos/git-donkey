@@ -59,6 +59,12 @@ The same horizon as Git's own ``gc.reflogExpire``, so a tombstone lasts exactly
 as long as the reflog it stands in for would have.
 """
 
+_GITHUB_HOST: typ.Final = "github.com"
+"""Host a remote URL must name for its path to be read as a repository slug."""
+
+_GIT_SUFFIX: typ.Final = ".git"
+"""Suffix a remote URL may carry on the repository name, and which is not one."""
+
 
 class RecordKey(enum.StrEnum):
     """The per-branch configuration keys, without the ``branch.<name>.`` prefix.
@@ -325,11 +331,105 @@ def _is_positive_integer(text: str) -> bool:
     return text.isdigit() and int(text) >= 1
 
 
-def _is_repository_slug(owner: str, separator: str, name: str) -> bool:
-    """Return whether the three parts of ``owner/name`` form a slug."""
+def is_repository_slug(owner: str, separator: str, name: str) -> bool:
+    """Return whether the three parts of ``owner/name`` form a slug.
+
+    Parameters
+    ----------
+    owner : str
+        Text before the separator, from ``str.partition("/")``.
+    separator : str
+        The separator ``str.partition`` returned, empty when it found none.
+    name : str
+        Text after the separator.
+
+    Returns
+    -------
+    bool
+        Whether the three are one owner, one separator, and one repository
+        name, with no further separator in the name. Public because the
+        command that builds a URL out of a slug must refuse a value this
+        rejects, and a second copy of the rule would be a second opinion about
+        what a slug is.
+
+    """
     if not separator or not owner:
         return False
     return bool(name) and "/" not in name
+
+
+def repository_from_remote_url(url: str) -> str | None:
+    """Return the ``owner/name`` a remote URL names, when it names one here.
+
+    Git writes a GitHub remote URL in one of three spellings —
+    ``https://github.com/owner/name``, ``git@github.com:owner/name``, and
+    ``ssh://git@github.com/owner/name`` — and any of them may end in ``.git``.
+    All three are read, because a clone's spelling is the user's choice rather
+    than the tool's, and the answer is the slug alone: the scheme, the user,
+    and the port say nothing about which repository the remote holds.
+
+    An answer of ``None`` is not a failure to parse. It is the refusal to
+    guess, because the caller is looking for the one remote that holds a
+    particular repository: a URL naming another host, or a path that is not an
+    ``owner/name`` pair, must not be read as a near miss for the repository it
+    was compared against.
+
+    Parameters
+    ----------
+    url : str
+        URL a remote is configured with, as Git stores it.
+
+    Returns
+    -------
+    str | None
+        The ``owner/name`` the URL names on GitHub, or ``None`` when it names
+        no repository there.
+
+    """
+    parts = _url_host_and_path(url)
+    if parts is None:
+        return None
+    host, path = parts
+    if host != _GITHUB_HOST:
+        return None
+    slug = path.removesuffix(_GIT_SUFFIX)
+    owner, slash, name = slug.partition("/")
+    if not is_repository_slug(owner, slash, name):
+        return None
+    return slug
+
+
+def _url_host_and_path(url: str) -> tuple[str, str] | None:
+    """Return the host and path a remote URL names, when it names both.
+
+    Both shapes Git writes are read here and told apart by separator: a URL
+    proper has a scheme, so its host follows ``://`` and its path follows the
+    first slash after it, while the scp-like form has no scheme and puts its
+    host after the ``@`` and its path after the colon. Anything else — a local
+    path, a bundle, a file URL — is answered with ``None`` rather than read as
+    whichever shape it most resembles.
+
+    Parameters
+    ----------
+    url : str
+        URL a remote is configured with.
+
+    Returns
+    -------
+    tuple[str, str] | None
+        The host and the path, or ``None`` when the URL names neither.
+
+    """
+    if "://" in url:
+        _, _, remainder = url.partition("://")
+        host, _, path = remainder.partition("/")
+        host = host.rpartition("@")[2].partition(":")[0]
+        return (host, path) if host and path else None
+    if "@" in url and ":" in url:
+        _, _, remainder = url.partition("@")
+        host, _, path = remainder.partition(":")
+        return (host, path) if host and path else None
+    return None
 
 
 def parse_pull_request_identity(text: str) -> PullRequestIdentity | None:
@@ -350,7 +450,7 @@ def parse_pull_request_identity(text: str) -> PullRequestIdentity | None:
     if not separator or not _is_positive_integer(number):
         return None
     owner, slash, name = repository.partition("/")
-    if not _is_repository_slug(owner, slash, name):
+    if not is_repository_slug(owner, slash, name):
         return None
     return PullRequestIdentity(repository=repository, number=int(number))
 

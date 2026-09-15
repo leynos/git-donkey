@@ -1,19 +1,25 @@
-"""The two writes ``git wheresat`` may make, and nothing else that can write.
+"""The writes ``git wheresat`` may make, and nothing else that can write.
 
-A run is a read unless it was asked to record or unless the boundary it reports
-is one no durable ref reaches. Those two cases are the whole of the command's
-writing surface, and they are the two methods here rather than two branches of
-the workflow so that "what can this run change?" has one file for an answer: the
-ref that keeps a reported boundary from being collected (INV-8), and the shared
-stack record ``--record`` refreshes (INV-7).
+A run is a read unless it fetched the parent's head, was asked to record, or
+reported a boundary no durable ref reaches. Those three cases are the whole of
+the command's writing surface, and they are the methods here rather than
+branches of the workflow so that "what can this run change?" has one file for
+an answer: the parent head the run brought down into the durable cache ref
+(INV-1 permits it because the ref is the command's own, and the cache is what
+makes a second run fetch nothing), the ref that keeps a reported boundary from
+being collected (INV-8), and the shared stack record ``--record`` refreshes
+(INV-7).
 
-Both go through :class:`git_donkey.wheresat_refs.GitWheresatRefWriter`, which is
-the command's only object that holds a repository it may write to. Constructing
-this module's value object holds a repository and nothing that writes to it, and
-the writer is built inside the method that needs it, so a run that asks for
-neither write never has one to reach for — which is what keeps the read-only
-promise (INV-1) a property of the code rather than of the flags a caller
-happened to pass.
+All three go through :class:`git_donkey.wheresat_refs.GitWheresatRefWriter`,
+which is the command's only object that holds a repository it may write to.
+Constructing this module's value object holds a repository and nothing that
+writes to it, and the writer is built inside the method that needs it, so a run
+that asks for none of the three never has one to reach for — which is what
+keeps the read-only promise (INV-1) a property of the code rather than of the
+flags a caller happened to pass. The fetch is the one write that happens before
+the run has a context to bind, because the head it fetches is part of what the
+context is built from, and it is a function here rather than a method for that
+reason alone.
 
 A record is written only from a claim. An established boundary an attested
 candidate carries is a statement someone made on purpose, and writing it back is
@@ -35,8 +41,10 @@ from git_donkey import (
     stack_records,
     stack_store,
     wheresat_collect,
+    wheresat_payload,
     wheresat_records,
     wheresat_refs,
+    wheresat_remotes,
 )
 from git_donkey.wheresat_errors import WheresatGraphError, WheresatUsageError
 
@@ -61,6 +69,65 @@ _UNATTESTED_TO_RECORD: typ.Final = (
     "attested claim is written back"
 )
 """Warning for a ``--record`` run whose boundary no deliberate statement carries."""
+
+_FETCH_OPERATION: typ.Final[observability.Operation] = "evidence_fetch"
+"""Operation a run's fetch of the parent's head is recorded under."""
+
+_NO_FETCH: typ.Final = (
+    "the parent's head was not fetched: --no-fetch was given and the durable "
+    "cache holds no head for it; the cache is filled by a run that may fetch, "
+    "so run once without --no-fetch to fill it"
+)
+"""Why a ``--no-fetch`` run whose cache misses has no head to reason from."""
+
+_NO_REMOTE: typ.Final = (
+    "the parent's head was not fetched: no configured remote names "
+    "{repository}, the repository the pull request's head lives in, so the "
+    "head could not be fetched from its own repository; add that repository as "
+    "a remote, or pass --offline to work from local evidence alone"
+)
+"""Why a head in a repository no remote names was not fetched."""
+
+_NO_HEAD: typ.Final = (
+    "the parent's head was not fetched: {identity} could not be fetched from "
+    "the remote {remote!r} and the run has no evidence of where the parent's "
+    "work begins without it"
+)
+"""Why the head could not be fetched from the repository that holds it."""
+
+_MOVED_HEAD: typ.Final = (
+    "the parent's head was not used: {identity} reports its head as {reported} "
+    "but fetching it produced {fetched}, so the head moved while the run was "
+    "reading it; run again to read the pull request as it now is"
+)
+"""Why a fetched head the payload no longer names was refused."""
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class ParentHeadFetch:
+    """What a run obtained for the parent's head, and what it could not.
+
+    The head is carried as the payload rather than as a commit, because the
+    fetch's other result is a field of it: ``head_fetched_from`` names the
+    repository the commit came from, which is what gate 1 reads to tell a head
+    that is still where the pull requests says it is from one that has been
+    rebuilt. The two are set together or not at all, so a caller that has a
+    commit has the field that goes with it.
+
+    Parameters
+    ----------
+    parent : wheresat_records.ParentPullRequest | None
+        The payload with ``head_fetched_from`` set, when the head is in hand.
+    fault : str | None
+        Why the head is not in hand, or ``None`` when it is.
+    error_kind : observability.ErrorKind | None
+        The bounded class of that failure, for the run's observation.
+
+    """
+
+    parent: wheresat_records.ParentPullRequest | None = None
+    fault: str | None = None
+    error_kind: observability.ErrorKind | None = None
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -177,10 +244,10 @@ class WheresatWrites:
 
         The record is re-read here rather than carried through the assessment,
         because what a refresh preserves is the parent a previous writer stated
-        and not anything the assessment needed to decide a boundary. A run that
-        named a parent pull request cannot reach this point: the parent gates it
-        makes applicable cannot be answered without forge evidence, so such a
-        run is indeterminate and has nothing to record.
+        and not anything the assessment needed to decide a boundary: the parent
+        a run identifies through the forge is the pull request the change now
+        sits beneath, while the record's parent is where the branch was cut
+        from, and a refresh restates the second without re-deciding the first.
 
         Raises
         ------
@@ -347,6 +414,208 @@ class WheresatWrites:
                 assessment, f"the boundary could not be retained: {exc}"
             )
         return dataclasses.replace(assessment, durable_ref=ref)
+
+
+def fetch_parent_head(
+    repo: Repo,
+    parent: wheresat_records.ParentPullRequest,
+    *,
+    no_fetch: bool,
+) -> ParentHeadFetch:
+    """Fetch the identified parent's head, or say why the run has none.
+
+    The head is fetched into the durable cache ref and nowhere else. A cache
+    that already holds the commit the payload reports is the answer without a
+    fetch, and that check comes before ``--no-fetch`` rather than after it: a
+    second run on the same pull request performs no transport at all, so a run
+    that may not use the network can still reason from the head a previous run
+    brought down.
+
+    The fetched commit is held to the payload's ``head_sha`` rather than
+    believed, because the boundary this run is about to establish would
+    otherwise be a boundary for a commit the pull request no longer names.
+
+    Parameters
+    ----------
+    repo : git.Repo
+        Repository the run read, and the only repository the fetch may write.
+    parent : wheresat_records.ParentPullRequest
+        The parent pull request the ladder identified, as the forge reported
+        it.
+    no_fetch : bool
+        Whether the run was told not to fetch. Such a run whose cache misses
+        has no head, and says so rather than reaching for the network.
+
+    Returns
+    -------
+    ParentHeadFetch
+        The payload with ``head_fetched_from`` set, or the reason the run has
+        no head to reason from.
+
+    """
+    destination = wheresat_refs.parent_head_ref(parent.identity)
+    writer = wheresat_refs.GitWheresatRefWriter(repo)
+    if writer.commit_at(destination) == parent.head_sha:
+        _observe_fetch("success")
+        return _fetched(parent)
+    if no_fetch:
+        _observe_fetch("not_requested")
+        return ParentHeadFetch(fault=_NO_FETCH)
+    remote = wheresat_remotes.named_remote(repo, parent.head_repository)
+    if remote is None:
+        _observe_fetch("unavailable")
+        return ParentHeadFetch(
+            fault=_NO_REMOTE.format(repository=parent.head_repository)
+        )
+    commit, failures = _fetched_commit(writer, parent, remote, destination)
+    if commit is None:
+        return _fetch_failed(parent, remote, failures)
+    if commit != parent.head_sha:
+        _observe_fetch("failure", error_kind="github_api_error")
+        return ParentHeadFetch(
+            fault=_MOVED_HEAD.format(
+                identity=wheresat_payload.identity_text(parent.identity),
+                reported=parent.head_sha,
+                fetched=commit,
+            ),
+            error_kind="github_api_error",
+        )
+    _observe_fetch("success")
+    return _fetched(parent)
+
+
+def _fetched_commit(
+    writer: wheresat_refs.GitWheresatRefWriter,
+    parent: wheresat_records.ParentPullRequest,
+    remote: str,
+    destination: wheresat_refs.EvidenceRef,
+) -> tuple[str | None, tuple[str, ...]]:
+    """Return the commit the head was fetched to, or every refusal to fetch it.
+
+    The pull request's own ref is asked for first, because that ref is the pull
+    request's head rather than a branch that may since have moved or been
+    deleted. A remote naming the repository a pull request *came from* — the
+    fork the payload names as the head repository — carries no such ref for
+    this pull request, so the head branch is asked for second. Both name the
+    same commit when both answer, and the payload's ``head_sha`` is what either
+    is held to, so the second attempt widens where the head may be found
+    without widening what the head may be.
+
+    Parameters
+    ----------
+    writer : wheresat_refs.GitWheresatRefWriter
+        The command's only writing surface.
+    parent : wheresat_records.ParentPullRequest
+        Pull request whose head is being fetched.
+    remote : str
+        Remote to fetch from, which names the head's own repository.
+    destination : wheresat_refs.EvidenceRef
+        Cache ref the head is fetched into.
+
+    Returns
+    -------
+    tuple[str | None, tuple[str, ...]]
+        The fetched commit, or ``None`` with one refusal per ref that was
+        tried.
+
+    """
+    identity = parent.identity
+    source_refs = (
+        f"refs/pull/{identity.number}/head",
+        f"refs/heads/{parent.head_ref}",
+    )
+    failures: list[str] = []
+    for source_ref in source_refs:
+        try:
+            commit = writer.fetch_evidence(
+                remote, source_ref, destination, expected=parent.head_sha
+            )
+        except (wheresat_refs.WheresatRefError, ValueError) as exc:
+            failures.append(f"{source_ref}: {exc}")
+            continue
+        return commit, tuple(failures)
+    return None, tuple(failures)
+
+
+def _fetch_failed(
+    parent: wheresat_records.ParentPullRequest,
+    remote: str,
+    failures: tuple[str, ...],
+) -> ParentHeadFetch:
+    """Return the result of a head no source ref could be fetched from.
+
+    Parameters
+    ----------
+    parent : wheresat_records.ParentPullRequest
+        Pull request whose head could not be fetched.
+    remote : str
+        Remote every attempt was made against.
+    failures : tuple[str, ...]
+        What each attempt reported.
+
+    Returns
+    -------
+    ParentHeadFetch
+        The refusal, with each attempt's own words so an operator can see why
+        the fetch was refused rather than only that it was.
+
+    """
+    _observe_fetch("failure", error_kind="git_command_error")
+    reason = _NO_HEAD.format(
+        identity=wheresat_payload.identity_text(parent.identity), remote=remote
+    )
+    reported = "; ".join(failures)
+    return ParentHeadFetch(
+        fault=f"{reason}: {reported}" if reported else reason,
+        error_kind="git_command_error",
+    )
+
+
+def _fetched(parent: wheresat_records.ParentPullRequest) -> ParentHeadFetch:
+    """Return the fetch result of a head that is in hand.
+
+    ``head_fetched_from`` is set from the payload's own ``head_repository``,
+    which is the repository the fetch was aimed at and the one a cache hit
+    cached. Gate 1 asks whether the head is where the pull request says it is,
+    and both paths must answer that the same way.
+
+    Parameters
+    ----------
+    parent : wheresat_records.ParentPullRequest
+        The pull request whose head is in hand.
+
+    Returns
+    -------
+    ParentHeadFetch
+        The payload with its ``head_fetched_from`` set.
+
+    """
+    return ParentHeadFetch(
+        parent=dataclasses.replace(parent, head_fetched_from=parent.head_repository)
+    )
+
+
+def _observe_fetch(
+    outcome: observability.Outcome,
+    error_kind: observability.ErrorKind | None = None,
+) -> None:
+    """Record one bounded observation about this run's fetch.
+
+    Parameters
+    ----------
+    outcome : observability.Outcome
+        What became of the fetch.
+    error_kind : observability.ErrorKind | None, optional
+        Which bounded failure the fetch met, when it met one.
+
+    """
+    observability.get_recorder().record(
+        observability.Observation(
+            operation=_FETCH_OPERATION,
+            outcome=outcome,
+            error_kind=error_kind,
+        )
+    )
 
 
 def _observe(

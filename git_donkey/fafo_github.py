@@ -12,15 +12,16 @@ import dataclasses
 import logging
 import os
 import sys
-import tempfile
 import typing as typ
-from pathlib import Path
 
 import github3
 import loctocat
 from github3 import exceptions as github3_exceptions
 
-from git_donkey import helpers
+from git_donkey import github_credentials, helpers
+
+if typ.TYPE_CHECKING:
+    from pathlib import Path
 
 _GIT_FAFO_PREFIX = "git-fafo"
 _GITHUB_TOKEN_SCOPES = ["user", "repo"]
@@ -37,48 +38,6 @@ class _RemoteRepository:
 
     owner: str
     already_exists: bool = False
-
-
-def _credentials_path() -> Path:
-    """Return the configured path for the cached GitHub token."""
-    raw = os.environ.get("GIT_DONKEY_CREDENTIALS_FILE")
-    if raw:
-        return Path(raw).expanduser().resolve()
-    return Path("~/.config/git-donkey/github-token").expanduser()
-
-
-def _read_token_from_file(path: Path) -> str | None:
-    """Read the first non-empty token line from ``path`` if available."""
-    if not path.exists():
-        return None
-
-    try:
-        lines = path.read_text().splitlines()
-    except OSError:
-        return None
-
-    if not lines:
-        return None
-
-    token = lines[0].strip()
-    return token or None
-
-
-def _write_token_file(path: Path, token: str, auth_id: int | None) -> None:
-    """Persist a GitHub token and optional authorization id."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    payload = f"{token}\n"
-    if auth_id is not None:
-        payload += f"{auth_id}\n"
-    temporary_handle, temporary_name = tempfile.mkstemp(dir=path.parent)
-    temporary_path = Path(temporary_name)
-    with os.fdopen(
-        temporary_handle,
-        "w",
-        encoding="utf-8",
-    ) as fh:
-        fh.write(payload)
-    temporary_path.replace(path)
 
 
 def _ensure_interactive() -> None:
@@ -113,7 +72,7 @@ def _device_flow_token(credentials_path: Path) -> str:
     if not token:
         helpers._die(_GIT_FAFO_PREFIX, "failed to create GitHub device token", 1)
 
-    _write_token_file(credentials_path, token, None)
+    github_credentials.write_token(credentials_path, token, None)
     _LOGGER.info(
         "Acquired GitHub token using device flow",
         extra={"token_source": "device_flow"},
@@ -131,8 +90,8 @@ def _github_token() -> str:
         )
         return token
 
-    credentials_path = _credentials_path()
-    stored_token = _read_token_from_file(credentials_path)
+    credentials_path = github_credentials.credentials_path()
+    stored_token = github_credentials.read_token(credentials_path)
     if stored_token:
         _LOGGER.info(
             "Using cached GitHub token",

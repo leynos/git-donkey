@@ -441,29 +441,68 @@ def _gates(checked: typ.Sequence[_Checked]) -> tuple[GateResult, ...]:
     return tuple(gate for one in checked for gate in one.gates)
 
 
+def _pending(checked: typ.Sequence[_Checked]) -> bool:
+    """Return whether evidence that could establish a boundary went unanswered.
+
+    An inferred candidate is left out: its support could never have established
+    the boundary, so the question it could not answer is one the verdict never
+    rested on.
+
+    Returns
+    -------
+    bool
+        Whether a candidate that could have served is waiting for an answer.
+
+    """
+    return any(one.pending for one in checked if one.support is not None)
+
+
+def _awaiting(checked: typ.Sequence[_Checked]) -> tuple[str, ...]:
+    """Return what each candidate that could establish is still waiting for."""
+    return tuple(
+        _candidate_reason(one)
+        for one in checked
+        if one.pending and one.support is not None
+    )
+
+
 def _ambiguous(
     reported: tuple[Candidate, ...],
     gates: tuple[GateResult, ...],
+    checked: typ.Sequence[_Checked],
     commits: tuple[str, ...],
-) -> Unresolved:
+) -> Unresolved | Indeterminate:
     """Return the refusal for a corpus that leaves more than one boundary.
 
     The commits are the ones still in the running after precedence was applied,
     so the refusal names rivals the evidence really does not choose between
     rather than every commit that cleared its gates.
 
+    A tie is only reported as a refusal while every candidate that could have
+    served has been answered. When one of them is still waiting, the run cannot
+    claim the evidence is complete: an answer could have cleared that candidate,
+    and a clearance at a stronger rank answers over the rivals or joins them, so
+    what it could not tell is reported with the rivals it would have displaced.
+
     Returns
     -------
-    Unresolved
-        The refusal, naming the rivals the evidence leaves in the running.
+    Unresolved | Indeterminate
+        The refusal naming the rivals the evidence leaves in the running, or
+        "could not tell" when a question about one of them went unanswered.
 
     """
     names = ", ".join(_short(one) for one in commits)
-    reason = (
+    rivals = (
         f"{len(commits)} commits could serve as the boundary ({names}); the "
         "evidence does not choose between them"
     )
-    return Unresolved(candidates=reported, gates=gates, reasons=(reason,))
+    if not _pending(checked):
+        return Unresolved(candidates=reported, gates=gates, reasons=(rivals,))
+    return Indeterminate(
+        candidates=reported,
+        gates=gates,
+        reasons=(*_awaiting(checked), rivals),
+    )
 
 
 def _refusal(
@@ -486,7 +525,7 @@ def _refusal(
     """
     reasons = tuple(_candidate_reason(one) for one in checked)
     stated = reasons or ("no boundary candidate was found",)
-    if any(one.pending for one in checked if one.support is not None):
+    if _pending(checked):
         return Indeterminate(candidates=reported, gates=gates, reasons=stated)
     return Unresolved(candidates=reported, gates=gates, reasons=stated)
 
@@ -539,7 +578,7 @@ def assess(
         case (commit,):
             return _established(request, facts, serving[commit], commit)
         case (_, *_):
-            return _ambiguous(_originals(checked), _gates(checked), commits)
+            return _ambiguous(_originals(checked), _gates(checked), checked, commits)
         case _:
             return _refusal(_originals(checked), _gates(checked), checked)
 

@@ -265,9 +265,17 @@ class WheresatRefWriter(typ.Protocol):
     """The only Git surface in this command that mutates anything."""
 
     def fetch_evidence(
-        self, remote: str, source_ref: str, destination: EvidenceRef
-    ) -> None:
+        self,
+        remote: str,
+        source_ref: str,
+        destination: EvidenceRef,
+        *,
+        expected: str | None = None,
+    ) -> str:
         """Fetch one ref into the evidence namespace and nowhere else."""
+
+    def commit_at(self, ref: str) -> str | None:
+        """Return the commit ``ref`` names, or ``None`` when it names none."""
 
     def retain_boundary(self, branch: str, commit: str) -> str:
         """Keep a durable ref for an otherwise unreachable boundary (INV-8)."""
@@ -297,18 +305,25 @@ class GitWheresatRefWriter:
     repo: Repo
 
     def fetch_evidence(
-        self, remote: str, source_ref: str, destination: EvidenceRef
-    ) -> None:
-        """Fetch one ref into the evidence namespace and nowhere else.
+        self,
+        remote: str,
+        source_ref: str,
+        destination: EvidenceRef,
+        *,
+        expected: str | None = None,
+    ) -> str:
+        """Fetch one ref into the evidence namespace, and say what it holds.
 
-        A destination that already names a commit is left alone, which is
+        A destination that already holds ``expected`` is left alone, which is
         what makes a second run on the same pull request perform no fetch at
-        all. The fetch itself is confined to the refspec: nothing else is
-        pruned, no tag is brought down, no ``FETCH_HEAD`` is written, and
-        submodule recursion is refused, so a populated submodule's repository
-        is not written to either. The refspec is not forced, so a destination
-        that appeared between the check and the fetch is reported rather than
-        silently replaced.
+        all. A destination holding any other commit is deleted first, because a
+        cache that has gone stale must be replaced rather than reported as the
+        answer it is no longer. The fetch itself is confined to the refspec:
+        nothing else is pruned, no tag is brought down, no ``FETCH_HEAD`` is
+        written, and submodule recursion is refused, so a populated submodule's
+        repository is not written to either. The refspec is not forced, so a
+        destination that appeared between the deletion and the fetch is
+        reported rather than silently replaced.
 
         Parameters
         ----------
@@ -319,17 +334,29 @@ class GitWheresatRefWriter:
             ``refs/pull/123/head``.
         destination : EvidenceRef
             Ref of this run's evidence namespace to fetch it into.
+        expected : str | None, optional
+            Commit the caller believes the destination already holds. When it
+            holds that commit, no fetch is performed and it is returned.
+
+        Returns
+        -------
+        str
+            The commit the destination holds once the fetch has succeeded.
 
         Raises
         ------
         WheresatRefError
-            If Git refuses the fetch, or if the fetch leaves the destination
-            without a commit. The run has no parent head to reason from in
-            either case, and must not read that absence as an answer.
+            If Git refuses the fetch or the deletion, or if the fetch leaves
+            the destination without a commit. The run has no evidence to
+            reason from in any of those cases, and must not read that absence
+            as an answer.
 
         """
-        if self._holds_commit(destination):
-            return
+        held = self.commit_at(destination)
+        if expected is not None and held == expected:
+            return expected
+        if held is not None:
+            self._delete_ref(destination)
         status, _, stderr = self.repo.git.fetch(
             "--no-prune",
             "--no-tags",
@@ -345,12 +372,14 @@ class GitWheresatRefWriter:
             reported = _reported(stderr, status)
             msg = f"cannot fetch {source_ref} from {remote!r}: {reported}"
             raise WheresatRefError(msg)
-        if not self._holds_commit(destination):
+        commit = self.commit_at(destination)
+        if commit is None:
             msg = (
                 f"the fetch of {source_ref} from {remote!r} left no commit at "
                 f"{destination}"
             )
             raise WheresatRefError(msg)
+        return commit
 
     def retain_boundary(self, branch: str, commit: str) -> str:
         """Keep a durable ref for an otherwise unreachable boundary (INV-8).
@@ -419,16 +448,7 @@ class GitWheresatRefWriter:
 
         """
         for ref in self._refs_under(_per_run_namespace(op_id)):
-            status, _, stderr = self.repo.git.update_ref(
-                "-d",
-                ref,
-                with_extended_output=True,
-                with_exceptions=False,
-            )
-            if status != _ANSWERED_YES:
-                reported = _reported(stderr, status)
-                msg = f"cannot release the evidence ref {ref}: {reported}"
-                raise WheresatRefError(msg)
+            self._delete_ref(ref)
 
     def write_record(
         self, record: stack_records.StackRecord, expected_old: str | None
@@ -467,9 +487,27 @@ class GitWheresatRefWriter:
             return
         writer.refresh(record, expected_old)
 
-    def _holds_commit(self, ref: str) -> bool:
-        """Return whether ``ref`` exists and names a commit."""
-        status, _, _ = self.repo.git.rev_parse(
+    def commit_at(self, ref: str) -> str | None:
+        """Return the commit ``ref`` names, or ``None`` when it names none.
+
+        The question is asked of the object store rather than of the ref, so a
+        ref that exists but names something other than a commit answers the
+        same way as a ref that is not there: neither is evidence a run may
+        reason from, and the two are the same absence to a caller.
+
+        Parameters
+        ----------
+        ref : str
+            Ref, or any revision, to resolve.
+
+        Returns
+        -------
+        str | None
+            The full object ID of the commit, or ``None`` when the revision
+            does not name one.
+
+        """
+        status, output, _ = self.repo.git.rev_parse(
             "--verify",
             "--quiet",
             "--end-of-options",
@@ -477,7 +515,34 @@ class GitWheresatRefWriter:
             with_extended_output=True,
             with_exceptions=False,
         )
-        return status == _ANSWERED_YES
+        if status != _ANSWERED_YES:
+            return None
+        return str(output).strip()
+
+    def _delete_ref(self, ref: str) -> None:
+        """Delete one ref of this module's own namespaces.
+
+        Parameters
+        ----------
+        ref : str
+            Ref to delete.
+
+        Raises
+        ------
+        WheresatRefError
+            If Git refuses the deletion.
+
+        """
+        status, _, stderr = self.repo.git.update_ref(
+            "-d",
+            ref,
+            with_extended_output=True,
+            with_exceptions=False,
+        )
+        if status != _ANSWERED_YES:
+            reported = _reported(stderr, status)
+            msg = f"cannot delete the evidence ref {ref}: {reported}"
+            raise WheresatRefError(msg)
 
     def _refs_under(self, namespace: str) -> tuple[str, ...]:
         """Return every ref at or below ``namespace``, in Git's own order."""

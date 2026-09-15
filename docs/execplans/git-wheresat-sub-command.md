@@ -859,6 +859,258 @@ Stop and escalate rather than improvising when any of these is reached.
     the diff rather than the reviewer's own count.
 - [ ] EP-M10 GitHub evidence, `--json`, behavioural scenarios, and the
       remaining documentation.
+  - AXIOM-10 resolved by measurement, and what it measured narrows the axiom.
+    The plan's open question was what a **non-empty** stack's response looks
+    like; the answer is that the pull request's own payload carries enough to
+    be read and not enough to answer the question this command asks. `GET
+    /repos/{owner}/{repo}/pulls/{n}` returns a `stack` object with `base`,
+    `id`, `number`, `position`, and `size` — and **no parent number** — where
+    `position` is 1-based counting from the bottom, so `position == 1` is the
+    bottom of a stack and has no parent. The neighbour is named only by `GET
+    /repos/{owner}/{repo}/stacks?pull_request=N`, whose array holds one stack
+    whose `pull_requests` are ordered bottom to top, so the parent of a pull
+    request at `position` is `pull_requests[position - 2]`. Measured live,
+    read-only, from this worktree on 2026-09-14: `microsoft/vscode` PR 335346
+    reports position 2 of 4 in stack 335381, and the filter answers with that
+    one stack and its four members `[335345, 335346, 335350, 335522]`; `cli/cli`
+    stack 14392 holds PRs 14360 and 14390, one of them merged; and a pull
+    request that is not stacked answers `[]` rather than `404`, which is the
+    fact `stack_parent` turns into `None`. A second measurement shapes the same
+    module: a `GET /repos/{owner}/{repo}/commits/{sha}/pulls` payload reports
+    `merged` as `null` rather than as a boolean, so merge state is derived from
+    `merged_at` there — the same derivation the local fixtures needed in EP-M5.
+  - Decision: the credential path moved to `git_donkey/github_credentials.py`
+    rather than being copied into the new module or reached for through
+    `fafo_github`'s privates. Two readers of one file are exactly the
+    arrangement in which a second copy of a path becomes a second opinion, and
+    the failure is invisible until an operator is asked to authorize a token
+    that is already cached — which is the outcome caching exists to prevent.
+    `fafo_github` now imports the three functions the new module owns, and
+    `fafo.py`'s re-export of those three is dropped; that they were unreferenced
+    was checked against the suite rather than assumed.
+  - Slice (a) built: `git_donkey/wheresat_github.py` declares
+    `WheresatGitHub` — four questions, no more: what a pull request merged as,
+    what its body says, whether GitHub records it in a stack and which pull
+    request sits below it, and which pull requests a bounded set of commits
+    belongs to — and `ApiWheresatGitHub`, the implementation over `requests`
+    and `github3.session`. One primitive, `get`, is the only place a status is
+    read, so an answer that is not `200` becomes `WheresatGitHubError` in
+    exactly one place and a status this module has never seen cannot reach a
+    caller as data: INV-5 at this boundary, where a `404` from a credential
+    that cannot see a private repository must not be read as "there is no such
+    pull request". The two `403`s are told apart by `Retry-After` or an
+    exhausted `X-RateLimit-Remaining`, because GitHub sends `X-RateLimit-Reset`
+    on every answer and its presence alone says nothing. The association search
+    is bounded twice — by `ASSOCIATION_SEARCH_LIMIT` commits and by
+    `NETWORK_BUDGET_SECONDS` of wall clock — and reports truncation instead of
+    returning the part it saw as though it were the whole answer, because
+    GitHub's primary limit is 5,000 requests an hour and a long child branch
+    would spend them one commit at a time. Nothing here writes and nothing here
+    decides whether a parent is acceptable.
+  - `WheresatCredentialError` is raised without asking a terminal, because
+    `git wheresat` is run from scripts and from hooks and a command that
+    answered a question about a repository by blocking on a browser would be
+    unusable from them. It is read from `GITHUB_TOKEN`, then `GH_TOKEN`, then
+    the cached file, in that order. `requests` is now a declared dependency,
+    because a module of this package imports it directly. **Corrected while
+    slicing (b):** this bullet first said the class "is a `WheresatUsageError`,
+    so it exits `2`", which was the class's own reading and not the run's
+    result. The class is still the usage one — it is worded as a failure to
+    start and a caller outside this command would be right to treat it as one —
+    but the ladder that opens the forge names it ahead of its parent, so the
+    question went unanswered and the run reports `3`. That is Table 3's row
+    ("No usable GitHub credential → `Indeterminate`; never a browser prompt,
+    `3`"), the decision log records the reasoning, and
+    `tests/unit/test_wheresat_github_faults.py` asserts both halves: the class
+    is a `WheresatUsageError` and the message names `--offline` as the way to
+    ask GitHub nothing at all.
+  - `tests/unit/test_wheresat_github_faults.py` states the boundary in 21
+    tests: seven ways a request goes unanswered — 401, a rate-limited 403, a
+    forbidden 403, 404, a 5xx, a read timeout, and a name that will not resolve
+    — each driven through one session stub and each asserting the class, the
+    reason in the message, the URL the refusal names, and that exactly the one
+    request the question called for was made. The forbidden row additionally
+    asserts that its refusal does _not_ claim a rate limit, because a rate
+    limit and a missing scope need opposite responses from an operator and are
+    the pair this module has to keep apart. Seven further cases pin a `200`
+    whose body is not JSON as a fault, a connect timeout as a timeout rather
+    than as an unreachable host — which is what pins the handler order, since
+    `requests` makes the connect timeout a subclass of both classes — the
+    association page's own report of what it examined, a search the wall-clock
+    budget stops reporting truncation rather than a short answer, and both
+    halves of the credential order: the environment before the cache, and the
+    cache when the environment has nothing.
+  - Code health, measured before the gates because the pull request applies the
+    same rules: `wheresat_github.py` first scored 9.24, `get` at cyclomatic
+    complexity 11 and `_slug`'s four-part test as a complex conditional. Both
+    were fixed by extraction rather than by suppression, and the module now
+    scores 10.00, which is what every other module in this package scores.
+    `get` is now the shape the module's docstring already claimed: one
+    primitive a caller has to know, with the transport half (`_answered`) and
+    the protocol half (`_decoded`) each small enough to hold in the head. The
+    misclassification this split rules out is worth naming, because it is a
+    silent one — `requests` makes a connect timeout both a timeout and a
+    connection failure, so which handler wins decides whether the operator is
+    told GitHub is slow or that the network is wrong, and the test suite pins
+    the order rather than leaving it to the reader. `_slug`'s rule moved to
+    `stack_records.is_repository_slug`, promoted from private because the
+    value `_slug` re-checks before building a URL is the value the parser
+    produced: a copy of the rule beside the parser would be a second opinion
+    about what a slug is, which is the same finding the credential path raised
+    earlier in this milestone, met a second time.
+  - The 800-line module cap then caught `wheresat_github.py` at 807 lines, and
+    the fix is the one the Decision log already records for this repository:
+    split along a seam rather than relax the limit or add an exception. The
+    seam this module offered is the line between asking and reading.
+    `wheresat_github.py` keeps the four questions, the transport, and the
+    vocabulary of its failures, and the new `git_donkey/wheresat_payload.py`
+    holds the pure readers that turn a decoded body into this command's values.
+    They are two responsibilities rather than one: the first has a session, a
+    URL, and a status code, and the second has only somebody else's JSON. What
+    the split makes unmissable is the distinction the feature turns on — an
+    absent field is nothing and a body of the wrong shape is a question that
+    went unanswered — because the lenient readers (`list_field`,
+    `string_field`, `flag_field`, `count_field`) and the strict ones
+    (`mapping`, `sequence`) now sit in one file where that difference is the
+    reason each of them exists. No behaviour moved: the fault suite's 21 tests
+    pass unchanged, both modules score 10.00, and the seam holds at 628 lines
+    in `wheresat_github.py` against 221 in `wheresat_payload.py`.
+  - Slice (b) built: `git_donkey/wheresat_parents.py` is the ladder that
+    identifies the parent, and `git_donkey/wheresat.py` now runs it and fetches
+    what it identified. The rungs are asked in order and each is only reached
+    when the one above it answered nothing: the pull request the user named,
+    the child's own record (a parent pull request named there, or a parent
+    branch whose pull request the forge can read), the stack GitHub records,
+    and finally the association search over the child's commits in a window.
+    The window is `_window`, which reverses `WheresatGraph.history`'s
+    oldest-first answer into the newest first that `_walk` and `_reported`
+    both document, and the search is bounded twice over — by the run's
+    `--limit` and by `ASSOCIATION_SEARCH_LIMIT` — so a truncated page is
+    reported as truncation rather than read as an empty answer. Every fault is
+    carried rather than raised: the ladder returns `ParentIdentification(
+    parent, faults, error_kind)`, and a `WheresatCredentialError` is mapped at
+    the one place that catches it, which is what makes a missing credential
+    Table 3's row rather than the usage handler's (see the corrected bullet
+    above).
+  - `git_donkey/wheresat_remotes.py` answers the two questions the fetch asks
+    of a checkout's configuration — which repository the checkout's own
+    commits are read in, and which remote holds the parent's head repository —
+    and it reads the configuration directly rather than through
+    `git remote get-url --all`, because that command applies
+    `url.<base>.insteadOf` rewrites and the rewrite is a fact about the user's
+    configuration rather than about where the evidence came from. A remote
+    therefore names the repository of the first of its URLs that names one, and
+    a remote naming none — another host, a local path, a bundle, an `insteadOf`
+    short form, or no URL at all — is reported as naming nothing rather than
+    read as a near miss.
+  - The reader was fixed while its suite was written, and the fix is worth
+    recording because the bug was invisible rather than absent: GitPython's
+    `get_values` raises a bare `KeyError` for a remote that carries no URL, and
+    a `default` handed to it comes back as `[default]` rather than as the
+    default itself, so the old call returned the tuple `("[]",)` — the string
+    of an empty list, handed to the URL parser. It parsed to no repository,
+    which is why nothing failed, but "a remote with no URL carries none" was
+    true of the outcome and not of the code. The default is gone, the
+    `KeyError` is caught with the configuration errors, and
+    `tests/unit/test_wheresat_remotes.py` pins the absence from both sides:
+    GitPython does list the remote, and the reader names nothing for it.
+  - `tests/unit/test_wheresat_parents.py` states the ladder in 17 tests: the
+    named parent is read and no weaker question is asked, a credential failure
+    and a transport failure are both faults with their own bounded class, a
+    checkout naming no repository and a run told `--offline` both leave the
+    search _skipped_ rather than faulted, a history longer than the window is
+    read at the window, a shallow history is refused, the child's own pull
+    request is walked past rather than reported, a native stack pre-empts the
+    association search (its decoy is never read), an empty search and a
+    truncated page are different answers, and the window itself is pinned over
+    `[1, 2, 20]`. The forge is a double and the history is a double, so no test
+    here opens a socket or a repository.
+  - `tests/unit/test_wheresat_parent_head.py` states the fetch in 8 tests, and
+    it fetches for real: the remote is configured with the URL the repository
+    has on GitHub and a `url.<path>.insteadOf` rewrite sends Git to a
+    repository built beside the checkout, which is the arrangement that lets a
+    test exercise the transport without a network while the configuration
+    reader — which ignores rewrites, by design — still sees the URL it is
+    meant to decide from. The cases are the pull request's own ref before the
+    head branch (with a decoy commit on the branch, so the rung order is read
+    from the commit the cache holds), the fork case where only the branch
+    exists, a head that moved between the payload and the fetch, a remote
+    holding neither ref (whose refusal carries each attempt's own words), a
+    stale cache entry replaced rather than reported, and — the case the cache
+    exists for — a second run that answers with the remote _removed_, which is
+    what the fetch's write-before-read ordering buys.
+  - Gap recorded, not yet closed: the procedure's gate 6 seeks `PARENT_HEAD`
+    as the fetched pull request head, then the tombstone, then the parent's
+    remote-tracking ref, and `wheresat_collect._parent_head` implements the
+    first two only. The third rung is the one a checkout has without either:
+    a parent that was never plonked and a child that names no parent pull
+    request. Until it is implemented, such a run finds no parent head, and a
+    gate is applicable by the run's inputs rather than by what collection
+    brought back (`Gate semantics` below): with no
+    `PARENT_HEAD`, gate 6 is **not applicable** rather than indeterminate, and
+    gates 3 and 7 are inapplicable too, because a parentless run has no parent
+    to ask about and no boundary for a landing to cross. The run is judged on
+    gates 4, 5, and 8 instead, so the missing rung makes the judgement
+    _permissive_: the rewritten-parent case gate 6 exists to catch goes
+    unnoticed rather than leaving the run unresolved. That is the opposite of
+    the conservative direction, and it is why the rung is owed rather than
+    optional. This milestone's remaining work adds the rung and its test; the
+    docstring that called the two the "order the procedure fixes" is corrected
+    with it.
+  - Slice (c) is next: the report and the `--json` envelope are written but
+    three of their values are still placeholders — `backupRef` is hardcoded
+    `None`, the child-tip statement is not printed, and the report prints
+    full 40-character IDs where the plan's conventions ask for
+    `COMMIT_ABBREVIATION` — and slice (d) then owes `--deep`'s two rungs, the
+    `heuristic_window` plumbing, the cassettes, the behavioural scenario in
+    `git_wheresat.feature`, and INV-1's fetch-path non-vacuity assertion in the
+    read-only matrix.
+  - The first full gate run over slices (a) and (b) found three mechanical
+    faults and nothing else: `check-fmt`, `lint`, and `markdownlint` failed
+    while `build`, `typecheck`, `test` (801 passed, 21 snapshots), `spelling`,
+    and `nixie` passed. Two are the kind a gate exists for — FURB188 on the
+    hand-rolled suffix trim in `stack_records.repository_from_remote_url`, now
+    `str.removesuffix`, and two files ruff would reformat — and the third is a
+    reminder rather than a defect: the plan's own prose had picked up 14
+    asterisk emphases against this repository's `consistent-emphasis` setting,
+    all in text written for this milestone. The lint gate stops at its first
+    failing recipe, so the ruff finding also meant interrogate, pyscn, pylint,
+    ambrleaks and skylos were unmeasured in that run; the re-run is what
+    covers them.
+  - The last of those stages took four rounds to reach, because `make lint`
+    stops at its first failing recipe and each fix uncovered the next stage's
+    findings. The remaining two were pylint's seven C1803/C1804
+    implicit-booleaness findings in the three new suites (now falsy checks with
+    the same messages) and, finally, three `SKY-U001` dead-code findings in
+    `wheresat_github.py`. The skylos three are a static-dispatch limit rather
+    than dead code, and the evidence is worth recording because it is the
+    reason the exceptions are documented rather than the helpers deleted:
+    skylos's `--json` report shows it _does_ record the call sites —
+    `_slug.called_by` lists `_pull_path`, `_commit_pulls_path` and
+    `ApiWheresatGitHub._stack_members` — while crediting no reference to them,
+    and it classifies _every_ method of `ApiWheresatGitHub` as `uncertain` with
+    `no_refs`. The client is reached through the `WheresatGitHub` protocol, and
+    a call on a Protocol-typed parameter is not a reference skylos follows, so
+    nothing below those methods is credited either. The contrast that confirms
+    it is in the same file: `_decoded` is named by a docstring
+    cross-reference, which is a reference skylos does count, and that alone
+    keeps `_decoded` — and, transitively, `_status_reason` and
+    `_forbidden_reason` — alive. Two probes settled the fix: declaring
+    `ApiWheresatGitHub` an entrypoint root does not rescue its methods, while
+    the three documented whitelist entries do. The entries were added with
+    `make skylos-allow`, which appends rather than replaces, so a second run
+    for the same symbol leaves a duplicate key — worth knowing before running
+    it twice for one name.
+  - The suite came green at the fifth round, over one unchanged tree: `test`
+    (801 passed, 21 snapshots), `lint` (all seven stages, both pylint configs at
+    10.00/10), `check-fmt`, `typecheck`, `markdownlint`, `spelling` and
+    `nixie`, with `build` exercised as `make test`'s prerequisite. Two of the
+    rounds existed only because `make lint` stops at its first failing recipe
+    and because the determinism checks are gates in their own right —
+    `tests/unit/test_skylos_lint_contract.py` failed the moment the three
+    exceptions appeared in `pyproject.toml` without being added to its
+    consciously-approved set, which is the contract working as intended: the
+    whitelist cannot grow without a test that says so.
 
 ## Surprises & discoveries
 
@@ -1587,6 +1839,32 @@ Stop and escalate rather than improvising when any of these is reached.
   and should treat a cached review as a hypothesis about the diff rather than as
   evidence for it.
 
+- Observation: the property test found a refusal that claimed the evidence was
+  complete while a question about one of its candidates was still open.
+  Evidence: gate round 24's `make test` shrank the case to one attested
+  stack-record candidate at `…0001` beside two shared-record candidates at
+  `…0002` and `…0003`. The record candidate's gate 5 answered against it — the
+  replay range `…0001..…0001` was listed empty, which the generator builds by
+  pairing an empty range with a commit nothing is descended from — so it could
+  never serve, while its ancestry and supersession gates went unanswered. The
+  two shared-record candidates cleared every gate and tied at the same rank, so
+  `assess` dispatched on the tie to `_ambiguous`, which had no pending rule at
+  all: the run reported `Unresolved`, naming the rivals, while two of the gates
+  it reported were `INDETERMINATE`. The counterpart is that `_refusal` — the
+  other branch that reports `Unresolved` — has always read that rule, so the
+  hole was an inconsistency between two branches rather than a missing idea.
+  Impact: `_pending` and `_awaiting` are now module-level functions in
+  `wheresat_policy.py`, read by both refusal branches, and a tie is a refusal
+  only while nothing that could establish is waiting for an answer. The
+  property test needed no change to find this: the filter it applies to the
+  candidates is exactly the predicate the two branches now share, so it is a
+  guard on the rule rather than an approximation of it — and it was its
+  approximation of that rule that the failing case exposed. No readable test
+  moved, because no fixture in the corpus builds a candidate that is refused
+  and unanswered at once; the shape needs an empty replay range and an
+  unanswered ancestry question together, which is the shallow-clone face of
+  EP-M10's own evidence rather than anything the local fixtures reach.
+
 ## Decision log
 
 - Decision: model the three identities from the recovery procedure —
@@ -1956,6 +2234,19 @@ Stop and escalate rather than improvising when any of these is reached.
   splits keep the public behaviour and every existing assertion; only the
   module boundaries moved. `_GIT_PLONK_PREFIX` was hoisted into
   `git_donkey/_constants.py` so that no module imports upward to get it.
+  Date/Author: 2026-09-14, implementation agent.
+- Decision: `git_donkey/wheresat_github.py` was split at 807 lines into itself
+  and `git_donkey/wheresat_payload.py`, applying the rule above rather than
+  trimming prose to fit the cap.
+  Rationale: the module had grown to hold two things that only look like one —
+  the transport that asks GitHub a question, with its session, URLs, statuses,
+  and fault vocabulary, and the pure readers that turn a decoded body into this
+  command's values. The second half needs no session to be tested and no status
+  code to be read, and the interface the pair presents is unchanged: the four
+  questions stay in `wheresat_github.py`, and no caller of it sees a payload
+  reader. Nothing was deleted to reach the limit and no check was disabled;
+  `wheresat_github.py` is 628 lines and `wheresat_payload.py` is 221, and both
+  score 10.00 on `cs check`.
   Date/Author: 2026-09-14, implementation agent.
 - Decision: restate EP-M5's acceptance evidence as the property that holds —
   the rewritten fixture's merge base is the trunk commit both branches came
@@ -2423,6 +2714,165 @@ Stop and escalate rather than improvising when any of these is reached.
   child-tip line, and the IDs belong to the same block of output, so EP-M10
   settles all three together; its ``Remaining gaps`` line now says so.
   Date/Author: 2026-09-14, implementation agent, EP-M9.
+- Decision: make the pending rule govern the tie branch of ``assess``, by
+  extracting ``_pending`` and ``_awaiting`` and reading them from both
+  ``_refusal`` and ``_ambiguous``.
+  Rationale: a run may claim the evidence is complete only when every question
+  put to evidence that could have established a boundary has been answered, and
+  the two branches that report ``Unresolved`` were not applying the same rule —
+  ``_refusal`` had it, ``_ambiguous`` did not. The tie branch is where it bites,
+  because a candidate that could still clear its gates would either answer over
+  the rivals at a stronger rank or join them at the same one, so its open
+  question is exactly what keeps the tie from being settled. The predicate is
+  deliberately the coarse one the branches now share — "this candidate's support
+  could establish", rather than "no answered gate refused it" — and its
+  imprecision runs in the safe direction: a candidate that is both refused and
+  unanswered still yields ``Indeterminate``, exit 3, with the unanswered gates
+  named in the refusal, where the stricter reading would let the run claim
+  completeness. A wasted retry is recoverable and a confident refusal is not.
+  The stricter predicate, applied to both branches and to the property test's
+  filter, is available and more precise; it is recorded here as the alternative
+  rather than taken, so the next milestone that needs the precision can find the
+  reasoning instead of re-deriving it.
+  Date/Author: 2026-09-14, implementation agent, EP-M10.
+- Decision: realize the parent-identity ladder of the sketch as an ordered
+  sequence of resolvers in a new module, ``git_donkey/wheresat_parents.py``,
+  and do not declare ``ParentSource`` as an enum.
+  Rationale: the sketch's ladder is a precedence order — explicit, stack
+  record, GitHub stack, shared record, association search — and every rung
+  yields a ``PullRequestIdentity`` that the run then reads once through
+  ``pull_request``. That is a sequence of functions, which is what the run
+  calls; an enum whose members nothing reads is exactly the unused name the
+  dead-code gate refuses, and inventing a consumer for it (an envelope key the
+  contract does not have, or an observation vocabulary the recorder does not
+  hold) would be a contract change made to justify a name. The rung that
+  answered is still observable: it is the identity's own payload that the gates
+  read, and _which_ rung supplied it is recorded in the Progress entry and
+  reported through the source of the candidate each rung contributes.
+  Date/Author: 2026-09-14, implementation agent, EP-M10.
+- Decision: read the commit-to-pull-request association search as examining the
+  child's own history, newest first, and as answering both of the questions the
+  parent ladder needs: which pull request is the child's own, and which
+  pull request is the parent's.
+  Rationale: the flag's own text bounds "commits examined by the
+  commit-to-pull-request association search" and the risk it mitigates is "a
+  long child branch", so the subject is the child's commits rather than the
+  target's. The endpoint's semantics then do the identifying: a commit that is
+  not on the default branch is associated with the open pull requests that
+  contain it, and one that is on the default branch with the merged pull
+  request that introduced it. So the child's own pull request is the first
+  association — walking newest first, and in GitHub's order within a commit —
+  whose payload reports the child branch as its head ref, and the parent is the
+  first association that is not the child's own, which is only reached once the
+  walk passes the boundary into commits the child inherited. This is what the
+  degraded mode "no record, parent pull request merged" needs, because a run
+  that lost its record has no parent branch to look a tombstone up by and no
+  name to ask GitHub about; the only thing left that names the parent is the
+  association of the commits the child inherited from it. The alternative
+  reading — a search over boundary-candidate commits — was rejected because it
+  can only be asked once a boundary is already in hand, which is the one thing
+  the search exists to supply, and because a commit on the default branch
+  answers with whatever pull request introduced it, which for a boundary
+  candidate is the parent's own merge commit and not the parent.
+  Date/Author: 2026-09-14, implementation agent, EP-M10.
+- Decision: a run whose GitHub evidence is unusable reports ``Indeterminate``
+  and exits ``3``, never the usage status, and the credential failure is caught
+  ahead of the usage handler because ``WheresatCredentialError`` is a subclass
+  of ``WheresatUsageError``.
+  Rationale: ``docs/squash-restack-boundary-recovery.md`` states the behaviour
+  as a row of the degradation table — "No usable GitHub credential →
+  ``Indeterminate``; never a browser prompt, ``3``" — with ``--offline`` named
+  as the remedy, and ADR-005 states the reason: a failure stops the run rather
+  than letting it fall through to a lower evidence tier. The consequence is
+  deliberate and is recorded here so it is not rediscovered as a defect: a run
+  with a usable record but no credential exits ``3`` until it is given a token
+  or told ``--offline``, because without the forge the run cannot know whether
+  a parent pull request exists, and the gates about one are the gates that
+  could have refused the record.
+  Date/Author: 2026-09-14, implementation agent, EP-M10.
+- Decision: a fetched parent head is kept at the durable cache ref
+  ``parent_head_ref(identity)``, and ``head_fetched_from`` is the pull
+  request's own ``head_repository`` both when this run performed the fetch and
+  when it found the head already at that ref.
+  Rationale: the cache ref exists so that a second run on the same pull request
+  performs no fetch, and a gate that went indeterminate on every cache hit
+  would make the cache useless for the one thing it is for. The claim it
+  reports is the claim the ref carries: this command writes that ref and only
+  ever from the pull request's own head repository, so a ref at that path is
+  the same answer. The head is also compared with the ``head_sha`` the payload
+  reports, so a pull request whose head moved is re-fetched rather than judged
+  against a stale cache.
+  Date/Author: 2026-09-14, implementation agent, EP-M10.
+- Decision: ``release`` is not called on the fetch path, and the per-run ref
+  factories stay documented Skylos exceptions with a narrowed reason.
+  Rationale: the fetch destination EP-M10 introduces is the durable cache ref,
+  so no production run writes into ``refs/wheresat/op/<op-id>/`` at all; a
+  ``release`` call would delete a namespace this command never creates, which
+  is worse than no call. ``per_run_ref`` and ``_per_run_namespace`` therefore
+  stay unreached from a console script, and their entries in
+  ``[tool.skylos.whitelist.documented]`` keep saying so, with the reason
+  updated to name the milestone that would reach them (a run that fetches a
+  _boundary_ into a per-run namespace). ``parent_head_ref`` and ``_slug_parts``
+  become reached and their entries are removed, which is the direction the
+  exception set is meant to move in.
+  Date/Author: 2026-09-14, implementation agent, EP-M10.
+- Decision: ``--deep``'s two rungs compare the child's commits with the target's
+  history inside the ``--heuristic-window``, matching trees first and cumulative
+  patch identifiers second, and the candidate each one names is the _child's_
+  commit whose content has a twin on the target.
+  Rationale: an inferred candidate must be a commit on the child's history,
+  because gate 4 asks whether the candidate is an ancestor of the child and a
+  target-side twin is not; what the twin establishes is that the child's commit
+  has already landed, so the boundary is that commit (or later). The scan reads
+  the target's history once (`history(target, limit=heuristic_window)`) and the
+  child's history once, then compares by lookup keyed on the tree, so its cost
+  is linear in the window as the command surface promises, and the report
+  states the window it scanned so a cut-short scan never reads as a complete
+  one. Ordering within a commit pair is the one the tree comparison cannot
+  settle: when several child commits share a twin, the newest is reported.
+  Date/Author: 2026-09-14, implementation agent, EP-M10.
+- Decision: ``run_git_wheresat`` opens the real forge itself when no port was
+  injected and the run is not ``--offline``, so ``github=None`` means "nothing
+  was injected" rather than "the forge is out of play".
+  Rationale: the function is the command, and the command consults GitHub, so a
+  caller that supplies nothing must get the product's behaviour rather than a
+  silently weaker one; the parameter exists so a test can substitute a double,
+  which is what the suite does. The alternative — the console entry point opens
+  the port and the function stays forge-free — would leave ``open_github``
+  reached only from a wrapper, put the credential decision in a function with no
+  report to write it into, and split the command's behaviour across two call
+  sites a reader has to hold at once. A credential failure is then decided by
+  the rule already recorded above: the run reports it as a question the forge
+  could not answer, so an unauthenticated ``git wheresat`` exits ``3`` and names
+  the ways to supply a credential, which is Table 3's row and not a defect.
+  Date/Author: 2026-09-14, implementation agent, EP-M10.
+- Decision: the parent's head is fetched by a configured remote whose URL names
+  the pull request's own repository, and a head repository no remote names is a
+  fault rather than a fallback to the child's remote.
+  Rationale: gate 1 exists because a head fetched from anywhere but the pull
+  request's own repository is not the commit the pull request reports, however
+  similar the names; falling back to the child's remote would make that gate
+  fail on exactly the fork case it was written for, and would turn an honest
+  refusal into an accident. The common case is a remote that does name it —
+  ``origin`` pointing at the parent's repository is the arrangement the command
+  assumes — so the rule costs a lookup rather than a configuration change. A run
+  with no such remote reports the parent head as unavailable and the gates that
+  needed it as unanswered, which is what a fork checkout should say.
+  Date/Author: 2026-09-14, implementation agent, EP-M10.
+- Decision: the suite's shared run helper injects a double that answers "nothing
+  is associated with these commits" and refuses every question about a named
+  pull request.
+  Rationale: with the run opening the real port by default, every existing
+  integration test would otherwise attempt live GitHub traffic, which the
+  milestone forbids. The double is not a convenience: its two halves are the two
+  states the local suites need — a forge that knows nothing about the child (so
+  the association search _answers_, and a refusal stays a refusal) and a forge
+  that cannot answer about the parent the run named (so the parent gates go
+  unanswered, which is what the ``parent-named`` vector has always asserted). A
+  double that refused everything would turn every local refusal into an
+  indeterminate result, because a fault means the evidence set is not known to
+  be complete.
+  Date/Author: 2026-09-14, implementation agent, EP-M10.
 
 ## Outcomes & retrospective
 
@@ -2795,9 +3245,12 @@ Where a claim was measured in this working tree, the measurement is recorded.
   payload, require all branches to be in one repository, and retarget the
   remaining branches automatically when one pull request in the stack merges.
   The endpoint and the field were verified live from this worktree on
-  2026-09-14; the response shape for a **non-empty** stack was not, and
-  EP-M10 must confirm it against a real stacked pull request before relying on
-  any field beyond its presence.
+  2026-09-14; the response shape for a **non-empty** stack was confirmed there
+  during EP-M10, and what it confirmed narrows the axiom: the `stack` field
+  names the stack and the pull request's 1-based position in it but _not_ the
+  pull request below, so the neighbour is read from the stack's own
+  `pull_requests` list at `[position - 2]`. See the Progress entry for the
+  measurements.
   Source: [About stacked pull
   requests](https://docs.github.com/en/pull-requests/get-started/about-stacked-prs)
   and [REST API endpoints for stacked pull
@@ -4237,6 +4690,16 @@ def render_parent(parent: StackParent) -> str:
 
 def parse_pull_request_identity(text: str) -> PullRequestIdentity | None:
     """Parse `owner/repository#123`, returning None when unrecognized."""
+
+
+def is_repository_slug(owner: str, separator: str, name: str) -> bool:
+    """Return whether the three parts of `owner/name` form a slug.
+
+    Public since EP-M10, which is where a second reader appeared: `git
+    wheresat` refuses to build an API path out of a value this rejects, and a
+    copy of the rule beside the parser would be a second opinion about what a
+    slug is.
+    """
 ```
 
 ### `git_donkey/stack_store.py`
@@ -4878,6 +5341,56 @@ the limit is a hard stop advising `--parent`, not a quiet partial answer.
 `github3.py` 4.0.1 does not model the field, and falls back to
 `GET /repos/{owner}/{repo}/stacks` through the library's `requests.Session`
 so vcrpy still intercepts it.
+
+### `git_donkey/wheresat_payload.py`
+
+Reading GitHub's decoded bodies. Pure functions — no session, no URL, no
+request — split out of the adapter so that the module which speaks HTTP is
+about requests and their faults, and this one is about the shape of what came
+back. The strict readers refuse a body that is not the shape its endpoint
+promises, and the lenient ones read a field of a body already understood, which
+is the difference between "the run cannot tell" and "there is nothing here".
+
+```python
+def mapping(payload: object) -> typ.Mapping[str, object]:
+    """Return `payload` as a mapping, or raise for a body of the wrong shape."""
+
+
+def nested(payload: object, *keys: str) -> object:
+    """Return what `keys` names inside `payload`, or `None` when it is absent."""
+
+
+def sequence(payload: object, what: str) -> list[object]:
+    """Return `payload` as a list, or raise for a body of the wrong shape."""
+
+
+def list_field(value: object) -> list[object]:
+    """Return `value` as a list, or no items when the field is not one."""
+
+
+def string_field(value: object) -> str:
+    """Return `value` when it is a string, and the empty string otherwise."""
+
+
+def flag_field(value: object) -> bool:
+    """Return `value` when it is a boolean, and false otherwise."""
+
+
+def count_field(value: object) -> int | None:
+    """Return `value` when it is a count, and `None` otherwise."""
+
+
+def pull_identity(repository: str, member: object) -> PullRequestIdentity | None:
+    """Return the pull request a stack member names, or `None` when it names none."""
+
+
+def associated(payload: object, repository: str) -> tuple[PullRequestIdentity, ...]:
+    """Return the pull requests one commit was associated with."""
+
+
+def identity_text(identity: PullRequestIdentity) -> str:
+    """Return one pull request as an operator writes it, `owner/repo#123`."""
+```
 
 ### `git_donkey/wheresat_report.py`
 
