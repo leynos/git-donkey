@@ -101,7 +101,7 @@ _CHANGES: typ.Final[typ.Mapping[str, Change]] = {
     "status": Change("status", "status", _remove_a_tracked_file),
     "config": Change("config", "config", _change_the_configuration),
     "fetch-head": Change("fetch-head", "fetch-head", _change_the_fetch_head),
-    "stash": Change("stash", "refs", _change_the_stash),
+    "stash": Change("stash", "stashes", _change_the_stash),
 }
 """Every reading, paired with an edit that has to be visible in it."""
 

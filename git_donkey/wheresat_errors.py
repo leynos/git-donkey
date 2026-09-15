@@ -81,7 +81,7 @@ class WheresatUsageError(RuntimeError):
 class WheresatCredentialError(WheresatUsageError):
     """No usable GitHub credential, and no way to obtain one without a terminal.
 
-    ``git fafo`` may stop and ask a human to authorise it, because a human
+    ``git fafo`` may stop and ask a human to authorize it, because a human
     asked for it. ``git wheresat`` may not: it is run from scripts and from
     hooks, so a missing credential is never a prompt and never exit ``1``.
     Falling back to the device-flow that ``git fafo`` owns would make a command

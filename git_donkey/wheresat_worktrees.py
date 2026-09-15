@@ -253,7 +253,13 @@ def _state_directory(path: Path) -> Path:
     except OSError:
         return entry
     _, separator, target = recorded.strip().partition(_GITDIR_PREFIX)
-    return Path(target.strip()) if separator else entry
+    if not separator:
+        return entry
+    # ``git worktree add --relative-paths`` writes a Git directory relative to
+    # the worktree, so a relative target is read from where the ``.git`` entry
+    # naming it lives, not from whatever directory the run was started in.
+    resolved = Path(target.strip())
+    return resolved if resolved.is_absolute() else path / resolved
 
 
 def _records_branch(state: Path, branch: str) -> bool:

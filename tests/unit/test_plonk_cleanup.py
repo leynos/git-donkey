@@ -29,6 +29,7 @@ from tests.unit.plonk_cleanup_helpers import (
     EntombFirstAdapter,
     FailingGitAdapter,
     FailingStackStore,
+    ForgetfulStackStore,
     RecordingGitAdapter,
     RecordingStackStore,
     candidate,
@@ -45,6 +46,12 @@ if typ.TYPE_CHECKING:
 _SUCCESS_EXIT_CODE = 0
 _FAILURE_EXIT_CODE = 1
 _USAGE_EXIT_CODE = 2
+
+_FORGOTTEN_BRANCH = "issue-124-forgotten"
+"""Branch whose tombstone the forgetful store double never writes."""
+
+_ALREADY_ENTOMBED = "issue-100-already-entombed"
+"""Branch whose tombstone the store already holds, so the guard cannot pass."""
 
 
 def test_dirty_candidate_does_not_abandon_its_clean_siblings() -> None:
@@ -356,6 +363,40 @@ def test_hard_mode_preserves_the_tip_before_deleting_the_branch() -> None:
         "the branch is still reported as deleted"
     )
     assert not result.failed_entombments, "a written tombstone is not a failure"
+
+
+def test_hard_mode_refuses_a_branch_whose_own_tip_was_not_preserved() -> None:
+    """A tombstone another branch left behind does not excuse the deletion.
+
+    The rule is about one branch, so a store that already holds a tombstone for
+    someone else must not be enough for the sweep to delete this one: the guard
+    names the branch being deleted rather than asking whether anything was
+    entombed at all.
+    """
+    preserved = candidate(WORKTREE_BRANCH, 123)
+    forgotten = candidate(_FORGOTTEN_BRANCH, 124)
+    records = ForgetfulStackStore(forgotten.branch_name)
+    records.entomb(_ALREADY_ENTOMBED, RECORDED_TIP)
+    adapter = EntombFirstAdapter(
+        [marker_for(preserved), marker_for(forgotten)], records
+    )
+
+    with pytest.raises(AssertionError) as excinfo:
+        run_cleanup(
+            [preserved, forgotten],
+            cleanup_surfaces(adapter, records),
+            plonk._PlonkMode.HARD,
+        )
+
+    assert "preserves a branch's tip" in str(excinfo.value), (
+        "the refusal names the rule the sweep was about to break"
+    )
+    assert forgotten.branch_name not in [branch for branch, _ in records.entombed], (
+        "no tombstone names the tip of the branch that was refused"
+    )
+    assert forgotten.branch_name not in adapter.deleted, (
+        "so the branch nothing preserves is left where it is"
+    )
 
 
 def test_default_mode_preserves_no_tip() -> None:

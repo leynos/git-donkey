@@ -131,7 +131,8 @@ def _rows(run: WheresatRun, *leading: str) -> list[tuple[str, ...]]:
     Returns
     -------
     list[tuple[str, ...]]
-        One token tuple per matching line, in the order printed.
+        One token tuple per matching line, deduplicated and in no particular
+        order, because the rows are read out of a token set.
 
     """
     return [

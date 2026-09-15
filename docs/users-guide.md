@@ -231,7 +231,7 @@ ref `refs/stack-bases/<branch>`, which keeps the boundary commit reachable from
 branch was created at, `stackBaseEvidence` is `stack-record-birth`, and
 `stackParent` names the base branch it was selected from as `v1:branch:<name>`.
 
-A branch created from the trunk is not recorded, however it is named. That is
+A branch created from the trunk is not recorded, whatever it is named. That is
 deliberate: a record would make it look stacked, and would offer a boundary
 for a branch that never had a parent.
 
@@ -581,13 +581,13 @@ Options:
 - `--json` prints the versioned envelope described above.
 - `--op-id` names this run; an id that could escape the `refs/wheresat/op/`
   namespace is refused with status 2.
-- `--record` refreshes the branch's [stack record](#stack-records-at-branch-birth)
-  — the boundary, the tip the record was written from, and the evidence kind
-  that says a run restated it — instead of only reading it. A refresh never
-  invents a record: a branch no one recorded is reported, not recorded. It also
-  writes only a boundary the run established from attested evidence, so a run
-  that had to derive one still reports the boundary and warns that nothing was
-  recorded.
+- `--record` refreshes the branch's
+  [stack record](#stack-records-at-branch-birth) — the boundary, the tip the
+  record was written from, and the evidence kind that says a run restated it —
+  instead of only reading it. A refresh never invents a record: a branch no one
+  recorded is reported, not recorded. It also writes only a boundary the run
+  established from attested evidence, so a run that had to derive one still
+  reports the boundary and warns that nothing was recorded.
 - `--expected-old` names the commit the record's anchor ref must hold for
   `--record` to replace it. It is required when the anchor ref exists — a write
   that names no expectation is refused with status 2 rather than replacing a

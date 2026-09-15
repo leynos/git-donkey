@@ -474,7 +474,7 @@ def test_a_missing_credential_is_refused_without_a_prompt(
     )
     assert str(raised.value) == (
         "no GitHub credential: set GITHUB_TOKEN or GH_TOKEN, or run git fafo "
-        f"to authorise one and cache it in {path}; git wheresat never prompts, "
+        f"to authorize one and cache it in {path}; git wheresat never prompts, "
         "and --offline asks nothing of GitHub at all"
     ), "the refusal should name every source it tried, why it did not ask, and the flag"
 

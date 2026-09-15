@@ -151,7 +151,7 @@ def open_github() -> ApiWheresatGitHub:
 
     The credential is read from ``GITHUB_TOKEN``, then ``GH_TOKEN``, then the
     file ``git fafo`` caches, in that order. There is deliberately no fourth
-    source: this command may not start an interactive authorisation, because
+    source: this command may not start an interactive authorization, because
     the run that would block on one is the run nobody can use from a script.
 
     Returns
@@ -200,7 +200,7 @@ def _token() -> str:
 
     msg = (
         "no GitHub credential: set GITHUB_TOKEN or GH_TOKEN, or run git fafo "
-        f"to authorise one and cache it in {path}; git wheresat never prompts, "
+        f"to authorize one and cache it in {path}; git wheresat never prompts, "
         "and --offline asks nothing of GitHub at all"
     )
     raise WheresatCredentialError(msg)

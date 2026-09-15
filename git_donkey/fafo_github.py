@@ -64,7 +64,7 @@ def _device_flow_token(credentials_path: Path) -> str:
         scopes=_GITHUB_TOKEN_SCOPES,
     )
     auth_info = authenticator.ping()
-    helpers._eprint("Complete device authorisation to continue:")
+    helpers._eprint("Complete device authorization to continue:")
     helpers._eprint(f"  URL: {auth_info.verification_uri}")
     helpers._eprint(f"  Code: {auth_info.user_code}")
 

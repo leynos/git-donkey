@@ -55,6 +55,7 @@ from tests.integration.wheresat_helpers import (
 )
 
 if typ.TYPE_CHECKING:
+    import collections.abc as cabc
     from pathlib import Path
 
     import pytest
@@ -152,7 +153,7 @@ class ScriptedForge(wheresat_github.WheresatGitHub):
 
     @typ.override
     def associated_pull_requests(
-        self, repository: str, commits: typ.Sequence[str]
+        self, repository: str, commits: cabc.Sequence[str]
     ) -> wheresat_github.AssociationPage:
         """Return the page of a search that examined every commit and found none."""
         return wheresat_github.AssociationPage(

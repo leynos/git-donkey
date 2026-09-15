@@ -333,7 +333,7 @@ def _tree(scenario: DeepScenario, commit: str) -> str:
     return str(scenario.repo.git.rev_parse(f"{commit}^{{tree}}"))
 
 
-def _twin(scenario: DeepScenario, run: WheresatRun) -> tuple[dict[str, object], ...]:
+def _twin(scenario: DeepScenario) -> tuple[dict[str, object], ...]:
     """Return the one candidate the case's comparison is expected to report."""
     return (
         {
@@ -369,7 +369,7 @@ def test_a_child_commit_the_trunk_landed_whole_is_a_tree_twin(
         "target was named by object ID, so the comparison's answer is what the "
         "run has to report"
     )
-    assert _reported(run, EvidenceKind.TREE_IDENTITY) == _twin(tree_twin, run), (
+    assert _reported(run, EvidenceKind.TREE_IDENTITY) == _twin(tree_twin), (
         "the child commit is named as the candidate, and the trunk commit as "
         "the twin it was matched with"
     )
@@ -396,7 +396,7 @@ def test_a_child_commit_no_tree_matched_is_matched_by_its_change(
     assert not _reported(run, EvidenceKind.TREE_IDENTITY), (
         "no trunk commit carries the child's tree, so the tree pass found nothing"
     )
-    assert _reported(run, EvidenceKind.PATCH_IDENTITY) == _twin(squashed, run), (
+    assert _reported(run, EvidenceKind.PATCH_IDENTITY) == _twin(squashed), (
         "the child's own tip is the commit whose accumulated change landed, and "
         "the trunk's commit is the one it landed as"
     )
@@ -421,7 +421,7 @@ def test_a_window_that_reached_the_root_compares_it_without_complaint(
 
     run = _run(dataclasses.replace(squashed, window=len(whole)), capsys, deep=True)
 
-    assert _reported(run, EvidenceKind.PATCH_IDENTITY) == _twin(squashed, run), (
+    assert _reported(run, EvidenceKind.PATCH_IDENTITY) == _twin(squashed), (
         "the whole history is compared, root and all, and the twin is still found"
     )
     assert not _caveats(run), (
@@ -446,7 +446,7 @@ def test_a_window_that_cut_the_scan_short_says_so_and_changes_nothing(
     run = _run(narrow, capsys, deep=True)
     whole = _run(tree_twin, capsys, deep=True)
 
-    assert _reported(whole, EvidenceKind.TREE_IDENTITY) == _twin(tree_twin, run), (
+    assert _reported(whole, EvidenceKind.TREE_IDENTITY) == _twin(tree_twin), (
         "the twin is inside the wider window, which is what the narrow one missed"
     )
     assert not _reported(run, EvidenceKind.TREE_IDENTITY), (
@@ -484,7 +484,7 @@ def test_a_run_without_the_flag_asks_the_trunk_nothing(
     assert not _reported(local, EvidenceKind.TREE_IDENTITY), (
         "the local run reports none of what the comparison would have found"
     )
-    assert _reported(deep, EvidenceKind.TREE_IDENTITY) == _twin(tree_twin, deep), (
+    assert _reported(deep, EvidenceKind.TREE_IDENTITY) == _twin(tree_twin), (
         "and the deep run reports it"
     )
     assert local.exit_code == deep.exit_code == _REFUSED, (
@@ -517,7 +517,7 @@ def test_the_two_runs_differ_in_nothing_a_verdict_rests_on(
         "the local run's own candidate is carried over unchanged"
     )
     assert _frozen(deep) - _frozen(local) == {
-        tuple(sorted(_twin(squashed, deep)[0].items()))
+        tuple(sorted(_twin(squashed)[0].items()))
     }, "and the one the comparison added is the twin, and nothing else"
 
 

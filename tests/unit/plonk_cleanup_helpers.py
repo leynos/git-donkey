@@ -215,8 +215,9 @@ class EntombFirstAdapter(RecordingGitAdapter):
         self.records = records
 
     def delete_branch(self, branch_name: str) -> bool:
-        """Assert the tombstone exists, then delete the branch."""
-        if not self.records.entombed:
+        """Assert this branch's own tombstone exists, then delete the branch."""
+        entombed = [branch for branch, _ in self.records.entombed]
+        if branch_name not in entombed:
             msg = "hard mode preserves a branch's tip before deleting it"
             raise AssertionError(msg)
         return super().delete_branch(branch_name)
@@ -295,6 +296,26 @@ class RecordingStackStore:
         """Record a prune, deleting the tombstones the window reaches."""
         self.pruned.append(expire)
         return tuple(self.stale)
+
+
+class ForgetfulStackStore(RecordingStackStore):
+    """Store double that accepts one branch's tombstone and writes none.
+
+    Hard mode's ordering rule is about one branch: a branch must not be deleted
+    while nothing names its tip. A store that honours every write cannot tell
+    that rule apart from "something was entombed", so this double drops the
+    tombstone of the branch it was told to forget without complaining — the
+    silent write failure the adapter's guard exists to catch.
+    """
+
+    def __init__(self, forgetful: str) -> None:
+        super().__init__()
+        self.forgetful = forgetful
+
+    def entomb(self, branch: str, tip: str) -> None:
+        """Record every tombstone but the forgotten branch's."""
+        if branch != self.forgetful:
+            super().entomb(branch, tip)
 
 
 def candidate(branch_name: str, issue_number: int) -> plonk_records._PlonkCandidate:

@@ -13,7 +13,7 @@ dependencies = [
     "platformdirs>=4.10.0",
     "plumbum>=1.8",
     "python-slugify>=8.0.0",
-    "requests>=2.32.0",
+    "requests>=2.32.0,<3.0",
 ]
 
 [project.scripts]

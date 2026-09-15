@@ -468,7 +468,7 @@ requires-dist = [
     { name = "platformdirs", specifier = ">=4.10.0" },
     { name = "plumbum", specifier = ">=1.8" },
     { name = "python-slugify", specifier = ">=8.0.0" },
-    { name = "requests", specifier = ">=2.32.0" },
+    { name = "requests", specifier = ">=2.32.0,<3.0" },
 ]
 
 [package.metadata.requires-dev]

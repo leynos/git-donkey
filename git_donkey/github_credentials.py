@@ -1,13 +1,13 @@
 """Where the GitHub token lives, and how one is read back.
 
 ``git fafo`` is the only command that obtains a token, and what it obtained it
-caches: authorising is an interaction with a human, so a run that asked for one
+caches: authorizing is an interaction with a human, so a run that asked for one
 every time would be a run nobody automates. ``git wheresat`` reads the same
 cache, and reads it without ever prompting, because it must be usable from a
 script. Two readers of one file is exactly the arrangement in which a second
 copy of the path becomes a second opinion, so the location and the file's shape
 live here and neither command spells them for itself: a cached token one of
-them cannot find is invisible until an operator is asked to authorise again,
+them cannot find is invisible until an operator is asked to authorize again,
 which is the one outcome caching exists to prevent.
 
 Nothing here decides whether a token is usable, and nothing here reports to the

@@ -165,7 +165,9 @@ def _assert_the_evidence_names(
     assert "Included (1 commit)" in run.stdout, (
         "the child's one commit is reported as one commit"
     )
-    assert ("boundary", boundary) in lines, "the answer names the boundary in full"
+    assert ("boundary", boundary) in lines, (
+        "the answer names the boundary, abbreviated as the report prints it"
+    )
     assert ("target", target) in lines, (
         "and names the target's commit, abbreviated as a detail line is"
     )

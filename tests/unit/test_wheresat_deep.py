@@ -32,6 +32,8 @@ from git_donkey.wheresat_errors import ShallowHistoryError, WheresatGraphError
 from git_donkey.wheresat_records import EvidenceKind
 
 if typ.TYPE_CHECKING:
+    import collections.abc as cabc
+
     from git_donkey.wheresat_graph import WheresatGraph
 
 # The target the run is replaying onto, the newest three commits of its
@@ -98,10 +100,10 @@ class _Graph:
 
     commits: tuple[str, ...] = ()
     children: tuple[str, ...] = ()
-    trees: typ.Mapping[str, str] = dataclasses.field(default_factory=dict)
-    bases: typ.Mapping[str, tuple[str, ...]] = dataclasses.field(default_factory=dict)
-    patches: typ.Mapping[str, str | None] = dataclasses.field(default_factory=dict)
-    refusals: typ.Mapping[str, Exception] = dataclasses.field(default_factory=dict)
+    trees: cabc.Mapping[str, str] = dataclasses.field(default_factory=dict)
+    bases: cabc.Mapping[str, tuple[str, ...]] = dataclasses.field(default_factory=dict)
+    patches: cabc.Mapping[str, str | None] = dataclasses.field(default_factory=dict)
+    refusals: cabc.Mapping[str, Exception] = dataclasses.field(default_factory=dict)
     limits: list[int | None] = dataclasses.field(default_factory=list)
     ranges: list[tuple[str, str]] = dataclasses.field(default_factory=list)
     merges: list[tuple[str, str]] = dataclasses.field(default_factory=list)

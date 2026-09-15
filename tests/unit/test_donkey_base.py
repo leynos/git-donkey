@@ -12,6 +12,7 @@ import pytest
 from git import Repo
 
 from git_donkey import donkey
+from tests import git_repo_helpers
 
 if typ.TYPE_CHECKING:
     from pathlib import Path
@@ -81,8 +82,19 @@ def test_no_pull_remains_a_compatible_no_op() -> None:
 
 
 def _repository(tmp_path: Path) -> Repo:
-    """Return a fresh repository with one commit on its default branch."""
+    """Return a fresh repository with one commit on its default branch.
+
+    The commit identity is configured in the repository itself, so the case
+    neither depends on nor writes to the runner's own Git configuration.
+
+    Returns
+    -------
+    Repo
+        The repository, checked out on the branch ``Repo.init`` created.
+
+    """
     repo = Repo.init(tmp_path)
+    git_repo_helpers.configure_repo(repo)
     repo.git.commit("--allow-empty", "-m", "the trunk")
     return repo
 

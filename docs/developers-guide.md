@@ -331,10 +331,10 @@ invariants in the pure policy layer.
 `git-wheresat` answers one question — which commit is a branch's exclusive
 replay boundary — and its implementation is split so that each part of the
 answer lives where it can be read without doing anything else. The value
-vocabulary, the read-only Git port, the writing surface, the evidence rungs,
-the graph facts, the gates, the policy, and the two renderers are separate
-modules; `git_donkey.wheresat` is the only one that decides when each is
-called.
+vocabulary, the failure vocabulary, the read-only Git port, the writing
+surface, the evidence rungs, the parent-head ladder, the deep comparison, the
+graph facts, the gates, the policy, and the two renderers are separate modules;
+`git_donkey.wheresat` is the only one that decides when each is called.
 
 - `git_donkey.wheresat_records` owns the value vocabulary every other
   `wheresat` module exchanges: the evidence kinds and their tiers, the
@@ -347,6 +347,14 @@ called.
   exists is a value a test builds without a repository. Its only
   intra-package import is `stack_records`, for the pull request identity the
   shared record carries.
+- `git_donkey.wheresat_errors` is the failure vocabulary, and holds nothing
+  that reads anything: `WheresatGraphError` and its `ShallowHistoryError`
+  subclass, `WheresatGitHubError`, `WheresatUsageError` and its
+  `WheresatCredentialError` subclass, and `_reported()`, which turns one failed
+  command into the single line a message can carry. The graph failures live
+  below both halves of the read-only port rather than in the reader that
+  history questions happen to be asked through, so the refusal a shallow clone
+  produces is one class whichever half asked the question.
 - `git_donkey.wheresat_graph` is the read-only Git port. It owns the
   `WheresatGraph` protocol, the `GitWheresatGraph` adapter over GitPython, and
   `WheresatGraphError` with its `ShallowHistoryError` subclass. Nothing here
@@ -356,7 +364,16 @@ called.
   its branch rather than holding it, so the port reads both the worktree
   listing and the operation's own state directory before naming the worktree a
   branch belongs to.
-- `git_donkey.wheresat_refs` is the only writing surface, and a run
+- `git_donkey.wheresat_worktrees` is the other half of that port: it reads
+  whether the worktree holding a branch is in a state a replay could be run in.
+  It shares nothing with the history reader but the failure vocabulary, and is
+  kept apart from it because its subject is the working tree rather than the
+  commit graph — a branch read with `--branch` need not be checked out
+  anywhere, and a worktree can be stopped in an operation that has detached
+  from it. The worktree Git lists is read through its own `.git` entry and its
+  own `status`, so the answer is about the worktree holding the branch rather
+  than about the repository the run was started in.
+- `git_donkey.wheresat_refs` is the only object that writes, and a run
   constructs it only when it has to write. It owns the three evidence
   namespaces — `refs/wheresat/op/<op-id>/` for one run's own fetches,
   `refs/wheresat/parent-head/<owner>/<repo>/<n>`, and
@@ -366,6 +383,15 @@ called.
   nothing else, and the run calls it from a `finally` block; the namespace is
   never swept wholesale, because refs live in the common ref store and every
   worktree of a checkout shares `refs/wheresat/`.
+- `git_donkey.wheresat_writes` is the command's complete writing surface: the
+  three things a run can change — the parent head it fetched into the durable
+  cache ref, the ref that keeps a reported boundary from being collected, and
+  the shared stack record `--record` refreshes — are methods here rather than
+  branches of the workflow, so "what can this run change?" has one file for an
+  answer. Constructing this module's value object holds a repository and
+  nothing that writes to it, and the object that does the writing is built
+  inside the method that needs it, so a run that asks for none of the three
+  never has one to reach for.
 - `git_donkey.wheresat_remotes` reads the checkout's configuration to answer
   two questions: which GitHub repository its remotes name, and which remote
   holds a given repository. A remote may carry more than one URL and a URL may
@@ -411,14 +437,29 @@ called.
   open. A question that goes unanswered is a fault and stops the ladder rather
   than letting the next rung's weaker answer be presented as the answer to the
   question that failed, which is the reading ADR-005 forbids.
+- `git_donkey.wheresat_heads` answers the question that follows that ladder:
+  which commit the parent's tip was, and which ref says so. Its three rungs are
+  the head the run already fetched, the tombstone `git plonk` wrote for the
+  parent branch, and that branch's remote-tracking ref — each a weaker
+  statement than the one before it. A rung that finds nothing falls through to
+  the next, and a rung that hits a fault stops the ladder and returns the
+  reason, because "no tombstone" and "the tombstone would not open" are
+  different answers (INV-5). The tombstone proposes no boundary of its own:
+  where the head was is a different question from where the child was cut.
 - `git_donkey.wheresat_collect` asks the evidence rungs in the procedure's
-  order: the stack record, the merge base, the fork point, and the inferred
+  order: the stack record, the merge base, the fork point, and the two deep
   comparisons behind `--deep`. A rung returns the candidates it found, or a
   fault when it could not answer at all, because "there is no evidence here"
   and "this question went unanswered" are different answers and only one of
-  them is a refusal. `ParentHead` is recovered here too, from the fetched pull
-  request head, the tombstone `git plonk` left behind, or the parent's
-  remote-tracking ref; the tombstone proposes no boundary of its own.
+  them is a refusal. The parent head the gates ask about is the one
+  `wheresat_heads` recovered.
+- `git_donkey.wheresat_deep` is the content-comparison scan behind `--deep`,
+  and the one rung that answers a question of its own rather than reading
+  something recorded: has the work a child commit carries already landed on the
+  target, and as which commit? It runs two passes, cheapest first — a
+  whole-tree comparison, then a cumulative-patch comparison for the child
+  commits the first left unmatched — and the window it scans is bounded, so a
+  scan the window cut short is a caveat rather than a complete answer.
 - `git_donkey.wheresat_facts` asks every graph question the eight gates will
   read, before any gate runs. The gates are then a pure function of a
   `GraphFacts` value, which is what lets a property test hand the policy an

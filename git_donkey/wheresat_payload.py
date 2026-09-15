@@ -207,6 +207,13 @@ def associated(
     tuple[stack_records.PullRequestIdentity, ...]
         One identity per pull request GitHub named, in its own order.
 
+    Raises
+    ------
+    WheresatGitHubError
+        If GitHub answered a question it does not answer that way. A body that
+        is not the list its endpoint promises is a question that went
+        unanswered, not an absence of pull requests.
+
     """
     identities = (
         pull_identity(repository, entry)
