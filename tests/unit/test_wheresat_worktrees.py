@@ -28,12 +28,10 @@ from pathlib import Path
 
 import pytest
 from git import Repo
+from git.exc import CommandError
 
 from git_donkey import wheresat_records, wheresat_worktrees
 from tests import git_repo_helpers
-
-_GIT_VERSION = Repo.GitCommandWrapperType().version_info
-"""The Git this suite runs against, as the installed GitPython reads it."""
 
 _MINIMUM_GIT: typ.Final = (2, 48)
 """The first Git whose ``worktree add`` writes a relative Git directory.
@@ -44,13 +42,7 @@ case with nothing to read rather than answer it wrongly.
 
 """
 
-pytestmark = [
-    pytest.mark.timeout(120),
-    pytest.mark.skipif(
-        _GIT_VERSION < _MINIMUM_GIT,
-        reason="worktree add --relative-paths needs Git 2.48 or newer",
-    ),
-]
+pytestmark = [pytest.mark.timeout(120)]
 
 _BRANCH: typ.Final = "issue-77-child"
 """Branch the linked worktree has checked out, and the rebase detaches from."""
@@ -60,6 +52,24 @@ _TRUNK: typ.Final = "main"
 
 _TRACKED: typ.Final = "README.md"
 """Tracked file both sides rewrite, so the replay cannot apply cleanly."""
+
+
+@pytest.fixture(autouse=True)
+def _git_that_writes_relative_paths() -> None:
+    """Leave every case unrun unless the Git in use writes a relative Git dir.
+
+    The version is asked for here rather than read at import, so a machine whose
+    Git is missing or unusable leaves this module unrun instead of failing to
+    collect it: being unable to ask Git a question is a reason not to run a
+    case, not evidence about the reader under test.
+    """
+    try:
+        version = Repo.GitCommandWrapperType().version_info
+    except CommandError as exc:
+        msg = f"no git to ask for a version: {exc}"
+        pytest.skip(msg)
+    if version < _MINIMUM_GIT:
+        pytest.skip("worktree add --relative-paths needs Git 2.48 or newer")
 
 
 def _relative_worktree(repo: Repo, root: Path) -> Path:
