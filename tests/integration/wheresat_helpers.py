@@ -321,6 +321,7 @@ def run_wheresat(
     capsys: pytest.CaptureFixture[str],
     *,
     graph: WheresatGraph | None = None,
+    forge: wheresat_github.WheresatGitHub | None = None,
 ) -> WheresatRun:
     """Run the command and record everything it reported.
 
@@ -343,6 +344,12 @@ def run_wheresat(
         directory's repository is used when it is omitted, which is what every
         suite but one wants; a suite that has to see *which* questions a run
         put hands a graph that records them.
+    forge : wheresat_github.WheresatGitHub | None, optional
+        The GitHub port to hand the run, for a suite that has to see what a run
+        does with an answer GitHub gave. Omitted, the run is handed
+        :data:`_THE_FORGE`. It is never handed ``None`` in this position: the
+        command reads a forge of ``None`` as "open the real one", so passing
+        the argument through would put live traffic in the suite's way.
 
     Returns
     -------
@@ -350,7 +357,8 @@ def run_wheresat(
         The exit status and both output streams.
 
     """
-    exit_code = wheresat.run_git_wheresat(options, github=_THE_FORGE, graph=graph)
+    opener = _THE_FORGE if forge is None else forge
+    exit_code = wheresat.run_git_wheresat(options, github=opener, graph=graph)
     captured = capsys.readouterr()
     return WheresatRun(
         exit_code=exit_code,
@@ -361,6 +369,65 @@ def run_wheresat(
 
 type Where = typ.Literal["worktree", "checkout"]
 """Which of a scenario's two working trees a run is made from."""
+
+
+def working_tree(scenario: WheresatScenario, where: Where) -> Path:
+    """Return the working tree of ``scenario`` that ``where`` names.
+
+    The command reads its repository from the current directory, so a suite
+    enters one of these before running it: the child's worktree, where the
+    branch is checked out, or the checkout itself, which is where a run about
+    any other branch has to be made from.
+
+    Parameters
+    ----------
+    scenario : WheresatScenario
+        The checkout whose working trees are asked about.
+    where : Where
+        Working tree to enter.
+
+    Returns
+    -------
+    Path
+        The directory a run is made from.
+
+    """
+    return scenario.worktree_path() if where == "worktree" else scenario.local_path
+
+
+def run_wheresat_at(
+    directory: Path,
+    options: wheresat.WheresatOptions,
+    capsys: pytest.CaptureFixture[str],
+    *,
+    forge: wheresat_github.WheresatGitHub | None = None,
+) -> WheresatRun:
+    """Run the command from ``directory``, which is read as the repository.
+
+    Parameters
+    ----------
+    directory : Path
+        Working tree the run is made from, which the command reads as the
+        repository it is about.
+    options : wheresat.WheresatOptions
+        What the command line asked for.
+    capsys : pytest.CaptureFixture[str]
+        Capture fixture the run's output is read from.
+    forge : wheresat_github.WheresatGitHub | None, optional
+        The GitHub port to hand the run, passed through to
+        :func:`run_wheresat`.
+
+    Returns
+    -------
+    WheresatRun
+        The status and both output streams, which are the run's own: a suite
+        that built its checkout inside the test leaves the ``git donkey`` that
+        built it in the capture, so the capture is drained first.
+
+    """
+    capsys.readouterr()
+    with in_directory(directory):
+        return run_wheresat(options, capsys, forge=forge)
 
 
 def run_wheresat_in(
@@ -386,20 +453,15 @@ def run_wheresat_in(
     capsys : pytest.CaptureFixture[str]
         Capture fixture the run's output is read from.
     where : Where, optional
-        Working tree to run from.
+        Working tree to run from, which :func:`working_tree` resolves.
 
     Returns
     -------
     WheresatRun
-        The status and both output streams, which are the run's own: a suite
-        that built its checkout inside the test leaves the ``git donkey`` that
-        built it in the capture, so the capture is drained first.
+        The exit status and both output streams.
 
     """
-    directory = scenario.worktree_path() if where == "worktree" else scenario.local_path
-    capsys.readouterr()
-    with in_directory(directory):
-        return run_wheresat(options, capsys)
+    return run_wheresat_at(working_tree(scenario, where), options, capsys)
 
 
 def report_tokens(output: str) -> set[tuple[str, ...]]:

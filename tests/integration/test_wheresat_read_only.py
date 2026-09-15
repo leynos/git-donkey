@@ -24,19 +24,23 @@ worktree stopped in the middle of a rebase. Both are states the report warns
 about, both must be left exactly as they were found, and each is built by its own
 fixture because the matrix's checkout is shared by every vector.
 
-Three tests are what stop the matrix from passing vacuously. One asserts the
-paths the vectors reach, from the observations the run records rather than from
-the exit codes alone; one asserts the fingerprint is sensitive, by applying six
-deliberate edits and requiring each to move the reading it is aimed at; and one
-asserts the single difference the invariant permits — a ref under
-``refs/wheresat/`` — is not reported as a difference.
+The rest of the file is what stops the matrix from passing vacuously. One test
+asserts the paths the vectors reach, from the observations a run records rather
+than from the exit codes alone: the attested record an answering run reads, the
+parent it asks for and cannot reach, the assessment a refusal never reaches, the
+inferred-tier comparison only ``--deep`` asks for, and the fetch a named parent
+pull request drives, once allowed and once refused.
 
-The paths asserted are the ones this milestone has. Demanding that a vector
-reached code that does not exist yet would pin the absence of the path as
-though it were the path, so ``--no-fetch`` and ``--deep`` are measured here for
-the promise they keep — nothing read, nothing written — and EP-M10 adds the
-assertion that they reached the fetch and deep-scan paths they will then
-control.
+That the fingerprint itself is sensitive — by six deliberate edits, each aimed
+at one reading, and by the single difference INV-1 permits, a ref under
+``refs/wheresat/`` — is measured in ``test_wheresat_fingerprint.py``, which
+calibrates the instrument this file reads repositories with.
+
+The fetch and the comparison are held to the paths they control rather than to
+the flags they carry, so a run that never entered either fails where it did not.
+Both are measured against a journey whose forge answers and whose cache is cold,
+because the head a fetch writes is cached: a warm cache answers the
+``--no-fetch`` run too, and the flag under test would be invisible.
 """
 
 from __future__ import annotations
@@ -46,13 +50,11 @@ import typing as typ
 from pathlib import Path
 
 import pytest
-from git import Repo
 
-from git_donkey import observability, wheresat, wheresat_records
-from tests import git_repo_helpers
+from git_donkey import observability, wheresat, wheresat_records, wheresat_refs
+from tests.integration import wheresat_scenarios
 from tests.integration.wheresat_helpers import (
     CHILD,
-    EVIDENCE_NAMESPACE,
     PARENT,
     Fingerprint,
     WheresatRun,
@@ -64,6 +66,9 @@ from tests.integration.wheresat_helpers import (
 )
 
 if typ.TYPE_CHECKING:
+    from git import Repo
+
+    from tests.integration.wheresat_scenarios import Journey
     from tests.observability_helpers import RecordingRecorder
 
 pytestmark = pytest.mark.timeout(120)
@@ -81,9 +86,6 @@ _INDETERMINATE: typ.Final = 3
 
 type _Where = typ.Literal["worktree", "checkout"]
 """Which working tree a vector is run from."""
-
-type _Edit = typ.Callable[[Path, Repo], None]
-"""A deliberate change to a repository, and to its working tree."""
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -111,59 +113,6 @@ class Vector:
     options: wheresat.WheresatOptions
     exit_code: int
     where: _Where = "worktree"
-
-
-@dataclasses.dataclass(frozen=True, slots=True)
-class Change:
-    """One deliberate edit, and the fingerprint reading it has to move.
-
-    Attributes
-    ----------
-    label : str
-        Name of the edit, which is how a failing example identifies itself.
-    reading : str
-        Reading of :class:`~tests.integration.wheresat_helpers.Fingerprint` the
-        edit must be visible in.
-    edit : _Edit
-        The edit itself, taking a working tree and its repository.
-
-    """
-
-    label: str
-    reading: str
-    edit: _Edit
-
-
-def _change_a_ref(root: Path, repo: Repo) -> None:
-    """Create a ref, which is what retaining evidence looks like."""
-    repo.git.branch("probe", repo.head.commit.hexsha)
-
-
-def _change_a_tracked_file(root: Path, repo: Repo) -> None:
-    """Rewrite the contents of a tracked file."""
-    (root / _TRACKED).write_text("changed")
-
-
-def _remove_a_tracked_file(root: Path, repo: Repo) -> None:
-    """Delete a tracked file, which the status and the file listing both report."""
-    (root / _TRACKED).unlink()
-
-
-def _change_the_configuration(root: Path, repo: Repo) -> None:
-    """Set a key in a repository's local configuration."""
-    repo.git.config("--local", "wheresat.probe", "1")
-
-
-def _change_the_fetch_head(root: Path, repo: Repo) -> None:
-    """Write ``FETCH_HEAD`` the way a fetch would."""
-    path = Path(repo.git.rev_parse("--absolute-git-dir")) / _FETCH_HEAD
-    path.write_text(f"{repo.head.commit.hexsha}\t\tbranch 'main' of probe\n")
-
-
-def _change_the_stash(root: Path, repo: Repo) -> None:
-    """Stash a change, which leaves the stash ref behind."""
-    _change_a_tracked_file(root, repo)
-    repo.git.stash()
 
 
 _VECTORS: typ.Final[typ.Mapping[str, Vector]] = {
@@ -245,16 +194,6 @@ _STATUSES: typ.Final[frozenset[int]] = frozenset({
 })
 """Every status the command documents, each of which the matrix must reach."""
 
-_CHANGES: typ.Final[typ.Mapping[str, Change]] = {
-    "ref": Change("ref", "refs", _change_a_ref),
-    "file": Change("file", "files", _change_a_tracked_file),
-    "status": Change("status", "status", _remove_a_tracked_file),
-    "config": Change("config", "config", _change_the_configuration),
-    "fetch-head": Change("fetch-head", "fetch-head", _change_the_fetch_head),
-    "stash": Change("stash", "refs", _change_the_stash),
-}
-"""Every reading, paired with an edit that has to be visible in it."""
-
 
 @pytest.fixture(scope="module")
 def scenario(tmp_path_factory: pytest.TempPathFactory) -> WheresatScenario:
@@ -275,6 +214,25 @@ def scenario(tmp_path_factory: pytest.TempPathFactory) -> WheresatScenario:
 
 
 @pytest.fixture
+def answerable(tmp_path: Path) -> Journey:
+    """Return a journey whose forge answers the parent pull request.
+
+    The matrix's checkout is read without a forge, so its ``--parent`` vector
+    can only be reported ``unavailable``: the fetch a named parent drives is
+    reachable only when something answers for the pull request. The journey is
+    built per test rather than shared, because the head a fetch writes is
+    cached, and a warmed cache would answer the run that may not fetch.
+
+    Returns
+    -------
+    Journey
+        The squash-merged background, with a forge that knows its parent.
+
+    """
+    return wheresat_scenarios.squashed(tmp_path / "answerable")
+
+
+@pytest.fixture
 def dirtied(tmp_path: Path) -> WheresatScenario:
     """Return a stacked child whose worktree holds an uncommitted change."""
     dirty = stacked_child(tmp_path)
@@ -288,13 +246,6 @@ def rebasing(tmp_path: Path) -> WheresatScenario:
     stopped = stacked_child(tmp_path)
     _stop_a_rebase(stopped)
     return stopped
-
-
-@pytest.fixture
-def mutable(tmp_path: Path) -> tuple[Path, Repo]:
-    """Return a small repository and its working tree, for the control."""
-    root = tmp_path / "mutable"
-    return root, git_repo_helpers.seed_repo(root)
 
 
 def _run_in(
@@ -494,6 +445,81 @@ def test_a_named_parent_is_asked_for_and_reported_unavailable(
     ), f"expected an indeterminate verdict, got {observations}"
 
 
+def test_a_run_that_may_fetch_fetches_the_head_and_writes_only_evidence(
+    answerable: Journey,
+    capsys: pytest.CaptureFixture[str],
+    recording_recorder: RecordingRecorder,
+) -> None:
+    """A parent the forge answers for is fetched, and its head cached as evidence.
+
+    This is the fetch the matrix's ``--no-fetch`` vector suppresses and the run
+    beside it performs, which is what makes the flag mean something: the same
+    question is asked twice, one flag apart, and only the run that may fetch
+    reaches ``success``. The head lands under the evidence namespace, which is
+    the one difference INV-1 permits, so the fingerprint is compared to say that
+    is the only thing the run wrote.
+    """
+    options = wheresat.WheresatOptions(parent=wheresat_scenarios.PULL_REQUEST)
+    before = wheresat_scenarios.reading_of(answerable)
+    first = len(recording_recorder.observations)
+    run = answerable.run(options, capsys)
+    observations = recording_recorder.observations[first:]
+    after = wheresat_scenarios.reading_of(answerable)
+    reached = {
+        (observation.operation, observation.outcome) for observation in observations
+    }
+    cache = str(wheresat_refs.parent_head_ref(answerable.identity))
+
+    assert run.exit_code == _ESTABLISHED, (
+        f"a fetched parent is established, but the run exited {run.exit_code}: "
+        f"{run.stderr.strip()}"
+    )
+    assert {("parent_identification", "found"), ("evidence_fetch", "success")} <= (
+        reached
+    ), f"expected the parent to be answered for and fetched, got {observations}"
+    assert answerable.scenario.repo.git.rev_parse(cache) == answerable.parent_head, (
+        "the fetched head is cached as the head the pull request records"
+    )
+    assert not before.differences(after), (
+        "the evidence ref is the only thing the run wrote"
+    )
+
+
+def test_a_run_that_may_not_fetch_records_the_refusal_and_writes_nothing(
+    answerable: Journey,
+    capsys: pytest.CaptureFixture[str],
+    recording_recorder: RecordingRecorder,
+) -> None:
+    """``--no-fetch`` is what stops the fetch, and no ref stands in its place.
+
+    The cache holds no head for this journey, so the run that may not fetch has
+    nothing to read, records that it did not ask, and answers indeterminate
+    rather than established. It is the pair to the test above: one journey, one
+    flag, and the two runs differ in the fetch and in what it wrote.
+    """
+    options = wheresat.WheresatOptions(
+        parent=wheresat_scenarios.PULL_REQUEST, no_fetch=True
+    )
+    before = wheresat_scenarios.reading_of(answerable)
+    first = len(recording_recorder.observations)
+    run = answerable.run(options, capsys)
+    observations = recording_recorder.observations[first:]
+    after = wheresat_scenarios.reading_of(answerable)
+
+    assert run.exit_code == _INDETERMINATE, (
+        f"an unfetched parent cannot be established, but the run exited "
+        f"{run.exit_code}: {run.stderr.strip()}"
+    )
+    assert any(
+        observation.operation == "evidence_fetch"
+        and observation.outcome == "not_requested"
+        for observation in observations
+    ), f"expected the fetch to be reported as not requested, got {observations}"
+    assert "--no-fetch" in run.stdout, "and the report names the flag that stopped it"
+    assert before.refs == after.refs, "and nothing is written in the head's place"
+    assert not before.differences(after), "and the repository is left as it was found"
+
+
 def test_a_refused_run_never_reaches_an_assessment(
     scenario: WheresatScenario,
     capsys: pytest.CaptureFixture[str],
@@ -513,6 +539,38 @@ def test_a_refused_run_never_reaches_an_assessment(
         observation.operation in {"evidence_collection", "boundary_assessment"}
         for observation in observations
     ), f"expected the run to stop at its arguments, got {observations}"
+
+
+def test_the_deep_vector_collects_what_the_default_run_does_not(
+    scenario: WheresatScenario,
+    capsys: pytest.CaptureFixture[str],
+    recording_recorder: RecordingRecorder,
+) -> None:
+    """``--deep`` reaches the content comparison, and the default run does not.
+
+    The inferred tier is the one only a comparison reaches: evidence read off the
+    tree, where the rest of the matrix is evidence read out of a record or left
+    unavailable. Both vectors leave the repository alone, so without this the
+    invariant would hold just as well over a run that never compared anything.
+    """
+
+    def inferred(observations: list[observability.Observation]) -> set[str]:
+        """Return the operations the run recorded at the inferred tier."""
+        return {
+            observation.operation
+            for observation in observations
+            if observation.evidence_tier == "inferred"
+        }
+
+    default = _observed(scenario, _VECTORS["default"], capsys, recording_recorder)
+    deep = _observed(scenario, _VECTORS["deep"], capsys, recording_recorder)
+
+    assert not inferred(default), (
+        f"the default run asks for no comparison, got {default}"
+    )
+    assert "evidence_collection" in inferred(deep), (
+        f"expected the deep run to compare contents, got {deep}"
+    )
 
 
 def test_the_json_vector_reports_the_boundary_the_record_attests(
@@ -569,51 +627,6 @@ def test_a_refused_run_names_its_gate_and_prints_no_replay_command(
         line.split()[:2] == ["failed", gate] for line in run.stdout.splitlines()
     ), f"expected {gate} to be reported as failed, got:\n{run.stdout}"
     assert "git rebase --onto" not in run.stdout, "a refusal offers nothing to run"
-
-
-@pytest.mark.parametrize("label", tuple(_CHANGES))
-def test_the_fingerprint_notices_a_change(
-    label: str,
-    mutable: tuple[Path, Repo],
-) -> None:
-    """Each edit moves the reading it is aimed at, so the fingerprint is sensitive.
-
-    Without this control the matrix's claim is only that two readings agreed,
-    which two readings of anything would. Each edit is aimed at one reading, and
-    a reading that did not move is a hole in the measurement exactly where a
-    later milestone's change would slip through.
-    """
-    root, repo = mutable
-    change = _CHANGES[label]
-    before = fingerprint(root, repo=repo)
-    change.edit(root, repo)
-    differences = before.differences(fingerprint(root, repo=repo))
-
-    assert any(
-        difference.startswith(f"{change.reading}: ") for difference in differences
-    ), f"expected {label} to move the {change.reading} reading, got {differences}"
-
-
-def test_evidence_a_run_may_write_is_not_a_difference(
-    mutable: tuple[Path, Repo],
-) -> None:
-    """A ref under the evidence namespace is allowed, and really is written.
-
-    INV-1 permits a run to retain evidence of its own, so the comparison has to
-    let the namespace through — and the ref is asserted to have been written, so
-    the allowance is known to be reachable rather than vacuous.
-    """
-    root, repo = mutable
-    before = fingerprint(root, repo=repo)
-    repo.git.update_ref(
-        f"{EVIDENCE_NAMESPACE}op/probe/boundary", repo.head.commit.hexsha
-    )
-    after = fingerprint(root, repo=repo)
-
-    assert after.refs != before.refs, "expected the evidence ref to be written"
-    assert not before.differences(after), (
-        "writing the evidence ref moved nothing else in the repository"
-    )
 
 
 def test_a_dirty_worktree_is_warned_about_and_left_alone(
