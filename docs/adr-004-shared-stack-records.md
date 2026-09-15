@@ -80,9 +80,12 @@ _Table 1: comparison of the three options._
 ## Decision Outcome / Proposed Direction
 
 Option A. `git donkey` writes the record when, and only when, it creates a
-branch from a base that is not the trunk; `git wheresat` reads it as its
-highest-precedence evidence; `git plonk` tombstones before deleting, sweeps
-records whose branch has gone, and prunes tombstones after 90 days.
+branch whose base is not the trunk — neither the base ref nor the commit that
+ref resolved to is the trunk's, so a branch cut from a feature branch that
+still points at the trunk tip is not stacked and gets no record; `git wheresat`
+reads the record as its highest-precedence evidence; `git plonk` tombstones
+before deleting, sweeps records whose branch has gone, and prunes tombstones
+after 90 days.
 
 Option B is rejected because three private parsers of one artefact diverge
 silently: the writer and the reader disagree about a key name and the reader

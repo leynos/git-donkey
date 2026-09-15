@@ -109,12 +109,14 @@ is what it is, and never as a name to be looked up in one particular namespace.
 ## Who writes what
 
 - **Birth — `git donkey`.** When it creates a branch from a base that is not
-  the trunk, it writes a record naming the parent branch and the frozen base
-  commit. This is the strongest possible evidence, because it is an exact
-  observation made at the instant the fact was true. A branch created from the
-  trunk is not stacked and gets no record: writing one would make every branch
-  look stacked, and a boundary would be offered for branches that never had a
-  parent.
+  the trunk — neither the base ref nor the commit it resolved to is the
+  trunk's, so a branch cut from a feature branch that still points at the trunk
+  tip is not stacked — it writes a record naming the parent branch and the
+  frozen base commit. This is the strongest possible evidence, because it is an
+  exact observation made at the instant the fact was true. A branch created
+  from the trunk is not stacked and gets no record: writing one would make
+  every branch look stacked, and a boundary would be offered for branches that
+  never had a parent.
 - **Life — `git wheresat`.** It reads the record as its highest-precedence
   evidence, validates it against everything else it can observe, and under
   `--record` refreshes it after a restack, with an expected-old check so a

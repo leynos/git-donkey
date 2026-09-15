@@ -222,9 +222,10 @@ for user data storage (e.g., `~/.local/share/git-donkey/template` on Linux or
 
 ### Stack records at branch birth
 
-When `git donkey` creates a branch from a base that is not the trunk, it writes
-a stack record at the moment of birth. The record is four configuration keys in
-the branch's own section — `branch.<branch>.stackParent`, `.stackBase`,
+When `git donkey` creates a branch from a base that is not the trunk — neither
+the base ref nor the commit it resolved to is the trunk's — it writes a stack
+record at the moment of birth. The record is four configuration keys in the
+branch's own section — `branch.<branch>.stackParent`, `.stackBase`,
 `.stackBaseRecordedFrom`, and `.stackBaseEvidence` — together with the anchor
 ref `refs/stack-bases/<branch>`, which keeps the boundary commit reachable from
 `git gc`. `stackBase` and `stackBaseRecordedFrom` are both the commit the new

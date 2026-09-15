@@ -157,19 +157,30 @@ boundary under evaluation.
    places the candidate off the parent's history rather than on it.
    `INDETERMINATE` when `PARENT_HEAD` cannot be recovered, and when the
    repository is shallow, where Git's negative answer is an artefact of the
-   graft rather than an answer. This is the gate that catches a rewritten
-   parent, where the merge base is an earlier trunk commit rather than the
-   inherited boundary. `PARENT_HEAD` is sought in order: the fetched pull
-   request head, the tombstone `git plonk` wrote for the parent, then the
-   parent's remote-tracking ref.
-7. **`replay-range-excludes-landed-work`** — no commit in `C..child_tip` is
-   reachable from `PARENT_HEAD`, and the cumulative patch identifier of the
-   range differs from the patch identifier of `LANDED`. `FAILED` when either
-   check finds landed work inside the proposed replay range; `INDETERMINATE`
-   when `PARENT_HEAD` or `LANDED` is unknown. The gate is named for what it can
-   actually check: it cannot prove the suffix contains only child work, and its
-   patch comparison is not injective. That limitation is why it is one gate
-   among eight rather than the whole answer.
+   graft rather than an answer. The gate confirms a candidate rather than
+   refuting one: a best common ancestor is an ancestor of both commits it was
+   computed from, so a candidate derived from a merge base passes here however
+   the parent was rewritten. What it refuses is the historical parent tip,
+   which no surviving ref reaches and which only a `--deep` run proposes — by
+   content — so a default run refuses a rewritten parent through
+   `boundary-is-ancestor-of-child` and `replay-range-excludes-landed-work`
+   instead. `PARENT_HEAD` is sought in order: the fetched pull request head,
+   the tombstone `git plonk` wrote for the parent, then the parent's
+   remote-tracking ref.
+7. **`replay-range-excludes-landed-work`** — three checks, of which the gate
+   reports the worst answer. No commit in `C..child_tip` is reachable from
+   `PARENT_HEAD`; the cumulative patch identifier of the range differs from the
+   patch identifier of `LANDED`; and no commit in the range carries the tree
+   `LANDED` carries. The third check is what answers a parent rewritten before
+   it was merged: the rewrite leaves the parent's old commits reached by
+   nothing, while the landed content survives in the range the child would
+   replay. `FAILED` when any check finds landed work inside the proposed replay
+   range; `INDETERMINATE` when `PARENT_HEAD` or `LANDED` is unknown, or when
+   the content comparison was never made. The gate is named for what it can
+   actually check: it cannot prove the suffix contains only child work, its
+   patch comparison is not injective, and a content match names a commit
+   without deciding that the commit is the boundary. That limitation is why it
+   is one gate among eight rather than the whole answer.
 8. **`record-not-superseded`** — applies only to a stack-record candidate. The
    recorded child tip still exists and is an ancestor of the current
    `child_tip`, and no parent integration newer than the record is visible.
@@ -256,17 +267,22 @@ credentials problem become a confident wrong answer.
 The command's behaviour degrades in a fixed order as evidence disappears. The
 right-hand column is what a user should do about it.
 
-| Situation                                    | Result and exit code                                        | Remedy                                        |
-| -------------------------------------------- | ----------------------------------------------------------- | --------------------------------------------- |
-| Stack record present and intact              | `Established` from attested evidence, `0`                   | none                                          |
-| No record, parent pull request merged        | `Established` from the fetched parent head, `0`             | none                                          |
-| No record, parent deleted after `git plonk`  | `Established`; the tombstone corroborates, `0`              | none                                          |
-| Parent rewritten, no surviving ref or reflog | `Unresolved`; `parent-history-intact` names the reason, `1` | restore the parent ref, or supply `--parent`  |
-| Only content matches survive                 | `Unresolved`; candidates listed with tiers, `1`             | confirm the boundary by hand, then `--record` |
-| History shallow or an object missing         | `Indeterminate` with exit code `3`                          | deepen the clone, or fetch the missing object |
-| No usable GitHub credential                  | `Indeterminate`; never a browser prompt, `3`                | export `GITHUB_TOKEN`, or pass `--offline`    |
+| Situation                                    | Result and exit code                                               | Remedy                                                  |
+| -------------------------------------------- | ------------------------------------------------------------------ | ------------------------------------------------------- |
+| Stack record present and intact              | `Established` from attested evidence, `0`                          | none                                                    |
+| No record, parent pull request merged        | `Established` from the fetched parent head, `0`                    | none                                                    |
+| No record, parent deleted after `git plonk`  | `Established`; the tombstone corroborates, `0`                     | none                                                    |
+| Parent rewritten, no surviving ref or reflog | `Unresolved`; `parent-history-intact` names it under `--deep`, `1` | restore the parent ref, or supply `--parent`            |
+| Only content matches survive                 | `Unresolved`; candidates listed with tiers, `1`                    | decide them by hand and rebase onto the one you confirm |
+| History shallow or an object missing         | `Indeterminate` with exit code `3`                                 | deepen the clone, or fetch the missing object           |
+| No usable GitHub credential                  | `Indeterminate`; never a browser prompt, `3`                       | export `GITHUB_TOKEN`, or pass `--offline`              |
 
 _Table 3: what each degradation produces, and what fixes it._
+
+Neither `Unresolved` row records anything, however the boundary is settled:
+`--record` refreshes the record `git donkey` wrote at birth and never creates
+one, and a run that did not establish its boundary writes nothing even when a
+record exists.
 
 `--offline` performs no network access at all: the stack record plus local
 ancestry must suffice, and otherwise the command exits `3` naming the gates it
