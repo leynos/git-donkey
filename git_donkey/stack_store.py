@@ -514,12 +514,6 @@ class GitStackRecordReader:
     def _tombstone_timestamp(self, branch: str) -> int | None:
         """Return when ``branch``'s tombstone was written, if it can be read.
 
-        A tombstone that went between the listing that named it and this read
-        has no reflog to show, and an age that cannot be read is read as no age
-        at all: both callers keep such a tombstone, because neither reporting
-        nor deleting one on a window it may not have outlived is a claim about
-        the parent's life that the evidence does not support.
-
         Parameters
         ----------
         branch : str
@@ -528,16 +522,13 @@ class GitStackRecordReader:
         Returns
         -------
         int | None
-            The instant the tombstone was written, in seconds since the epoch,
-            or ``None`` when its reflog could not be read.
+            When it was written, or ``None`` when its reflog could not be read.
 
         Raises
         ------
         GitCommandError
             If Git refused the read with a status other than 128, which is what
-            it exits with when it cannot resolve the ref it was handed. A ref
-            it cannot read is an age it cannot tell, and both callers keep such
-            a tombstone rather than acting on a window it may not have outlived.
+            it exits with when it cannot resolve the ref it was handed.
 
         """
         ref = stack_records.tombstone_ref_path(branch)

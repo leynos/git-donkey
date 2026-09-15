@@ -203,7 +203,7 @@ def test_a_tombstone_that_vanished_before_it_was_read_is_kept(
     )
     repo.git.update_ref("-d", stack_records.tombstone_ref_path(CHILD))
 
-    assert store.expired(EXPIRE) == (), (
+    assert not store.expired(EXPIRE), (
         "a tombstone whose age could not be read is not reported as past it"
     )
 

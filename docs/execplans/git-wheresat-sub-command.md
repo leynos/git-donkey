@@ -1895,7 +1895,7 @@ Stop and escalate rather than improvising when any of these is reached.
     it. The removal recipe was then made the same in the three documents that
     carry it — `docs/stack-records.md` and
     `docs/v0-2-0-migration-guide.md` both lead with the four `--unset` calls the
-    record's own writer performs and keep `--remove-section` as the labeled
+    record's own writer performs and keep `--remove-section` as the labelled
     shortcut for a section holding nothing else — because the guide had led with
     the shortcut and the design document with the unsets, and the two were one
     reading away from contradicting each other.
@@ -1911,7 +1911,25 @@ Stop and escalate rather than improvising when any of these is reached.
     an explicit return to make clearer.
   - Gate note: the eight commit gates are run over this revision before the
     review round is closed, and the row-by-row reply to the reviewer is sent
-    only once they are green.
+    only once they are green. That run found two defects in this revision's own
+    new code, and both were local to the batch that answered the round.
+    `stack_store.py` grew from 771 lines to 807 against pylint's
+    `max-module-lines` of 800, because `_tombstone_timestamp`'s guard arrived
+    with a docstring that restated the module's own `Notes` paragraph — that a
+    tombstone whose age cannot be read is retained rather than guessed at was
+    already said once, at the top of the file, and the method docstring said it
+    again; the duplicate is gone, the method keeps its Parameters, Returns, and
+    Raises sections, and the module is 798 lines. That number is recorded
+    rather than hidden: two lines of headroom means the next addition of any
+    size to this module is a split at a seam, which is the precedent
+    `wheresat_parents.py` and `wheresat.py` already set, not another trim of
+    the prose that specifies it. The second defect was pylint's `C1803` against
+    the test that pins the guard, which compared `expired(EXPIRE)` with an
+    empty tuple where the falsiness of the tuple is the whole assertion; it now
+    asserts that falsiness directly. Because `make lint` stops at the first
+    failing recipe, gates 4 to 8 had not run when pylint refused the revision,
+    so their status was unknown rather than passing, and they are re-run over
+    the fixed tree rather than assumed from an earlier revision.
 
 ## Surprises & discoveries
 
