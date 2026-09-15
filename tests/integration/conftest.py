@@ -88,9 +88,17 @@ def _recorder(record_mode: str) -> vcr.VCR:
     """Return a VCR recorder for one cassette, with the credential filtered out.
 
     Every cassette goes through this, so no recording can carry the token the
-    requests were made with: ``filter_headers`` drops the header before the
-    request is written, which is what makes the recordings safe to commit.
-    Replay does not miss it, because an interaction is matched on the request's
+    requests were made with: ``filter_headers`` drops the ``authorization``
+    header, and with it the three OAuth headers GitHub's API answers with,
+    which name the client and the access it was granted —
+    ``x-oauth-client-id``, ``x-oauth-scopes``, and ``x-accepted-oauth-scopes``.
+    None of the three is a credential, but together they describe who recorded
+    the traffic, which a recording has no reason to keep.
+
+    Filtering only ever removes headers from a request, and header names are
+    matched without regard to case, so a recording taken before these were
+    listed here replays exactly as it was written. Replay does not miss the
+    credential either, because an interaction is matched on the request's
     method and URL rather than on what it carried.
 
     Parameters
@@ -107,7 +115,12 @@ def _recorder(record_mode: str) -> vcr.VCR:
     return vcr.VCR(
         record_mode=record_mode,
         cassette_library_dir=_CASSETTE_DIR.as_posix(),
-        filter_headers=["authorization"],
+        filter_headers=[
+            "authorization",
+            "x-oauth-client-id",
+            "x-oauth-scopes",
+            "x-accepted-oauth-scopes",
+        ],
     )
 
 

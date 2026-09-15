@@ -859,11 +859,19 @@ cassette only for a command that is meant to call the API, and never edit a
 recording by hand.
 
 Every cassette is played through one `_recorder()` helper, which filters the
-`authorization` header out of each request before the interaction is written,
-so no recording can carry the credential the traffic was recorded with. Replay
-does not miss the header: `vcrpy` matches an interaction on the request's
-method and URL rather than on what it carried, so a run holding a token and a
-run holding none replay the same recording.
+credential and the metadata that describes it out of each request before the
+interaction is written, so no recording can carry what the traffic was recorded
+with. The filtered set is the `authorization` header itself plus the three
+OAuth headers GitHub's API answers with, which name the client and the access
+it was granted: `x-oauth-client-id`, `x-oauth-scopes`, and
+`x-accepted-oauth-scopes`. Replay does not miss them: `vcrpy` matches an
+interaction on the request's method and URL rather than on what it carried, so
+a run holding a token and a run holding none replay the same recording.
+
+A recording made before the filter grew still carries those OAuth headers. It
+is not a credential, and it is left as it was recorded: the rule above holds
+for every recording, and a file that needs to say less is re-recorded rather
+than repaired by hand.
 
 `vcrpy` 7.0.0 ships no pytest plugin, so the root `conftest.py` declares the
 `--record-mode` option itself — `none`, `once`, or `new_episodes`, defaulting to
