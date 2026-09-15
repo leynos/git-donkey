@@ -47,6 +47,8 @@ from tests.unit.wheresat_helpers import (
 )
 
 if typ.TYPE_CHECKING:
+    import collections.abc as cabc
+
     from git_donkey import wheresat_graph
     from tests.observability_helpers import RecordingRecorder
 
@@ -70,6 +72,11 @@ _DECOY_IDENTITY: typ.Final = stack_records.PullRequestIdentity(
     repository=_REPOSITORY, number=15
 )
 """A pull request on an older commit, which a stronger rung should pre-empt."""
+
+_SECOND_CHILD_IDENTITY: typ.Final = stack_records.PullRequestIdentity(
+    repository=_REPOSITORY, number=18
+)
+"""A second pull request the child branch heads, on an older commit."""
 
 _PARENT_IDENTIFICATION: typ.Final[observability.Operation] = "parent_identification"
 """Operation every question about the parent is recorded under."""
@@ -118,9 +125,9 @@ class _Forge(wheresat_github.WheresatGitHub):
 
     Attributes
     ----------
-    payloads : typ.Mapping[int, ParentPullRequest]
+    payloads : cabc.Mapping[int, ParentPullRequest]
         What ``pull_request`` answers, keyed by pull request number.
-    stacks : typ.Mapping[int, stack_records.PullRequestIdentity | None]
+    stacks : cabc.Mapping[int, stack_records.PullRequestIdentity | None]
         What ``stack_parent`` answers, keyed by pull request number.
     page : wheresat_github.AssociationPage
         What the association search answers.
@@ -129,10 +136,10 @@ class _Forge(wheresat_github.WheresatGitHub):
 
     """
 
-    payloads: typ.Mapping[int, ParentPullRequest] = dataclasses.field(
+    payloads: cabc.Mapping[int, ParentPullRequest] = dataclasses.field(
         default_factory=dict
     )
-    stacks: typ.Mapping[int, stack_records.PullRequestIdentity | None] = (
+    stacks: cabc.Mapping[int, stack_records.PullRequestIdentity | None] = (
         dataclasses.field(default_factory=dict)
     )
     page: wheresat_github.AssociationPage = dataclasses.field(
@@ -173,7 +180,7 @@ class _Forge(wheresat_github.WheresatGitHub):
 
     @typ.override
     def associated_pull_requests(
-        self, repository: str, commits: typ.Sequence[str]
+        self, repository: str, commits: cabc.Sequence[str]
     ) -> wheresat_github.AssociationPage:
         """Return the association page this test supplied."""
         assert repository == _REPOSITORY, (
@@ -275,7 +282,7 @@ def _parent_payload() -> ParentPullRequest:
 
 
 def _page(
-    associations: typ.Mapping[str, tuple[stack_records.PullRequestIdentity, ...]],
+    associations: cabc.Mapping[str, tuple[stack_records.PullRequestIdentity, ...]],
     *,
     truncated: bool = False,
 ) -> wheresat_github.AssociationPage:
@@ -514,6 +521,47 @@ def test_a_native_stack_names_the_parent_before_the_walk_continues(
     )
     assert _DECOY_IDENTITY.number not in forge.read, (
         "the association below the child should not be reached once the stack answers"
+    )
+
+
+def test_a_second_child_head_is_not_asked_for_a_stack(
+    recording_recorder: RecordingRecorder,
+) -> None:
+    """A branch that heads two pull requests asks its stack question once.
+
+    The first association whose head is the child branch is the child, and the
+    stack question belongs to the child rather than to the association it was
+    reached through, so a second pull request the branch heads is read and
+    walked past without asking GitHub about its stack.
+    """
+    forge = _Forge(
+        payloads={
+            _CHILD_IDENTITY.number: _child_payload(),
+            _SECOND_CHILD_IDENTITY.number: parent_pull_request(
+                identity=_SECOND_CHILD_IDENTITY, head_ref=_BRANCH
+            ),
+        },
+        stacks={_CHILD_IDENTITY.number: None},
+        page=_page({
+            CHILD_TIP: (_CHILD_IDENTITY,),
+            CHILD_BELOW: (_SECOND_CHILD_IDENTITY,),
+        }),
+    )
+    history = _history(CHILD_BELOW, CHILD_TIP)
+
+    identified = _ask(
+        _request(), _bounds(), history=history, opener=_Opener(forge=forge)
+    )
+
+    assert identified.parent is None, (
+        "neither child pull request should be reported as the parent"
+    )
+    assert identified.faults == (), "reading two child pull requests is no fault"
+    assert forge.read == [_CHILD_IDENTITY.number, _SECOND_CHILD_IDENTITY.number], (
+        "both pull requests the branch heads should be read, newest association first"
+    )
+    assert recording_recorder.outcomes(_PARENT_IDENTIFICATION) == ["empty"], (
+        "the walk should run out of associations without a stack answer"
     )
 
 

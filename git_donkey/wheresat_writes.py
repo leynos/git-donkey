@@ -191,10 +191,10 @@ class WheresatWrites:
         if not requested:
             return ()
         if not isinstance(assessment, wheresat_records.Established):
-            _observe("rejected")
+            _observe(_RECORD_OPERATION, "rejected")
             return (_NOTHING_TO_RECORD,)
         if not _attested(assessment.support):
-            _observe("rejected")
+            _observe(_RECORD_OPERATION, "rejected")
             return (_UNATTESTED_TO_RECORD,)
         self._refresh(assessment, expected)
         return ()
@@ -290,7 +290,7 @@ class WheresatWrites:
         result = self.context.records.read(branch)
         if isinstance(result, stack_records.StackRecord):
             return result
-        _observe("rejected")
+        _observe(_RECORD_OPERATION, "rejected")
         if isinstance(result, stack_records.RecordAbsent):
             msg = (
                 f"the branch {branch!r} has no stack record to refresh; a record "
@@ -338,7 +338,7 @@ class WheresatWrites:
         if expected is None:
             if anchor is None:
                 return ""
-            _observe("rejected", error_kind="stack_record_conflict")
+            _observe(_RECORD_OPERATION, "rejected", error_kind="stack_record_conflict")
             msg = (
                 f"an expected old object ID is required: the branch {branch!r} "
                 f"already has a stack record whose anchor ref is {anchor}; pass "
@@ -346,14 +346,14 @@ class WheresatWrites:
             )
             raise WheresatUsageError(msg)
         if anchor is None:
-            _observe("rejected", error_kind="stack_record_conflict")
+            _observe(_RECORD_OPERATION, "rejected", error_kind="stack_record_conflict")
             msg = (
                 f"--expected-old was given, but the branch {branch!r} has no "
                 "stack-base ref; there is nothing to replace"
             )
             raise WheresatUsageError(msg)
         if anchor != expected:
-            _observe("rejected", error_kind="stack_record_conflict")
+            _observe(_RECORD_OPERATION, "rejected", error_kind="stack_record_conflict")
             msg = (
                 f"--expected-old does not match: the branch {branch!r} holds "
                 f"{anchor}, not {expected}"
@@ -377,19 +377,23 @@ class WheresatWrites:
 
         """
         writer = wheresat_refs.GitWheresatRefWriter(self.repo)
-        _observe("started")
+        _observe(_RECORD_OPERATION, "started")
         with observability.get_recorder().span(_RECORD_OPERATION):
             try:
                 writer.write_record(record, expected_old)
             except stack_store.StackRecordConflictError as exc:
-                _observe("failure", error_kind="stack_record_conflict")
+                _observe(
+                    _RECORD_OPERATION,
+                    "failure",
+                    error_kind="stack_record_conflict",
+                )
                 msg = f"the record for {record.branch!r} could not be refreshed: {exc}"
                 raise WheresatUsageError(msg) from exc
             except (stack_store.StackRecordError, ValueError) as exc:
-                _observe("failure")
+                _observe(_RECORD_OPERATION, "failure")
                 msg = f"the record for {record.branch!r} could not be written: {exc}"
                 raise WheresatUsageError(msg) from exc
-        _observe("success")
+        _observe(_RECORD_OPERATION, "success")
 
     def _retain(
         self, assessment: wheresat_records.Established
@@ -456,14 +460,14 @@ def fetch_parent_head(
     destination = wheresat_refs.parent_head_ref(parent.identity)
     writer = wheresat_refs.GitWheresatRefWriter(repo)
     if writer.commit_at(destination) == parent.head_sha:
-        _observe_fetch("success")
+        _observe(_FETCH_OPERATION, "success")
         return _fetched(parent)
     if no_fetch:
-        _observe_fetch("not_requested")
+        _observe(_FETCH_OPERATION, "not_requested")
         return ParentHeadFetch(fault=_NO_FETCH)
     remote = wheresat_remotes.named_remote(repo, parent.head_repository)
     if remote is None:
-        _observe_fetch("unavailable")
+        _observe(_FETCH_OPERATION, "unavailable")
         return ParentHeadFetch(
             fault=_NO_REMOTE.format(repository=parent.head_repository)
         )
@@ -471,7 +475,7 @@ def fetch_parent_head(
     if commit is None:
         return _fetch_failed(parent, remote, failures)
     if commit != parent.head_sha:
-        _observe_fetch("failure", error_kind="github_api_error")
+        _observe(_FETCH_OPERATION, "failure", error_kind="github_api_error")
         return ParentHeadFetch(
             fault=_MOVED_HEAD.format(
                 identity=wheresat_payload.identity_text(parent.identity),
@@ -480,7 +484,7 @@ def fetch_parent_head(
             ),
             error_kind="github_api_error",
         )
-    _observe_fetch("success")
+    _observe(_FETCH_OPERATION, "success")
     return _fetched(parent)
 
 
@@ -560,7 +564,7 @@ def _fetch_failed(
         the fetch was refused rather than only that it was.
 
     """
-    _observe_fetch("failure", error_kind="git_command_error")
+    _observe(_FETCH_OPERATION, "failure", error_kind="git_command_error")
     reason = _NO_HEAD.format(
         identity=wheresat_payload.identity_text(parent.identity), remote=remote
     )
@@ -595,46 +599,26 @@ def _fetched(parent: wheresat_records.ParentPullRequest) -> ParentHeadFetch:
     )
 
 
-def _observe_fetch(
-    outcome: observability.Outcome,
-    error_kind: observability.ErrorKind | None = None,
-) -> None:
-    """Record one bounded observation about this run's fetch.
-
-    Parameters
-    ----------
-    outcome : observability.Outcome
-        What became of the fetch.
-    error_kind : observability.ErrorKind | None, optional
-        Which bounded failure the fetch met, when it met one.
-
-    """
-    observability.get_recorder().record(
-        observability.Observation(
-            operation=_FETCH_OPERATION,
-            outcome=outcome,
-            error_kind=error_kind,
-        )
-    )
-
-
 def _observe(
+    operation: observability.Operation,
     outcome: observability.Outcome,
     error_kind: observability.ErrorKind | None = None,
 ) -> None:
-    """Record one bounded observation about this run's record write.
+    """Record one bounded observation about one of this run's operations.
 
     Parameters
     ----------
+    operation : observability.Operation
+        Which of the run's operations the observation is about.
     outcome : observability.Outcome
-        What became of the write.
+        What became of it.
     error_kind : observability.ErrorKind | None, optional
-        Which bounded failure the write met, when it met one.
+        Which bounded failure it met, when it met one.
 
     """
     observability.get_recorder().record(
         observability.Observation(
-            operation=_RECORD_OPERATION,
+            operation=operation,
             outcome=outcome,
             error_kind=error_kind,
         )

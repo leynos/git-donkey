@@ -414,13 +414,15 @@ def _walk(
             return read
         if read.head_ref != branch:
             return _observed(read, "found")
-        if child is None:
-            child = read
-            below = _below_the_child(port, child)
-            if isinstance(below, ParentIdentification):
-                return below
-            if below is not None:
-                return _observed(below, "found")
+        if child is not None:
+            continue
+        child = read
+        below = _below_the_child(port, child)
+        if isinstance(below, ParentIdentification):
+            return below
+        if below is None:
+            continue
+        return _observed(below, "found")
     return _observed(None, "empty")
 
 
@@ -516,10 +518,7 @@ def _below_the_child(
         )
     if identity is None:
         return None
-    read = _read(port, identity)
-    if isinstance(read, ParentIdentification):
-        return read
-    return read
+    return _read(port, identity)
 
 
 def _observed(

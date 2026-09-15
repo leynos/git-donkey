@@ -42,6 +42,7 @@ import re
 import typing as typ
 
 from git_donkey import stack_records, stack_store
+from git_donkey.wheresat_errors import _reported
 
 if typ.TYPE_CHECKING:
     from git import Repo
@@ -235,32 +236,6 @@ def _slug_parts(repository: str) -> tuple[str, str]:
     )
 
 
-def _reported(stderr: str, status: object) -> str:
-    """Return the most specific line Git reported for a failed command.
-
-    Parameters
-    ----------
-    stderr : str
-        What the command wrote to standard error.
-    status : object
-        Exit status the command reported. It is typed loosely because
-        GitPython types its exit status as a union wide enough to hold the
-        message a command-not-found failure carries, and only its rendering
-        matters here.
-
-    Returns
-    -------
-    str
-        The first line Git reported, or the exit status when it reported
-        nothing.
-
-    """
-    lines = (stderr or "").strip().splitlines()
-    if lines:
-        return lines[0]
-    return f"git exited with status {status}"
-
-
 class WheresatRefWriter(typ.Protocol):
     """The only Git surface in this command that mutates anything."""
 
@@ -318,12 +293,7 @@ class GitWheresatRefWriter:
         what makes a second run on the same pull request perform no fetch at
         all. A destination holding any other commit is deleted first, because a
         cache that has gone stale must be replaced rather than reported as the
-        answer it is no longer. The fetch itself is confined to the refspec:
-        nothing else is pruned, no tag is brought down, no ``FETCH_HEAD`` is
-        written, and submodule recursion is refused, so a populated submodule's
-        repository is not written to either. The refspec is not forced, so a
-        destination that appeared between the deletion and the fetch is
-        reported rather than silently replaced.
+        answer it is no longer.
 
         Parameters
         ----------
@@ -357,21 +327,7 @@ class GitWheresatRefWriter:
             return expected
         if held is not None:
             self._delete_ref(destination)
-        status, _, stderr = self.repo.git.fetch(
-            "--no-prune",
-            "--no-tags",
-            "--no-write-fetch-head",
-            "--no-recurse-submodules",
-            "--end-of-options",
-            remote,
-            f"{source_ref}:{destination}",
-            with_extended_output=True,
-            with_exceptions=False,
-        )
-        if status != _ANSWERED_YES:
-            reported = _reported(stderr, status)
-            msg = f"cannot fetch {source_ref} from {remote!r}: {reported}"
-            raise WheresatRefError(msg)
+        self._fetch_into_evidence_ref(remote, source_ref, destination)
         commit = self.commit_at(destination)
         if commit is None:
             msg = (
@@ -542,6 +498,50 @@ class GitWheresatRefWriter:
         if status != _ANSWERED_YES:
             reported = _reported(stderr, status)
             msg = f"cannot delete the evidence ref {ref}: {reported}"
+            raise WheresatRefError(msg)
+
+    def _fetch_into_evidence_ref(
+        self, remote: str, source_ref: str, destination: EvidenceRef
+    ) -> None:
+        """Fetch ``source_ref`` from ``remote`` straight into ``destination``.
+
+        The refspec is the whole of what is asked of the remote: nothing else
+        is pruned, no tag is brought down, no ``FETCH_HEAD`` is written, and
+        submodule recursion is refused, so a populated submodule's repository
+        is not written to either. The refspec is not forced, so a destination
+        that appeared before the fetch is reported rather than silently
+        replaced.
+
+        Parameters
+        ----------
+        remote : str
+            Remote to fetch from, by name.
+        source_ref : str
+            Ref at the remote holding the evidence, such as
+            ``refs/pull/123/head``.
+        destination : EvidenceRef
+            Ref of the run's evidence namespace to fetch it into.
+
+        Raises
+        ------
+        WheresatRefError
+            If Git refuses the fetch.
+
+        """
+        status, _, stderr = self.repo.git.fetch(
+            "--no-prune",
+            "--no-tags",
+            "--no-write-fetch-head",
+            "--no-recurse-submodules",
+            "--end-of-options",
+            remote,
+            f"{source_ref}:{destination}",
+            with_extended_output=True,
+            with_exceptions=False,
+        )
+        if status != _ANSWERED_YES:
+            reported = _reported(stderr, status)
+            msg = f"cannot fetch {source_ref} from {remote!r}: {reported}"
             raise WheresatRefError(msg)
 
     def _refs_under(self, namespace: str) -> tuple[str, ...]:
