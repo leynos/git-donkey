@@ -4764,10 +4764,13 @@ its inputs are unavailable. `C` denotes the candidate boundary.
 6. `parent-history-intact` — `PARENT_HEAD` is known, its object is present,
    and `git merge-base --is-ancestor C PARENT_HEAD` returns ancestor, so the
    candidate lies on the parent's own history rather than on the trunk.
-   `FAILED` otherwise. This is the gate that catches the rewritten-parent case,
-   where `git merge-base --all` returns an earlier trunk commit.
-   `INDETERMINATE` when `PARENT_HEAD` cannot be recovered. `PARENT_HEAD` is
-   sought in this order: the fetched pull request head, then
+   `FAILED` when that question is answered and the answer is non-ancestor, and
+   never when the run could not put it: the gate that catches the
+   rewritten-parent case, where `git merge-base --all` returns an earlier trunk
+   commit, must not fail a candidate on evidence it does not have.
+   `INDETERMINATE` when `PARENT_HEAD` cannot be recovered, or when the question
+   goes unanswered because the objects it needs are not in the clone.
+   `PARENT_HEAD` is sought in this order: the fetched pull request head, then
    `refs/stack-tombstones/<parent>` written by `git plonk`, then the parent's
    remote-tracking ref. The tombstone is why this gate can still answer after
    `git plonk --hard` has deleted the parent branch.
@@ -5391,10 +5394,11 @@ as changing no exit status (`tests/unit/test_wheresat_report.py`,
 console script is introduced, which is intended; no existing signature changed.
 Slicing: lands in the same commit as EP-M6 and EP-M7, which is what makes every
 symbol in them live. See the Decision log. Recovery: revert the plateau commit;
-`uv sync` clears an installed `git-wheresat` shim. Remaining gaps: records
-cannot be refreshed; no GitHub evidence; the forge and deep-comparison options
-are accepted and documented as having no effect yet; no behavioural suite for
-the forensic paths.
+`uv sync` clears an installed `git-wheresat` shim. Gaps as EP-M8 landed, and
+the milestones that later closed them: refresh of records (EP-M9); GitHub
+evidence and the forge and deep-comparison options, which were accepted and
+documented as having no effect yet (EP-M10); a behavioural suite for the
+forensic paths (EP-M10).
 
 **EP-M9 — refreshing the record.** Outcome: `--record` and `--expected-old`
 refresh the shared record through `stack_store`, with the create-only and
@@ -5959,14 +5963,18 @@ The stack record, written by `git donkey` at birth and refreshed by
 `git wheresat --record`:
 
 ```shell
+git update-ref --create-reflog "refs/stack-bases/$BRANCH" "$OLD_BASE" ""
 git config --local "branch.$BRANCH.stackParent" "v1:$PARENT_REPOSITORY#$PARENT_PR"
+git config --local "branch.$BRANCH.stackBase" "$OLD_BASE"
 git config --local "branch.$BRANCH.stackBaseRecordedFrom" "$CHILD_TIP"
 git config --local "branch.$BRANCH.stackBaseEvidence" "pull-request-head"
-git update-ref --create-reflog "refs/stack-bases/$BRANCH" "$OLD_BASE" ""
 ```
 
 The trailing empty string is the expected-old value, which makes that form
-create-only. An update supplies the current object ID instead.
+create-only. An update supplies the current object ID instead. The anchor is
+written first, so the compare-and-swap decides whether the four values are
+written at all; the anchor and `branch.$BRANCH.stackBase` name the same commit,
+one keeping it reachable and the other carrying it in the branch's own section.
 
 The shared record, for cross-clone recovery, written by a human into the child
 pull request body:
@@ -6655,6 +6663,18 @@ class WheresatGraph(typ.Protocol):
     def fork_point(self, upstream_ref: str, head: str) -> str | None:
         """Return the reflog-derived fork point, or None when unavailable."""
 
+    def ref_name(self, rev: str) -> str | None:
+        """Return the full ref path a revision names, or None when it names none."""
+
+    def symbolic_ref(self, name: str) -> str | None:
+        """Return what a symbolic ref points at, or None when it is not one."""
+
+    def remote_tracking_ref(self, branch: str) -> str | None:
+        """Return the remote-tracking ref a branch names, or None when none does."""
+
+    def history(self, rev: str, *, limit: int | None = None) -> tuple[str, ...]:
+        """Return commits reachable from rev, oldest first, newest ``limit`` of them."""
+
     def commits_in_range(
         self, exclude: str, include: str, *, not_reachable_from: str | None = None
     ) -> tuple[str, ...]:
@@ -6674,10 +6694,19 @@ class WheresatGraph(typ.Protocol):
 
     def is_reachable_from_durable_ref(self, commit: str) -> bool:
         """Return whether any ref outside the evidence namespace reaches it."""
+
+    def worktree_state(self, branch: str) -> WorktreeState:
+        """Return what the worktree holding ``branch`` is in the middle of."""
 ```
 
 The sketch originally listed `reflog(self, ref, *, limit=100)`; it was dropped
-during EP-M7 and the reasoning is in the Decision log.
+during EP-M7 and the reasoning is in the Decision log. The three ref questions
+in the sketch answer where a revision's name came from rather than what it is:
+`remote_tracking_ref` is the rung that recovers a parent head from a checkout
+nobody plonked, and it answers with the ref's name because the name is what
+says where the head was read from. `history` and `worktree_state` are the two
+questions the walk and the replay warning ask, neither of which is about
+ancestry.
 
 ### `git_donkey/wheresat_errors.py`
 
@@ -6784,8 +6813,12 @@ def parent_head_ref(identity: PullRequestIdentity) -> EvidenceRef:
 
 The GitHub port and its `github3.py` implementation, with its own token
 resolution that reads `GITHUB_TOKEN`, `GH_TOKEN`, then the cached credentials
-file, and then **gives up** with exit code `2` — it never calls `loctocat` and
-never prompts.
+file, and then **gives up** by raising `WheresatCredentialError` — it never
+calls `loctocat` and never prompts. Raising rather than exiting is what leaves
+the decision with the run: the ladder that opens the forge catches the refusal,
+reports it as a `credential_unavailable` fault, and the run reaches no verdict
+about the boundary, so the command exits `3` and never `2` (see `Exit codes`
+and the Decision log).
 
 ```python
 REQUEST_TIMEOUT_SECONDS: typ.Final = 10.0
@@ -7093,10 +7126,15 @@ git wheresat [--branch NAME] [--onto REV] [--parent OWNER/REPO#N]
 
 Exit codes: `0` established; `1` the boundary could not be established from
 complete evidence, which is a legitimate result and not a malfunction; `2` a
-usage, configuration, or credential error; `3` indeterminate — the repository
-or the forge could not answer, and the environment needs repair. The departure
-from the three-code convention used by `git incoming` and `git outgoing` is
-deliberate and recorded in `Decision log`.
+usage, configuration, or write failure, reported as an error rather than as a
+verdict, so no assessment is printed; `3` indeterminate — the repository or the
+forge could not answer, and the environment needs repair. A credential the run
+cannot obtain is the second kind of question rather than the first:
+`WheresatCredentialError` is raised where the forge is opened, the ladder
+reports it as a `credential_unavailable` fault, and the run therefore reaches
+no verdict and exits `3`, which is the degradation table's row with `--offline`
+as its remedy. The departure from the three-code convention used by
+`git incoming` and `git outgoing` is deliberate and recorded in `Decision log`.
 
 ### Observability additions
 
@@ -7111,7 +7149,14 @@ Add to `git_donkey/observability.py`, and to no other `typing.Literal`:
 - New label type
   `EvidenceTierLabel = typ.Literal["attested", "derived", "inferred"]`.
 - New label type
-  `WheresatVerdictLabel = typ.Literal["established", "unresolved", "indeterminate"]`.
+  `WheresatVerdictLabel = typ.Literal["established", "unresolved",
+  "indeterminate", "error"]`,
+  whose values are the envelope's verdict vocabulary. The fourth is the one no
+  assessment carries: it is what the envelope reports for a run that refused to
+  start — a usage, configuration, or write failure — and so reached no
+  conclusion about the boundary. It is in the vocabulary because that envelope
+  is what a consumer reads, so the labels a recorder stores and the labels a
+  script matches on stay one set.
 - Add to `ErrorKind`: `github_api_error`, `shallow_history`,
   `credential_unavailable`, `stack_record_malformed`, `stack_record_conflict`,
   `search_incomplete`.

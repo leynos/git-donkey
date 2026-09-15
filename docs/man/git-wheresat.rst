@@ -237,9 +237,9 @@ commands are shown in full, because they are meant to be pasted, and a backup
 ref precedes them so the replay can be undone::
 
     git wheresat: boundary for issue-123-fix
-      child tip   4d5e6f7a
-      target      7c8d9e0f
-      boundary    1a2b3c4d
+      child tip   4d5e6f7
+      target      7c8d9e0
+      boundary    1a2b3c4
     ...
     Replay
       # back up the child tip first, then replay onto the target
