@@ -236,6 +236,12 @@ A branch created from the trunk is not recorded, whatever it is named. That is
 deliberate: a record would make it look stacked, and would offer a boundary for
 a branch that never had a parent.
 
+The record is written after the branch exists, so a store that refuses it leaves
+the branch in place and stops the run with status `1`, reporting that the branch
+was created but its stack record was not written. The branch is usable; only its
+birth boundary is unrecorded, and `git wheresat` has to establish one from the
+surviving evidence instead.
+
 Writing the record changes nothing about tracking — the new branch is still
 created with `--no-track` and inherits nothing. The record is local to one
 clone, because neither the configuration keys nor the anchor ref are pushed or
@@ -544,10 +550,16 @@ It exits with one of four statuses:
 | ------ | ------------------------------------------------------------------------------------------------------ |
 | `0`    | established: a boundary was found                                                                      |
 | `1`    | unresolved: the evidence refused a boundary, and the report says which check refused it                |
-| `2`    | a usage, environment, or credential error                                                              |
+| `2`    | a usage, configuration, or startup error, or a failed write, with no assessment behind it              |
 | `3`    | indeterminate: the repository could not answer a question the procedure asked, so no answer is claimed |
 
 *Table 1: the four exit statuses.*
+
+A missing or unusable GitHub credential is not status `2`. A run that reaches
+the forge reads the refusal as a question it could not ask, reports
+`indeterminate`, and exits with status `3`, naming `GITHUB_TOKEN`, `GH_TOKEN`,
+the credential cache path, and `--offline` in its reasons. Status `2` stays for
+a failure with no boundary assessment behind it at all.
 
 `--json` prints a versioned envelope (`"schema": "git-wheresat/1"`) on every
 exit status, refusals included.
@@ -647,8 +659,12 @@ state cannot be read is warned about too, because a run that warned about
 nothing would be read as a run with nothing to warn about.
 
 The two honest limits documented under [`git plonk`](#git-plonk) still bound
-fork-point recovery here: a tombstone preserves a deleted branch's tip and not
-its reflog, so fork-point recovery for its children is still lost.
+what a tombstone can carry here. A tombstone preserves a deleted branch's tip
+and not its reflog, so fork-point recovery for its children is still lost. And a
+branch deleted through plain Git leaves an anchor that names a base and no tip,
+so a run whose only record of the parent is that anchor has no parent head to
+judge and reports the checks that read one as not applicable rather than
+answering them.
 
 ## git donkey-template
 

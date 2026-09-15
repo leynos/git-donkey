@@ -121,8 +121,12 @@ These are hard invariants. Violating one requires escalation, not a workaround.
   will actually write.
 - `git wheresat` must never initiate an interactive OAuth device flow and
   must never block waiting for a browser. A missing or unusable GitHub
-  credential is an environment error, reported with the `git-wheresat` prefix
-  and exit code `2`, never exit code `1`.
+  credential is an environment error reported with the `git-wheresat` prefix
+  and exit code `3`, never exit code `1`: a run that reaches the ladder reads
+  the refusal as an unanswered question, not as a negative answer. The refusal
+  keeps the usage class where it is raised, so exit code `2` remains for a
+  failure with no assessment behind it — startup, usage, configuration, or a
+  write.
 - Compare a squash against the parent's **cumulative** change, never
   commit by commit. A squash commit is an N-to-1 relationship: its diff equals
   the combined diff of the parent range, so per-commit patch identity does not
@@ -190,8 +194,9 @@ These are hard invariants. Violating one requires escalation, not a workaround.
   updated before the work is considered complete.
 - Gate every code commit with `make check-fmt`, `make lint`, `make typecheck`,
   and `make test`, run sequentially. Gate Markdown-only commits with
-  `make markdownlint` and `make nixie`. Capture output with `tee` to a
-  branch-specific file under `/tmp`.
+  `make check-fmt`, which checks the table formatter, plus `make markdownlint`
+  and `make nixie`. Capture output with `tee` to a branch-specific file under
+  `/tmp`.
 - All prose follows `docs/documentation-style-guide.md`: en-GB Oxford
   spelling, sentence-case headings, prose wrapped at 80 columns, code at 120,
   `-` bullets, and a language identifier on every fenced block.
@@ -1957,7 +1962,65 @@ Stop and escalate rather than improvising when any of these is reached.
     remedy in the boundary-recovery design. The `Conformance basis` trace links
     were re-checked row by row in the same pass: fourteen of fifteen resolve as
     written, and `REQ-record-refresh` now names the refresh test that exists.
-    The review round is what remains open.
+    The review round is what remained open, and the bullets below close it.
+  - Review round: `coderabbit review --agent --base origin/main` reports
+    `review_completed` with 32 findings over the tree at `124024d` (log
+    `/tmp/coderabbit-git-donkey-git-wheresat-sub-command.out`), taken on
+    2026-09-15 on the first attempt and without meeting a rate limit, so no
+    `vsleep` retry was needed. The 32 are 6 major, 15 minor, and 11 trivial,
+    and they are 23 distinct requests: nine pairs ask for one change twice, in
+    the two places the change appears. Thirty-one are actioned in this
+    revision and one is dismissed on evidence, and every finding was verified
+    against the shipped code before it was answered rather than answered from
+    the review text.
+  - Five of the six majors are declarations the Interfaces section had
+    outgrown, and each was read from the shipped code rather than from the
+    finding text: `GateResult` gained `applicable`, `BoundaryRequest` gained
+    `heuristic_window`, `ParentPullRequest` gained `head_fetched_from` (gate 1
+    compares it and the sketch omitted it), `run_git_wheresat` gained the
+    keyword-only `*` with `repo` beside `graph`, and `SOURCES` gained the kind
+    that sits beside each rung. `SOURCES` is the one worth naming: the plan
+    declared it as a precedence order, while the shipped tuple labels each
+    rung's observation and establishment is decided by the evidence tier in
+    `wheresat_policy`, never by a rung's position — which the collector's own
+    docstring already said and the plan's lead-in did not. The lead-in now says
+    what the tuple says.
+  - The sixth major is the removal recipe. The plan unset three configuration
+    keys where the record has four, so a reader following it left
+    `stackBaseEvidence` behind on a branch whose record the recipe claimed to
+    have removed; `docs/stack-records.md` and the migration guide already lead
+    with all four `--unset` calls, so the plan was the outlier rather than the
+    documents being incomplete. The recipe names all four keys now, and the
+    branch section it leaves is the one the guide's own shortcut describes.
+  - The credential contract took a decision rather than a correction. The
+    plan's invariant said a missing credential exits `2`, and the users'
+    guide's Table 1 agreed with it, while `wheresat_parents._forge` has caught
+    `WheresatCredentialError` where the forge is opened and reported it as an
+    unanswered question; `wheresat_errors`'s own docstring and the
+    boundary-recovery design both already said `Indeterminate` and `3`. The
+    code and the two documents that agreed with it are the ones kept: `3` for a
+    credential the ladder reached, because the run cannot tell whether a parent
+    pull request exists rather than knowing that none does, and `2` for a
+    failure with no assessment behind it at all. The plan's invariant,
+    `EXIT_CODES`'s docstring, `EXIT_USAGE`'s docstring, and Table 1 now all say
+    so, which is what makes the contract one contract.
+  - The one dismissal is the cassette, and the reason is a rule rather than a
+    preference. The finding asks for the recording behind
+    `tests/integration/test_wheresat_github.py` to be sanitised of GitHub
+    user-specific data. The traffic is public repository metadata for
+    `leynos/git-donkey`, which is what a reader without a credential would
+    fetch; `tests/conftest.py` filters the `Authorization` header at record
+    time, so no recording can carry a token; and the edit itself is what the
+    project forbids — `docs/developers-guide.md` says a cassette is recorded
+    once against real traffic "and never edit a recording by hand", and the
+    test module's own docstring repeats the rule. A hand-sanitised cassette
+    would be the defect the rule exists to prevent, which is why the finding is
+    dismissed rather than obeyed.
+  - The disposition is recorded here and posted on the pull request, because
+    the reviewer was a command-line run whose findings have no thread to answer
+    in. Every actioned finding names the file it changed in that reply, so a
+    reader can check the claim against the diff rather than against this
+    paragraph.
 
 ## Surprises & discoveries
 
@@ -5762,7 +5825,7 @@ they vary is whether that record is still reachable.
 
 ### Quality method
 
-Run the four code gates sequentially before every code commit and the two
+Run the four code gates sequentially before every code commit and the
 Markdown gates before every documentation commit, capturing each with `tee` to
 `/tmp`. Delegate full gate runs to the `scrutineer` sub-agent rather than
 running them inline, and read the cited log on failure instead of re-running
@@ -5773,7 +5836,10 @@ the gate.
 Every step is safely repeatable. `make build` is idempotent. Test runs create
 only temporary repositories under pytest's `tmp_path`.
 
-The command writes only refs under `refs/wheresat/`. Two of those are
+Without `--record` the command writes only refs under `refs/wheresat/`;
+`--record` additionally refreshes the shared stack record, which is the
+branch's `branch.<name>.stack*` configuration keys and its
+`refs/stack-bases/<branch>` anchor. Two of the refs it writes are
 deliberate and durable: `refs/wheresat/parent-head/<owner>/<repo>/<number>`
 caches an immutable fetched pull request head, so a second run on the same pull
 request performs no fetch at all; and `refs/wheresat/boundary/<branch>` is
@@ -5800,8 +5866,9 @@ git update-ref -d "refs/stack-bases/$BRANCH"
 git config --local --remove-section "branch.$BRANCH" 2>/dev/null || true
 ```
 
-Prefer unsetting the three individual keys if the branch section holds other
-settings.
+Prefer unsetting the four individual keys — `stackParent`, `stackBase`,
+`stackBaseRecordedFrom` and `stackBaseEvidence` — if the branch section holds
+other settings.
 
 Nothing in this plan rewrites history, force-pushes, or deletes a branch, so
 there is no destructive step requiring a backup. If a milestone must be
@@ -6241,16 +6308,30 @@ class GateOutcome(enum.StrEnum):
 
 @dataclasses.dataclass(frozen=True, slots=True)
 class GateResult:
-    """One named gate, its outcome, and why."""
+    """One named gate, its outcome, its applicability, and why.
+
+    ``applicable`` is false for a gate whose subject the run never set out to
+    use. Such a gate carries ``GateOutcome.INDETERMINATE`` because it answered
+    nothing, and the flag is what tells the report to render it as not
+    applicable rather than as a question that went unanswered. Applicability is
+    decided from the run's inputs, so a fault cannot shrink the gate set.
+    """
 
     name: str
     outcome: GateOutcome
     detail: str
+    applicable: bool = True
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
 class ParentPullRequest:
-    """The parent pull request's merge state and refs."""
+    """The parent pull request's merge state and refs.
+
+    ``head_fetched_from`` names the repository the head ref was actually
+    fetched from, which gate 1 compares against ``head_repository``: a head
+    fetched from anywhere else is not the commit the pull request reports,
+    however similar the two names are.
+    """
 
     identity: PullRequestIdentity
     merged: bool
@@ -6258,6 +6339,7 @@ class ParentPullRequest:
     head_sha: str
     head_ref: str
     head_repository: str
+    head_fetched_from: str | None
     base_ref: str
     base_repository: str
     landed: str | None
@@ -6266,13 +6348,21 @@ class ParentPullRequest:
 
 @dataclasses.dataclass(frozen=True, slots=True)
 class BoundaryRequest:
-    """Everything the user asked for, resolved to immutable object IDs."""
+    """Everything the user asked for, resolved to immutable object IDs.
+
+    ``heuristic_window`` is how many of the target's newest commits a
+    ``--deep`` run compares the child against. It is the run's own bound rather
+    than a rung's, because it is what the user asked for and what the scan's
+    cost is linear in, and it has no default: a construction site that forgot it
+    would be a run that silently scanned someone else's idea of a window.
+    """
 
     branch: str
     child_tip: str
     target: str
     parent: PullRequestIdentity | None
     deep: bool
+    heuristic_window: int
     offline: bool
 
 
@@ -6445,9 +6535,11 @@ def may_establish(support: typ.Sequence[Candidate]) -> bool:
 
 ### `git_donkey/wheresat_collect.py`
 
-The ordered evidence pipeline. Precedence is the order of a module-level tuple,
-so a unit test can assert it against the ADR rather than against the reading
-order of a long function.
+The evidence pipeline. The rungs are one module-level tuple, so a unit test can
+assert the set and the reading order against the procedure rather than against
+the reading order of a long function. Which rung's answer may establish a
+boundary is not decided by position in that tuple: that is the evidence tier's
+job, in `wheresat_policy` (ADR-005).
 
 ```python
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -6478,8 +6570,15 @@ class EvidenceSource(typ.Protocol):
         """Return candidates, or the reason none could be obtained."""
 
 
-SOURCES: typ.Final[tuple[EvidenceSource, ...]]
-"""Boundary-evidence sources in precedence order; asserted against ADR-005.
+SOURCES: typ.Final[tuple[tuple[EvidenceKind, EvidenceSource], ...]]
+"""The rungs this version reads, in the order the ladder asks them.
+
+The kind beside each rung is what its observation is labelled with, so the
+evidence tier a rung's answer is recorded under comes from one declaration
+rather than from each rung's memory of what it reads. The order is the reading
+order and never a ranking: which candidate establishes a boundary is decided by
+its evidence tier in `wheresat_policy`, so a rung's position here promotes
+nothing and two candidates left at one tier remain an ambiguity.
 
 Stack record, shared record, pull request head, merge base, fork point,
 tree identity, patch identity. A tombstone is not in this tuple: it supplies
@@ -6823,7 +6922,8 @@ rather than the range's size:
              "applicable": true}],
   "reasons": [],
   "warnings": [],
-  "rebaseCommand": "git rebase --onto 7c8d9e0f1a2b… 1a2b3c4d5e6f… feature/child",
+  "rebaseCommand":
+    "git rebase --onto 7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d 1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b feature/child",
   "backupRef": "refs/wheresat-backup/feature/child"
 }
 ```
@@ -6834,7 +6934,9 @@ conjunction that was actually evaluated (see the Surprises). `rebaseCommand` and
 `backupRef` are the replay plan the text report prints, in the same full
 object IDs and read from the same helpers, so a consumer that performs the
 backup and the replay itself is sent to the same ref and the same command a
-reader of the report is. A run that established no boundary proposes no replay:
+reader of the report is. The command is one line in the envelope; the sample
+above breaks it after the key, which JSON reads as the same string. A run that
+established no boundary proposes no replay:
 it reports `rebaseCommand` and `backupRef` as `null`, and both keys are
 declared in the empty payload too, so the key set is one shape whichever path
 the run took. `landed` stays `null` until an assessment carries the parent's
@@ -6855,14 +6957,23 @@ Orchestration, observability, and the exit-code contract.
 ```python
 def run_git_wheresat(
     options: WheresatOptions,
+    *,
+    repo: Repo | None = None,
     graph: WheresatGraph | None = None,
     github: WheresatGitHub | None = None,
 ) -> int:
     """Locate the replay boundary and report it.
 
-    Returns 0 when established, 1 when unresolved, 2 for a usage or
-    environment error, and 3 when the repository or the forge could not
-    answer.
+    Every dependency is keyword-only, so the call site says which one it is
+    substituting. ``repo`` and ``graph`` default to the current directory's
+    repository and a Git-backed graph over it. ``github`` defaulting to
+    ``None`` means nothing was injected, not that the run has no forge: it
+    opens the real one through `wheresat_github.open_github`, unless it was
+    told `--offline`.
+
+    Returns 0 when established, 1 when unresolved, 2 for a usage,
+    configuration, or write failure with no assessment behind it, and 3 when
+    the repository or the forge could not answer.
     """
 ```
 
