@@ -2056,6 +2056,102 @@ Stop and escalate rather than improvising when any of these is reached.
     replacement over `251a510` was stopped before it reached `make lint`, so
     the reply that answers the review round was written against a revision
     whose gates were still to come.
+  - Review round: `coderabbit review --agent --base origin/main` reports 18
+    findings over the tree at `453f052` (log
+    `/tmp/coderabbit-git-donkey-git-wheresat-sub-command-453.out`, the
+    agent-mode stream, whose 18 `finding` records are the same 18 kept as
+    `/tmp/coderabbit-findings-453.jsonl` for triage), taken on 2026-09-16. The
+    18 are 5 major, 8 minor, and 5 trivial, and they are 13 distinct requests:
+    five of them are raised twice, once in each of the two places the same
+    change is visible. All 13 are actioned and none is dismissed, so this is
+    the first review round on the branch with no finding left unchallenged.
+    Every request was verified against the shipped code before it was answered,
+    which matters more here than in the previous round: one major described a
+    defect in code rather than a stale declaration in the plan.
+  - The defect is the stack-member read.
+    `ApiWheresatGitHub._stack_members` returned each member that was a `dict`
+    and dropped the rest, where `stack_parent` finds a pull request's neighbour
+    by that tuple's positions: a member this version could not read did not
+    shorten the answer, it moved every pull request above the gap, so the run
+    named a different pull request — or the child itself — as its parent and
+    reported nothing. The members are read through the module's `mapping`
+    helper now, which refuses with `WheresatGitHubError`, and
+    `test_a_stack_member_this_version_cannot_read_refuses` drives the child at
+    position three of four with the unreadable member first. The decisive case
+    was measured against the unfixed adapter before the fix was written,
+    because the first version of the test put the child at the end of the
+    stack, where the old code refused for an unrelated reason — a position past
+    the end of a shortened list — and the test would have passed without
+    proving anything. The old form returns `{'number': 80}` for the decisive
+    case, which is the child named as its own parent with nothing raised.
+  - Three majors were the Interfaces section describing a port the milestone
+    had outgrown, and each was read from the shipped module rather than from
+    the finding text — the same shape as the four declaration majors of the
+    previous round. The `WheresatGraph` sketch stopped at `resolve` and
+    `is_ancestor` and now declares five more of the port's questions:
+    `history`, `worktree_state`, `ref_name`, `symbolic_ref`, and
+    `remote_tracking_ref`. The three ref questions are load-bearing rather than
+    optional, because the section itself claims the port's method set is
+    unchanged; the paragraph added beside them says what they answer, which is
+    where a revision's name came from rather than what it is.
+    `WheresatVerdictLabel` named three words where the envelope carries four,
+    and the type and the wire value are bound together now by rendering the
+    fourth through a constant typed as the label. The record recipe wrote three
+    of the four values the reader requires, leaving
+    `branch.$BRANCH.stackBase` out — the same omission the previous round found
+    in the _removal_ recipe, which is evidence that the two recipes were
+    written from one incomplete list rather than from two independent slips.
+  - The credential contract took a second pass rather than a new decision. The
+    previous round corrected the invariant, `EXIT_CODES`'s docstring and Table
+    1; this round found the same mistake in the GitHub port's paragraph and in
+    the exit-code entry, where a credential the run could not obtain was still
+    associated with status `2`. Both sites now state what the code does: the
+    port raises `WheresatCredentialError`, the ladder reports a
+    `credential_unavailable` fault, the run reaches no verdict about the
+    boundary, and the command exits `3`. The rule the two rounds converge on is
+    worth writing once: `2` is a failure decided at the command-line boundary
+    with no assessment behind it, and a question the procedure asked and could
+    not answer is `3` however it arose.
+  - Gate 6's definition carried two overlapping outcomes, a "`FAILED`
+    otherwise" fallback closing a definition that had already reserved
+    `INDETERMINATE` for an unrecoverable `PARENT_HEAD`. The outcomes are
+    mutually exclusive now, and the wording matches the shipped gate: `FAILED`
+    only on an answered, non-ancestor question, never on evidence the run does
+    not have, which is the property the plan's own rewritten-parent scenario
+    turns on.
+  - The gates found one defect, and it is the interesting one because the
+    milestone had no room for it: `make lint` was red on the first run over
+    this round's edits with `git_donkey/wheresat_graph.py:1:0: C0302: Too many
+    lines in module (802/800)`. The memo field and the docstring around it took
+    the module from 778 lines to 802, and `max-module-lines = 800` leaves no
+    margin for prose. The docstring was tightened to the three things a reader
+    of that method needs — why the answer is remembered, what is returned, and
+    what is refused — and the module is 799 lines. The lesson generalizes:
+    modules in this package sit at the cap by design, so a change that adds a
+    field and a method's prose has to pay for itself in the same file. Two more
+    defects were caught by the round's own checks before the gate run: a
+    targeted `uv run ruff check` found the missing numpydoc `Returns` and
+    `Raises` sections in `_is_shallow` and in
+    `tests/unit/wheresat_parents_helpers.py`'s `associated_pull_requests`, and
+    `make check-fmt` reflowed the plan after an edit through `mdtablefix
+    --in-place --wrap --renumber --breaks --ellipsis --fences`.
+  - The nine checks are green over `72217a8`, the commit the round's fixes are
+    pushed as: `test` reports 956 passed with 22 snapshots (one test more than
+    the previous round's 955, which is the stack-member regression), `lint`
+    completes all seven stages with both pylint configs at 10.00/10,
+    `typecheck` is clean under `ty` 0.0.79, `check-fmt` reports 174 files
+    formatted and 29 unchanged, `markdownlint` lints 30 files with 0 errors,
+    `nixie` validates every diagram, `spelling` passes, and
+    `cs delta origin/main` reports no issues. `build` and the first
+    `check-fmt` ran before the trim described above; `check-fmt` was re-run
+    over the trimmed tree with the same counts, and `build` reads the packaging
+    metadata, which the trim does not touch. The first pass also had to be
+    stopped after the lint failure, so its later gates were unmeasured over
+    that revision and are covered by the run over this one.
+  - The disposition is posted on the pull request (round 5,
+    `#issuecomment-5689082804`), each finding naming the file it changed, so a
+    reader can check the claim against the diff rather than against this
+    paragraph.
 
 ## Surprises & discoveries
 
