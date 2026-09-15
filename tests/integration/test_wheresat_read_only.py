@@ -565,7 +565,8 @@ def test_a_refused_run_names_its_gate_and_prints_no_replay_command(
     the two to replay. Nothing may be printed for a replay either — a refusal
     that printed a command would be read as an answer by anyone who ran it.
     """
-    run = run_wheresat_in(scenario, _VECTORS["refusal"].options, capsys)
+    vector = _VECTORS["refusal"]
+    run = run_wheresat_in(scenario, vector.options, capsys, where=vector.where)
     gate = wheresat_records.GateName.REPLAY_RANGE_NON_EMPTY.value
 
     assert any(
