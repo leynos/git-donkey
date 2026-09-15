@@ -1944,6 +1944,20 @@ Stop and escalate rather than improvising when any of these is reached.
     list marker can be mistaken for. Every document the baseline formats is
     exposed to the same two rules, and the repairs here are limited to the
     files this plan owns.
+  - The merged tree is gated and the reconciliation is done. Evidence: over
+    `124024d`, a descendant of the merge, all eight Makefile targets pass —
+    `make test` reports 934 passed with 22 snapshots, `make lint`'s seven
+    stages are clean, both pylint passes at 10.00, and `cs delta origin/main`
+    reports "No issues found!" — with each log under
+    `/tmp/<gate>-git-donkey-git-wheresat-sub-command.out`. Every discovery in
+    the Surprises section was then read against the four design documents, and
+    the four statements it falsifies are corrected in the documents themselves:
+    the trunk criterion in ADR-004, the contract, and the users' guide, and
+    gate 6, gate 7's third check, and the degraded-mode table's `--record`
+    remedy in the boundary-recovery design. The `Conformance basis` trace links
+    were re-checked row by row in the same pass: fourteen of fifteen resolve as
+    written, and `REQ-record-refresh` now names the refresh test that exists.
+    The review round is what remains open.
 
 ## Surprises & discoveries
 
@@ -4197,12 +4211,66 @@ Stop and escalate rather than improvising when any of these is reached.
 
 ## Outcomes & retrospective
 
-To be completed at each milestone boundary and at completion. Before setting
-the status to `COMPLETE`, reconcile every implementation discovery against
-`docs/squash-restack-boundary-recovery.md` and `docs/stack-records.md`, and the
-two architectural decision records: a discovery that falsifies a stated
-assumption requires updating that document and re-checking every trace link in
-`Conformance basis`, not a quiet amendment here.
+`git wheresat` ships as the boundary-finding half of the family, and the shared
+stack record ships with it: `git donkey` writes it at branch birth, `git plonk`
+ends its life through a tombstone, and `git wheresat` reads it as its strongest
+evidence and, under `--record`, restates it. The milestone list above is the
+record of how. This section is what a later reader cannot recover from the code.
+
+### What the documents had to be told
+
+Every discovery in `## Surprises & discoveries` was read against
+`docs/squash-restack-boundary-recovery.md`, `docs/stack-records.md`,
+`docs/adr-004-shared-stack-records.md`, and
+`docs/adr-005-squash-restack-evidence-precedence.md`. Four statements the
+implementation falsified are corrected in the documents themselves — the
+contract, the decision record, the design, and the users' guide — rather than
+amended here:
+
+- The trunk criterion has two halves. The documents said a branch is unstacked
+  when its base is "not the trunk"; the predicate compares the base ref _and_
+  the commit it resolved to, so a branch cut from a feature branch that still
+  points at the trunk tip is not stacked either.
+- Gate 6 confirms a candidate rather than refuting one. A best common ancestor
+  is an ancestor of both commits it was computed from, so a merge-base
+  candidate passes `parent-history-intact` however the parent was rewritten: a
+  default run refuses through `boundary-is-ancestor-of-child` and
+  `replay-range-excludes-landed-work`, and the historical tip that gate 6 does
+  refuse is proposed only by a `--deep` run.
+- Gate 7 decides over three checks, and the design described two. The
+  content-twin check is the one that answers a rewrite, where the parent's old
+  commits are reached by nothing and only the content they carried survives.
+- The degraded-mode table offered `--record` as the remedy for a
+  hand-confirmed boundary. `--record` refreshes a record and never creates one,
+  and an `Unresolved` run writes nothing even when a record exists, so the
+  remedy names the rebase instead.
+
+The trace links under `## Conformance basis` were re-checked row by row against
+the tree at the same time: fourteen of fifteen resolve as written, and
+`REQ-record-refresh` now names the refresh test that exists.
+
+### What the shape of the work turned out to be
+
+Three things the design did not predict, and that a plan of this shape should:
+
+- The evidence-tier rule survived contact, and it is the part worth keeping.
+  That `Established` cannot hold an inferred candidate is enforced by the
+  result type rather than by a threshold, so the shapes that looked like
+  counterexamples were refused by construction: the two-inferred ambiguity
+  needed a child that edits the incoming content, restores it, and commits once
+  more before any fixture could reach it.
+- Two invariants that read as prose became warnings the command prints. INV-7
+  is create-only for the anchor and refresh-only for the record, and reading it
+  as an implementation requirement is what produced "nothing was recorded" for
+  a run that derived its boundary and a usage error for a branch with no record
+  to refresh. The plan's own scenario sketch had asked for the create that must
+  not happen: a sketch in a plan is a prediction like any other.
+- The most expensive surprise was in the tools rather than the code. The
+  estate's Markdown baseline changed under this branch, and the formatter it
+  now uses, `mdtablefix` 0.6.0, corrupts inline code spans that its own wrapper
+  split across lines and renumbers a line-initial number as a list marker. Both
+  are recorded under `## Surprises & discoveries` with the repairs, and both
+  are worth reporting to whoever owns that tool.
 
 Follow-up work this plan deliberately leaves undone, in priority order:
 
@@ -4447,7 +4515,7 @@ REQ-record-birth   -> DES-lifecycle     -> EP-M3  -> git_donkey_stack.feature::"
 REQ-record-trunk   -> DES-lifecycle     -> EP-M3  -> git_donkey_stack.feature::"A trunk branch records nothing"
 REQ-record-death   -> DES-lifecycle     -> EP-M4  -> git_plonk_stack.feature::"Deleting a branch leaves a tombstone"
 REQ-record-sweep   -> DES-namespace     -> EP-M4  -> git_plonk_stack.feature::"An orphaned record is swept"
-REQ-record-refresh -> DES-lifecycle     -> EP-M9  -> test_wheresat_record.py::test_expected_old
+REQ-record-refresh -> DES-lifecycle     -> EP-M9  -> test_wheresat_record.py::test_a_matching_expectation_refreshes_the_record_in_place
 REQ-identities     -> DES-evidence-model-> EP-M6  -> test_wheresat_policy.py::test_assess_reports_the_boundary_the_evidence_names
 REQ-record-read    -> DES-stack-record  -> EP-M6  -> test_wheresat_policy.py::test_a_record_outranks_computed_evidence_naming_another_commit
 REQ-integration    -> DES-gates         -> EP-M6  -> test_wheresat_gates.py::test_one_gate_failing_alone_refuses_the_boundary
@@ -4478,8 +4546,13 @@ rather than a plan for one. The `REQ-*` identifiers are local to this plan — n
 other document in the repository defines or uses them — so a row reads left to
 right as the requirement, the design section that explains it, the milestone
 that lands it, and a test that would fail if it regressed. The last three rows
-name artefacts that EP-M9 and EP-M10 still owe; they become checkable as those
-milestones land.
+named artefacts EP-M9 and EP-M10 then owed. They are checkable now, and all
+fifteen rows have been checked against the tree rather than read: fourteen
+resolve as written, including both EP-M10 rows, and one needed repointing —
+`REQ-record-refresh`, the EP-M9 row, cited a `test_expected_old` the refresh
+suite never defined, and names the matching-expectation test that pins the
+refresh instead. The reconciliation recorded under Outcomes is what forced that
+pass.
 
 ## Verification plan
 
