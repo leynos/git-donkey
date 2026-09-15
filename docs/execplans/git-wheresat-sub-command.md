@@ -55,7 +55,9 @@ The behaviour is observable end to end: on a repository constructed to
 reproduce the squash scenario, `git wheresat` exits `0` and prints the boundary
 a human would have derived by hand; on a repository where the parent branch was
 rewritten before merging, it exits `1`, names the `parent-history-intact` gate
-as the reason, and refuses to answer.
+as the reason, and refuses to answer — which it can do only when something
+proposes the commit that gate refuses, and with no record and no surviving ref
+that something is the `--deep` comparison.
 
 ### One shared stack record across three commands
 
@@ -1427,6 +1429,51 @@ Stop and escalate rather than improvising when any of these is reached.
     the module's imports for `identity_text`, which is the one function that
     decides how a pull request is written for an operator; the label is
     therefore the same string the parent-consulting report prints.
+  - Slice (g)'s behavioural half is landed: the seven scenarios live in
+    `tests/integration/features/git_wheresat.feature`, bound by
+    `tests/integration/test_git_wheresat_bdd.py` over the journeys
+    `tests/integration/wheresat_scenarios.py` builds. Each `Then` is read from
+    Git, from the report's tokenized tables, or from the observations the run
+    recorded, rather than from the run's account of itself, so the feature file
+    measures the command instead of restating it. The journeys are built per
+    example rather than shared, because several of them end in a fetch that
+    writes a cache ref.
+  - The Gherkin was amended three times once the shapes were measured, and none
+    of the three could have been foreseen from the sketch: scenario 3 runs with
+    `--deep` (only the content comparison proposes the commit whose refusal is
+    the scenario's `Then`), scenario 4 is the rewritten shape with a child that
+    restores the incoming content (two inferred candidates have to clear every
+    applicable gate), and four scenarios name the parent pull request in their
+    `When` (the head, and the evidence refs a fetch writes, are what they
+    assert). The measurements, the reasons, and the alternatives that were
+    rejected are in the Surprises and the Decision log; every other `Given`,
+    `Then`, and exit status is as planned.
+  - `tests/integration/wheresat_scenarios.py` is a third helper module beside
+    `wheresat_helpers.py`, because the feature file needs a shape that lives
+    above a checkout: a scenario, the commits the journey is about, the forge
+    that answers for it, and the working tree a run is made from. It joins
+    `wheresat_helpers.py` in being a module pytest does not collect, so its own
+    checks raise `AssertionError` directly.
+  - The INV-1 matrix gained the assertions EP-M10 owed it, and they are what
+    separates "the flag left the repository alone" from "the flag controlled
+    anything". A `--deep` run is asserted to collect evidence at the inferred
+    tier where the default run collects none, read from the observations each
+    run records; and a named parent is measured over a journey whose forge
+    answers, once with a fetch — `parent_identification found`,
+    `evidence_fetch success`, the head cached under the evidence namespace, the
+    run established, and the fingerprint's only difference that ref — and once
+    with `--no-fetch` against a cold cache, where the run records
+    `evidence_fetch not_requested`, exits `3`, prints the reason naming the
+    flag, and writes no ref at all. The two tests share a fixture definition
+    but not a journey, which is what the Surprises entry above is about.
+  - The suite's seams were pulled up with them rather than duplicated:
+    `wheresat_helpers.working_tree` resolves which of a scenario's two working
+    trees a run is made from, `run_wheresat_at` runs from one of them (draining
+    the capture first, so the `git donkey` that built the fixture is not read
+    as the run's output), and `Journey.run` is what a test over a journey
+    calls. `run_wheresat_in` had reached five parameters, so it now delegates
+    to the pair rather than carrying its own copy of the rule, and no test
+    builds its own answer to "which working tree".
 
 ## Surprises & discoveries
 
@@ -2207,6 +2254,86 @@ Stop and escalate rather than improvising when any of these is reached.
   run, and the refusal cannot be recorded by an ordinary pass because it costs
   an endpoint's whole minute allowance — and the developers' guide records all
   three.
+
+- Observation: the derived tier establishes a boundary of its own, so the
+  refusal scenario 4 asks for is not reachable in the shape the scenario's name
+  suggests, and the gate scenario 3 names as its reason is only named by a
+  `--deep` run.
+  Evidence: seven journeys were measured against real checkouts before the
+  feature file was written (`/tmp/probe-out3.txt`, `/tmp/probe-s4b.txt`,
+  `/tmp/probe-s4c.txt`). A run given neither a record nor a parent — the shape
+  scenario 4's Givens describe — proposes the fork point and the merge base of
+  the target and the child, two derived kinds naming one commit, which
+  `may_establish` accepts: it exits `0` on a boundary at the merge base and
+  never reaches the refusal at all. The same run with a parent in hand is
+  refused on the _live_ candidates only: the rewritten head is not an ancestor
+  of the child (gate 4) and the derived merge base still holds a commit the
+  parent head reaches (gate 7's suffix clause), so `parent-history-intact` —
+  the gate scenario 3's `Then` names — is not among the reasons, because the
+  commit that gate refuses, the historical tip, is not proposed by any rung
+  the default run reads. With `--deep` the tree pass proposes it by content,
+  gate 6 refuses it (`… is not an ancestor of …`), and the report shows it.
+  The two-inferred distinction itself needs a narrower shape than "two commits
+  match the landing": every inferred candidate has to clear _every_ applicable
+  gate, so a candidate that _is_ the child's tip fails gate 5 on an empty
+  replay range and drops out of `_twinned_commits`, and the parent's gates have
+  to be out of scope (no `--parent`) or the historical tip is refused by gate 6
+  before the distinction is reached. The fixture that reaches it is the
+  rewritten parent, no record, no `--parent`, `--deep`, with a child that
+  edits the incoming content, restores it, and commits once more: the inherited
+  head and the restoring commit both sit at the landed tree, both clear gates 4
+  and 5, and the run reports `2 commits cleared every applicable gate (…, …)
+  and are named by content comparison alone, which cannot establish a boundary
+  or choose between them` and exits `1`.
+  Impact: scenario 3's `When` gains `--deep` and scenario 4's fixture is the
+  shape above, with its own `Given` naming the rewrite that leaves content
+  comparison as the only evidence. Both amendments are recorded in the Decision
+  log below, and the refusals each scenario asserts are the exact strings the
+  measurement printed.
+
+- Observation: a real journey reaches gate 7's content clause with a commit
+  that applies nothing, and the clause refused the boundary it was asked about
+  before `wheresat_facts` was refined.
+  Evidence: a child cut from the parent's head sits at the landed content by
+  construction, so any commit above the boundary that carries no change of its
+  own — an empty commit, or the child's own bookkeeping — has the landed tree
+  and names the boundary as work the target has taken. The refusal then printed
+  a boundary no rebase followed, and the run's own report contradicted itself:
+  `replay-range-excludes-landed-work` failed while the range held nothing the
+  target had taken. `_twins` now counts only commits that both sit at the tree
+  and apply a change (`_applies_a_change`, whose answer is cached per commit),
+  and treats an unreadable parent revision as a fault rather than as
+  "changes nothing".
+  `tests/unit/test_wheresat_facts.py` builds the squash shape in a real
+  repository and pins both halves: a range of nothing but no-ops names no twin,
+  and a range that edits the file and puts it back names the restoring commit
+  and not the no-op above it.
+  Impact: measured before the refinement as a refusal of a correct boundary;
+  after it, scenario 2's journey exits `0` where it exited `3` (the empty
+  range's patch identifier is `None`, which is INDETERMINATE by decision, not
+  by accident).
+
+- Observation: `--no-fetch` measures the flag only while the durable cache is
+  cold, because the fetch ladder reads the cache before it reads the option. On
+  a warm cache the run that may not fetch establishes the same boundary the run
+  that may fetch does, and a test that ran them in that order would pass while
+  measuring nothing about the flag.
+  Evidence: measured on the squash-merged journey, one flag apart
+  (`/tmp/probe-fetch-inv1.py`). The run that may fetch records
+  `parent_identification found` and `evidence_fetch success`, writes the head
+  as `refs/wheresat/parent-head/octocat/hello-world/42`, exits `0`, and
+  establishes; its pair on the same journey with `--no-fetch` records
+  `evidence_fetch success` as well — the head is already cached — and also
+  exits `0`. The same flag against a cold cache records
+  `evidence_fetch not_requested`, exits `3`, establishes nothing, and prints
+  the reason verbatim: "the parent's head was not fetched: --no-fetch was given
+  and the durable cache holds no head for it; the cache is filled by a run that
+  may fetch, so run once without --no-fetch to fill it".
+  Impact: the read-only suite's two fetch tests each build their own journey,
+  so the cold order is a property of the fixture rather than of the order the
+  tests happen to run in. The trap is worth stating because the cache is the
+  point: the flag that stops a network call still answers from durable
+  evidence, and only a cold cache separates the two.
 
 ## Decision log
 
@@ -3424,6 +3551,49 @@ Stop and escalate rather than improvising when any of these is reached.
   operator which of the two they are looking at. The refusals that _are_
   transport failures — opening the forge, reading a page, reading a payload,
   reading a stack — keep ``github_api_error``.
+  Date/Author: 2026-09-15, implementation agent, EP-M10.
+- Decision: scenario 3 of the behavioural feature runs with `--deep`, and
+  scenario 4 is built on the rewritten-parent shape with a child that restores
+  the incoming content, run with `--deep` and no `--parent`.
+  Rationale: the two scenarios assert behaviours only those shapes reach, and
+  both were measured before being written down. Scenario 3's `Then` names
+  `parent-history-intact`, and the gate can only be reached by a commit that
+  some rung proposes: with no record and no surviving ref, the historical tip
+  is proposed by the deep tree pass alone, so the default run refuses on other
+  grounds (measured: gates 4 and 7 against the rewritten head and the derived
+  merge base). Scenario 4 needs every inferred candidate to clear every
+  applicable gate before `_twinned_commits` will state the distinction, which
+  means the parent's gates must be out of scope and no candidate may be the
+  child's tip: restoring the incoming content puts a _second_ commit at the
+  landed tree with a commit above it, so both inferred candidates stand.
+  The alternative — leaving the plan as written and testing something else —
+  would have made the feature file a description of a repository that cannot
+  exist.
+  Date/Author: 2026-09-15, implementation agent, EP-M10.
+- Decision: two amendments to the behavioural specification's text, taken from
+  the measurements above and applied to the feature file it introduced.
+  Rationale: scenario 3's `When` gains "with deep scanning enabled" (the
+  historical tip is proposed by the content comparison alone, and gate 6's
+  refusal of it is what the `Then` asserts), and scenario 4 gains a `Given`
+  naming the rewrite, because "only content-comparison evidence remains" is
+  true of a repository where the parent branch was rebased and of no other:
+  without the rewrite the derived tier names the boundary itself and
+  establishes it. Every other scenario, `Given`, `Then`, and exit status in the
+  specification is as planned and as measured.
+  Date/Author: 2026-09-15, implementation agent, EP-M10.
+- Decision: four scenarios name the parent pull request in their `When` —
+  "Established by pull request head", "Refusal after a rewritten parent", "The
+  parent pull request was opened from a fork", and "The run leaves the
+  repository unchanged" — where the sketch ran the bare command.
+  Rationale: each of the four turns on a head the run can only know by being
+  told which pull request to ask about. Two assert what the head establishes —
+  the ancestry that names the boundary, and the `parent-history-intact` gate
+  that refuses the historical tip once `--deep` proposes it — the fork scenario
+  asserts where the head was fetched from, and the last one measures the
+  evidence a fetch writes: with no `--parent` the run writes no ref at all, so
+  "the only new refs are under the evidence namespace" would hold over an empty
+  set and measure nothing. Naming the pull request is also what a user of the
+  GitHub rung actually types, which is what a user journey is for.
   Date/Author: 2026-09-15, implementation agent, EP-M10.
 
 ## Outcomes & retrospective
@@ -4882,7 +5052,7 @@ Feature: Locate the replay boundary for a squash-merged parent
   Scenario: Established by pull request head
     Given no stack record
     And the parent pull request head is an ancestor of the child branch
-    When I run git wheresat
+    When I run git wheresat, naming the parent pull request
     Then the report names the pull request head as the exclusive replay boundary
     And the report cites pull request head ancestry as the establishing evidence
     And the command exits with status 0
@@ -4891,13 +5061,15 @@ Feature: Locate the replay boundary for a squash-merged parent
     Given no stack record
     And the parent branch was rebased before it was merged
     And no surviving ref or reflog records the historical parent tip
-    When I run git wheresat
+    When I run git wheresat, naming the parent pull request, with deep scanning enabled
     Then the report names the parent-history-intact gate as the reason
     And the report proposes no rebase command
     And the command exits with status 1
 
   Scenario: Two inferred candidates remain unresolved
-    Given only content-comparison evidence remains
+    Given no stack record
+    And the parent branch was rebased before it was merged
+    And only content-comparison evidence remains
     And two distinct commits match the squashed parent change
     When I run git wheresat with deep scanning enabled
     Then the report lists both candidates with their evidence tier
@@ -4907,7 +5079,7 @@ Feature: Locate the replay boundary for a squash-merged parent
 
   Scenario: The parent pull request was opened from a fork
     Given the parent pull request was opened from a fork of the child repository
-    When I run git wheresat
+    When I run git wheresat, naming the parent pull request
     Then the pull request head is fetched from the fork rather than from origin
     And the report names the pull request head as the exclusive replay boundary
     And the command exits with status 0
@@ -4921,7 +5093,7 @@ Feature: Locate the replay boundary for a squash-merged parent
 
   Scenario: The run leaves the repository unchanged
     Given a stack record naming the inherited boundary
-    When I run git wheresat
+    When I run git wheresat, naming the parent pull request
     Then no branch, tag, remote-tracking ref, index entry, or tracked file changes
     And the only new refs are under the evidence namespace
 ```
@@ -6218,7 +6390,35 @@ automatically.
   so a test can name a commit it has just made rather than re-reading `HEAD`,
   and gains `squash_merged_stack()`, `advanced_parent_stack()`,
   `rewritten_parent_stack()`, and the `is_ancestor()` and `merge_bases()`
-  ancestry readers in EP-M5.
+  ancestry readers in EP-M5. It also promotes `_commit_file` to `commit_file`
+  in EP-M10, because the journeys and the content-clause tests both commit a
+  file by path and neither should carry its own copy of that.
+- `tests/unit/test_wheresat_facts.py` builds the squash shape in real
+  repositories and pins what gate 7's content clause counts: a range of
+  nothing but no-ops names no twin, and a range that edits a file and puts it
+  back names the restoring commit rather than the no-op above it.
+- `tests/integration/wheresat_scenarios.py` is the third helper module beside
+  `wheresat_helpers.py`: the journeys the feature file is written against
+  (`squashed`, `rewritten`, `restored`, `forked`, `grafted`), the
+  `ScriptedForge` that answers for one pull request, and `Journey` itself —
+  the checkout, the commits the journey is about, the forge, and the working
+  tree a run is made from. Like `wheresat_helpers.py` it defines no `test_`
+  functions, so its own checks raise `AssertionError` directly rather than
+  using `assert`, which the lint configuration permits only where pytest
+  collects.
+- `tests/integration/wheresat_helpers.py` resolves which of a scenario's two
+  working trees a run is made from in one place (`working_tree`), and runs
+  from one in another (`run_wheresat_at`, which drains the capture first so
+  the `git donkey` that built the fixture is not read as the run's output).
+  The binder and the read-only matrix share that one rule rather than each
+  carrying its own, and `Journey.run` is what a test over a journey calls.
+- `tests/integration/test_wheresat_bdd.py` binds the seven scenarios, and
+  `tests/integration/test_wheresat_read_only.py` asserts the paths `--deep`
+  and `--parent` control rather than only the promise they keep: a `--deep`
+  run collects evidence at the inferred tier where the default run collects
+  none, and a named parent is fetched and cached as evidence when a forge
+  answers, and reported `not_requested` when `--no-fetch` is given against a
+  cache that holds no head.
 - New cassettes use `allow_playback_repeats=True` where one cassette serves
   several parameterized cases.
 - New syrupy snapshots use a `syrupy.matchers.path_type` matcher redacting
