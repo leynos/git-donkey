@@ -280,7 +280,8 @@ def spoiled(gate: GateName, outcome: GateOutcome) -> Case:
         return _SPOILERS[gate](failed=True)
     if outcome is GateOutcome.INDETERMINATE:
         return _SPOILERS[gate](failed=False)
-    raise AssertionError(f"a gate is spoiled as failed or unanswered, not {outcome}")
+    msg = f"a gate is spoiled as failed or unanswered, not {outcome}"
+    raise AssertionError(msg)
 
 
 def parented_without_head() -> Case:
