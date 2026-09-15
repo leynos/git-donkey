@@ -44,7 +44,7 @@ from tests.unit.wheresat_helpers import (
     OLD_BASE,
     OTHER_BASE,
     RECORD_SOURCE,
-    _Case,
+    Case,
     assessment_of,
     attested,
     derived,
@@ -62,7 +62,7 @@ if typ.TYPE_CHECKING:
     from syrupy.assertion import SnapshotAssertion
 
 
-type _Builder = typ.Callable[[], _Case]
+type _Builder = typ.Callable[[], Case]
 """A named case, built on demand so each example gets its own."""
 
 _OBSTACLES: typ.Final = 2

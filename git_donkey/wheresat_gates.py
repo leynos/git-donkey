@@ -160,7 +160,7 @@ def _ancestry(facts: GraphFacts, left: str, right: str) -> Ancestry:
     return facts.ancestry.get((left, right), Ancestry.UNKNOWN)
 
 
-def _range(facts: GraphFacts, base: str, tip: str) -> CommitRange | None:
+def listed_range(facts: GraphFacts, base: str, tip: str) -> CommitRange | None:
     """Return the listed contents of ``base..tip``, if the run listed them."""
     return facts.range_contents.get(range_key(base, tip))
 
@@ -194,7 +194,7 @@ def _patch_identifier(value: str | None) -> str | None:
     return text or None
 
 
-def _short(commit: str) -> str:
+def short_commit(commit: str) -> str:
     """Return the abbreviated commit a gate's detail or a reason names.
 
     The abbreviation is the same one the report prints, so a reader can match a
@@ -211,7 +211,7 @@ def _short(commit: str) -> str:
 
 def _ancestry_detail(observed: Ancestry, *, left: str, right: str) -> str:
     """Return how one ancestry answer reads in a gate's detail line."""
-    near, far = _short(left), _short(right)
+    near, far = short_commit(left), short_commit(right)
     if observed is Ancestry.UNKNOWN:
         return f"Git could not answer whether {near} is an ancestor of {far}"
     return f"{near} {_POLARITY_WORDS[observed]} an ancestor of {far}"
@@ -229,7 +229,7 @@ def _ancestor_gate(
     )
 
 
-def _not_applicable(name: GateName, why: str) -> GateResult:
+def not_applicable(name: GateName, why: str) -> GateResult:
     """Return the result for a gate whose subject the run never set out to use."""
     return GateResult(name, GateOutcome.INDETERMINATE, why, applicable=False)
 
@@ -244,7 +244,7 @@ def _parent_identity_gate(inputs: _GateInputs) -> GateResult:
     name = GateName.PARENT_IDENTITY_MATCHES
     parent = inputs.parent
     if not inputs.parent_gates:
-        return _not_applicable(name, _NO_PARENT)
+        return not_applicable(name, _NO_PARENT)
     if parent is None:
         return GateResult(name, GateOutcome.INDETERMINATE, _UNRESOLVED_PARENT)
     requested = inputs.request.parent
@@ -275,7 +275,7 @@ def _parent_merged_gate(inputs: _GateInputs) -> GateResult:
     """Gate 2: the parent pull request reports itself merged."""
     name = GateName.PARENT_MERGED
     if not inputs.parent_gates:
-        return _not_applicable(name, _NO_PARENT)
+        return not_applicable(name, _NO_PARENT)
     parent = inputs.parent
     if parent is None:
         return GateResult(name, GateOutcome.INDETERMINATE, _UNRESOLVED_PARENT)
@@ -301,7 +301,7 @@ def _landed_reachable_gate(inputs: _GateInputs) -> GateResult:
     name = GateName.LANDED_REACHABLE_FROM_TARGET
     landed = inputs.facts.landed
     if not inputs.parent_gates:
-        return _not_applicable(name, _NO_PARENT)
+        return not_applicable(name, _NO_PARENT)
     if landed is None:
         return GateResult(
             name,
@@ -331,7 +331,7 @@ def _replay_range_gate(inputs: _GateInputs) -> GateResult:
     name = GateName.REPLAY_RANGE_NON_EMPTY
     commit = inputs.candidate.commit
     child_tip = inputs.request.child_tip
-    contents = _range(inputs.facts, commit, child_tip)
+    contents = listed_range(inputs.facts, commit, child_tip)
     if contents is None:
         return GateResult(
             name,
@@ -358,7 +358,7 @@ def _parent_history_gate(inputs: _GateInputs) -> GateResult:
     name = GateName.PARENT_HISTORY_INTACT
     parent_head = inputs.facts.parent_head
     if not (inputs.parent_gates or parent_head is not None):
-        return _not_applicable(name, _NO_PARENT_HEAD)
+        return not_applicable(name, _NO_PARENT_HEAD)
     if parent_head is None:
         return GateResult(
             name,
@@ -451,14 +451,14 @@ def _replay_range_excludes_landed_gate(inputs: _GateInputs) -> GateResult:
     """Gate 7: the replay range holds no work the parent already landed."""
     name = GateName.REPLAY_RANGE_EXCLUDES_LANDED_WORK
     if not _landed_work_is_in_scope(inputs):
-        return _not_applicable(name, _NO_LANDED_WORK)
+        return not_applicable(name, _NO_LANDED_WORK)
     facts = inputs.facts
     missing = _missing_parent_answer(facts)
     if missing is not None:
         return GateResult(name, GateOutcome.INDETERMINATE, missing)
     commit = inputs.candidate.commit
     child_tip = inputs.request.child_tip
-    contents = _range(facts, commit, child_tip)
+    contents = listed_range(facts, commit, child_tip)
     without_parent = _range_excluding_parent(facts, commit, child_tip)
     if contents is None or without_parent is None:
         return GateResult(
@@ -490,7 +490,7 @@ def _record_superseded_gate(inputs: _GateInputs) -> GateResult:
     """
     name = GateName.RECORD_NOT_SUPERSEDED
     if not is_record_kind(inputs.candidate.kind):
-        return _not_applicable(name, "the candidate is not a stack record")
+        return not_applicable(name, "the candidate is not a stack record")
     recorded_from = inputs.facts.record_recorded_from
     if recorded_from is None:
         return GateResult(
@@ -522,7 +522,7 @@ def _recorded_from_clause(
     if observed is Ancestry.ANCESTOR:
         return _Clause(
             GateOutcome.PASSED,
-            f"the record was written from {_short(recorded_from)}, which the "
+            f"the record was written from {short_commit(recorded_from)}, which the "
             "child has since built on",
         )
     return _Clause(
@@ -562,12 +562,12 @@ def _landed_since_record_clause(
     if observed is Ancestry.ANCESTOR:
         return _Clause(
             GateOutcome.PASSED,
-            f"the parent's integration {_short(landed)} still holds the recorded "
+            f"the parent's integration {short_commit(landed)} still holds the recorded "
             "boundary",
         )
     return _Clause(
         ancestry_outcome(observed, expect=Ancestry.ANCESTOR),
-        f"the parent's integration {_short(landed)} does not hold the recorded "
+        f"the parent's integration {short_commit(landed)} does not hold the recorded "
         "boundary, so the record has been overtaken",
     )
 

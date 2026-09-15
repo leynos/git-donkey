@@ -55,7 +55,7 @@ from tests.unit.wheresat_helpers import (
     PR_IDENTITY,
     PR_REPOSITORY,
     REQUIRED_SOURCES,
-    _Case,
+    Case,
     assessment_of,
     inferred,
     parent_pull_request,
@@ -229,7 +229,7 @@ def _parent(*, resolved: bool, draw: st.DrawFn) -> ParentPullRequest | None:
 
 
 @st.composite
-def _cases(draw: st.DrawFn) -> _Case:
+def _cases(draw: st.DrawFn) -> Case:
     """Draw a child history, some boundary candidates, and the answers.
 
     Parameters
@@ -239,7 +239,7 @@ def _cases(draw: st.DrawFn) -> _Case:
 
     Returns
     -------
-    _Case
+    Case
         The run's question, the candidates, the answers, and the parent.
 
     """
@@ -255,7 +255,7 @@ def _cases(draw: st.DrawFn) -> _Case:
         range_key(commit, commits[0]): CommitRange(_replayed(commits, commit))
         for commit in dict.fromkeys(placed)
     }
-    return _Case(
+    return Case(
         request=_request(commits[0], commits, draw),
         candidates=candidates,
         facts=_facts(commits, contents, placed, draw),
@@ -302,7 +302,7 @@ def _unanswered(assessment: Unresolved) -> list[str]:
 
 
 @given(_cases())
-def test_only_evidence_that_may_establish_ever_does(case: _Case) -> None:
+def test_only_evidence_that_may_establish_ever_does(case: Case) -> None:
     """INV-2 and INV-2b: the support a boundary reports could carry it."""
     assessment = assessment_of(case)
 
@@ -321,9 +321,9 @@ def test_only_evidence_that_may_establish_ever_does(case: _Case) -> None:
 
 
 @given(_cases())
-def test_the_verdict_does_not_depend_on_the_order_of_the_evidence(case: _Case) -> None:
+def test_the_verdict_does_not_depend_on_the_order_of_the_evidence(case: Case) -> None:
     """INV-3: the same evidence in any order is the same verdict."""
-    reordered = _Case(
+    reordered = Case(
         request=case.request,
         candidates=tuple(reversed(case.candidates)),
         facts=case.facts,
@@ -337,7 +337,7 @@ def test_the_verdict_does_not_depend_on_the_order_of_the_evidence(case: _Case) -
 
 
 @given(_cases())
-def test_an_established_boundary_passed_every_gate_it_applied(case: _Case) -> None:
+def test_an_established_boundary_passed_every_gate_it_applied(case: Case) -> None:
     """INV-4: the gates are a conjunction, and the verdict is what it says."""
     assessment = assessment_of(case)
 
@@ -360,7 +360,7 @@ def test_an_established_boundary_passed_every_gate_it_applied(case: _Case) -> No
 
 
 @given(_cases())
-def test_a_run_that_could_not_tell_names_what_it_could_not_tell(case: _Case) -> None:
+def test_a_run_that_could_not_tell_names_what_it_could_not_tell(case: Case) -> None:
     """INV-5: "could not tell" comes from an unanswered question, not a refusal."""
     assessment = assessment_of(case)
 
@@ -382,7 +382,7 @@ def test_a_run_that_could_not_tell_names_what_it_could_not_tell(case: _Case) -> 
 
 
 @given(_cases())
-def test_an_established_boundary_partitions_the_childs_history(case: _Case) -> None:
+def test_an_established_boundary_partitions_the_childs_history(case: Case) -> None:
     """INV-6: the boundary cuts the child's history in two, losing nothing."""
     assessment = assessment_of(case)
 
@@ -410,14 +410,14 @@ def test_an_established_boundary_partitions_the_childs_history(case: _Case) -> N
 
 
 @given(_cases())
-def test_inferred_evidence_never_changes_the_verdict(case: _Case) -> None:
+def test_inferred_evidence_never_changes_the_verdict(case: Case) -> None:
     """A deeper search may find more, and must not change what the run says.
 
     ``--deep`` compares trees and cumulative patches, which is worth reporting
     and worth nothing more: whatever it turns up, the verdict is the one the
     evidence that can establish a boundary already supported.
     """
-    deeper = _Case(
+    deeper = Case(
         request=case.request,
         candidates=(*case.candidates, inferred(OLD_BASE)),
         facts=case.facts,

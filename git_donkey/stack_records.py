@@ -204,8 +204,26 @@ _COMPONENT_RULES: typ.Final = (
 )
 
 
-def _component_rejection(value: str) -> str | None:
-    """Return why ``value`` cannot be a ref path component, or ``None``."""
+def ref_component_rejection(value: str) -> str | None:
+    """Return why ``value`` cannot be a ref path component, or ``None``.
+
+    The reason is returned rather than raised, and the rules are applied
+    without knowing what the value is for, so a caller whose own vocabulary is
+    narrower than Git's — an operation id, which may not hold ``/`` at all —
+    can state both its rule and Git's in one message.
+
+    Parameters
+    ----------
+    value : str
+        Candidate name, typically a branch.
+
+    Returns
+    -------
+    str | None
+        The reason the value is not a ref path component, phrased as the
+        remainder of a sentence, or ``None`` when it is one.
+
+    """
     if not value:
         return "it is empty"
     for pattern, reason in _COMPONENT_RULES:
@@ -244,7 +262,7 @@ def validate_ref_component(value: str) -> str:
         If the value would be unsafe in a ref path.
 
     """
-    reason = _component_rejection(value)
+    reason = ref_component_rejection(value)
     if reason is not None:
         msg = f"invalid ref path component {value!r}: {reason}"
         raise ValueError(msg)
@@ -477,7 +495,7 @@ def parse_parent(value: str) -> StackParent | None:
     if version != RECORD_VERSION:
         return None
     kind, _, body = remainder.partition(":")
-    if kind == "branch" and _component_rejection(body) is None:
+    if kind == "branch" and ref_component_rejection(body) is None:
         return StackParent(branch=body, pull_request=None)
     if kind != "pr":
         return None

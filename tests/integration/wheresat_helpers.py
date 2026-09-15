@@ -302,7 +302,7 @@ class _AssociationsOnlyForge(wheresat_github.WheresatGitHub):
 
     @typ.override
     def associated_pull_requests(
-        self, repository: str, commits: typ.Sequence[str]
+        self, repository: str, commits: cabc.Sequence[str]
     ) -> wheresat_github.AssociationPage:
         """Return the page of a search that examined every commit and found none."""
         return wheresat_github.AssociationPage(
@@ -400,6 +400,27 @@ def run_wheresat_in(
     capsys.readouterr()
     with in_directory(directory):
         return run_wheresat(options, capsys)
+
+
+def report_tokens(output: str) -> set[tuple[str, ...]]:
+    """Return a report's lines as token tuples, so column alignment is ignored.
+
+    Both integration suites read the report's tables this way: a row is a fact
+    about which fields it holds rather than about how wide the columns were
+    padded, so a change to the report's widths does not move a single assertion.
+
+    Parameters
+    ----------
+    output : str
+        What a run wrote to standard output.
+
+    Returns
+    -------
+    set[tuple[str, ...]]
+        One tuple of whitespace-separated tokens per line.
+
+    """
+    return {tuple(line.split()) for line in output.splitlines()}
 
 
 @dataclasses.dataclass(frozen=True, slots=True)

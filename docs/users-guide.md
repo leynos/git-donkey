@@ -18,8 +18,9 @@ these as `git <subcommand>` when `git-<subcommand>` is available on the `PATH`.
   directories from worktrees created by `git donkey`, and reports any completed
   worktree it leaves in place.
 - `git wheresat` (`git-wheresat`) prints the boundary a stacked branch should
-  be rebased onto, so work already landed in the trunk is dropped, and changes
-  nothing in the repository.
+  be rebased onto, so work already landed in the trunk is dropped. It moves no
+  branch and no worktree; the only refs it adds are evidence refs under
+  `refs/wheresat/`.
 - `git donkey-template` (`git-donkey-template`) displays and creates the
   template directory for the current repository.
 
@@ -558,15 +559,23 @@ Options:
 - `--onto` names the replay target; it defaults to the principal remote's
   default branch, resolved locally from `refs/remotes/<remote>/HEAD`, and is
   required when the repository has no such alias.
-- `--parent OWNER/REPO#N` names a parent pull request to weigh as attested
-  evidence.
+- `--parent OWNER/REPO#N` names a parent pull request. The run reads it through
+  the forge and fetches the parent's head, which is what the
+  `parent-history-intact` check judges the candidate against; a parent supplied
+  this way does not propose a boundary of its own.
 - `--remote` names the principal remote to read.
-- `--limit` is accepted and has no effect yet: the report's own cap of `20`
-  commits per range is a fixed constant, not this option.
-- `--heuristic-window` is accepted and has no effect yet; the deep scan is not
-  run, and when it is, this bounds the trunk commits it examines — the target's
-  history, counted backwards, read for tree-identity and
-  cumulative-patch-identity evidence. It defaults to `200`.
+- `--limit` bounds the commit-to-pull-request association search: how many of
+  the child's newest commits the run asks GitHub about, counted back from the
+  child's tip. It defaults to `20`, and the adapter asks about at most `20`
+  however large a limit it is given, so a larger value is not a longer search.
+  A history longer than the window the search examined refuses the search
+  rather than reporting that nothing is associated with the child, so a parent
+  further back than the window has to be named with `--parent`.
+- `--heuristic-window` bounds the deep scan: how many of the target's newest
+  commits `--deep` reads for tree-identity and cumulative-patch-identity
+  evidence. It defaults to `200`, and the report states the window it scanned —
+  a scan the window cut short is reported as a warning that names the window
+  rather than read as a complete one.
 - `--explain` prints the gate table: every check, its outcome, and the reason
   for it.
 - `--json` prints the versioned envelope described above.
@@ -614,11 +623,15 @@ run rather than left as the claim written at birth. Moving a record to a new
 boundary needs an attested account of where the parent went, which local
 evidence cannot give.
 
-`--no-fetch`, `--offline`, and `--deep` are accepted and change no answer yet:
-the local-evidence path fetches nothing and compares nothing deeply,
-so the forge-backed evidence and the deeper comparisons those options control
-are not wired yet. A named `--parent` still answers with status 3, because the
-parent pull request cannot be consulted.
+`--no-fetch` performs no Git transport, so the parent's head is not fetched and
+no cache ref is written, while queries to the forge are still permitted.
+`--offline` performs no network access of any kind, so no forge query runs: the
+run answers from the stack record and local ancestry, and a parent
+identification it declined to put is reported as skipped rather than as a
+question it could not answer. `--deep` derives the tree-identity and
+cumulative-patch-identity candidates by comparing the child against the
+target's content; those are inferred evidence, so the option can add candidates
+to the report and can never change the verdict.
 
 Evidence is weighted in tiers: attested (the stack record `git donkey` wrote
 at the branch's birth, a refreshed record, a fetched parent pull request

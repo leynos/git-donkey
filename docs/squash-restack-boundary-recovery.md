@@ -176,10 +176,17 @@ boundary under evaluation.
 An `Established` result requires every **applicable** gate to return `PASSED`.
 A gate whose subject the run never set out to use is not applicable and takes no
 part in that conjunction: a run asked only for local evidence never consults a
-parent pull request, so gates 1, 2, 3, 6, and 7 have nothing to answer and are
-reported as not applicable. They are still reported, because a gate that
-disappeared from the report would read as a gate that passed. Applicability is
-decided from the run's inputs alone, so a fault cannot shrink the gate set.
+parent pull request, so gates 1, 2, and 3 have nothing to answer and are
+reported as not applicable. Gates 6 and 7 are the exception, and the split is
+deliberate: gates 1 to 3 ask about the parent's _pull request_, while 6 and 7
+ask about the parent's _history_, which a run can know without the forge. A
+`PARENT_HEAD` recovered from a stack record, from a tombstone `git plonk` left,
+or from the parent's remote-tracking ref is a subject gate 6 can judge, so it
+is applicable as soon as the recovery ladder names one, however the run was
+asked; gate 7 additionally needs the commit the parent landed. Gates that do
+not apply are still reported, because a gate that disappeared from the report
+would read as a gate that passed. Applicability is decided from the run's
+inputs alone, so a fault cannot shrink the gate set.
 
 An applicable gate that Git could not answer is `INDETERMINATE`, which is not a
 refusal but a reason to stop: the run reports `Indeterminate` and exits `3`,

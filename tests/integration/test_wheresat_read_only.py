@@ -11,11 +11,13 @@ The matrix covers the flags a read-only run accepts and the ways a run can be
 refused: the default, ``--explain``, ``--no-fetch``, ``--offline``, ``--deep``,
 ``--json``, an ``--op-id`` naming a run, a named branch that resolves and one
 that does not, an ``--onto`` that does not resolve, a named parent pull request
-that cannot be consulted, and four ``--op-id`` values that must be refused before
-anything is built from them — one that escapes the namespace, one Git would read
-as an option, one carrying a colon, and one carrying a newline. Every one of them
-leaves the repository alone, including the vectors that fail: a run that refuses
-has no more licence to tidy up than one that answers.
+that cannot be consulted, and seven ``--op-id`` values that must be refused
+before anything is built from them — one that escapes the namespace, one Git
+would read as an option, one carrying a colon, one carrying a newline, and three
+that are outside the alphabet's own arrangement of dots: an id holding ``..``,
+one ending in ``.``, and one ending in ``.lock``. Every one of them leaves the
+repository alone, including the vectors that fail: a run that refuses has no more
+licence to tidy up than one that answers.
 
 Two cases are larger than a flag: a worktree with uncommitted changes and a
 worktree stopped in the middle of a rebase. Both are states the report warns
@@ -223,6 +225,15 @@ _VECTORS: typ.Final[typ.Mapping[str, Vector]] = {
     ),
     "op-id-newline": Vector(
         "op-id-newline", wheresat.WheresatOptions(op_id="line\nbreak"), _UNUSABLE
+    ),
+    "op-id-dots": Vector(
+        "op-id-dots", wheresat.WheresatOptions(op_id="a..b"), _UNUSABLE
+    ),
+    "op-id-trailing-dot": Vector(
+        "op-id-trailing-dot", wheresat.WheresatOptions(op_id="a."), _UNUSABLE
+    ),
+    "op-id-lock": Vector(
+        "op-id-lock", wheresat.WheresatOptions(op_id="a.lock"), _UNUSABLE
     ),
 }
 

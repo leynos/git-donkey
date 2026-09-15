@@ -438,6 +438,9 @@ def test_a_history_longer_than_the_window_refuses_the_search(
     assert history.limits == [limit + 1], (
         "one commit beyond the bound is asked for, so a full window is recognisable"
     )
+    assert identified.error_kind == "search_incomplete", (
+        "the bound the run set is what stopped the search, not the forge"
+    )
 
 
 def test_a_shallow_history_is_reported_as_a_shallow_history(
@@ -604,6 +607,9 @@ def test_a_search_that_stopped_short_refuses(
     )
     assert "--parent" in identified.faults[0], (
         "the refusal should name the way out of the search"
+    )
+    assert identified.error_kind == "search_incomplete", (
+        "the adapter's budget is what stopped the search, and it is not the forge"
     )
 
 

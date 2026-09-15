@@ -624,6 +624,11 @@ def test_a_refreshed_record_is_still_attested_evidence(
     assert written.exit_code == _ESTABLISHED, (
         f"expected the refresh to succeed, not exit {written.exit_code}"
     )
+    # The write collected evidence of its own, and a birth record is attested
+    # evidence, so the observations are read from here on: an assertion over
+    # the whole recording would be satisfied by the write and would hold even
+    # if the reread classified the refreshed record as nothing at all.
+    collected_before = len(recording_recorder.observations)
 
     reread = run_wheresat_in(scenario, wheresat.WheresatOptions(), capsys)
 
@@ -631,7 +636,7 @@ def test_a_refreshed_record_is_still_attested_evidence(
         f"expected the refreshed record to establish the boundary, not exit "
         f"{reread.exit_code}: {reread.stderr.strip()}"
     )
-    observations = recording_recorder.observations
+    observations = recording_recorder.observations[collected_before:]
     assert any(
         observation.operation == "evidence_collection"
         and observation.evidence_tier == "attested"

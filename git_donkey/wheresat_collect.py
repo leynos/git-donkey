@@ -84,7 +84,7 @@ _PARENT_MERGE_BASE: typ.Final = "merge base of the parent head and the child"
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
-class _Fault:
+class Fault:
     """A question the repository could not answer, and its class of failure.
 
     The reason is prose for the report; the class is a bounded label for the
@@ -262,9 +262,9 @@ def _merge_base_evidence(context: CollectionContext) -> CollectionResult:
     if context.parent_head is not None:
         lefts.append((context.parent_head.commit, _PARENT_MERGE_BASE))
     candidates: list[Candidate] = []
-    faults: list[_Fault] = []
+    faults: list[Fault] = []
     for left, source in lefts:
-        answer, fault = _asked(
+        answer, fault = ask(
             f"cannot find the merge base of {left} and {child_tip}",
             functools.partial(context.graph.merge_bases, left, child_tip),
         )
@@ -297,9 +297,9 @@ def _fork_point_evidence(context: CollectionContext) -> CollectionResult:
     """
     child_tip = context.request.child_tip
     candidates: list[Candidate] = []
-    faults: list[_Fault] = []
+    faults: list[Fault] = []
     for ref in _fork_point_refs(context):
-        answer, fault = _asked(
+        answer, fault = ask(
             f"cannot find the fork point of {child_tip} and {ref}",
             functools.partial(context.graph.fork_point, ref, child_tip),
         )
@@ -584,9 +584,9 @@ def _read_record(context: CollectionContext) -> stack_records.RecordResult:
         return stack_records.RecordMalformed(f"the record could not be read: {exc}")
 
 
-def _asked[Answer](
+def ask[Answer](
     question: str, call: cabc.Callable[[], Answer]
-) -> tuple[Answer | None, _Fault | None]:
+) -> tuple[Answer | None, Fault | None]:
     """Return one graph answer, or the fault that says why there is none.
 
     Parameters
@@ -598,20 +598,20 @@ def _asked[Answer](
 
     Returns
     -------
-    tuple[Answer | None, _Fault | None]
+    tuple[Answer | None, Fault | None]
         The answer and no fault, or no answer and the fault, never both.
 
     """
     try:
         return call(), None
     except ShallowHistoryError as exc:
-        return None, _Fault(f"{question}: {exc}", "shallow_history")
+        return None, Fault(f"{question}: {exc}", "shallow_history")
     except (WheresatGraphError, stack_store.StackRecordError) as exc:
-        return None, _Fault(f"{question}: {exc}", "git_command_error")
+        return None, Fault(f"{question}: {exc}", "git_command_error")
 
 
 def _result(
-    candidates: typ.Sequence[Candidate], faults: typ.Sequence[_Fault]
+    candidates: typ.Sequence[Candidate], faults: typ.Sequence[Fault]
 ) -> CollectionResult:
     """Return one rung's result, labelled with the class of failure it saw."""
     return CollectionResult(

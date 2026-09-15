@@ -28,8 +28,8 @@ import typing as typ
 from git_donkey.wheresat_collect import (
     CollectedEvidence,
     CollectionContext,
-    _asked,
-    _Fault,
+    Fault,
+    ask,
 )
 from git_donkey.wheresat_records import (
     Ancestry,
@@ -152,7 +152,7 @@ def _ancestry_answers(
     answers: dict[tuple[str, str], Ancestry] = {}
     faults: list[str] = []
     for left, right in _ancestry_pairs(context, evidence):
-        answer, fault = _asked(
+        answer, fault = ask(
             f"cannot tell whether {left} is an ancestor of {right}",
             functools.partial(context.graph.is_ancestor, left, right),
         )
@@ -188,7 +188,7 @@ def _replay_ranges(
     faults: list[str] = []
     for commit in _commits(evidence):
         key = range_key(commit, child_tip)
-        answer, fault = _asked(
+        answer, fault = ask(
             f"cannot list the commits {key}",
             functools.partial(context.graph.commits_in_range, commit, child_tip),
         )
@@ -198,7 +198,7 @@ def _replay_ranges(
         contents[key] = CommitRange(tuple(answer or ()))
         if subtract is None:
             continue
-        answer, fault = _asked(
+        answer, fault = ask(
             f"cannot list the commits {key} without {subtract}",
             functools.partial(
                 context.graph.commits_in_range,
@@ -242,7 +242,7 @@ def _patch_answers(
     identifiers: dict[str, str | None] = {}
     faults: list[str] = []
     for commit in _commits(evidence):
-        answer, fault = _asked(
+        answer, fault = ask(
             f"cannot identify the cumulative patch {range_key(commit, child_tip)}",
             functools.partial(
                 context.graph.cumulative_patch_identifier, commit, child_tip
@@ -252,7 +252,7 @@ def _patch_answers(
             faults.append(fault.reason)
         else:
             identifiers[commit] = answer
-    patch, fault = _asked(
+    patch, fault = ask(
         f"cannot identify the patch {landed} introduces",
         functools.partial(
             context.graph.cumulative_patch_identifier, f"{landed}^", landed
@@ -263,9 +263,9 @@ def _patch_answers(
     return _PatchAnswers(identifiers=identifiers, landed=patch, faults=tuple(faults))
 
 
-def _child_history(context: CollectionContext) -> tuple[CommitRange, _Fault | None]:
+def _child_history(context: CollectionContext) -> tuple[CommitRange, Fault | None]:
     """Return the child's whole history, oldest first, or why it was not listed."""
-    answer, fault = _asked(
+    answer, fault = ask(
         f"cannot list the history of {context.request.child_tip}",
         functools.partial(context.graph.history, context.request.child_tip),
     )

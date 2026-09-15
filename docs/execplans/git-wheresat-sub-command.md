@@ -1284,6 +1284,65 @@ Stop and escalate rather than improvising when any of these is reached.
     merits; and reading the report's replay block as needing to stay inside
     `COMMIT_ABBREVIATION`, which the requirement for pasteable full object IDs
     overrides.
+  - Two CodeScene findings and one review finding were cleared together, and
+    the way they interlock is worth recording. The review asked that the
+    resolved target path be computed once in the request flow rather than
+    twice, which `run_git_donkey` did: it recomputed
+    `(context.worktrees_root / branch_name).resolve()` after
+    `_create_worktree` had already resolved the same path to build the
+    request. `_create_worktree` now resolves the path, builds the request from
+    it, and returns it, so the caller overlays and reports the directory that
+    was actually created rather than a path it derived a second time.
+  - Paying for that fix is where the second finding came from.
+    `git_donkey/donkey.py` sat at 799 lines against Pylint's 800-line module
+    cap (`pyproject.toml:207`), so eleven more breached it, and the recorded
+    decision for a module over the cap is to split along an existing seam
+    rather than relax the limit or add an exception. The seam here is the
+    observations themselves: fifteen call sites built their `Observation` by
+    hand, in two repeated shapes. They are now two helpers,
+    `_record_outcome(operation, outcome, error_kind=None)` for worktree
+    creation and the template overlay, and
+    `_record_base_update(outcome, pull_mode, base_kind, *, error_kind=None)`
+    for the four base-update sites in `_update_base_branch_in_worktree` and
+    the three in `_maybe_update_base_branch`, in the shape
+    `wheresat_writes._observe` established. Nothing observable changed: every
+    site passes the operation, outcome, pull mode, base kind, and error kind
+    it already passed, and omitting `error_kind` is what the field's default
+    already did. The four `pull_mode_selection` observations are left alone
+    because they carry a pull mode and no base kind, so neither helper
+    describes them, and widening one to take a field a single operation uses
+    would trade this duplication for a worse one. The module is 775 lines and
+    `cs check` scores it 10.00.
+  - The third finding was CodeScene's Large Method over
+    `test_the_boundary_comes_back_from_the_record_and_the_tombstone`, at 77
+    lines against a threshold of 70. It asserted two separate claims in one
+    body, so the claims are now the helpers they were already describing:
+    `_assert_the_evidence_names` pins the exit status, the streams, the commit
+    count, the boundary and target detail lines, and the attested and derived
+    evidence rows; `_assert_the_plan_is_pasteable` pins the backup ref, the
+    full-object-ID replay, its undo, the premise, and the included tip. Both
+    take the scenario, the run, and the run's output split into token rows, so
+    a failure still reports against the run's own streams. The test body is
+    those two calls, and `cs check` scores the file 10.00.
+  - `make test` is red at the time of writing, by environment rather than by
+    change, and the evidence is stated here so a later reader does not read it
+    as a regression. Five deterministic gates pass on this exact tree:
+    `make check-fmt`, `make lint` (all seven stages, no early abort),
+    `make typecheck`, `make markdownlint` including the `mdlint` stage that
+    previous runs never reached, and `make nixie`. `make test` reported
+    `1 failed, 858 passed` twice, and both failures were a 120-second
+    `pytest-timeout` expiry inside a Git subprocess — once in
+    `tests/git_repo_helpers.py:104` spawning `git commit`, and once in
+    `subprocess._fork_exec` spawning `git for-each-ref` — under
+    `test_the_lifecycle_never_leaves_a_branch_in_two_states`, a Hypothesis
+    test whose file this branch does not modify, in a module whose two
+    implicated files are unmodified in the working tree. The same suite passed
+    859 tests in 16.9 seconds earlier the same day, and the machine ran at a
+    load average of 110 to 136 throughout both failures. The timeout landing
+    in a different frame each time is what contention looks like, not what a
+    defect looks like. This gate must be re-run to green before the branch is
+    offered for review; no other gate needs re-running for the failing change,
+    because there is none.
 
 ## Surprises & discoveries
 
@@ -3221,6 +3280,22 @@ Stop and escalate rather than improvising when any of these is reached.
   public name for the same reason — it is the question both modules ask of a
   record, and a private name imported across a module boundary is a seam drawn
   in the wrong place.
+  Date/Author: 2026-09-15, implementation agent, EP-M10.
+- Decision: a search the run's own bound stopped short is reported as
+  ``search_incomplete`` rather than ``github_api_error``. Both refusals — a
+  history longer than ``--limit`` allows the walk to examine, and a page the
+  adapter truncated at ``ASSOCIATION_SEARCH_LIMIT`` — are the run's bounds
+  refusing, and the forge answered every request it was given. Recording them
+  as ``github_api_error`` would point an operator at GitHub for a condition
+  their own option created, and would hide the one label that says the search
+  never ran.
+  Rationale: ``shallow_history`` was the nearest existing label and is the
+  wrong one — it reports a property of the clone, whose remedy is a fetch,
+  where this reports a bound on the search, whose remedy is ``--parent`` or a
+  larger ``--limit``. Collapsing them would make the label unable to tell an
+  operator which of the two they are looking at. The refusals that _are_
+  transport failures — opening the forge, reading a page, reading a payload,
+  reading a stack — keep ``github_api_error``.
   Date/Author: 2026-09-15, implementation agent, EP-M10.
 
 ## Outcomes & retrospective
@@ -5919,16 +5994,19 @@ git wheresat [--branch NAME] [--onto REV] [--parent OWNER/REPO#N]
   repository, not from this remote.
 - `--limit N` — commits examined by the commit-to-pull-request association
   search. Default 20. Exceeding it is a hard stop advising `--parent`, never
-  a silent truncation.
+  a silent truncation: the search refuses with the `search_incomplete` kind,
+  which forces an indeterminate result and exit `3`.
 - `--heuristic-window N` — trunk commits scanned when `--deep` is set.
   Default 200, measured backwards from the target. The report states the
   window scanned so a partial scan never reads as a complete one.
 - `--no-fetch` — perform no Git transport. GitHub queries still run.
 - `--offline` — perform no network access of any kind. The stack record plus
-  local
-  ancestry must suffice; otherwise the command exits `3` naming the gates it
-  could not evaluate. This is the fast path: it should complete in well under
-  a second with no round trips.
+  local ancestry must suffice; otherwise the command refuses with exit `1`,
+  because a question the run never put is not one the forge failed to answer.
+  A run that was told to consult a named parent is the exception: the gates
+  about that parent are applicable and cannot be judged, so it exits `3`.
+  This is the fast path: it should complete in well under a second with no
+  round trips.
 - `--deep` — also derive tree-identity and cumulative-patch-identity
   candidates. This is a **cost control, not a semantics switch**: inferred
   evidence can never establish a boundary, so `--deep` can add candidates to
@@ -5940,7 +6018,9 @@ git wheresat [--branch NAME] [--onto REV] [--parent OWNER/REPO#N]
   code.
 - `--op-id ID` — name the per-run evidence namespace. A test seam; the
   default is a `uuid4`. Validated against
-  `^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$` before use.
+  `^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$` and then against Git's own ref rules —
+  the value reaches a ref, so `a..b`, `a.`, and `a.lock` are refused with the
+  same reason text a branch name would draw.
 - `--record` — refresh the stack record. The only write outside the evidence
   namespace. Refuses unless the result was established from attested
   evidence.
@@ -5969,7 +6049,7 @@ Add to `git_donkey/observability.py`, and to no other `typing.Literal`:
   "unresolved", "indeterminate"]`.
 - Add to `ErrorKind`: `github_api_error`, `shallow_history`,
   `credential_unavailable`, `stack_record_malformed`,
-  `stack_record_conflict`.
+  `stack_record_conflict`, `search_incomplete`.
 
 Budget roughly 200 production lines and 450 test lines for this, split
 across EP-M3, EP-M4, and EP-M8.

@@ -195,9 +195,11 @@ def require_stack_record(
 
     """
     record = stack_record(scenario, branch)
-    if not isinstance(record, stack_records.StackRecord):
-        pytest.fail(f"expected a stack record for {branch!r}, got {record!r}")
-    return record
+    match record:
+        case stack_records.StackRecord():
+            return record
+        case _:
+            pytest.fail(f"expected a stack record for {branch!r}, got {record!r}")
 
 
 def _record_run(

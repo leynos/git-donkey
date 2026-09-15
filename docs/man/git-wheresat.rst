@@ -30,9 +30,10 @@ A branch created by **git donkey** records the commit its worktree was branched
 from, at the moment of branching, under the branch's own configuration.
 That record is the strongest evidence a run can read, and every other source
 is weighed below it: the merge base with the target and the fork point.
-The parent pull request's head, the tree identity of the child's commits, and
-the cumulative patch identity of the range are not read yet: no forge query
-runs, and no deep comparison is made.
+The parent pull request's head is read when there is a parent to identify, and
+the tree identity and cumulative patch identity of the range are read when
+**--deep** is given.
+Those two are inferred evidence, which can never establish a boundary.
 A boundary is established only from one deliberate record, or from two
 independent sources computed from history that agree with each other.
 Content comparison alone never establishes a boundary.
@@ -69,14 +70,12 @@ The command exits with one of the following statuses:
     answered, because the repository could not answer it.
     The environment needs repair before the run can conclude anything.
 
-These options are accepted and have no effect yet: **--limit**,
-**--heuristic-window**, **--no-fetch**, **--offline**, **--deep**, **--record**,
-and **--expected-old**.
-No run fetches evidence, queries a forge, compares deeply, or writes a record,
-so none of them changes the answer or the repository.
-
-A run changes nothing but the refs it writes under ``refs/wheresat/``: it does
-not touch the working tree, the index, the stack record, or any branch.
+Without **--record** a run changes nothing but the refs it writes under
+``refs/wheresat/``: it does not touch the working tree, the index, the stack
+record, or any branch.
+With **--record** it also writes the child branch's stack record, which is the
+anchor ref ``refs/stack-bases/``*BRANCH* and the branch's configuration
+section.
 A boundary that no other ref reaches is retained under
 ``refs/wheresat/boundary/``*BRANCH* before it is reported, so that a later
 ``git gc`` cannot take with it an answer the report has already given.
@@ -108,47 +107,59 @@ OPTIONS
 --parent OWNER/REPO#N
     Parent pull request, for example ``octocat/hello-world#42``.
     Names the pull request whose head this branch was cut from.
-    No forge query runs yet, so the pull request cannot be consulted, and a
-    run that names one exits ``3`` with the gates about a parent unanswered.
+    The pull request is consulted through the forge, and the parent's head it
+    names is fetched into a cache ref under ``refs/wheresat/parent-head/``.
+    A run that cannot consult the parent it was given, because it is offline,
+    holds no usable credential, or the forge could not be reached, exits ``3``
+    with the gates that depend on the parent left unanswered.
 
 --remote NAME
     Remote holding the child branch.
     Defaults to the principal remote, which is the first configured one.
     Today it names the remote whose local ``refs/remotes/``*NAME*``/HEAD``
     symbolic ref supplies the default target when **--onto** is absent.
-    No parent's head is fetched from it, because no forge query runs yet.
+    A parent's head is fetched from this remote when the run has a parent whose
+    head it needs, and the repository is identified from the remote's URL.
 
 --limit N
-    Commits the commit-to-pull-request association search would examine,
-    defaulting to ``20``.
-    That search is not wired yet, so the option has no effect; the report caps
-    the commits it lists per range at a separate, fixed ``20``.
+    Commits the commit-to-pull-request association search examines: how many
+    of the child's newest commits the run asks GitHub about, defaulting to
+    ``20``.
+    The adapter asks about at most ``20`` commits by its own constant, so a
+    value above ``20`` does not widen the search.
+    A history longer than the window the search examined is a question left
+    unanswered rather than an answer of nothing, so the run exits ``3`` naming
+    the bound it stopped at and the way out of it: **--parent**, which names
+    the parent directly.
 
 --heuristic-window N
-    Trunk commits the deep scan would examine when **--deep** is set,
-    defaulting to ``200``, counted backwards from the target.
-    No such scan runs yet, so the option has no effect.
-    When one runs, the report will state the window it read, so that a partial
-    scan never reads as a complete one.
+    Trunk commits the deep scan examines when **--deep** is set, defaulting to
+    ``200``, counted backwards from the target.
+    The report states the window it scanned, and a scan the window cut short is
+    reported as a warning naming the window, never as a complete one.
 
 --no-fetch
-    Perform no Git transport, while still permitting queries to the forge.
-    Neither transport nor forge query runs yet, so the option has no effect.
+    Perform no Git transport: the parent's head is not fetched and no cache ref
+    is written.
+    Queries to the forge are still permitted.
+    A head an earlier run already cached is read from the cache, so the option
+    forbids transport rather than forbidding the head.
+    A run that must fetch and may not says so, and exits ``3``.
 
 --offline
-    Perform no network access of any kind.
-    No path attempts network access yet, with or without the option, so it
-    produces the same local-evidence answer either way.
-    Once any path attempts access, the stack record and local ancestry must
-    suffice, or the command will exit ``3`` naming the gates it could not
-    evaluate.
+    Perform no network access of any kind, so no forge query runs.
+    The run answers from the stack record and local ancestry.
+    A parent identification declined because the run is offline is reported as
+    skipped, not as a question that could not be put, and it is not a fault.
+    A run that was told to consult a named parent still cannot judge the gates
+    about that parent, so it exits ``3`` rather than refusing.
 
 --deep
-    Also derive tree-identity and cumulative-patch-identity candidates.
-    Those candidates are not derived yet, so the option has no effect.
+    Also derive tree-identity and cumulative-patch-identity candidates, by
+    comparing the child against the target's content.
     They are inferred evidence, which can never establish a boundary: the
     option can add candidates to the report but never change the verdict.
-    It is off by default because the scan it controls would be linear in
+    It is off by default, and the scan it controls is linear in
     **--heuristic-window**.
 
 --explain
@@ -164,24 +175,33 @@ OPTIONS
 
 --op-id ID
     Name the per-run evidence namespace under ``refs/wheresat/op/``.
-    A test seam: the run fetches no evidence yet, so it writes no per-run
-    refs, and the ID is only checked for safety.
+    A test seam: no console run writes per-run refs yet, so the ID is only
+    checked for safety.
     An ID must start with a letter or digit and hold only letters, digits,
-    dots, hyphens, and underscores, in at most 64 characters; anything else is
-    refused with status ``2`` before the run reads anything.
+    dots, hyphens, and underscores, in at most 64 characters, and it must be a
+    name Git accepts as a ref path component, so it may not hold ``..``, may
+    not end in ``.``, and may not end in ``.lock``.
+    Either failure is refused with status ``2`` before the run reads anything.
 
 --record
-    Refresh the child branch's stack record from the result, which would be
-    the one write this command makes outside the evidence namespace.
-    No record is written yet, so the option has no effect and raises no error.
-    When wired, it will refuse unless the boundary was established from
-    attested evidence.
+    Refresh the child branch's stack record from the result, which is the one
+    write this command makes outside the evidence namespace.
+    Only a boundary the run established from attested evidence is written; a
+    run that had to derive its boundary still reports it, and warns that
+    nothing was recorded.
+    A refresh never invents a record: a branch nobody recorded is reported,
+    not recorded.
+    It refuses with status ``2`` when the record's anchor ref exists and
+    **--expected-old** was not given.
 
 --expected-old OID
-    Commit the existing stack record will have to name for **--record** to
-    replace it, so that a record written by another run will be reported as a
-    conflict rather than overwritten.
-    No record is written yet, so the option has no effect.
+    Commit the record's anchor ref must still hold for **--record** to replace
+    the record.
+    It is required when the anchor ref exists, and refused with status ``2``
+    when it is given and the anchor does not exist, or when it is given without
+    **--record**, which is the only option that reads it.
+    Git performs the same comparison again at the write, so an anchor that
+    moves in between is reported as a conflict rather than overwritten.
 
 -h, --help
     Display command-line help and exit.

@@ -97,7 +97,7 @@ DEFAULT_WINDOW = 200
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
-class _Case:
+class Case:
     """One assessment input: the run's question and every answer it reads."""
 
     request: BoundaryRequest
@@ -146,17 +146,17 @@ def permissive_facts() -> GraphFacts:
     )
 
 
-def permissive() -> _Case:
+def permissive() -> Case:
     """Return the case in which a stack record's boundary clears every gate.
 
     Returns
     -------
-    _Case
+    Case
         The run's question, one attested candidate at ``OLD_BASE``, and the
         facts that pass every gate it applies to.
 
     """
-    return _Case(
+    return Case(
         request=BoundaryRequest(
             branch="child",
             child_tip=CHILD_TIP,
@@ -172,12 +172,12 @@ def permissive() -> _Case:
     )
 
 
-def parented() -> _Case:
+def parented() -> Case:
     """Return the case in which the run named a parent pull request.
 
     Returns
     -------
-    _Case
+    Case
         The permissive case with the parent resolved, so the gates about a
         parent pull request apply and pass.
 
@@ -342,12 +342,12 @@ def inferred(
     return _candidate(InferredCandidate, commit, kind, source)
 
 
-def assessment_of(case: _Case) -> Assessment:
+def assessment_of(case: Case) -> Assessment:
     """Return the assessment ``case`` produces.
 
     Parameters
     ----------
-    case : _Case
+    case : Case
         The run's question and every answer it reads.
 
     Returns
@@ -485,12 +485,12 @@ def _with_child_history(contents: CommitRange) -> GraphFacts:
     return dataclasses.replace(permissive_facts(), child_history=contents)
 
 
-def _changed(facts: GraphFacts) -> _Case:
+def _changed(facts: GraphFacts) -> Case:
     """Return the permissive case judged against ``facts`` instead."""
     return dataclasses.replace(permissive(), facts=facts)
 
 
-def _spoil_parent_identity(*, failed: bool) -> _Case:
+def _spoil_parent_identity(*, failed: bool) -> Case:
     """Return the case in which gate 1 alone answers against the candidate."""
     fetched_from = FOREIGN_REPOSITORY if failed else None
     case = parented()
@@ -500,7 +500,7 @@ def _spoil_parent_identity(*, failed: bool) -> _Case:
     )
 
 
-def _spoil_parent_merged(*, failed: bool) -> _Case:
+def _spoil_parent_merged(*, failed: bool) -> Case:
     """Return the case in which gate 2 alone answers against the candidate."""
     case = parented()
     if failed:
@@ -508,7 +508,7 @@ def _spoil_parent_merged(*, failed: bool) -> _Case:
     return dataclasses.replace(case, parent=parent_pull_request(merged_at=None))
 
 
-def _spoil_landed_reachable(*, failed: bool) -> _Case:
+def _spoil_landed_reachable(*, failed: bool) -> Case:
     """Return the case in which gate 3 alone answers against the candidate.
 
     The case consults a parent pull request, because that is what makes gate 3
@@ -517,7 +517,7 @@ def _spoil_landed_reachable(*, failed: bool) -> _Case:
 
     Returns
     -------
-    _Case
+    Case
         The case in which gate 3 alone answers against the candidate, or alone
         goes unanswered.
 
@@ -527,32 +527,32 @@ def _spoil_landed_reachable(*, failed: bool) -> _Case:
     return dataclasses.replace(case, facts=_with_ancestry((LANDED, TARGET), answer))
 
 
-def _spoil_boundary_ancestor(*, failed: bool) -> _Case:
+def _spoil_boundary_ancestor(*, failed: bool) -> Case:
     """Return the case in which gate 4 alone answers against the candidate."""
     answer = Ancestry.NOT_ANCESTOR if failed else None
     return _changed(_with_ancestry((OLD_BASE, CHILD_TIP), answer))
 
 
-def _spoil_replay_range(*, failed: bool) -> _Case:
+def _spoil_replay_range(*, failed: bool) -> Case:
     """Return the case in which gate 5 alone answers against the candidate."""
     listed = CommitRange(()) if failed else None
     return _changed(_with_range_contents(REPLAY_RANGE, listed))
 
 
-def _spoil_parent_history(*, failed: bool) -> _Case:
+def _spoil_parent_history(*, failed: bool) -> Case:
     """Return the case in which gate 6 alone answers against the candidate."""
     answer = Ancestry.NOT_ANCESTOR if failed else None
     return _changed(_with_ancestry((OLD_BASE, PARENT_HEAD), answer))
 
 
-def _spoil_excludes_landed(*, failed: bool) -> _Case:
+def _spoil_excludes_landed(*, failed: bool) -> Case:
     """Return the case in which gate 7 alone answers against the candidate."""
     if failed:
         return _changed(_with_patch(OLD_BASE, LANDED_PATCH))
     return _changed(_with_range_minus_parent(REPLAY_RANGE, None))
 
 
-def _spoil_record_superseded(*, failed: bool) -> _Case:
+def _spoil_record_superseded(*, failed: bool) -> Case:
     """Return the case in which gate 8 alone answers against the candidate."""
     if failed:
         return _changed(
@@ -564,7 +564,7 @@ def _spoil_record_superseded(*, failed: bool) -> _Case:
 # One spoiler per gate, each taking whether the gate is to fail rather than go
 # unanswered. Indexing them by name is what makes the truth table complete: a
 # gate with no spoiler raises here rather than being skipped.
-type _Spoiler = typ.Callable[..., _Case]
+type _Spoiler = typ.Callable[..., Case]
 
 _SPOILERS: typ.Mapping[GateName, _Spoiler] = {
     GateName.PARENT_IDENTITY_MATCHES: _spoil_parent_identity,
@@ -578,7 +578,7 @@ _SPOILERS: typ.Mapping[GateName, _Spoiler] = {
 }
 
 
-def spoiled(gate: GateName, outcome: GateOutcome) -> _Case:
+def spoiled(gate: GateName, outcome: GateOutcome) -> Case:
     """Return the case in which ``gate`` alone takes ``outcome``.
 
     Parameters
@@ -591,7 +591,7 @@ def spoiled(gate: GateName, outcome: GateOutcome) -> _Case:
 
     Returns
     -------
-    _Case
+    Case
         The permissive case with the one answer ``gate`` reads changed, so
         every other gate passes and the gate under test is the only one that
         did not.
@@ -600,12 +600,12 @@ def spoiled(gate: GateName, outcome: GateOutcome) -> _Case:
     return _SPOILERS[gate](failed=outcome is GateOutcome.FAILED)
 
 
-def parented_without_head() -> _Case:
+def parented_without_head() -> Case:
     """Return the parent-consulting case with no parent head recovered.
 
     Returns
     -------
-    _Case
+    Case
         The case whose gates about the parent apply — the run set out to consult
         one — and whose questions about its history have nothing to read.
 
@@ -613,12 +613,12 @@ def parented_without_head() -> _Case:
     return dataclasses.replace(parented(), facts=_with_parent_head(None))
 
 
-def parented_without_landed() -> _Case:
+def parented_without_landed() -> Case:
     """Return the parent-consulting case with no integration commit resolved.
 
     Returns
     -------
-    _Case
+    Case
         The case whose gates about the parent apply and whose landed-work
         questions cannot be answered, which is what a parent merged by a
         strategy the run cannot resolve looks like.
@@ -627,12 +627,12 @@ def parented_without_landed() -> _Case:
     return dataclasses.replace(parented(), facts=_with_landed(None))
 
 
-def without_parent_head() -> _Case:
+def without_parent_head() -> Case:
     """Return the parentless case with no parent head recovered.
 
     Returns
     -------
-    _Case
+    Case
         The case in which no gate about a parent's history applies, which is
         what a local run whose parent left no tombstone and no remote-tracking
         ref looks like.
@@ -641,12 +641,12 @@ def without_parent_head() -> _Case:
     return _changed(_with_parent_head(None))
 
 
-def without_landed() -> _Case:
+def without_landed() -> Case:
     """Return the parentless case with no integration commit resolved.
 
     Returns
     -------
-    _Case
+    Case
         The case in which the parent's history is still judged — its head was
         recovered — and nothing about an integration is.
 
@@ -671,12 +671,12 @@ def short(commit: str) -> str:
     return commit[:COMMIT_ABBREVIATION]
 
 
-def unconsulted_parent() -> _Case:
+def unconsulted_parent() -> Case:
     """Return the case whose run named a parent pull request it could not read.
 
     Returns
     -------
-    _Case
+    Case
         The case whose gates about the parent apply — the run set out to
         consult one — and go unanswered, since nothing resolved it.
 
@@ -684,31 +684,31 @@ def unconsulted_parent() -> _Case:
     return dataclasses.replace(parented(), parent=None)
 
 
-def with_candidates(case: _Case, *candidates: Candidate) -> _Case:
+def with_candidates(case: Case, *candidates: Candidate) -> Case:
     """Return ``case`` judged against ``candidates`` instead of its own.
 
     Parameters
     ----------
-    case : _Case
+    case : Case
         The run's question and every answer it reads.
     *candidates : Candidate
         Candidates the evidence sources produced, in any order.
 
     Returns
     -------
-    _Case
+    Case
         The case, with the candidates the assessment is to choose between.
 
     """
     return dataclasses.replace(case, candidates=tuple(candidates))
 
 
-def record_superseded() -> _Case:
+def record_superseded() -> Case:
     """Return the permissive case whose record a later integration superseded.
 
     Returns
     -------
-    _Case
+    Case
         The case whose record was written from a commit the child has since
         discarded, which is the one gate 8 exists to refuse.
 
@@ -716,12 +716,12 @@ def record_superseded() -> _Case:
     return _changed(_with_recorded_from(CHILD_BELOW, Ancestry.NOT_ANCESTOR))
 
 
-def blank_patch_identifier() -> _Case:
+def blank_patch_identifier() -> Case:
     """Return the permissive case whose cumulative patch identifier is blank.
 
     Returns
     -------
-    _Case
+    Case
         The case whose patch pipeline produced no identifier, which is what a
         configured external diff driver makes it do for every range.
 
@@ -729,12 +729,12 @@ def blank_patch_identifier() -> _Case:
     return _changed(_with_patch(OLD_BASE, ""))
 
 
-def truncated_replay_range() -> _Case:
+def truncated_replay_range() -> Case:
     """Return the permissive case whose replay range was cut short.
 
     Returns
     -------
-    _Case
+    Case
         The case whose established result has to report that the history it
         partitioned does not span the whole range.
 
@@ -743,19 +743,19 @@ def truncated_replay_range() -> _Case:
     return _changed(_with_range_contents(REPLAY_RANGE, listed))
 
 
-def truncated_history() -> _Case:
+def truncated_history() -> Case:
     """Return the permissive case whose child history was cut short.
 
     Returns
     -------
-    _Case
+    Case
         The case whose excluded commits are only the ones the run listed.
 
     """
     return _changed(_with_child_history(CommitRange(CHILD_HISTORY, truncated=True)))
 
 
-def long_replay_range(count: int) -> _Case:
+def long_replay_range(count: int) -> Case:
     """Return the permissive case whose ranges hold ``count`` commits.
 
     Parameters
@@ -765,7 +765,7 @@ def long_replay_range(count: int) -> _Case:
 
     Returns
     -------
-    _Case
+    Case
         The case whose partition is longer than a report lists in full, so the
         listing has to say how many commits it withheld. The ranges are complete
         — nothing here was cut short — which is what tells this case apart from

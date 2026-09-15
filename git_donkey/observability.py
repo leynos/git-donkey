@@ -100,6 +100,7 @@ type ErrorKind = typ.Literal[
     "github_api_error",
     "credential_unavailable",
     "shallow_history",
+    "search_incomplete",
 ]
 """Fixed labels for the class of failure an operation reported."""
 

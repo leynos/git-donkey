@@ -38,7 +38,8 @@ git-donkey gives you Git subcommands for branch-based work:
 
 - **`git wheresat`** – Report the replay boundary for a stacked branch: the
   commit to rebase onto so that work already landed in the trunk is dropped.
-  The command never changes the repository.
+  It moves no branch and no worktree, and adds nothing but the evidence refs it
+  caches under `refs/wheresat/`.
 
 - **`git donkey-template`** – Manage template directories that get
   automatically copied into new worktrees. Perfect for per-repository config

@@ -24,6 +24,7 @@ from git_donkey._constants import GIT_PLONK_PREFIX
 from git_donkey.plonk_records import _SkipReason
 
 if typ.TYPE_CHECKING:
+    import collections.abc as cabc
     from pathlib import Path
 
 _LOGGER = logging.getLogger(__name__)
@@ -35,7 +36,7 @@ class _GitWorktreeAdapter:
 
     repo: Repo
 
-    def history_messages(self, ref: str) -> typ.Iterator[str]:
+    def history_messages(self, ref: str) -> cabc.Iterator[str]:
         """Return commit messages from ``ref`` history."""
         for commit in self.repo.iter_commits(ref):
             match commit.message:

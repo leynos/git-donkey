@@ -73,13 +73,15 @@ _SLUG_COMPONENTS: typ.Final = 2
 """Number of components an ``owner/name`` repository slug is made of."""
 
 _OP_ID_PATTERN: typ.Final = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}\Z")
-"""What an operation id may look like, with nothing else permitted.
+"""What an operation id's alphabet is, with nothing else permitted.
 
 The pattern is anchored at both ends by construction rather than by the
-caller's use of :func:`re.match`: a nested namespace, a leading hyphen a
-command line could read as another option, and a ``..`` that climbs out of the
-namespace are all refused by the character set and the first-character rule
-between them.
+caller's use of :func:`re.match`, and it settles the character set, the length,
+and the first character between them: a nested namespace, a leading hyphen a
+command line could read as another option, a colon, and whitespace are all
+refused here. It does not settle how the dots may be arranged — ``a..b`` and
+``a.`` are named by this alphabet — so :func:`validate_op_id` applies Git's own
+ref rules as well.
 """
 
 
@@ -167,6 +169,14 @@ def validate_op_id(op_id: str) -> str:
     evidence namespace, nest one run inside another, or be read as an option
     would have the run write refs a later release cannot recognize as its own.
 
+    Two rule sets apply, and an id must satisfy both. The narrower is this
+    module's: an id is one path component and holds no ``/``, so it cannot
+    nest a namespace inside another run's. The wider is Git's own rules for a
+    ref path component, which
+    :func:`git_donkey.stack_records.ref_component_rejection` states; an id
+    that is not a ref path component would reach ``git update-ref`` and be
+    refused there, later and less clearly than here.
+
     Parameters
     ----------
     op_id : str
@@ -180,9 +190,10 @@ def validate_op_id(op_id: str) -> str:
     Raises
     ------
     ValueError
-        If the id is empty, longer than 64 characters, or holds a character
-        outside letters, digits, dots, hyphens, and underscores, or does not
-        start with a letter or digit.
+        If the id is empty, longer than 64 characters, holds a character
+        outside letters, digits, dots, hyphens, and underscores, does not
+        start with a letter or digit, or is not a name Git accepts as a ref
+        path component.
 
     """
     if not _OP_ID_PATTERN.match(op_id):
@@ -191,6 +202,10 @@ def validate_op_id(op_id: str) -> str:
             "or digit and hold only letters, digits, dots, hyphens, and "
             "underscores, in at most 64 characters"
         )
+        raise ValueError(msg)
+    reason = stack_records.ref_component_rejection(op_id)
+    if reason is not None:
+        msg = f"invalid operation id {op_id!r}: {reason}"
         raise ValueError(msg)
     return op_id
 

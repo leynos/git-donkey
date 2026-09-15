@@ -321,7 +321,7 @@ def _window(
         )
         return _fault(f"the child's history could not be read: {exc}", kind)
     if len(history) > window:
-        return _fault(_TOO_LONG.format(window=window), "github_api_error")
+        return _fault(_TOO_LONG.format(window=window), "search_incomplete")
     return tuple(reversed(history))
 
 
@@ -359,7 +359,7 @@ def _page(
         )
     if page.truncated:
         return _fault(
-            _TRUNCATED.format(examined=page.commits_examined), "github_api_error"
+            _TRUNCATED.format(examined=page.commits_examined), "search_incomplete"
         )
     return page
 
@@ -429,7 +429,7 @@ def _walk(
 def _reported(
     page: AssociationPage,
     commits: tuple[str, ...],
-) -> typ.Iterator[stack_records.PullRequestIdentity]:
+) -> cabc.Iterator[stack_records.PullRequestIdentity]:
     """Yield the associated pull requests, in the order the walk should ask.
 
     The commits are walked in the order the run asked about them — newest

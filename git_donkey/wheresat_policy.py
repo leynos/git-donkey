@@ -32,10 +32,10 @@ import dataclasses
 import typing as typ
 
 from git_donkey.wheresat_gates import (
-    _not_applicable,
-    _range,
-    _short,
     gate_results,
+    listed_range,
+    not_applicable,
+    short_commit,
 )
 from git_donkey.wheresat_records import (
     Assessment,
@@ -339,7 +339,7 @@ def _demoted_gates(gates: tuple[GateResult, ...]) -> tuple[GateResult, ...]:
 
     """
     return tuple(
-        _not_applicable(gate.name, _DEMOTED)
+        not_applicable(gate.name, _DEMOTED)
         if gate.name is GateName.RECORD_NOT_SUPERSEDED
         and gate.outcome is GateOutcome.FAILED
         else gate
@@ -367,7 +367,7 @@ def _included(facts: GraphFacts, commit: str, child_tip: str) -> CommitRange:
         The listed range, or an empty range when the run never listed it.
 
     """
-    listed = _range(facts, commit, child_tip)
+    listed = listed_range(facts, commit, child_tip)
     return listed if listed is not None else CommitRange(())
 
 
@@ -409,7 +409,7 @@ def _gate_summary(gates: typ.Iterable[GateResult]) -> str:
 def _candidate_reason(checked: _Checked) -> str:
     """Return why one candidate could not serve as the boundary."""
     candidate = checked.original
-    commit = _short(candidate.commit)
+    commit = short_commit(candidate.commit)
     support = checked.support
     if support is None:
         return (
@@ -491,7 +491,7 @@ def _ambiguous(
         "could not tell" when a question about one of them went unanswered.
 
     """
-    names = ", ".join(_short(one) for one in commits)
+    names = ", ".join(short_commit(one) for one in commits)
     rivals = (
         f"{len(commits)} commits could serve as the boundary ({names}); the "
         "evidence does not choose between them"

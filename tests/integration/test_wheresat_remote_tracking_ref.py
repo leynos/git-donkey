@@ -36,6 +36,7 @@ from tests.integration.conftest import _setup_repo
 from tests.integration.plonk_helpers import branch_ahead_of_trunk
 from tests.integration.wheresat_helpers import (
     WheresatScenario,
+    report_tokens,
     run_wheresat_in,
     stacked_child,
 )
@@ -245,23 +246,6 @@ def test_a_ref_git_cannot_read_is_a_fault_and_not_an_absence(
     )
 
 
-def _tokens(output: str) -> set[tuple[str, ...]]:
-    """Return a report's lines as token tuples, so column alignment is ignored.
-
-    Parameters
-    ----------
-    output : str
-        What a run wrote to standard output.
-
-    Returns
-    -------
-    set[tuple[str, ...]]
-        One tuple of whitespace-separated tokens per line.
-
-    """
-    return {tuple(line.split()) for line in output.splitlines()}
-
-
 def _publish_parent(scenario: WheresatScenario) -> None:
     """Push the parent branch and fetch it back, so Git tracks it locally.
 
@@ -349,7 +333,7 @@ def test_the_remote_tracking_ref_gives_the_parent_gate_a_head(
     and the row would read not applicable instead of passed.
     """
     run = run_wheresat_in(intact, wheresat.WheresatOptions(explain=True), capsys)
-    lines = _tokens(run.stdout)
+    lines = report_tokens(run.stdout)
 
     assert run.exit_code == 0, run.stderr
     assert ("boundary", intact.boundary[:COMMIT_ABBREVIATION]) in lines, (
@@ -394,7 +378,7 @@ def test_a_rewritten_parent_is_not_served_as_the_boundary(
     )
 
     run = run_wheresat_in(rewritten, wheresat.WheresatOptions(explain=True), capsys)
-    lines = _tokens(run.stdout)
+    lines = report_tokens(run.stdout)
 
     assert ("not", "applicable", "parent-history-intact") not in lines, (
         f"the rung found the rewritten head, so the gate is applicable, got:\n"

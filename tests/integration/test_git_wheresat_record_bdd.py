@@ -56,7 +56,7 @@ _NOTHING_TO_RECORD: typ.Final = (
 )
 """Warning a ``--record`` run with no boundary to state prints."""
 
-_UNEXPECTED_OLD: typ.Final = "an expected old object ID is required"
+_EXPECTATION_REQUIRED: typ.Final = "an expected old object ID is required"
 """Refusal a ``--record`` run that named no expectation prints."""
 
 
@@ -329,7 +329,7 @@ def the_command_reports_the_missing_expectation(scenario: RecordScenario) -> Non
     """Check that the refusal names what the run was missing."""
     run = _reported(scenario)
 
-    assert _UNEXPECTED_OLD in run.stderr, (
+    assert _EXPECTATION_REQUIRED in run.stderr, (
         f"expected the refusal to say an expected old object ID is required, "
         f"got:\n{run.stderr}"
     )

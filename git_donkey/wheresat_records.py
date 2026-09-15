@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import dataclasses
 import enum
+import types
 import typing as typ
 
 if typ.TYPE_CHECKING:
@@ -54,7 +55,7 @@ class EvidenceKind(enum.StrEnum):
     PATCH_IDENTITY = "patch-identity"
 
 
-TIERS: typ.Final[typ.Mapping[EvidenceKind, EvidenceTier]] = {
+TIERS: typ.Final[typ.Mapping[EvidenceKind, EvidenceTier]] = types.MappingProxyType({
     EvidenceKind.STACK_RECORD_BIRTH: EvidenceTier.ATTESTED,
     EvidenceKind.STACK_RECORD_REFRESHED: EvidenceTier.ATTESTED,
     EvidenceKind.SHARED_RECORD: EvidenceTier.ATTESTED,
@@ -63,7 +64,7 @@ TIERS: typ.Final[typ.Mapping[EvidenceKind, EvidenceTier]] = {
     EvidenceKind.FORK_POINT: EvidenceTier.DERIVED,
     EvidenceKind.TREE_IDENTITY: EvidenceTier.INFERRED,
     EvidenceKind.PATCH_IDENTITY: EvidenceTier.INFERRED,
-}
+})
 """The single place the tier of each evidence kind is decided.
 
 A candidate's class is not chosen by the collector but by this table, through
@@ -464,11 +465,11 @@ class Indeterminate:
 
 type Assessment = Established | Unresolved | Indeterminate
 
-EXIT_CODES: typ.Final[typ.Mapping[type, int]] = {
+EXIT_CODES: typ.Final[typ.Mapping[type, int]] = types.MappingProxyType({
     Established: 0,
     Unresolved: 1,
     Indeterminate: 3,
-}
+})
 """Exit status per assessment.
 
 ``2`` is reserved for a usage, configuration, or credential failure, which is
