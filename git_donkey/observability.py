@@ -107,8 +107,17 @@ type ErrorKind = typ.Literal[
 type EvidenceTierLabel = typ.Literal["attested", "derived", "inferred"]
 """Fixed labels for how much weight a boundary candidate carries."""
 
-type WheresatVerdictLabel = typ.Literal["established", "unresolved", "indeterminate"]
-"""Fixed labels for the verdict ``git wheresat`` reached."""
+type WheresatVerdictLabel = typ.Literal[
+    "established", "unresolved", "indeterminate", "error"
+]
+"""Fixed labels for the verdict ``git wheresat`` reached.
+
+``error`` is the fourth, and it is the one no assessment carries: a run that
+refused to start — a usage, configuration, or write failure — reached no
+verdict about the boundary, and the envelope it emits says so. It is a label
+here because that envelope is what a consumer reads, so the vocabulary a
+recorder stores and the vocabulary a script matches on are one set.
+"""
 
 type CleanupModeLabel = typ.Literal["default", "soft", "hard"]
 """Fixed labels for the git-plonk mode a cleanup step ran in."""

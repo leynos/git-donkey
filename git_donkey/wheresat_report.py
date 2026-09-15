@@ -61,6 +61,15 @@ words are typed as the label a
 strings a reader would have to check by eye.
 """
 
+ERROR_VERDICT: typ.Final[WheresatVerdictLabel] = "error"
+"""The verdict a run that never reached an assessment reports.
+
+Typed as the label rather than written where it is used, so the wire value and
+the vocabulary a recorder stores cannot drift apart: dropping ``error`` from
+:data:`~git_donkey.observability.WheresatVerdictLabel` would fail the
+typecheck here rather than ship a verdict no consumer knows.
+"""
+
 _HEADLINES: typ.Final[typ.Mapping[type, str]] = {
     Unresolved: "git wheresat: no boundary could be established for",
     Indeterminate: "git wheresat: could not tell where",
@@ -179,8 +188,8 @@ def _abbreviate(commit: str) -> str:
     return commit[:COMMIT_ABBREVIATION]
 
 
-def _listed(commits: typ.Sequence[str]) -> tuple[tuple[str, ...], bool]:
-    """Return the commits to render and whether any were left out.
+def _listed(commits: typ.Sequence[str]) -> tuple[str, ...]:
+    """Return the commits to render.
 
     Parameters
     ----------
@@ -189,14 +198,17 @@ def _listed(commits: typ.Sequence[str]) -> tuple[tuple[str, ...], bool]:
 
     Returns
     -------
-    tuple[tuple[str, ...], bool]
-        The commits within :data:`RENDER_COMMIT_LIMIT`, and whether the
-        listing was cut short. A truncated listing is always reported as one:
-        a partial range that reads as a whole one is how a replay loses work.
+    tuple[str, ...]
+        The commits within :data:`RENDER_COMMIT_LIMIT`. Whether the *range*
+        was cut short is a separate fact, carried by the assessment rather than
+        inferred from this count, because a listing that stopped at the limit
+        and a range Git never finished reading would otherwise render the same
+        way: a partial range that reads as a whole one is how a replay loses
+        work.
 
     """
     limit = RENDER_COMMIT_LIMIT
-    return tuple(commits[:limit]), len(commits) > limit
+    return tuple(commits[:limit])
 
 
 def _candidate_line(candidate: Candidate) -> str:
@@ -264,7 +276,7 @@ def _text_ranges(assessment: Established) -> list[str]:
         ("Included", assessment.included, assessment.included_truncated),
         ("Excluded", assessment.excluded, assessment.excluded_truncated),
     ):
-        shown, _ = _listed(commits)
+        shown = _listed(commits)
         count = len(commits)
         withheld = count - len(shown)
         lines += ["", f"{label} ({count} {'commit' if count == 1 else 'commits'})"]
@@ -417,7 +429,7 @@ def _json_range(commits: typ.Sequence[str], *, cut_short: bool) -> _Payload:
         One side of the partition, as the envelope represents it.
 
     """
-    shown, _ = _listed(commits)
+    shown = _listed(commits)
     return {
         "commits": list(shown),
         "count": len(commits),
@@ -641,7 +653,7 @@ def render_error_json(code: int, message: str) -> str:
     payload["error"] = message
     return _envelope({
         "schema": JSON_SCHEMA,
-        "verdict": "error",
+        "verdict": ERROR_VERDICT,
         "exitCode": code,
         **payload,
     })

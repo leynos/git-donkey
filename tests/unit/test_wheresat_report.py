@@ -442,10 +442,10 @@ def test_a_refusal_envelope_lists_the_candidates_it_collected() -> None:
 def test_the_envelope_reports_every_gate_even_when_not_applicable() -> None:
     """A consumer counting gates must see the same gate set on every path."""
     established = _envelope("established")
-    refusal = _envelope("indeterminate")
+    indeterminate = _envelope("indeterminate")
 
     assert _gates(established) != [], "gates are listed"
-    for payload in (established, refusal):
+    for payload in (established, indeterminate):
         for gate in _gates(payload):
             assert isinstance(gate["applicable"], bool), "applicability is stated"
             assert isinstance(gate["detail"], str), "every gate explains itself"
