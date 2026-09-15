@@ -1,0 +1,854 @@
+interactions:
+- request:
+    body: null
+    headers:
+      Accept:
+      - application/vnd.github+json
+      Accept-Charset:
+      - utf-8
+      Accept-Encoding:
+      - gzip, deflate, zstd
+      Connection:
+      - keep-alive
+      Content-Type:
+      - application/json
+      User-Agent:
+      - github3.py/4.0.1
+    method: GET
+    uri: https://api.github.com/repos/leynos/git-donkey/pulls/93
+  response:
+    body:
+      string: "{\"url\":\"https://api.github.com/repos/leynos/git-donkey/pulls/93\",\"id\":4538948696,\"node_id\":\"PR_kwDOQ7SZj88AAAABDorcWA\",\"html_url\":\"https://github.com/leynos/git-donkey/pull/93\",\"diff_url\":\"https://github.com/leynos/git-donkey/pull/93.diff\",\"patch_url\":\"https://github.com/leynos/git-donkey/pull/93.patch\",\"issue_url\":\"https://api.github.com/repos/leynos/git-donkey/issues/93\",\"number\":93,\"state\":\"closed\",\"locked\":false,\"title\":\"Adopt
+        the estate Markdown formatting baseline\",\"user\":{\"login\":\"leynos\",\"id\":746767,\"node_id\":\"MDQ6VXNlcjc0Njc2Nw==\",\"avatar_url\":\"https://avatars.githubusercontent.com/u/746767?v=4\",\"gravatar_id\":\"\",\"url\":\"https://api.github.com/users/leynos\",\"html_url\":\"https://github.com/leynos\",\"followers_url\":\"https://api.github.com/users/leynos/followers\",\"following_url\":\"https://api.github.com/users/leynos/following{/other_user}\",\"gists_url\":\"https://api.github.com/users/leynos/gists{/gist_id}\",\"starred_url\":\"https://api.github.com/users/leynos/starred{/owner}{/repo}\",\"subscriptions_url\":\"https://api.github.com/users/leynos/subscriptions\",\"organizations_url\":\"https://api.github.com/users/leynos/orgs\",\"repos_url\":\"https://api.github.com/users/leynos/repos\",\"events_url\":\"https://api.github.com/users/leynos/events{/privacy}\",\"received_events_url\":\"https://api.github.com/users/leynos/received_events\",\"type\":\"User\",\"user_view_type\":\"public\",\"site_admin\":false},\"body\":\"##
+        Summary\\n\\nThis branch adopts the estate Markdown formatting baseline that
+        concordat now audits as the `markdown-formatting-baseline` rule package (PD-002
+        to PD-006), following the `leynos/netsuke` reference wiring. `make fmt` calls
+        `mdtablefix` and `markdownlint-cli2 --fix` directly over the Git-selected
+        Markdown set instead of the `mdformat-all` wrapper, `make check-fmt` runs
+        the matching `mdtablefix --check` so unformatted Markdown fails CI, `.markdownlint-cli2.jsonc`
+        carries every baseline ignore glob, and CI lints Markdown through the pinned
+        `DavidAnson/markdownlint-cli2-action`. The tracked Markdown is reformatted
+        once because `--git` also reaches the hidden `.rules/` documents the wrapper
+        skipped.\\n\\n## Review walkthrough\\n\\n- Start with [Makefile](https://github.com/leynos/git-donkey/blob/markdown-formatting-baseline/Makefile#L1)
+        for the `MDTABLEFIX` variables and the `fmt` and `check-fmt` recipes.\\n-
+        Then [.github/workflows/ci.yml](https://github.com/leynos/git-donkey/blob/markdown-formatting-baseline/.github/workflows/ci.yml#L33):
+        the pinned mdtablefix install replaces the `npm install`, and the action step
+        follows `make check-fmt`.\\n- Finish with [.markdownlint-cli2.jsonc](https://github.com/leynos/git-donkey/blob/markdown-formatting-baseline/.markdownlint-cli2.jsonc#L13);
+        the remaining files are the one-off `mdtablefix` reformat.\\n\\n## Validation\\n\\n```text\\nconcordat
+        artefact rule run markdown-formatting-baseline --repo .\\nmarkdown-formatting-baseline:
+        compliant\\n\\nmdtablefix --check --git --include-untracked --wrap --renumber
+        --breaks --ellipsis --fences\\nmarkdownlint-cli2 \\\"**/*.md\\\"   Summary:
+        0 error(s)\\nmbake validate Makefile       Valid syntax\\n```\\n\\n## Notes\\n\\nPart
+        of the estate rollout driven by leynos/concordat#168; behaviour is guarded
+        by that rule, so no repository-local tests are added.\\n\\n## Summary by Sourcery\\n\\nAdopt
+        the estate Markdown formatting baseline across local tooling, CI, configuration,
+        and repository documentation.\\n\\nEnhancements:\\n- Adopt the estate Markdown
+        formatting baseline and apply its rules consistently across tracked and untracked
+        Markdown files.\\n- Replace the Markdown formatting wrapper with direct table
+        formatting and lint-fix targets, while adding matching formatting checks.\\n-
+        Centralize baseline Markdown lint exclusions in the markdownlint configuration.\\n\\nCI:\\n-
+        Pin and install mdtablefix in CI and lint Markdown through the pinned markdownlint-cli2
+        GitHub Action.\\n\\nChores:\\n- Reformat the repository's Markdown documents
+        to comply with the adopted baseline.\",\"created_at\":\"2026-09-15T15:56:24Z\",\"updated_at\":\"2026-09-15T16:01:52Z\",\"closed_at\":\"2026-09-15T15:57:54Z\",\"merged_at\":\"2026-09-15T15:57:54Z\",\"merge_commit_sha\":\"02ab4e9e1bcb6ec498f2d4dde6e1a7df2d897c41\",\"assignees\":[],\"requested_reviewers\":[],\"requested_teams\":[],\"labels\":[{\"id\":12040893651,\"node_id\":\"LA_kwDOQ7SZj88AAAACzbF00w\",\"url\":\"https://api.github.com/repos/leynos/git-donkey/labels/Issue\",\"name\":\"Issue\",\"color\":\"ededed\",\"default\":false,\"description\":null,\"archived_at\":null,\"archived_by\":null}],\"milestone\":null,\"draft\":false,\"commits_url\":\"https://api.github.com/repos/leynos/git-donkey/pulls/93/commits\",\"review_comments_url\":\"https://api.github.com/repos/leynos/git-donkey/pulls/93/comments\",\"review_comment_url\":\"https://api.github.com/repos/leynos/git-donkey/pulls/comments{/number}\",\"comments_url\":\"https://api.github.com/repos/leynos/git-donkey/issues/93/comments\",\"statuses_url\":\"https://api.github.com/repos/leynos/git-donkey/statuses/cb813a96c4e2cd494a7df4aaa279b71b5765cea5\",\"head\":{\"label\":\"leynos:markdown-formatting-baseline\",\"ref\":\"markdown-formatting-baseline\",\"sha\":\"cb813a96c4e2cd494a7df4aaa279b71b5765cea5\",\"user\":{\"login\":\"leynos\",\"id\":746767,\"node_id\":\"MDQ6VXNlcjc0Njc2Nw==\",\"avatar_url\":\"https://avatars.githubusercontent.com/u/746767?v=4\",\"gravatar_id\":\"\",\"url\":\"https://api.github.com/users/leynos\",\"html_url\":\"https://github.com/leynos\",\"followers_url\":\"https://api.github.com/users/leynos/followers\",\"following_url\":\"https://api.github.com/users/leynos/following{/other_user}\",\"gists_url\":\"https://api.github.com/users/leynos/gists{/gist_id}\",\"starred_url\":\"https://api.github.com/users/leynos/starred{/owner}{/repo}\",\"subscriptions_url\":\"https://api.github.com/users/leynos/subscriptions\",\"organizations_url\":\"https://api.github.com/users/leynos/orgs\",\"repos_url\":\"https://api.github.com/users/leynos/repos\",\"events_url\":\"https://api.github.com/users/leynos/events{/privacy}\",\"received_events_url\":\"https://api.github.com/users/leynos/received_events\",\"type\":\"User\",\"user_view_type\":\"public\",\"site_admin\":false},\"repo\":{\"id\":1135909263,\"node_id\":\"R_kgDOQ7SZjw\",\"name\":\"git-donkey\",\"full_name\":\"leynos/git-donkey\",\"private\":false,\"owner\":{\"login\":\"leynos\",\"id\":746767,\"node_id\":\"MDQ6VXNlcjc0Njc2Nw==\",\"avatar_url\":\"https://avatars.githubusercontent.com/u/746767?v=4\",\"gravatar_id\":\"\",\"url\":\"https://api.github.com/users/leynos\",\"html_url\":\"https://github.com/leynos\",\"followers_url\":\"https://api.github.com/users/leynos/followers\",\"following_url\":\"https://api.github.com/users/leynos/following{/other_user}\",\"gists_url\":\"https://api.github.com/users/leynos/gists{/gist_id}\",\"starred_url\":\"https://api.github.com/users/leynos/starred{/owner}{/repo}\",\"subscriptions_url\":\"https://api.github.com/users/leynos/subscriptions\",\"organizations_url\":\"https://api.github.com/users/leynos/orgs\",\"repos_url\":\"https://api.github.com/users/leynos/repos\",\"events_url\":\"https://api.github.com/users/leynos/events{/privacy}\",\"received_events_url\":\"https://api.github.com/users/leynos/received_events\",\"type\":\"User\",\"user_view_type\":\"public\",\"site_admin\":false},\"html_url\":\"https://github.com/leynos/git-donkey\",\"description\":\"Git
+        subcommands that make branch-based development less of a\u2026 well, you know\",\"fork\":false,\"url\":\"https://api.github.com/repos/leynos/git-donkey\",\"forks_url\":\"https://api.github.com/repos/leynos/git-donkey/forks\",\"keys_url\":\"https://api.github.com/repos/leynos/git-donkey/keys{/key_id}\",\"collaborators_url\":\"https://api.github.com/repos/leynos/git-donkey/collaborators{/collaborator}\",\"teams_url\":\"https://api.github.com/repos/leynos/git-donkey/teams\",\"hooks_url\":\"https://api.github.com/repos/leynos/git-donkey/hooks\",\"issue_events_url\":\"https://api.github.com/repos/leynos/git-donkey/issues/events{/number}\",\"events_url\":\"https://api.github.com/repos/leynos/git-donkey/events\",\"assignees_url\":\"https://api.github.com/repos/leynos/git-donkey/assignees{/user}\",\"branches_url\":\"https://api.github.com/repos/leynos/git-donkey/branches{/branch}\",\"tags_url\":\"https://api.github.com/repos/leynos/git-donkey/tags\",\"blobs_url\":\"https://api.github.com/repos/leynos/git-donkey/git/blobs{/sha}\",\"git_tags_url\":\"https://api.github.com/repos/leynos/git-donkey/git/tags{/sha}\",\"git_refs_url\":\"https://api.github.com/repos/leynos/git-donkey/git/refs{/sha}\",\"trees_url\":\"https://api.github.com/repos/leynos/git-donkey/git/trees{/sha}\",\"statuses_url\":\"https://api.github.com/repos/leynos/git-donkey/statuses/{sha}\",\"languages_url\":\"https://api.github.com/repos/leynos/git-donkey/languages\",\"stargazers_url\":\"https://api.github.com/repos/leynos/git-donkey/stargazers\",\"contributors_url\":\"https://api.github.com/repos/leynos/git-donkey/contributors\",\"subscribers_url\":\"https://api.github.com/repos/leynos/git-donkey/subscribers\",\"subscription_url\":\"https://api.github.com/repos/leynos/git-donkey/subscription\",\"commits_url\":\"https://api.github.com/repos/leynos/git-donkey/commits{/sha}\",\"git_commits_url\":\"https://api.github.com/repos/leynos/git-donkey/git/commits{/sha}\",\"comments_url\":\"https://api.github.com/repos/leynos/git-donkey/comments{/number}\",\"issue_comment_url\":\"https://api.github.com/repos/leynos/git-donkey/issues/comments{/number}\",\"contents_url\":\"https://api.github.com/repos/leynos/git-donkey/contents/{+path}\",\"compare_url\":\"https://api.github.com/repos/leynos/git-donkey/compare/{base}...{head}\",\"merges_url\":\"https://api.github.com/repos/leynos/git-donkey/merges\",\"archive_url\":\"https://api.github.com/repos/leynos/git-donkey/{archive_format}{/ref}\",\"downloads_url\":\"https://api.github.com/repos/leynos/git-donkey/downloads\",\"issues_url\":\"https://api.github.com/repos/leynos/git-donkey/issues{/number}\",\"pulls_url\":\"https://api.github.com/repos/leynos/git-donkey/pulls{/number}\",\"milestones_url\":\"https://api.github.com/repos/leynos/git-donkey/milestones{/number}\",\"notifications_url\":\"https://api.github.com/repos/leynos/git-donkey/notifications{?since,all,participating}\",\"labels_url\":\"https://api.github.com/repos/leynos/git-donkey/labels{/name}\",\"releases_url\":\"https://api.github.com/repos/leynos/git-donkey/releases{/id}\",\"deployments_url\":\"https://api.github.com/repos/leynos/git-donkey/deployments\",\"created_at\":\"2026-01-16T19:08:43Z\",\"updated_at\":\"2026-09-15T15:57:58Z\",\"pushed_at\":\"2026-09-15T15:57:55Z\",\"git_url\":\"git://github.com/leynos/git-donkey.git\",\"ssh_url\":\"git@github.com:leynos/git-donkey.git\",\"clone_url\":\"https://github.com/leynos/git-donkey.git\",\"svn_url\":\"https://github.com/leynos/git-donkey\",\"homepage\":\"\",\"size\":3417,\"stargazers_count\":0,\"watchers_count\":0,\"language\":\"Python\",\"has_issues\":true,\"has_projects\":true,\"has_downloads\":false,\"has_wiki\":true,\"has_pages\":false,\"has_discussions\":false,\"forks_count\":0,\"mirror_url\":null,\"archived\":false,\"disabled\":false,\"open_issues_count\":9,\"license\":{\"key\":\"isc\",\"name\":\"ISC
+        License\",\"spdx_id\":\"ISC\",\"url\":\"https://api.github.com/licenses/isc\",\"node_id\":\"MDc6TGljZW5zZTEw\"},\"allow_forking\":true,\"is_template\":false,\"web_commit_signoff_required\":false,\"has_pull_requests\":true,\"pull_request_creation_policy\":\"all\",\"topics\":[],\"visibility\":\"public\",\"forks\":0,\"open_issues\":9,\"watchers\":0,\"default_branch\":\"main\"}},\"base\":{\"label\":\"leynos:main\",\"ref\":\"main\",\"sha\":\"ba1e9ad9de2b718f77a31005cb23ff87887edb22\",\"user\":{\"login\":\"leynos\",\"id\":746767,\"node_id\":\"MDQ6VXNlcjc0Njc2Nw==\",\"avatar_url\":\"https://avatars.githubusercontent.com/u/746767?v=4\",\"gravatar_id\":\"\",\"url\":\"https://api.github.com/users/leynos\",\"html_url\":\"https://github.com/leynos\",\"followers_url\":\"https://api.github.com/users/leynos/followers\",\"following_url\":\"https://api.github.com/users/leynos/following{/other_user}\",\"gists_url\":\"https://api.github.com/users/leynos/gists{/gist_id}\",\"starred_url\":\"https://api.github.com/users/leynos/starred{/owner}{/repo}\",\"subscriptions_url\":\"https://api.github.com/users/leynos/subscriptions\",\"organizations_url\":\"https://api.github.com/users/leynos/orgs\",\"repos_url\":\"https://api.github.com/users/leynos/repos\",\"events_url\":\"https://api.github.com/users/leynos/events{/privacy}\",\"received_events_url\":\"https://api.github.com/users/leynos/received_events\",\"type\":\"User\",\"user_view_type\":\"public\",\"site_admin\":false},\"repo\":{\"id\":1135909263,\"node_id\":\"R_kgDOQ7SZjw\",\"name\":\"git-donkey\",\"full_name\":\"leynos/git-donkey\",\"private\":false,\"owner\":{\"login\":\"leynos\",\"id\":746767,\"node_id\":\"MDQ6VXNlcjc0Njc2Nw==\",\"avatar_url\":\"https://avatars.githubusercontent.com/u/746767?v=4\",\"gravatar_id\":\"\",\"url\":\"https://api.github.com/users/leynos\",\"html_url\":\"https://github.com/leynos\",\"followers_url\":\"https://api.github.com/users/leynos/followers\",\"following_url\":\"https://api.github.com/users/leynos/following{/other_user}\",\"gists_url\":\"https://api.github.com/users/leynos/gists{/gist_id}\",\"starred_url\":\"https://api.github.com/users/leynos/starred{/owner}{/repo}\",\"subscriptions_url\":\"https://api.github.com/users/leynos/subscriptions\",\"organizations_url\":\"https://api.github.com/users/leynos/orgs\",\"repos_url\":\"https://api.github.com/users/leynos/repos\",\"events_url\":\"https://api.github.com/users/leynos/events{/privacy}\",\"received_events_url\":\"https://api.github.com/users/leynos/received_events\",\"type\":\"User\",\"user_view_type\":\"public\",\"site_admin\":false},\"html_url\":\"https://github.com/leynos/git-donkey\",\"description\":\"Git
+        subcommands that make branch-based development less of a\u2026 well, you know\",\"fork\":false,\"url\":\"https://api.github.com/repos/leynos/git-donkey\",\"forks_url\":\"https://api.github.com/repos/leynos/git-donkey/forks\",\"keys_url\":\"https://api.github.com/repos/leynos/git-donkey/keys{/key_id}\",\"collaborators_url\":\"https://api.github.com/repos/leynos/git-donkey/collaborators{/collaborator}\",\"teams_url\":\"https://api.github.com/repos/leynos/git-donkey/teams\",\"hooks_url\":\"https://api.github.com/repos/leynos/git-donkey/hooks\",\"issue_events_url\":\"https://api.github.com/repos/leynos/git-donkey/issues/events{/number}\",\"events_url\":\"https://api.github.com/repos/leynos/git-donkey/events\",\"assignees_url\":\"https://api.github.com/repos/leynos/git-donkey/assignees{/user}\",\"branches_url\":\"https://api.github.com/repos/leynos/git-donkey/branches{/branch}\",\"tags_url\":\"https://api.github.com/repos/leynos/git-donkey/tags\",\"blobs_url\":\"https://api.github.com/repos/leynos/git-donkey/git/blobs{/sha}\",\"git_tags_url\":\"https://api.github.com/repos/leynos/git-donkey/git/tags{/sha}\",\"git_refs_url\":\"https://api.github.com/repos/leynos/git-donkey/git/refs{/sha}\",\"trees_url\":\"https://api.github.com/repos/leynos/git-donkey/git/trees{/sha}\",\"statuses_url\":\"https://api.github.com/repos/leynos/git-donkey/statuses/{sha}\",\"languages_url\":\"https://api.github.com/repos/leynos/git-donkey/languages\",\"stargazers_url\":\"https://api.github.com/repos/leynos/git-donkey/stargazers\",\"contributors_url\":\"https://api.github.com/repos/leynos/git-donkey/contributors\",\"subscribers_url\":\"https://api.github.com/repos/leynos/git-donkey/subscribers\",\"subscription_url\":\"https://api.github.com/repos/leynos/git-donkey/subscription\",\"commits_url\":\"https://api.github.com/repos/leynos/git-donkey/commits{/sha}\",\"git_commits_url\":\"https://api.github.com/repos/leynos/git-donkey/git/commits{/sha}\",\"comments_url\":\"https://api.github.com/repos/leynos/git-donkey/comments{/number}\",\"issue_comment_url\":\"https://api.github.com/repos/leynos/git-donkey/issues/comments{/number}\",\"contents_url\":\"https://api.github.com/repos/leynos/git-donkey/contents/{+path}\",\"compare_url\":\"https://api.github.com/repos/leynos/git-donkey/compare/{base}...{head}\",\"merges_url\":\"https://api.github.com/repos/leynos/git-donkey/merges\",\"archive_url\":\"https://api.github.com/repos/leynos/git-donkey/{archive_format}{/ref}\",\"downloads_url\":\"https://api.github.com/repos/leynos/git-donkey/downloads\",\"issues_url\":\"https://api.github.com/repos/leynos/git-donkey/issues{/number}\",\"pulls_url\":\"https://api.github.com/repos/leynos/git-donkey/pulls{/number}\",\"milestones_url\":\"https://api.github.com/repos/leynos/git-donkey/milestones{/number}\",\"notifications_url\":\"https://api.github.com/repos/leynos/git-donkey/notifications{?since,all,participating}\",\"labels_url\":\"https://api.github.com/repos/leynos/git-donkey/labels{/name}\",\"releases_url\":\"https://api.github.com/repos/leynos/git-donkey/releases{/id}\",\"deployments_url\":\"https://api.github.com/repos/leynos/git-donkey/deployments\",\"created_at\":\"2026-01-16T19:08:43Z\",\"updated_at\":\"2026-09-15T15:57:58Z\",\"pushed_at\":\"2026-09-15T15:57:55Z\",\"git_url\":\"git://github.com/leynos/git-donkey.git\",\"ssh_url\":\"git@github.com:leynos/git-donkey.git\",\"clone_url\":\"https://github.com/leynos/git-donkey.git\",\"svn_url\":\"https://github.com/leynos/git-donkey\",\"homepage\":\"\",\"size\":3417,\"stargazers_count\":0,\"watchers_count\":0,\"language\":\"Python\",\"has_issues\":true,\"has_projects\":true,\"has_downloads\":false,\"has_wiki\":true,\"has_pages\":false,\"has_discussions\":false,\"forks_count\":0,\"mirror_url\":null,\"archived\":false,\"disabled\":false,\"open_issues_count\":9,\"license\":{\"key\":\"isc\",\"name\":\"ISC
+        License\",\"spdx_id\":\"ISC\",\"url\":\"https://api.github.com/licenses/isc\",\"node_id\":\"MDc6TGljZW5zZTEw\"},\"allow_forking\":true,\"is_template\":false,\"web_commit_signoff_required\":false,\"has_pull_requests\":true,\"pull_request_creation_policy\":\"all\",\"topics\":[],\"visibility\":\"public\",\"forks\":0,\"open_issues\":9,\"watchers\":0,\"default_branch\":\"main\"}},\"_links\":{\"self\":{\"href\":\"https://api.github.com/repos/leynos/git-donkey/pulls/93\"},\"html\":{\"href\":\"https://github.com/leynos/git-donkey/pull/93\"},\"issue\":{\"href\":\"https://api.github.com/repos/leynos/git-donkey/issues/93\"},\"comments\":{\"href\":\"https://api.github.com/repos/leynos/git-donkey/issues/93/comments\"},\"review_comments\":{\"href\":\"https://api.github.com/repos/leynos/git-donkey/pulls/93/comments\"},\"review_comment\":{\"href\":\"https://api.github.com/repos/leynos/git-donkey/pulls/comments{/number}\"},\"commits\":{\"href\":\"https://api.github.com/repos/leynos/git-donkey/pulls/93/commits\"},\"statuses\":{\"href\":\"https://api.github.com/repos/leynos/git-donkey/statuses/cb813a96c4e2cd494a7df4aaa279b71b5765cea5\"}},\"author_association\":\"OWNER\",\"auto_merge\":{\"enabled_by\":{\"login\":\"leynos\",\"id\":746767,\"node_id\":\"MDQ6VXNlcjc0Njc2Nw==\",\"avatar_url\":\"https://avatars.githubusercontent.com/u/746767?v=4\",\"gravatar_id\":\"\",\"url\":\"https://api.github.com/users/leynos\",\"html_url\":\"https://github.com/leynos\",\"followers_url\":\"https://api.github.com/users/leynos/followers\",\"following_url\":\"https://api.github.com/users/leynos/following{/other_user}\",\"gists_url\":\"https://api.github.com/users/leynos/gists{/gist_id}\",\"starred_url\":\"https://api.github.com/users/leynos/starred{/owner}{/repo}\",\"subscriptions_url\":\"https://api.github.com/users/leynos/subscriptions\",\"organizations_url\":\"https://api.github.com/users/leynos/orgs\",\"repos_url\":\"https://api.github.com/users/leynos/repos\",\"events_url\":\"https://api.github.com/users/leynos/events{/privacy}\",\"received_events_url\":\"https://api.github.com/users/leynos/received_events\",\"type\":\"User\",\"user_view_type\":\"public\",\"site_admin\":false},\"merge_method\":\"squash\",\"commit_title\":null,\"commit_message\":null},\"assignee\":null,\"active_lock_reason\":null,\"merged\":true,\"mergeable\":null,\"rebaseable\":null,\"mergeable_state\":\"unknown\",\"merged_by\":{\"login\":\"leynos\",\"id\":746767,\"node_id\":\"MDQ6VXNlcjc0Njc2Nw==\",\"avatar_url\":\"https://avatars.githubusercontent.com/u/746767?v=4\",\"gravatar_id\":\"\",\"url\":\"https://api.github.com/users/leynos\",\"html_url\":\"https://github.com/leynos\",\"followers_url\":\"https://api.github.com/users/leynos/followers\",\"following_url\":\"https://api.github.com/users/leynos/following{/other_user}\",\"gists_url\":\"https://api.github.com/users/leynos/gists{/gist_id}\",\"starred_url\":\"https://api.github.com/users/leynos/starred{/owner}{/repo}\",\"subscriptions_url\":\"https://api.github.com/users/leynos/subscriptions\",\"organizations_url\":\"https://api.github.com/users/leynos/orgs\",\"repos_url\":\"https://api.github.com/users/leynos/repos\",\"events_url\":\"https://api.github.com/users/leynos/events{/privacy}\",\"received_events_url\":\"https://api.github.com/users/leynos/received_events\",\"type\":\"User\",\"user_view_type\":\"public\",\"site_admin\":false},\"comments\":3,\"review_comments\":2,\"maintainer_can_modify\":false,\"commits\":1,\"additions\":410,\"deletions\":390,\"changed_files\":14}"
+    headers:
+      Access-Control-Allow-Origin:
+      - '*'
+      Access-Control-Expose-Headers:
+      - ETag, Link, Location, Retry-After, X-GitHub-OTP, X-RateLimit-Limit, X-RateLimit-Remaining,
+        X-RateLimit-Used, X-RateLimit-Resource, X-RateLimit-Reset, X-OAuth-Scopes,
+        X-Accepted-OAuth-Scopes, X-Poll-Interval, X-GitHub-Media-Type, X-GitHub-SSO,
+        X-GitHub-Request-Id, Deprecation, Sunset, Warning
+      Cache-Control:
+      - private, max-age=60, s-maxage=60
+      Content-Security-Policy:
+      - default-src 'none'
+      Content-Type:
+      - application/json; charset=utf-8
+      Date:
+      - Tue, 15 Sep 2026 16:30:19 GMT
+      ETag:
+      - W/"66a51ea898f04e8ce816184eb5d74a66f57d1afa09fe7f169400e309002eafd3"
+      Last-Modified:
+      - Tue, 15 Sep 2026 16:01:52 GMT
+      Referrer-Policy:
+      - origin-when-cross-origin, strict-origin-when-cross-origin
+      Server:
+      - github.com
+      Strict-Transport-Security:
+      - max-age=31536000; includeSubdomains; preload
+      Transfer-Encoding:
+      - chunked
+      Vary:
+      - Accept, Authorization, Cookie, X-GitHub-OTP,Accept-Encoding, Accept, X-Requested-With
+      X-Accepted-OAuth-Scopes:
+      - repo
+      X-Content-Type-Options:
+      - nosniff
+      X-Frame-Options:
+      - deny
+      X-GitHub-Media-Type:
+      - github.v3; format=json
+      X-GitHub-Request-Id:
+      - 84DA:2A6FF7:237C1D:2247DC:6AA9729A
+      X-OAuth-Scopes:
+      - admin:public_key, gist, read:org, repo
+      X-RateLimit-Limit:
+      - '5000'
+      X-RateLimit-Remaining:
+      - '4898'
+      X-RateLimit-Reset:
+      - '1789490934'
+      X-RateLimit-Resource:
+      - core
+      X-RateLimit-Used:
+      - '102'
+      X-XSS-Protection:
+      - '0'
+      x-github-api-version-selected:
+      - '2022-11-28'
+      x-github-edge-region:
+      - fra
+      x-oauth-client-id:
+      - 178c6fc778ccc68e1d6a
+      - 178c6fc778ccc68e1d6a
+    status:
+      code: 200
+      message: OK
+- request:
+    body: null
+    headers:
+      Accept:
+      - application/vnd.github+json
+      Accept-Charset:
+      - utf-8
+      Accept-Encoding:
+      - gzip, deflate, zstd
+      Connection:
+      - keep-alive
+      Content-Type:
+      - application/json
+      User-Agent:
+      - github3.py/4.0.1
+    method: GET
+    uri: https://api.github.com/repos/leynos/git-donkey/pulls/82
+  response:
+    body:
+      string: "{\"url\":\"https://api.github.com/repos/leynos/git-donkey/pulls/82\",\"id\":4521789800,\"node_id\":\"PR_kwDOQ7SZj88AAAABDYUJaA\",\"html_url\":\"https://github.com/leynos/git-donkey/pull/82\",\"diff_url\":\"https://github.com/leynos/git-donkey/pull/82.diff\",\"patch_url\":\"https://github.com/leynos/git-donkey/pull/82.patch\",\"issue_url\":\"https://api.github.com/repos/leynos/git-donkey/issues/82\",\"number\":82,\"state\":\"open\",\"locked\":false,\"title\":\"Add
+        `git wheresat` and a shared stack record across three commands\",\"user\":{\"login\":\"leynos\",\"id\":746767,\"node_id\":\"MDQ6VXNlcjc0Njc2Nw==\",\"avatar_url\":\"https://avatars.githubusercontent.com/u/746767?v=4\",\"gravatar_id\":\"\",\"url\":\"https://api.github.com/users/leynos\",\"html_url\":\"https://github.com/leynos\",\"followers_url\":\"https://api.github.com/users/leynos/followers\",\"following_url\":\"https://api.github.com/users/leynos/following{/other_user}\",\"gists_url\":\"https://api.github.com/users/leynos/gists{/gist_id}\",\"starred_url\":\"https://api.github.com/users/leynos/starred{/owner}{/repo}\",\"subscriptions_url\":\"https://api.github.com/users/leynos/subscriptions\",\"organizations_url\":\"https://api.github.com/users/leynos/orgs\",\"repos_url\":\"https://api.github.com/users/leynos/repos\",\"events_url\":\"https://api.github.com/users/leynos/events{/privacy}\",\"received_events_url\":\"https://api.github.com/users/leynos/received_events\",\"type\":\"User\",\"user_view_type\":\"public\",\"site_admin\":false},\"body\":\"##
+        What this is\\n\\nA draft execution plan for a new read-only `git wheresat`
+        subcommand **and a\\nshared stack record that `git donkey`, `git plonk`, and
+        `git wheresat` all\\nagree on**. It is documentation only \u2014 no production
+        code, no tests, no\\n`pyproject.toml` changes. The plan is\\n[`docs/execplans/git-wheresat-sub-command.md`](https://github.com/leynos/git-donkey/blob/git-wheresat-sub-command/docs/execplans/git-wheresat-sub-command.md).\\n\\n##
+        The problem\\n\\nWhen a stacked parent branch is squash-merged, the child
+        branch is stranded:\\nits history still holds the parent's original commits,
+        which no longer have\\nany ancestry relationship to the squash commit on the
+        trunk. The repair is\\n`git rebase --onto TARGET OLD_BASE CHILD`, and the
+        hard part is establishing\\n`OLD_BASE` \u2014 the exclusive replay boundary.
+        Getting it wrong silently\\nduplicates or silently discards work.\\n\\n`git
+        wheresat` automates the discovery, and \u2014 importantly \u2014 refuses to
+        answer\\nwhen the surviving evidence cannot settle the question.\\n\\n## The
+        three commands currently work against each other\\n\\n`git donkey` creates
+        a stacked branch, freezes the base commit at\\n`git_donkey/donkey_worktrees.py:186`,
+        and then passes `--no-track` so nothing\\nrecords it \u2014 the fact the forensic
+        ladder exists to reconstruct is discarded\\nmilliseconds after it is known.
+        `git plonk --hard` then deletes completed\\nbranches with `git branch -D`
+        (`git_donkey/plonk.py:182`), destroying the\\nbranch ref, its reflog, and
+        \u2014 measured, not assumed \u2014 the entire\\n`branch.<name>` configuration
+        section.\\n\\nThe plan now **requires** a single shared artefact, the **stack
+        record**,\\nwith one format module, one store module, and one lifecycle:\\n\\n-
+        **Birth \u2014 `git donkey`** writes the record when the base is not the trunk.\\n-
+        **Life \u2014 `git wheresat`** reads it as attested evidence and refreshes
+        it\\n  under `--record`.\\n- **Death \u2014 `git plonk`** converts it to a
+        tombstone before deleting the\\n  branch, sweeps records orphaned by a plain
+        `git branch -d`, and prunes\\n  tombstones after 90 days.\\n\\nNeither `git
+        donkey` nor `git plonk` learns anything about pull requests,\\nsquash merges,
+        or evidence tiers. The storage split \u2014 configuration holds the\\nvalues,
+        the ref is a reachability anchor \u2014 was forced by measurement:\\n`git
+        branch -D` destroys the configuration section, while `git branch -m`\\ncarries
+        it and leaves the ref behind.\\n\\n`git donkey`'s record write (EP-M3) and
+        `git plonk`'s lifecycle ownership\\n(EP-M4) each ship standalone value before
+        `git wheresat` exists at all.\\n\\n## What the plan commits to\\n\\n- **Read-only
+        by construction.** Read-only Git queries and ref writing live\\n  behind separate
+        protocols in separate modules, and the writing object is\\n  not constructed
+        on the default path. The only writes are refs under\\n  `refs/wheresat/`,
+        plus an opt-in local receipt behind `--record`.\\n- **Tiered evidence.** `ATTESTED`
+        evidence may establish a boundary alone;\\n  `DERIVED` (merge-base, fork-point)
+        needs a second independent candidate\\n  naming the same commit; `INFERRED`
+        (tree and patch comparison) can never\\n  establish one. The assessment result
+        is a discriminated union whose\\n  established arm cannot hold an inferred
+        candidate, so that rule is a type\\n  error rather than a convention.\\n-
+        **Eight gates, each with a specified decision procedure**, and a\\n  verification
+        obligation that each gate has a test in which that gate alone\\n  fails against
+        a real repository \u2014 so a gate implemented as an\\n  unconditional pass
+        is caught.\\n- **Four exit codes**: established, unresolved, usage or environment
+        error,\\n  and indeterminate. A Git or GitHub error is never collapsed into
+        a negative\\n  answer.\\n- **Every unbounded operation bounded**: the commit-to-pull-request\\n
+        \ association search, the heuristic trunk window, reflog reads, the candidate\\n
+        \ set, report rendering, HTTP timeouts, and a whole-command network budget.\\n-
+        **Ten milestones**, each a coherent plateau. EP-M1 writes the two design\\n
+        \ documents and two ADRs before any types exist; EP-M2 builds the shared\\n
+        \ contract; EP-M3 and EP-M4 wire the two existing commands; EP-M5 builds the\\n
+        \ hardest fixture; EP-M8 is a deliberate release boundary that may be merged\\n
+        \ as its own pull request.\\n- **Three lifecycle invariants**: the record
+        namespace stays a subset of the\\n  branch namespace; the lifecycle is a total
+        single-owner state machine\\n  (a Hypothesis `RuleBasedStateMachine`, because
+        this is the one place\\n  operation history determines correctness); and a
+        record means the branch is\\n  stacked.\\n\\n## How it was produced\\n\\nRepository
+        reconnaissance was done by four parallel read-only agents. The\\nfirst draft
+        was then stress-tested by a six-lens expert design review\\n(structure, alternatives,
+        scaling, contracts, failure modes, long-term\\nviability) and substantially
+        revised. `## Revision note` at the end of the\\nplan lists what changed and
+        why; the most consequential were:\\n\\n- the content comparison was **wrong**
+        \u2014 a squash is an N-to-1 relationship,\\n  so the first draft's per-commit
+        patch comparison would only ever have\\n  matched a single-commit parent;\\n-
+        fork-point was classified as establishing evidence despite being the\\n  design's
+        highest-likelihood hazard;\\n- cassettes were to be hand-authored, which `docs/developers-guide.md:557`\\n
+        \ forbids;\\n- observability was absent from a package where every other command
+        records.\\n\\nPrior art was checked live rather than from memory: git-machete's\\n`squashMergeDetection`
+        modes, `github/gh-stack`, Graphite, git-branchless,\\nGerrit `Change-Id`,
+        and Jujutsu change IDs. GitHub's native stacked pull\\nrequests were verified
+        against the live API from this worktree \u2014\\n`GET /repos/{owner}/{repo}/stacks`
+        exists, and the pull request payload\\ncarries a `stack` field that `github3.py`
+        4.0.1 does not model.\\n\\n## Notes for the reviewer\\n\\n- **There is no
+        roadmap document in this repository.** The standing\\n  instruction to mark
+        a roadmap entry as done on completion therefore has no\\n  target. The plan
+        records this in `Surprises & discoveries` and in a\\n  tolerance.\\n- Scope
+        grew when the shared contract became a requirement: the tolerance is\\n  now
+        sixteen files and 1,800 lines, with a continue-or-cut checkpoint at\\n  1,200.
+        The change spans three commands.\\n- The honest limitation of tombstones is
+        stated rather than glossed: a\\n  tombstone preserves the tip, not the reflog,
+        so fork-point recovery on a\\n  deleted branch is still lost. That is acceptable
+        because the tip is what\\n  the gates and the merge-base rung actually need.\\n-
+        Remaining follow-ups are cross-clone recovery (pushing the anchor ref),\\n
+        \ preserving superseded parent incarnations, and commit-message trailers.\\n-
+        The plan is a draft awaiting approval; the ExecPlan skill's approval gate\\n
+        \ applies before any implementation begins.\\n\\n## Gates\\n\\n`make markdownlint`
+        and `make nixie` pass for this documentation-only change.\\n\\n## References\\n\\n-
+        [Lody session](https://lody.ai/leynos/sessions/bee71329-fdba-410e-a4cc-ebbeb26df240)\\n\",\"created_at\":\"2026-09-14T00:43:44Z\",\"updated_at\":\"2026-09-15T16:26:12Z\",\"closed_at\":null,\"merged_at\":null,\"merge_commit_sha\":\"6538d87b09454044e748ead36ad4b26f8e6ebb35\",\"assignees\":[],\"requested_reviewers\":[],\"requested_teams\":[],\"labels\":[],\"milestone\":null,\"draft\":true,\"commits_url\":\"https://api.github.com/repos/leynos/git-donkey/pulls/82/commits\",\"review_comments_url\":\"https://api.github.com/repos/leynos/git-donkey/pulls/82/comments\",\"review_comment_url\":\"https://api.github.com/repos/leynos/git-donkey/pulls/comments{/number}\",\"comments_url\":\"https://api.github.com/repos/leynos/git-donkey/issues/82/comments\",\"statuses_url\":\"https://api.github.com/repos/leynos/git-donkey/statuses/b64fe2a1c5da58b45ee58accda04f49cce0473aa\",\"head\":{\"label\":\"leynos:git-wheresat-sub-command\",\"ref\":\"git-wheresat-sub-command\",\"sha\":\"b64fe2a1c5da58b45ee58accda04f49cce0473aa\",\"user\":{\"login\":\"leynos\",\"id\":746767,\"node_id\":\"MDQ6VXNlcjc0Njc2Nw==\",\"avatar_url\":\"https://avatars.githubusercontent.com/u/746767?v=4\",\"gravatar_id\":\"\",\"url\":\"https://api.github.com/users/leynos\",\"html_url\":\"https://github.com/leynos\",\"followers_url\":\"https://api.github.com/users/leynos/followers\",\"following_url\":\"https://api.github.com/users/leynos/following{/other_user}\",\"gists_url\":\"https://api.github.com/users/leynos/gists{/gist_id}\",\"starred_url\":\"https://api.github.com/users/leynos/starred{/owner}{/repo}\",\"subscriptions_url\":\"https://api.github.com/users/leynos/subscriptions\",\"organizations_url\":\"https://api.github.com/users/leynos/orgs\",\"repos_url\":\"https://api.github.com/users/leynos/repos\",\"events_url\":\"https://api.github.com/users/leynos/events{/privacy}\",\"received_events_url\":\"https://api.github.com/users/leynos/received_events\",\"type\":\"User\",\"user_view_type\":\"public\",\"site_admin\":false},\"repo\":{\"id\":1135909263,\"node_id\":\"R_kgDOQ7SZjw\",\"name\":\"git-donkey\",\"full_name\":\"leynos/git-donkey\",\"private\":false,\"owner\":{\"login\":\"leynos\",\"id\":746767,\"node_id\":\"MDQ6VXNlcjc0Njc2Nw==\",\"avatar_url\":\"https://avatars.githubusercontent.com/u/746767?v=4\",\"gravatar_id\":\"\",\"url\":\"https://api.github.com/users/leynos\",\"html_url\":\"https://github.com/leynos\",\"followers_url\":\"https://api.github.com/users/leynos/followers\",\"following_url\":\"https://api.github.com/users/leynos/following{/other_user}\",\"gists_url\":\"https://api.github.com/users/leynos/gists{/gist_id}\",\"starred_url\":\"https://api.github.com/users/leynos/starred{/owner}{/repo}\",\"subscriptions_url\":\"https://api.github.com/users/leynos/subscriptions\",\"organizations_url\":\"https://api.github.com/users/leynos/orgs\",\"repos_url\":\"https://api.github.com/users/leynos/repos\",\"events_url\":\"https://api.github.com/users/leynos/events{/privacy}\",\"received_events_url\":\"https://api.github.com/users/leynos/received_events\",\"type\":\"User\",\"user_view_type\":\"public\",\"site_admin\":false},\"html_url\":\"https://github.com/leynos/git-donkey\",\"description\":\"Git
+        subcommands that make branch-based development less of a\u2026 well, you know\",\"fork\":false,\"url\":\"https://api.github.com/repos/leynos/git-donkey\",\"forks_url\":\"https://api.github.com/repos/leynos/git-donkey/forks\",\"keys_url\":\"https://api.github.com/repos/leynos/git-donkey/keys{/key_id}\",\"collaborators_url\":\"https://api.github.com/repos/leynos/git-donkey/collaborators{/collaborator}\",\"teams_url\":\"https://api.github.com/repos/leynos/git-donkey/teams\",\"hooks_url\":\"https://api.github.com/repos/leynos/git-donkey/hooks\",\"issue_events_url\":\"https://api.github.com/repos/leynos/git-donkey/issues/events{/number}\",\"events_url\":\"https://api.github.com/repos/leynos/git-donkey/events\",\"assignees_url\":\"https://api.github.com/repos/leynos/git-donkey/assignees{/user}\",\"branches_url\":\"https://api.github.com/repos/leynos/git-donkey/branches{/branch}\",\"tags_url\":\"https://api.github.com/repos/leynos/git-donkey/tags\",\"blobs_url\":\"https://api.github.com/repos/leynos/git-donkey/git/blobs{/sha}\",\"git_tags_url\":\"https://api.github.com/repos/leynos/git-donkey/git/tags{/sha}\",\"git_refs_url\":\"https://api.github.com/repos/leynos/git-donkey/git/refs{/sha}\",\"trees_url\":\"https://api.github.com/repos/leynos/git-donkey/git/trees{/sha}\",\"statuses_url\":\"https://api.github.com/repos/leynos/git-donkey/statuses/{sha}\",\"languages_url\":\"https://api.github.com/repos/leynos/git-donkey/languages\",\"stargazers_url\":\"https://api.github.com/repos/leynos/git-donkey/stargazers\",\"contributors_url\":\"https://api.github.com/repos/leynos/git-donkey/contributors\",\"subscribers_url\":\"https://api.github.com/repos/leynos/git-donkey/subscribers\",\"subscription_url\":\"https://api.github.com/repos/leynos/git-donkey/subscription\",\"commits_url\":\"https://api.github.com/repos/leynos/git-donkey/commits{/sha}\",\"git_commits_url\":\"https://api.github.com/repos/leynos/git-donkey/git/commits{/sha}\",\"comments_url\":\"https://api.github.com/repos/leynos/git-donkey/comments{/number}\",\"issue_comment_url\":\"https://api.github.com/repos/leynos/git-donkey/issues/comments{/number}\",\"contents_url\":\"https://api.github.com/repos/leynos/git-donkey/contents/{+path}\",\"compare_url\":\"https://api.github.com/repos/leynos/git-donkey/compare/{base}...{head}\",\"merges_url\":\"https://api.github.com/repos/leynos/git-donkey/merges\",\"archive_url\":\"https://api.github.com/repos/leynos/git-donkey/{archive_format}{/ref}\",\"downloads_url\":\"https://api.github.com/repos/leynos/git-donkey/downloads\",\"issues_url\":\"https://api.github.com/repos/leynos/git-donkey/issues{/number}\",\"pulls_url\":\"https://api.github.com/repos/leynos/git-donkey/pulls{/number}\",\"milestones_url\":\"https://api.github.com/repos/leynos/git-donkey/milestones{/number}\",\"notifications_url\":\"https://api.github.com/repos/leynos/git-donkey/notifications{?since,all,participating}\",\"labels_url\":\"https://api.github.com/repos/leynos/git-donkey/labels{/name}\",\"releases_url\":\"https://api.github.com/repos/leynos/git-donkey/releases{/id}\",\"deployments_url\":\"https://api.github.com/repos/leynos/git-donkey/deployments\",\"created_at\":\"2026-01-16T19:08:43Z\",\"updated_at\":\"2026-09-15T15:57:58Z\",\"pushed_at\":\"2026-09-15T15:57:55Z\",\"git_url\":\"git://github.com/leynos/git-donkey.git\",\"ssh_url\":\"git@github.com:leynos/git-donkey.git\",\"clone_url\":\"https://github.com/leynos/git-donkey.git\",\"svn_url\":\"https://github.com/leynos/git-donkey\",\"homepage\":\"\",\"size\":3417,\"stargazers_count\":0,\"watchers_count\":0,\"language\":\"Python\",\"has_issues\":true,\"has_projects\":true,\"has_downloads\":false,\"has_wiki\":true,\"has_pages\":false,\"has_discussions\":false,\"forks_count\":0,\"mirror_url\":null,\"archived\":false,\"disabled\":false,\"open_issues_count\":9,\"license\":{\"key\":\"isc\",\"name\":\"ISC
+        License\",\"spdx_id\":\"ISC\",\"url\":\"https://api.github.com/licenses/isc\",\"node_id\":\"MDc6TGljZW5zZTEw\"},\"allow_forking\":true,\"is_template\":false,\"web_commit_signoff_required\":false,\"has_pull_requests\":true,\"pull_request_creation_policy\":\"all\",\"topics\":[],\"visibility\":\"public\",\"forks\":0,\"open_issues\":9,\"watchers\":0,\"default_branch\":\"main\"}},\"base\":{\"label\":\"leynos:main\",\"ref\":\"main\",\"sha\":\"609598dc8bc6e3e077d15d4d9a60b928df33a92e\",\"user\":{\"login\":\"leynos\",\"id\":746767,\"node_id\":\"MDQ6VXNlcjc0Njc2Nw==\",\"avatar_url\":\"https://avatars.githubusercontent.com/u/746767?v=4\",\"gravatar_id\":\"\",\"url\":\"https://api.github.com/users/leynos\",\"html_url\":\"https://github.com/leynos\",\"followers_url\":\"https://api.github.com/users/leynos/followers\",\"following_url\":\"https://api.github.com/users/leynos/following{/other_user}\",\"gists_url\":\"https://api.github.com/users/leynos/gists{/gist_id}\",\"starred_url\":\"https://api.github.com/users/leynos/starred{/owner}{/repo}\",\"subscriptions_url\":\"https://api.github.com/users/leynos/subscriptions\",\"organizations_url\":\"https://api.github.com/users/leynos/orgs\",\"repos_url\":\"https://api.github.com/users/leynos/repos\",\"events_url\":\"https://api.github.com/users/leynos/events{/privacy}\",\"received_events_url\":\"https://api.github.com/users/leynos/received_events\",\"type\":\"User\",\"user_view_type\":\"public\",\"site_admin\":false},\"repo\":{\"id\":1135909263,\"node_id\":\"R_kgDOQ7SZjw\",\"name\":\"git-donkey\",\"full_name\":\"leynos/git-donkey\",\"private\":false,\"owner\":{\"login\":\"leynos\",\"id\":746767,\"node_id\":\"MDQ6VXNlcjc0Njc2Nw==\",\"avatar_url\":\"https://avatars.githubusercontent.com/u/746767?v=4\",\"gravatar_id\":\"\",\"url\":\"https://api.github.com/users/leynos\",\"html_url\":\"https://github.com/leynos\",\"followers_url\":\"https://api.github.com/users/leynos/followers\",\"following_url\":\"https://api.github.com/users/leynos/following{/other_user}\",\"gists_url\":\"https://api.github.com/users/leynos/gists{/gist_id}\",\"starred_url\":\"https://api.github.com/users/leynos/starred{/owner}{/repo}\",\"subscriptions_url\":\"https://api.github.com/users/leynos/subscriptions\",\"organizations_url\":\"https://api.github.com/users/leynos/orgs\",\"repos_url\":\"https://api.github.com/users/leynos/repos\",\"events_url\":\"https://api.github.com/users/leynos/events{/privacy}\",\"received_events_url\":\"https://api.github.com/users/leynos/received_events\",\"type\":\"User\",\"user_view_type\":\"public\",\"site_admin\":false},\"html_url\":\"https://github.com/leynos/git-donkey\",\"description\":\"Git
+        subcommands that make branch-based development less of a\u2026 well, you know\",\"fork\":false,\"url\":\"https://api.github.com/repos/leynos/git-donkey\",\"forks_url\":\"https://api.github.com/repos/leynos/git-donkey/forks\",\"keys_url\":\"https://api.github.com/repos/leynos/git-donkey/keys{/key_id}\",\"collaborators_url\":\"https://api.github.com/repos/leynos/git-donkey/collaborators{/collaborator}\",\"teams_url\":\"https://api.github.com/repos/leynos/git-donkey/teams\",\"hooks_url\":\"https://api.github.com/repos/leynos/git-donkey/hooks\",\"issue_events_url\":\"https://api.github.com/repos/leynos/git-donkey/issues/events{/number}\",\"events_url\":\"https://api.github.com/repos/leynos/git-donkey/events\",\"assignees_url\":\"https://api.github.com/repos/leynos/git-donkey/assignees{/user}\",\"branches_url\":\"https://api.github.com/repos/leynos/git-donkey/branches{/branch}\",\"tags_url\":\"https://api.github.com/repos/leynos/git-donkey/tags\",\"blobs_url\":\"https://api.github.com/repos/leynos/git-donkey/git/blobs{/sha}\",\"git_tags_url\":\"https://api.github.com/repos/leynos/git-donkey/git/tags{/sha}\",\"git_refs_url\":\"https://api.github.com/repos/leynos/git-donkey/git/refs{/sha}\",\"trees_url\":\"https://api.github.com/repos/leynos/git-donkey/git/trees{/sha}\",\"statuses_url\":\"https://api.github.com/repos/leynos/git-donkey/statuses/{sha}\",\"languages_url\":\"https://api.github.com/repos/leynos/git-donkey/languages\",\"stargazers_url\":\"https://api.github.com/repos/leynos/git-donkey/stargazers\",\"contributors_url\":\"https://api.github.com/repos/leynos/git-donkey/contributors\",\"subscribers_url\":\"https://api.github.com/repos/leynos/git-donkey/subscribers\",\"subscription_url\":\"https://api.github.com/repos/leynos/git-donkey/subscription\",\"commits_url\":\"https://api.github.com/repos/leynos/git-donkey/commits{/sha}\",\"git_commits_url\":\"https://api.github.com/repos/leynos/git-donkey/git/commits{/sha}\",\"comments_url\":\"https://api.github.com/repos/leynos/git-donkey/comments{/number}\",\"issue_comment_url\":\"https://api.github.com/repos/leynos/git-donkey/issues/comments{/number}\",\"contents_url\":\"https://api.github.com/repos/leynos/git-donkey/contents/{+path}\",\"compare_url\":\"https://api.github.com/repos/leynos/git-donkey/compare/{base}...{head}\",\"merges_url\":\"https://api.github.com/repos/leynos/git-donkey/merges\",\"archive_url\":\"https://api.github.com/repos/leynos/git-donkey/{archive_format}{/ref}\",\"downloads_url\":\"https://api.github.com/repos/leynos/git-donkey/downloads\",\"issues_url\":\"https://api.github.com/repos/leynos/git-donkey/issues{/number}\",\"pulls_url\":\"https://api.github.com/repos/leynos/git-donkey/pulls{/number}\",\"milestones_url\":\"https://api.github.com/repos/leynos/git-donkey/milestones{/number}\",\"notifications_url\":\"https://api.github.com/repos/leynos/git-donkey/notifications{?since,all,participating}\",\"labels_url\":\"https://api.github.com/repos/leynos/git-donkey/labels{/name}\",\"releases_url\":\"https://api.github.com/repos/leynos/git-donkey/releases{/id}\",\"deployments_url\":\"https://api.github.com/repos/leynos/git-donkey/deployments\",\"created_at\":\"2026-01-16T19:08:43Z\",\"updated_at\":\"2026-09-15T15:57:58Z\",\"pushed_at\":\"2026-09-15T15:57:55Z\",\"git_url\":\"git://github.com/leynos/git-donkey.git\",\"ssh_url\":\"git@github.com:leynos/git-donkey.git\",\"clone_url\":\"https://github.com/leynos/git-donkey.git\",\"svn_url\":\"https://github.com/leynos/git-donkey\",\"homepage\":\"\",\"size\":3417,\"stargazers_count\":0,\"watchers_count\":0,\"language\":\"Python\",\"has_issues\":true,\"has_projects\":true,\"has_downloads\":false,\"has_wiki\":true,\"has_pages\":false,\"has_discussions\":false,\"forks_count\":0,\"mirror_url\":null,\"archived\":false,\"disabled\":false,\"open_issues_count\":9,\"license\":{\"key\":\"isc\",\"name\":\"ISC
+        License\",\"spdx_id\":\"ISC\",\"url\":\"https://api.github.com/licenses/isc\",\"node_id\":\"MDc6TGljZW5zZTEw\"},\"allow_forking\":true,\"is_template\":false,\"web_commit_signoff_required\":false,\"has_pull_requests\":true,\"pull_request_creation_policy\":\"all\",\"topics\":[],\"visibility\":\"public\",\"forks\":0,\"open_issues\":9,\"watchers\":0,\"default_branch\":\"main\"}},\"_links\":{\"self\":{\"href\":\"https://api.github.com/repos/leynos/git-donkey/pulls/82\"},\"html\":{\"href\":\"https://github.com/leynos/git-donkey/pull/82\"},\"issue\":{\"href\":\"https://api.github.com/repos/leynos/git-donkey/issues/82\"},\"comments\":{\"href\":\"https://api.github.com/repos/leynos/git-donkey/issues/82/comments\"},\"review_comments\":{\"href\":\"https://api.github.com/repos/leynos/git-donkey/pulls/82/comments\"},\"review_comment\":{\"href\":\"https://api.github.com/repos/leynos/git-donkey/pulls/comments{/number}\"},\"commits\":{\"href\":\"https://api.github.com/repos/leynos/git-donkey/pulls/82/commits\"},\"statuses\":{\"href\":\"https://api.github.com/repos/leynos/git-donkey/statuses/b64fe2a1c5da58b45ee58accda04f49cce0473aa\"}},\"author_association\":\"OWNER\",\"auto_merge\":null,\"assignee\":null,\"active_lock_reason\":null,\"merged\":false,\"mergeable\":true,\"rebaseable\":false,\"mergeable_state\":\"unstable\",\"merged_by\":null,\"comments\":11,\"review_comments\":1,\"maintainer_can_modify\":false,\"commits\":30,\"additions\":35120,\"deletions\":593,\"changed_files\":94}"
+    headers:
+      Access-Control-Allow-Origin:
+      - '*'
+      Access-Control-Expose-Headers:
+      - ETag, Link, Location, Retry-After, X-GitHub-OTP, X-RateLimit-Limit, X-RateLimit-Remaining,
+        X-RateLimit-Used, X-RateLimit-Resource, X-RateLimit-Reset, X-OAuth-Scopes,
+        X-Accepted-OAuth-Scopes, X-Poll-Interval, X-GitHub-Media-Type, X-GitHub-SSO,
+        X-GitHub-Request-Id, Deprecation, Sunset, Warning
+      Cache-Control:
+      - private, max-age=60, s-maxage=60
+      Content-Security-Policy:
+      - default-src 'none'
+      Content-Type:
+      - application/json; charset=utf-8
+      Date:
+      - Tue, 15 Sep 2026 16:30:20 GMT
+      ETag:
+      - W/"06e1abab16c4ae1dca73dd85d230c677efc97185f7c5db932b706b0596400d65"
+      Last-Modified:
+      - Tue, 15 Sep 2026 16:26:12 GMT
+      Referrer-Policy:
+      - origin-when-cross-origin, strict-origin-when-cross-origin
+      Server:
+      - github.com
+      Strict-Transport-Security:
+      - max-age=31536000; includeSubdomains; preload
+      Transfer-Encoding:
+      - chunked
+      Vary:
+      - Accept, Authorization, Cookie, X-GitHub-OTP,Accept-Encoding, Accept, X-Requested-With
+      X-Accepted-OAuth-Scopes:
+      - repo
+      X-Content-Type-Options:
+      - nosniff
+      X-Frame-Options:
+      - deny
+      X-GitHub-Media-Type:
+      - github.v3; format=json
+      X-GitHub-Request-Id:
+      - 90EC:265240:21739E:20403F:6AA9729B
+      X-OAuth-Scopes:
+      - admin:public_key, gist, read:org, repo
+      X-RateLimit-Limit:
+      - '5000'
+      X-RateLimit-Remaining:
+      - '4897'
+      X-RateLimit-Reset:
+      - '1789490934'
+      X-RateLimit-Resource:
+      - core
+      X-RateLimit-Used:
+      - '103'
+      X-XSS-Protection:
+      - '0'
+      x-github-api-version-selected:
+      - '2022-11-28'
+      x-github-edge-region:
+      - fra
+      x-oauth-client-id:
+      - 178c6fc778ccc68e1d6a
+      - 178c6fc778ccc68e1d6a
+    status:
+      code: 200
+      message: OK
+- request:
+    body: null
+    headers:
+      Accept:
+      - application/vnd.github+json
+      Accept-Charset:
+      - utf-8
+      Accept-Encoding:
+      - gzip, deflate, zstd
+      Connection:
+      - keep-alive
+      Content-Type:
+      - application/json
+      User-Agent:
+      - github3.py/4.0.1
+    method: GET
+    uri: https://api.github.com/repos/microsoft/vscode/pulls/335346
+  response:
+    body:
+      string: "{\"url\":\"https://api.github.com/repos/microsoft/vscode/pulls/335346\",\"id\":4488981653,\"node_id\":\"PR_kwDOAn8RLM8AAAABC5BslQ\",\"html_url\":\"https://github.com/microsoft/vscode/pull/335346\",\"diff_url\":\"https://github.com/microsoft/vscode/pull/335346.diff\",\"patch_url\":\"https://github.com/microsoft/vscode/pull/335346.patch\",\"issue_url\":\"https://api.github.com/repos/microsoft/vscode/issues/335346\",\"number\":335346,\"state\":\"open\",\"locked\":false,\"title\":\"Document
+        the UI composition ownership heuristic\",\"user\":{\"login\":\"chryw\",\"id\":7075677,\"node_id\":\"MDQ6VXNlcjcwNzU2Nzc=\",\"avatar_url\":\"https://avatars.githubusercontent.com/u/7075677?v=4\",\"gravatar_id\":\"\",\"url\":\"https://api.github.com/users/chryw\",\"html_url\":\"https://github.com/chryw\",\"followers_url\":\"https://api.github.com/users/chryw/followers\",\"following_url\":\"https://api.github.com/users/chryw/following{/other_user}\",\"gists_url\":\"https://api.github.com/users/chryw/gists{/gist_id}\",\"starred_url\":\"https://api.github.com/users/chryw/starred{/owner}{/repo}\",\"subscriptions_url\":\"https://api.github.com/users/chryw/subscriptions\",\"organizations_url\":\"https://api.github.com/users/chryw/orgs\",\"repos_url\":\"https://api.github.com/users/chryw/repos\",\"events_url\":\"https://api.github.com/users/chryw/events{/privacy}\",\"received_events_url\":\"https://api.github.com/users/chryw/received_events\",\"type\":\"User\",\"user_view_type\":\"public\",\"site_admin\":false},\"body\":\"##
+        Predictable UI composition \u2014 2 of 3: candidate authoring guidance\\n\\nStack:\\n\\n1.
+        **#335345 \u2014 shared composition token foundation**\\n2. **#335346 \u2014
+        ownership guidance (this PR)**\\n3. **#335350 \u2014 `WorkbenchButtonBar`
+        pilot**\\n\\n## Proposed guidance\\n\\nUse **one relationship, one owner**
+        as a review heuristic:\\n\\n- Put a relationship in the lowest component contract
+        that understands all participating elements.\\n- Treat ownership as responsibility,
+        not as the location of the CSS declaration.\\n- Keep primitive content neutral
+        about unknown neighbors.\\n- Let a rendered icon own size/fitting, a control
+        own internal relationships, and a parent own relationships between controls\u2014unless
+        the actual composition provides a better boundary.\\n- Choose `gap`, padding,
+        or a pair-specific margin according to the relationship; no mechanism is inherently
+        correct.\\n\\nThe design-philosophy wording explicitly marks this as candidate
+        guidance, not settled doctrine or an automatic lint rule.\\n\\n## Prior-art
+        and scope check\\n\\n`IconLabel` is relevant prior art: `Button` already shares
+        its lower-level inline-icon renderer, while the full widget has different
+        resource/list-label semantics. This guidance and the active pilot therefore
+        do not require embedding it or adding a new `IconLabel` API.\\n\\nMutable
+        size-token IDs and values are sourced from `baseSizes.ts`; theme colors remain
+        governed by their separate color registries. Broader instruction/skill source-of-truth
+        consolidation remains tracked in #335370; this PR only avoids duplicating
+        the spacing values it changes.\\n\\n## Validation\\n\\n- Guidance consistently
+        labels the ownership model and unproven size roles as candidates.\\n- The
+        active implementation pilot is limited to #335350.\\n- The active three-PR
+        stack changes only eight intentional button fixtures in a 542-fixture latest-main
+        comparison; 534 are pixel-identical.\\n- Editor diagnostics and `git diff
+        --check` are clean.\\n\\n## Decision requested\\n\\n- Is the heuristic useful
+        without being overly prescriptive?\\n- Which wording is mature enough for
+        canonical design philosophy, and which should remain experimental layout guidance?\\n\",\"created_at\":\"2026-09-09T20:12:25Z\",\"updated_at\":\"2026-09-11T01:05:41Z\",\"closed_at\":null,\"merged_at\":null,\"merge_commit_sha\":\"4e461261c8e4385bfe46072e0c51f9f3614ea998\",\"assignees\":[{\"login\":\"chryw\",\"id\":7075677,\"node_id\":\"MDQ6VXNlcjcwNzU2Nzc=\",\"avatar_url\":\"https://avatars.githubusercontent.com/u/7075677?v=4\",\"gravatar_id\":\"\",\"url\":\"https://api.github.com/users/chryw\",\"html_url\":\"https://github.com/chryw\",\"followers_url\":\"https://api.github.com/users/chryw/followers\",\"following_url\":\"https://api.github.com/users/chryw/following{/other_user}\",\"gists_url\":\"https://api.github.com/users/chryw/gists{/gist_id}\",\"starred_url\":\"https://api.github.com/users/chryw/starred{/owner}{/repo}\",\"subscriptions_url\":\"https://api.github.com/users/chryw/subscriptions\",\"organizations_url\":\"https://api.github.com/users/chryw/orgs\",\"repos_url\":\"https://api.github.com/users/chryw/repos\",\"events_url\":\"https://api.github.com/users/chryw/events{/privacy}\",\"received_events_url\":\"https://api.github.com/users/chryw/received_events\",\"type\":\"User\",\"user_view_type\":\"public\",\"site_admin\":false}],\"requested_reviewers\":[],\"requested_teams\":[],\"labels\":[],\"milestone\":null,\"draft\":true,\"commits_url\":\"https://api.github.com/repos/microsoft/vscode/pulls/335346/commits\",\"review_comments_url\":\"https://api.github.com/repos/microsoft/vscode/pulls/335346/comments\",\"review_comment_url\":\"https://api.github.com/repos/microsoft/vscode/pulls/comments{/number}\",\"comments_url\":\"https://api.github.com/repos/microsoft/vscode/issues/335346/comments\",\"statuses_url\":\"https://api.github.com/repos/microsoft/vscode/statuses/4bab6ee1c6e97a2d8ff57f711fe2b46d3d5fafad\",\"head\":{\"label\":\"microsoft:cherwan/ui-composition-authoring-guidance\",\"ref\":\"cherwan/ui-composition-authoring-guidance\",\"sha\":\"4bab6ee1c6e97a2d8ff57f711fe2b46d3d5fafad\",\"user\":{\"login\":\"microsoft\",\"id\":6154722,\"node_id\":\"MDEyOk9yZ2FuaXphdGlvbjYxNTQ3MjI=\",\"avatar_url\":\"https://avatars.githubusercontent.com/u/6154722?v=4\",\"gravatar_id\":\"\",\"url\":\"https://api.github.com/users/microsoft\",\"html_url\":\"https://github.com/microsoft\",\"followers_url\":\"https://api.github.com/users/microsoft/followers\",\"following_url\":\"https://api.github.com/users/microsoft/following{/other_user}\",\"gists_url\":\"https://api.github.com/users/microsoft/gists{/gist_id}\",\"starred_url\":\"https://api.github.com/users/microsoft/starred{/owner}{/repo}\",\"subscriptions_url\":\"https://api.github.com/users/microsoft/subscriptions\",\"organizations_url\":\"https://api.github.com/users/microsoft/orgs\",\"repos_url\":\"https://api.github.com/users/microsoft/repos\",\"events_url\":\"https://api.github.com/users/microsoft/events{/privacy}\",\"received_events_url\":\"https://api.github.com/users/microsoft/received_events\",\"type\":\"Organization\",\"user_view_type\":\"public\",\"site_admin\":false},\"repo\":{\"id\":41881900,\"node_id\":\"MDEwOlJlcG9zaXRvcnk0MTg4MTkwMA==\",\"name\":\"vscode\",\"full_name\":\"microsoft/vscode\",\"private\":false,\"owner\":{\"login\":\"microsoft\",\"id\":6154722,\"node_id\":\"MDEyOk9yZ2FuaXphdGlvbjYxNTQ3MjI=\",\"avatar_url\":\"https://avatars.githubusercontent.com/u/6154722?v=4\",\"gravatar_id\":\"\",\"url\":\"https://api.github.com/users/microsoft\",\"html_url\":\"https://github.com/microsoft\",\"followers_url\":\"https://api.github.com/users/microsoft/followers\",\"following_url\":\"https://api.github.com/users/microsoft/following{/other_user}\",\"gists_url\":\"https://api.github.com/users/microsoft/gists{/gist_id}\",\"starred_url\":\"https://api.github.com/users/microsoft/starred{/owner}{/repo}\",\"subscriptions_url\":\"https://api.github.com/users/microsoft/subscriptions\",\"organizations_url\":\"https://api.github.com/users/microsoft/orgs\",\"repos_url\":\"https://api.github.com/users/microsoft/repos\",\"events_url\":\"https://api.github.com/users/microsoft/events{/privacy}\",\"received_events_url\":\"https://api.github.com/users/microsoft/received_events\",\"type\":\"Organization\",\"user_view_type\":\"public\",\"site_admin\":false},\"html_url\":\"https://github.com/microsoft/vscode\",\"description\":\"Visual
+        Studio Code\",\"fork\":false,\"url\":\"https://api.github.com/repos/microsoft/vscode\",\"forks_url\":\"https://api.github.com/repos/microsoft/vscode/forks\",\"keys_url\":\"https://api.github.com/repos/microsoft/vscode/keys{/key_id}\",\"collaborators_url\":\"https://api.github.com/repos/microsoft/vscode/collaborators{/collaborator}\",\"teams_url\":\"https://api.github.com/repos/microsoft/vscode/teams\",\"hooks_url\":\"https://api.github.com/repos/microsoft/vscode/hooks\",\"issue_events_url\":\"https://api.github.com/repos/microsoft/vscode/issues/events{/number}\",\"events_url\":\"https://api.github.com/repos/microsoft/vscode/events\",\"assignees_url\":\"https://api.github.com/repos/microsoft/vscode/assignees{/user}\",\"branches_url\":\"https://api.github.com/repos/microsoft/vscode/branches{/branch}\",\"tags_url\":\"https://api.github.com/repos/microsoft/vscode/tags\",\"blobs_url\":\"https://api.github.com/repos/microsoft/vscode/git/blobs{/sha}\",\"git_tags_url\":\"https://api.github.com/repos/microsoft/vscode/git/tags{/sha}\",\"git_refs_url\":\"https://api.github.com/repos/microsoft/vscode/git/refs{/sha}\",\"trees_url\":\"https://api.github.com/repos/microsoft/vscode/git/trees{/sha}\",\"statuses_url\":\"https://api.github.com/repos/microsoft/vscode/statuses/{sha}\",\"languages_url\":\"https://api.github.com/repos/microsoft/vscode/languages\",\"stargazers_url\":\"https://api.github.com/repos/microsoft/vscode/stargazers\",\"contributors_url\":\"https://api.github.com/repos/microsoft/vscode/contributors\",\"subscribers_url\":\"https://api.github.com/repos/microsoft/vscode/subscribers\",\"subscription_url\":\"https://api.github.com/repos/microsoft/vscode/subscription\",\"commits_url\":\"https://api.github.com/repos/microsoft/vscode/commits{/sha}\",\"git_commits_url\":\"https://api.github.com/repos/microsoft/vscode/git/commits{/sha}\",\"comments_url\":\"https://api.github.com/repos/microsoft/vscode/comments{/number}\",\"issue_comment_url\":\"https://api.github.com/repos/microsoft/vscode/issues/comments{/number}\",\"contents_url\":\"https://api.github.com/repos/microsoft/vscode/contents/{+path}\",\"compare_url\":\"https://api.github.com/repos/microsoft/vscode/compare/{base}...{head}\",\"merges_url\":\"https://api.github.com/repos/microsoft/vscode/merges\",\"archive_url\":\"https://api.github.com/repos/microsoft/vscode/{archive_format}{/ref}\",\"downloads_url\":\"https://api.github.com/repos/microsoft/vscode/downloads\",\"issues_url\":\"https://api.github.com/repos/microsoft/vscode/issues{/number}\",\"pulls_url\":\"https://api.github.com/repos/microsoft/vscode/pulls{/number}\",\"milestones_url\":\"https://api.github.com/repos/microsoft/vscode/milestones{/number}\",\"notifications_url\":\"https://api.github.com/repos/microsoft/vscode/notifications{?since,all,participating}\",\"labels_url\":\"https://api.github.com/repos/microsoft/vscode/labels{/name}\",\"releases_url\":\"https://api.github.com/repos/microsoft/vscode/releases{/id}\",\"deployments_url\":\"https://api.github.com/repos/microsoft/vscode/deployments\",\"created_at\":\"2015-09-03T20:23:38Z\",\"updated_at\":\"2026-09-15T16:26:12Z\",\"pushed_at\":\"2026-09-15T16:15:23Z\",\"git_url\":\"git://github.com/microsoft/vscode.git\",\"ssh_url\":\"git@github.com:microsoft/vscode.git\",\"clone_url\":\"https://github.com/microsoft/vscode.git\",\"svn_url\":\"https://github.com/microsoft/vscode\",\"homepage\":\"https://code.visualstudio.com\",\"size\":1437015,\"stargazers_count\":192561,\"watchers_count\":192561,\"language\":\"TypeScript\",\"has_issues\":true,\"has_projects\":true,\"has_downloads\":false,\"has_wiki\":true,\"has_pages\":false,\"has_discussions\":false,\"forks_count\":42163,\"mirror_url\":null,\"archived\":false,\"disabled\":false,\"open_issues_count\":21127,\"license\":{\"key\":\"mit\",\"name\":\"MIT
+        License\",\"spdx_id\":\"MIT\",\"url\":\"https://api.github.com/licenses/mit\",\"node_id\":\"MDc6TGljZW5zZTEz\"},\"allow_forking\":true,\"is_template\":false,\"web_commit_signoff_required\":false,\"has_pull_requests\":true,\"pull_request_creation_policy\":\"all\",\"topics\":[\"editor\",\"electron\",\"microsoft\",\"typescript\",\"visual-studio-code\"],\"visibility\":\"public\",\"forks\":42163,\"open_issues\":21127,\"watchers\":192561,\"default_branch\":\"main\"}},\"base\":{\"label\":\"microsoft:cherwan/ui-composition-token-foundations\",\"ref\":\"cherwan/ui-composition-token-foundations\",\"sha\":\"34e8c479c71830322cd34ab9833529702d23bd6c\",\"user\":{\"login\":\"microsoft\",\"id\":6154722,\"node_id\":\"MDEyOk9yZ2FuaXphdGlvbjYxNTQ3MjI=\",\"avatar_url\":\"https://avatars.githubusercontent.com/u/6154722?v=4\",\"gravatar_id\":\"\",\"url\":\"https://api.github.com/users/microsoft\",\"html_url\":\"https://github.com/microsoft\",\"followers_url\":\"https://api.github.com/users/microsoft/followers\",\"following_url\":\"https://api.github.com/users/microsoft/following{/other_user}\",\"gists_url\":\"https://api.github.com/users/microsoft/gists{/gist_id}\",\"starred_url\":\"https://api.github.com/users/microsoft/starred{/owner}{/repo}\",\"subscriptions_url\":\"https://api.github.com/users/microsoft/subscriptions\",\"organizations_url\":\"https://api.github.com/users/microsoft/orgs\",\"repos_url\":\"https://api.github.com/users/microsoft/repos\",\"events_url\":\"https://api.github.com/users/microsoft/events{/privacy}\",\"received_events_url\":\"https://api.github.com/users/microsoft/received_events\",\"type\":\"Organization\",\"user_view_type\":\"public\",\"site_admin\":false},\"repo\":{\"id\":41881900,\"node_id\":\"MDEwOlJlcG9zaXRvcnk0MTg4MTkwMA==\",\"name\":\"vscode\",\"full_name\":\"microsoft/vscode\",\"private\":false,\"owner\":{\"login\":\"microsoft\",\"id\":6154722,\"node_id\":\"MDEyOk9yZ2FuaXphdGlvbjYxNTQ3MjI=\",\"avatar_url\":\"https://avatars.githubusercontent.com/u/6154722?v=4\",\"gravatar_id\":\"\",\"url\":\"https://api.github.com/users/microsoft\",\"html_url\":\"https://github.com/microsoft\",\"followers_url\":\"https://api.github.com/users/microsoft/followers\",\"following_url\":\"https://api.github.com/users/microsoft/following{/other_user}\",\"gists_url\":\"https://api.github.com/users/microsoft/gists{/gist_id}\",\"starred_url\":\"https://api.github.com/users/microsoft/starred{/owner}{/repo}\",\"subscriptions_url\":\"https://api.github.com/users/microsoft/subscriptions\",\"organizations_url\":\"https://api.github.com/users/microsoft/orgs\",\"repos_url\":\"https://api.github.com/users/microsoft/repos\",\"events_url\":\"https://api.github.com/users/microsoft/events{/privacy}\",\"received_events_url\":\"https://api.github.com/users/microsoft/received_events\",\"type\":\"Organization\",\"user_view_type\":\"public\",\"site_admin\":false},\"html_url\":\"https://github.com/microsoft/vscode\",\"description\":\"Visual
+        Studio Code\",\"fork\":false,\"url\":\"https://api.github.com/repos/microsoft/vscode\",\"forks_url\":\"https://api.github.com/repos/microsoft/vscode/forks\",\"keys_url\":\"https://api.github.com/repos/microsoft/vscode/keys{/key_id}\",\"collaborators_url\":\"https://api.github.com/repos/microsoft/vscode/collaborators{/collaborator}\",\"teams_url\":\"https://api.github.com/repos/microsoft/vscode/teams\",\"hooks_url\":\"https://api.github.com/repos/microsoft/vscode/hooks\",\"issue_events_url\":\"https://api.github.com/repos/microsoft/vscode/issues/events{/number}\",\"events_url\":\"https://api.github.com/repos/microsoft/vscode/events\",\"assignees_url\":\"https://api.github.com/repos/microsoft/vscode/assignees{/user}\",\"branches_url\":\"https://api.github.com/repos/microsoft/vscode/branches{/branch}\",\"tags_url\":\"https://api.github.com/repos/microsoft/vscode/tags\",\"blobs_url\":\"https://api.github.com/repos/microsoft/vscode/git/blobs{/sha}\",\"git_tags_url\":\"https://api.github.com/repos/microsoft/vscode/git/tags{/sha}\",\"git_refs_url\":\"https://api.github.com/repos/microsoft/vscode/git/refs{/sha}\",\"trees_url\":\"https://api.github.com/repos/microsoft/vscode/git/trees{/sha}\",\"statuses_url\":\"https://api.github.com/repos/microsoft/vscode/statuses/{sha}\",\"languages_url\":\"https://api.github.com/repos/microsoft/vscode/languages\",\"stargazers_url\":\"https://api.github.com/repos/microsoft/vscode/stargazers\",\"contributors_url\":\"https://api.github.com/repos/microsoft/vscode/contributors\",\"subscribers_url\":\"https://api.github.com/repos/microsoft/vscode/subscribers\",\"subscription_url\":\"https://api.github.com/repos/microsoft/vscode/subscription\",\"commits_url\":\"https://api.github.com/repos/microsoft/vscode/commits{/sha}\",\"git_commits_url\":\"https://api.github.com/repos/microsoft/vscode/git/commits{/sha}\",\"comments_url\":\"https://api.github.com/repos/microsoft/vscode/comments{/number}\",\"issue_comment_url\":\"https://api.github.com/repos/microsoft/vscode/issues/comments{/number}\",\"contents_url\":\"https://api.github.com/repos/microsoft/vscode/contents/{+path}\",\"compare_url\":\"https://api.github.com/repos/microsoft/vscode/compare/{base}...{head}\",\"merges_url\":\"https://api.github.com/repos/microsoft/vscode/merges\",\"archive_url\":\"https://api.github.com/repos/microsoft/vscode/{archive_format}{/ref}\",\"downloads_url\":\"https://api.github.com/repos/microsoft/vscode/downloads\",\"issues_url\":\"https://api.github.com/repos/microsoft/vscode/issues{/number}\",\"pulls_url\":\"https://api.github.com/repos/microsoft/vscode/pulls{/number}\",\"milestones_url\":\"https://api.github.com/repos/microsoft/vscode/milestones{/number}\",\"notifications_url\":\"https://api.github.com/repos/microsoft/vscode/notifications{?since,all,participating}\",\"labels_url\":\"https://api.github.com/repos/microsoft/vscode/labels{/name}\",\"releases_url\":\"https://api.github.com/repos/microsoft/vscode/releases{/id}\",\"deployments_url\":\"https://api.github.com/repos/microsoft/vscode/deployments\",\"created_at\":\"2015-09-03T20:23:38Z\",\"updated_at\":\"2026-09-15T16:26:12Z\",\"pushed_at\":\"2026-09-15T16:15:23Z\",\"git_url\":\"git://github.com/microsoft/vscode.git\",\"ssh_url\":\"git@github.com:microsoft/vscode.git\",\"clone_url\":\"https://github.com/microsoft/vscode.git\",\"svn_url\":\"https://github.com/microsoft/vscode\",\"homepage\":\"https://code.visualstudio.com\",\"size\":1437015,\"stargazers_count\":192561,\"watchers_count\":192561,\"language\":\"TypeScript\",\"has_issues\":true,\"has_projects\":true,\"has_downloads\":false,\"has_wiki\":true,\"has_pages\":false,\"has_discussions\":false,\"forks_count\":42163,\"mirror_url\":null,\"archived\":false,\"disabled\":false,\"open_issues_count\":21127,\"license\":{\"key\":\"mit\",\"name\":\"MIT
+        License\",\"spdx_id\":\"MIT\",\"url\":\"https://api.github.com/licenses/mit\",\"node_id\":\"MDc6TGljZW5zZTEz\"},\"allow_forking\":true,\"is_template\":false,\"web_commit_signoff_required\":false,\"has_pull_requests\":true,\"pull_request_creation_policy\":\"all\",\"topics\":[\"editor\",\"electron\",\"microsoft\",\"typescript\",\"visual-studio-code\"],\"visibility\":\"public\",\"forks\":42163,\"open_issues\":21127,\"watchers\":192561,\"default_branch\":\"main\"}},\"_links\":{\"self\":{\"href\":\"https://api.github.com/repos/microsoft/vscode/pulls/335346\"},\"html\":{\"href\":\"https://github.com/microsoft/vscode/pull/335346\"},\"issue\":{\"href\":\"https://api.github.com/repos/microsoft/vscode/issues/335346\"},\"comments\":{\"href\":\"https://api.github.com/repos/microsoft/vscode/issues/335346/comments\"},\"review_comments\":{\"href\":\"https://api.github.com/repos/microsoft/vscode/pulls/335346/comments\"},\"review_comment\":{\"href\":\"https://api.github.com/repos/microsoft/vscode/pulls/comments{/number}\"},\"commits\":{\"href\":\"https://api.github.com/repos/microsoft/vscode/pulls/335346/commits\"},\"statuses\":{\"href\":\"https://api.github.com/repos/microsoft/vscode/statuses/4bab6ee1c6e97a2d8ff57f711fe2b46d3d5fafad\"}},\"author_association\":\"CONTRIBUTOR\",\"auto_merge\":null,\"stack\":{\"id\":1003197,\"number\":335381,\"base\":{\"ref\":\"main\",\"sha\":\"1328607eb90d69b7a66fb2e8d4fdca49dcc0f9d3\"},\"size\":4,\"position\":2},\"assignee\":{\"login\":\"chryw\",\"id\":7075677,\"node_id\":\"MDQ6VXNlcjcwNzU2Nzc=\",\"avatar_url\":\"https://avatars.githubusercontent.com/u/7075677?v=4\",\"gravatar_id\":\"\",\"url\":\"https://api.github.com/users/chryw\",\"html_url\":\"https://github.com/chryw\",\"followers_url\":\"https://api.github.com/users/chryw/followers\",\"following_url\":\"https://api.github.com/users/chryw/following{/other_user}\",\"gists_url\":\"https://api.github.com/users/chryw/gists{/gist_id}\",\"starred_url\":\"https://api.github.com/users/chryw/starred{/owner}{/repo}\",\"subscriptions_url\":\"https://api.github.com/users/chryw/subscriptions\",\"organizations_url\":\"https://api.github.com/users/chryw/orgs\",\"repos_url\":\"https://api.github.com/users/chryw/repos\",\"events_url\":\"https://api.github.com/users/chryw/events{/privacy}\",\"received_events_url\":\"https://api.github.com/users/chryw/received_events\",\"type\":\"User\",\"user_view_type\":\"public\",\"site_admin\":false},\"active_lock_reason\":null,\"merged\":false,\"mergeable\":true,\"rebaseable\":true,\"mergeable_state\":\"blocked\",\"merged_by\":null,\"comments\":6,\"review_comments\":34,\"maintainer_can_modify\":false,\"commits\":19,\"additions\":47,\"deletions\":7,\"changed_files\":4}"
+    headers:
+      Access-Control-Allow-Origin:
+      - '*'
+      Access-Control-Expose-Headers:
+      - ETag, Link, Location, Retry-After, X-GitHub-OTP, X-RateLimit-Limit, X-RateLimit-Remaining,
+        X-RateLimit-Used, X-RateLimit-Resource, X-RateLimit-Reset, X-OAuth-Scopes,
+        X-Accepted-OAuth-Scopes, X-Poll-Interval, X-GitHub-Media-Type, X-GitHub-SSO,
+        X-GitHub-Request-Id, Deprecation, Sunset, Warning
+      Cache-Control:
+      - private, max-age=60, s-maxage=60
+      Content-Security-Policy:
+      - default-src 'none'
+      Content-Type:
+      - application/json; charset=utf-8
+      Date:
+      - Tue, 15 Sep 2026 16:30:21 GMT
+      ETag:
+      - W/"c43ee974637e51e71808f19cf988549722a8a3246dede268465f34b2a86767d3"
+      Last-Modified:
+      - Tue, 15 Sep 2026 01:16:34 GMT
+      Referrer-Policy:
+      - origin-when-cross-origin, strict-origin-when-cross-origin
+      Server:
+      - github.com
+      Strict-Transport-Security:
+      - max-age=31536000; includeSubdomains; preload
+      Transfer-Encoding:
+      - chunked
+      Vary:
+      - Accept, Authorization, Cookie, X-GitHub-OTP,Accept-Encoding, Accept, X-Requested-With
+      X-Accepted-OAuth-Scopes:
+      - repo
+      X-Content-Type-Options:
+      - nosniff
+      X-Frame-Options:
+      - deny
+      X-GitHub-Media-Type:
+      - github.v3; format=json
+      X-GitHub-Request-Id:
+      - B392:3F5DC1:1F6E3F:1E3AC3:6AA9729C
+      X-OAuth-Scopes:
+      - admin:public_key, gist, read:org, repo
+      X-RateLimit-Limit:
+      - '5000'
+      X-RateLimit-Remaining:
+      - '4896'
+      X-RateLimit-Reset:
+      - '1789490934'
+      X-RateLimit-Resource:
+      - core
+      X-RateLimit-Used:
+      - '104'
+      X-XSS-Protection:
+      - '0'
+      x-github-api-version-selected:
+      - '2022-11-28'
+      x-github-edge-region:
+      - fra
+      x-oauth-client-id:
+      - 178c6fc778ccc68e1d6a
+      - 178c6fc778ccc68e1d6a
+    status:
+      code: 200
+      message: OK
+- request:
+    body: null
+    headers:
+      Accept:
+      - application/vnd.github+json
+      Accept-Charset:
+      - utf-8
+      Accept-Encoding:
+      - gzip, deflate, zstd
+      Connection:
+      - keep-alive
+      Content-Type:
+      - application/json
+      User-Agent:
+      - github3.py/4.0.1
+    method: GET
+    uri: https://api.github.com/repos/microsoft/vscode/pulls/335346
+  response:
+    body:
+      string: "{\"url\":\"https://api.github.com/repos/microsoft/vscode/pulls/335346\",\"id\":4488981653,\"node_id\":\"PR_kwDOAn8RLM8AAAABC5BslQ\",\"html_url\":\"https://github.com/microsoft/vscode/pull/335346\",\"diff_url\":\"https://github.com/microsoft/vscode/pull/335346.diff\",\"patch_url\":\"https://github.com/microsoft/vscode/pull/335346.patch\",\"issue_url\":\"https://api.github.com/repos/microsoft/vscode/issues/335346\",\"number\":335346,\"state\":\"open\",\"locked\":false,\"title\":\"Document
+        the UI composition ownership heuristic\",\"user\":{\"login\":\"chryw\",\"id\":7075677,\"node_id\":\"MDQ6VXNlcjcwNzU2Nzc=\",\"avatar_url\":\"https://avatars.githubusercontent.com/u/7075677?v=4\",\"gravatar_id\":\"\",\"url\":\"https://api.github.com/users/chryw\",\"html_url\":\"https://github.com/chryw\",\"followers_url\":\"https://api.github.com/users/chryw/followers\",\"following_url\":\"https://api.github.com/users/chryw/following{/other_user}\",\"gists_url\":\"https://api.github.com/users/chryw/gists{/gist_id}\",\"starred_url\":\"https://api.github.com/users/chryw/starred{/owner}{/repo}\",\"subscriptions_url\":\"https://api.github.com/users/chryw/subscriptions\",\"organizations_url\":\"https://api.github.com/users/chryw/orgs\",\"repos_url\":\"https://api.github.com/users/chryw/repos\",\"events_url\":\"https://api.github.com/users/chryw/events{/privacy}\",\"received_events_url\":\"https://api.github.com/users/chryw/received_events\",\"type\":\"User\",\"user_view_type\":\"public\",\"site_admin\":false},\"body\":\"##
+        Predictable UI composition \u2014 2 of 3: candidate authoring guidance\\n\\nStack:\\n\\n1.
+        **#335345 \u2014 shared composition token foundation**\\n2. **#335346 \u2014
+        ownership guidance (this PR)**\\n3. **#335350 \u2014 `WorkbenchButtonBar`
+        pilot**\\n\\n## Proposed guidance\\n\\nUse **one relationship, one owner**
+        as a review heuristic:\\n\\n- Put a relationship in the lowest component contract
+        that understands all participating elements.\\n- Treat ownership as responsibility,
+        not as the location of the CSS declaration.\\n- Keep primitive content neutral
+        about unknown neighbors.\\n- Let a rendered icon own size/fitting, a control
+        own internal relationships, and a parent own relationships between controls\u2014unless
+        the actual composition provides a better boundary.\\n- Choose `gap`, padding,
+        or a pair-specific margin according to the relationship; no mechanism is inherently
+        correct.\\n\\nThe design-philosophy wording explicitly marks this as candidate
+        guidance, not settled doctrine or an automatic lint rule.\\n\\n## Prior-art
+        and scope check\\n\\n`IconLabel` is relevant prior art: `Button` already shares
+        its lower-level inline-icon renderer, while the full widget has different
+        resource/list-label semantics. This guidance and the active pilot therefore
+        do not require embedding it or adding a new `IconLabel` API.\\n\\nMutable
+        size-token IDs and values are sourced from `baseSizes.ts`; theme colors remain
+        governed by their separate color registries. Broader instruction/skill source-of-truth
+        consolidation remains tracked in #335370; this PR only avoids duplicating
+        the spacing values it changes.\\n\\n## Validation\\n\\n- Guidance consistently
+        labels the ownership model and unproven size roles as candidates.\\n- The
+        active implementation pilot is limited to #335350.\\n- The active three-PR
+        stack changes only eight intentional button fixtures in a 542-fixture latest-main
+        comparison; 534 are pixel-identical.\\n- Editor diagnostics and `git diff
+        --check` are clean.\\n\\n## Decision requested\\n\\n- Is the heuristic useful
+        without being overly prescriptive?\\n- Which wording is mature enough for
+        canonical design philosophy, and which should remain experimental layout guidance?\\n\",\"created_at\":\"2026-09-09T20:12:25Z\",\"updated_at\":\"2026-09-11T01:05:41Z\",\"closed_at\":null,\"merged_at\":null,\"merge_commit_sha\":\"4e461261c8e4385bfe46072e0c51f9f3614ea998\",\"assignees\":[{\"login\":\"chryw\",\"id\":7075677,\"node_id\":\"MDQ6VXNlcjcwNzU2Nzc=\",\"avatar_url\":\"https://avatars.githubusercontent.com/u/7075677?v=4\",\"gravatar_id\":\"\",\"url\":\"https://api.github.com/users/chryw\",\"html_url\":\"https://github.com/chryw\",\"followers_url\":\"https://api.github.com/users/chryw/followers\",\"following_url\":\"https://api.github.com/users/chryw/following{/other_user}\",\"gists_url\":\"https://api.github.com/users/chryw/gists{/gist_id}\",\"starred_url\":\"https://api.github.com/users/chryw/starred{/owner}{/repo}\",\"subscriptions_url\":\"https://api.github.com/users/chryw/subscriptions\",\"organizations_url\":\"https://api.github.com/users/chryw/orgs\",\"repos_url\":\"https://api.github.com/users/chryw/repos\",\"events_url\":\"https://api.github.com/users/chryw/events{/privacy}\",\"received_events_url\":\"https://api.github.com/users/chryw/received_events\",\"type\":\"User\",\"user_view_type\":\"public\",\"site_admin\":false}],\"requested_reviewers\":[],\"requested_teams\":[],\"labels\":[],\"milestone\":null,\"draft\":true,\"commits_url\":\"https://api.github.com/repos/microsoft/vscode/pulls/335346/commits\",\"review_comments_url\":\"https://api.github.com/repos/microsoft/vscode/pulls/335346/comments\",\"review_comment_url\":\"https://api.github.com/repos/microsoft/vscode/pulls/comments{/number}\",\"comments_url\":\"https://api.github.com/repos/microsoft/vscode/issues/335346/comments\",\"statuses_url\":\"https://api.github.com/repos/microsoft/vscode/statuses/4bab6ee1c6e97a2d8ff57f711fe2b46d3d5fafad\",\"head\":{\"label\":\"microsoft:cherwan/ui-composition-authoring-guidance\",\"ref\":\"cherwan/ui-composition-authoring-guidance\",\"sha\":\"4bab6ee1c6e97a2d8ff57f711fe2b46d3d5fafad\",\"user\":{\"login\":\"microsoft\",\"id\":6154722,\"node_id\":\"MDEyOk9yZ2FuaXphdGlvbjYxNTQ3MjI=\",\"avatar_url\":\"https://avatars.githubusercontent.com/u/6154722?v=4\",\"gravatar_id\":\"\",\"url\":\"https://api.github.com/users/microsoft\",\"html_url\":\"https://github.com/microsoft\",\"followers_url\":\"https://api.github.com/users/microsoft/followers\",\"following_url\":\"https://api.github.com/users/microsoft/following{/other_user}\",\"gists_url\":\"https://api.github.com/users/microsoft/gists{/gist_id}\",\"starred_url\":\"https://api.github.com/users/microsoft/starred{/owner}{/repo}\",\"subscriptions_url\":\"https://api.github.com/users/microsoft/subscriptions\",\"organizations_url\":\"https://api.github.com/users/microsoft/orgs\",\"repos_url\":\"https://api.github.com/users/microsoft/repos\",\"events_url\":\"https://api.github.com/users/microsoft/events{/privacy}\",\"received_events_url\":\"https://api.github.com/users/microsoft/received_events\",\"type\":\"Organization\",\"user_view_type\":\"public\",\"site_admin\":false},\"repo\":{\"id\":41881900,\"node_id\":\"MDEwOlJlcG9zaXRvcnk0MTg4MTkwMA==\",\"name\":\"vscode\",\"full_name\":\"microsoft/vscode\",\"private\":false,\"owner\":{\"login\":\"microsoft\",\"id\":6154722,\"node_id\":\"MDEyOk9yZ2FuaXphdGlvbjYxNTQ3MjI=\",\"avatar_url\":\"https://avatars.githubusercontent.com/u/6154722?v=4\",\"gravatar_id\":\"\",\"url\":\"https://api.github.com/users/microsoft\",\"html_url\":\"https://github.com/microsoft\",\"followers_url\":\"https://api.github.com/users/microsoft/followers\",\"following_url\":\"https://api.github.com/users/microsoft/following{/other_user}\",\"gists_url\":\"https://api.github.com/users/microsoft/gists{/gist_id}\",\"starred_url\":\"https://api.github.com/users/microsoft/starred{/owner}{/repo}\",\"subscriptions_url\":\"https://api.github.com/users/microsoft/subscriptions\",\"organizations_url\":\"https://api.github.com/users/microsoft/orgs\",\"repos_url\":\"https://api.github.com/users/microsoft/repos\",\"events_url\":\"https://api.github.com/users/microsoft/events{/privacy}\",\"received_events_url\":\"https://api.github.com/users/microsoft/received_events\",\"type\":\"Organization\",\"user_view_type\":\"public\",\"site_admin\":false},\"html_url\":\"https://github.com/microsoft/vscode\",\"description\":\"Visual
+        Studio Code\",\"fork\":false,\"url\":\"https://api.github.com/repos/microsoft/vscode\",\"forks_url\":\"https://api.github.com/repos/microsoft/vscode/forks\",\"keys_url\":\"https://api.github.com/repos/microsoft/vscode/keys{/key_id}\",\"collaborators_url\":\"https://api.github.com/repos/microsoft/vscode/collaborators{/collaborator}\",\"teams_url\":\"https://api.github.com/repos/microsoft/vscode/teams\",\"hooks_url\":\"https://api.github.com/repos/microsoft/vscode/hooks\",\"issue_events_url\":\"https://api.github.com/repos/microsoft/vscode/issues/events{/number}\",\"events_url\":\"https://api.github.com/repos/microsoft/vscode/events\",\"assignees_url\":\"https://api.github.com/repos/microsoft/vscode/assignees{/user}\",\"branches_url\":\"https://api.github.com/repos/microsoft/vscode/branches{/branch}\",\"tags_url\":\"https://api.github.com/repos/microsoft/vscode/tags\",\"blobs_url\":\"https://api.github.com/repos/microsoft/vscode/git/blobs{/sha}\",\"git_tags_url\":\"https://api.github.com/repos/microsoft/vscode/git/tags{/sha}\",\"git_refs_url\":\"https://api.github.com/repos/microsoft/vscode/git/refs{/sha}\",\"trees_url\":\"https://api.github.com/repos/microsoft/vscode/git/trees{/sha}\",\"statuses_url\":\"https://api.github.com/repos/microsoft/vscode/statuses/{sha}\",\"languages_url\":\"https://api.github.com/repos/microsoft/vscode/languages\",\"stargazers_url\":\"https://api.github.com/repos/microsoft/vscode/stargazers\",\"contributors_url\":\"https://api.github.com/repos/microsoft/vscode/contributors\",\"subscribers_url\":\"https://api.github.com/repos/microsoft/vscode/subscribers\",\"subscription_url\":\"https://api.github.com/repos/microsoft/vscode/subscription\",\"commits_url\":\"https://api.github.com/repos/microsoft/vscode/commits{/sha}\",\"git_commits_url\":\"https://api.github.com/repos/microsoft/vscode/git/commits{/sha}\",\"comments_url\":\"https://api.github.com/repos/microsoft/vscode/comments{/number}\",\"issue_comment_url\":\"https://api.github.com/repos/microsoft/vscode/issues/comments{/number}\",\"contents_url\":\"https://api.github.com/repos/microsoft/vscode/contents/{+path}\",\"compare_url\":\"https://api.github.com/repos/microsoft/vscode/compare/{base}...{head}\",\"merges_url\":\"https://api.github.com/repos/microsoft/vscode/merges\",\"archive_url\":\"https://api.github.com/repos/microsoft/vscode/{archive_format}{/ref}\",\"downloads_url\":\"https://api.github.com/repos/microsoft/vscode/downloads\",\"issues_url\":\"https://api.github.com/repos/microsoft/vscode/issues{/number}\",\"pulls_url\":\"https://api.github.com/repos/microsoft/vscode/pulls{/number}\",\"milestones_url\":\"https://api.github.com/repos/microsoft/vscode/milestones{/number}\",\"notifications_url\":\"https://api.github.com/repos/microsoft/vscode/notifications{?since,all,participating}\",\"labels_url\":\"https://api.github.com/repos/microsoft/vscode/labels{/name}\",\"releases_url\":\"https://api.github.com/repos/microsoft/vscode/releases{/id}\",\"deployments_url\":\"https://api.github.com/repos/microsoft/vscode/deployments\",\"created_at\":\"2015-09-03T20:23:38Z\",\"updated_at\":\"2026-09-15T16:26:12Z\",\"pushed_at\":\"2026-09-15T16:15:23Z\",\"git_url\":\"git://github.com/microsoft/vscode.git\",\"ssh_url\":\"git@github.com:microsoft/vscode.git\",\"clone_url\":\"https://github.com/microsoft/vscode.git\",\"svn_url\":\"https://github.com/microsoft/vscode\",\"homepage\":\"https://code.visualstudio.com\",\"size\":1437015,\"stargazers_count\":192561,\"watchers_count\":192561,\"language\":\"TypeScript\",\"has_issues\":true,\"has_projects\":true,\"has_downloads\":false,\"has_wiki\":true,\"has_pages\":false,\"has_discussions\":false,\"forks_count\":42163,\"mirror_url\":null,\"archived\":false,\"disabled\":false,\"open_issues_count\":21127,\"license\":{\"key\":\"mit\",\"name\":\"MIT
+        License\",\"spdx_id\":\"MIT\",\"url\":\"https://api.github.com/licenses/mit\",\"node_id\":\"MDc6TGljZW5zZTEz\"},\"allow_forking\":true,\"is_template\":false,\"web_commit_signoff_required\":false,\"has_pull_requests\":true,\"pull_request_creation_policy\":\"all\",\"topics\":[\"editor\",\"electron\",\"microsoft\",\"typescript\",\"visual-studio-code\"],\"visibility\":\"public\",\"forks\":42163,\"open_issues\":21127,\"watchers\":192561,\"default_branch\":\"main\"}},\"base\":{\"label\":\"microsoft:cherwan/ui-composition-token-foundations\",\"ref\":\"cherwan/ui-composition-token-foundations\",\"sha\":\"34e8c479c71830322cd34ab9833529702d23bd6c\",\"user\":{\"login\":\"microsoft\",\"id\":6154722,\"node_id\":\"MDEyOk9yZ2FuaXphdGlvbjYxNTQ3MjI=\",\"avatar_url\":\"https://avatars.githubusercontent.com/u/6154722?v=4\",\"gravatar_id\":\"\",\"url\":\"https://api.github.com/users/microsoft\",\"html_url\":\"https://github.com/microsoft\",\"followers_url\":\"https://api.github.com/users/microsoft/followers\",\"following_url\":\"https://api.github.com/users/microsoft/following{/other_user}\",\"gists_url\":\"https://api.github.com/users/microsoft/gists{/gist_id}\",\"starred_url\":\"https://api.github.com/users/microsoft/starred{/owner}{/repo}\",\"subscriptions_url\":\"https://api.github.com/users/microsoft/subscriptions\",\"organizations_url\":\"https://api.github.com/users/microsoft/orgs\",\"repos_url\":\"https://api.github.com/users/microsoft/repos\",\"events_url\":\"https://api.github.com/users/microsoft/events{/privacy}\",\"received_events_url\":\"https://api.github.com/users/microsoft/received_events\",\"type\":\"Organization\",\"user_view_type\":\"public\",\"site_admin\":false},\"repo\":{\"id\":41881900,\"node_id\":\"MDEwOlJlcG9zaXRvcnk0MTg4MTkwMA==\",\"name\":\"vscode\",\"full_name\":\"microsoft/vscode\",\"private\":false,\"owner\":{\"login\":\"microsoft\",\"id\":6154722,\"node_id\":\"MDEyOk9yZ2FuaXphdGlvbjYxNTQ3MjI=\",\"avatar_url\":\"https://avatars.githubusercontent.com/u/6154722?v=4\",\"gravatar_id\":\"\",\"url\":\"https://api.github.com/users/microsoft\",\"html_url\":\"https://github.com/microsoft\",\"followers_url\":\"https://api.github.com/users/microsoft/followers\",\"following_url\":\"https://api.github.com/users/microsoft/following{/other_user}\",\"gists_url\":\"https://api.github.com/users/microsoft/gists{/gist_id}\",\"starred_url\":\"https://api.github.com/users/microsoft/starred{/owner}{/repo}\",\"subscriptions_url\":\"https://api.github.com/users/microsoft/subscriptions\",\"organizations_url\":\"https://api.github.com/users/microsoft/orgs\",\"repos_url\":\"https://api.github.com/users/microsoft/repos\",\"events_url\":\"https://api.github.com/users/microsoft/events{/privacy}\",\"received_events_url\":\"https://api.github.com/users/microsoft/received_events\",\"type\":\"Organization\",\"user_view_type\":\"public\",\"site_admin\":false},\"html_url\":\"https://github.com/microsoft/vscode\",\"description\":\"Visual
+        Studio Code\",\"fork\":false,\"url\":\"https://api.github.com/repos/microsoft/vscode\",\"forks_url\":\"https://api.github.com/repos/microsoft/vscode/forks\",\"keys_url\":\"https://api.github.com/repos/microsoft/vscode/keys{/key_id}\",\"collaborators_url\":\"https://api.github.com/repos/microsoft/vscode/collaborators{/collaborator}\",\"teams_url\":\"https://api.github.com/repos/microsoft/vscode/teams\",\"hooks_url\":\"https://api.github.com/repos/microsoft/vscode/hooks\",\"issue_events_url\":\"https://api.github.com/repos/microsoft/vscode/issues/events{/number}\",\"events_url\":\"https://api.github.com/repos/microsoft/vscode/events\",\"assignees_url\":\"https://api.github.com/repos/microsoft/vscode/assignees{/user}\",\"branches_url\":\"https://api.github.com/repos/microsoft/vscode/branches{/branch}\",\"tags_url\":\"https://api.github.com/repos/microsoft/vscode/tags\",\"blobs_url\":\"https://api.github.com/repos/microsoft/vscode/git/blobs{/sha}\",\"git_tags_url\":\"https://api.github.com/repos/microsoft/vscode/git/tags{/sha}\",\"git_refs_url\":\"https://api.github.com/repos/microsoft/vscode/git/refs{/sha}\",\"trees_url\":\"https://api.github.com/repos/microsoft/vscode/git/trees{/sha}\",\"statuses_url\":\"https://api.github.com/repos/microsoft/vscode/statuses/{sha}\",\"languages_url\":\"https://api.github.com/repos/microsoft/vscode/languages\",\"stargazers_url\":\"https://api.github.com/repos/microsoft/vscode/stargazers\",\"contributors_url\":\"https://api.github.com/repos/microsoft/vscode/contributors\",\"subscribers_url\":\"https://api.github.com/repos/microsoft/vscode/subscribers\",\"subscription_url\":\"https://api.github.com/repos/microsoft/vscode/subscription\",\"commits_url\":\"https://api.github.com/repos/microsoft/vscode/commits{/sha}\",\"git_commits_url\":\"https://api.github.com/repos/microsoft/vscode/git/commits{/sha}\",\"comments_url\":\"https://api.github.com/repos/microsoft/vscode/comments{/number}\",\"issue_comment_url\":\"https://api.github.com/repos/microsoft/vscode/issues/comments{/number}\",\"contents_url\":\"https://api.github.com/repos/microsoft/vscode/contents/{+path}\",\"compare_url\":\"https://api.github.com/repos/microsoft/vscode/compare/{base}...{head}\",\"merges_url\":\"https://api.github.com/repos/microsoft/vscode/merges\",\"archive_url\":\"https://api.github.com/repos/microsoft/vscode/{archive_format}{/ref}\",\"downloads_url\":\"https://api.github.com/repos/microsoft/vscode/downloads\",\"issues_url\":\"https://api.github.com/repos/microsoft/vscode/issues{/number}\",\"pulls_url\":\"https://api.github.com/repos/microsoft/vscode/pulls{/number}\",\"milestones_url\":\"https://api.github.com/repos/microsoft/vscode/milestones{/number}\",\"notifications_url\":\"https://api.github.com/repos/microsoft/vscode/notifications{?since,all,participating}\",\"labels_url\":\"https://api.github.com/repos/microsoft/vscode/labels{/name}\",\"releases_url\":\"https://api.github.com/repos/microsoft/vscode/releases{/id}\",\"deployments_url\":\"https://api.github.com/repos/microsoft/vscode/deployments\",\"created_at\":\"2015-09-03T20:23:38Z\",\"updated_at\":\"2026-09-15T16:26:12Z\",\"pushed_at\":\"2026-09-15T16:15:23Z\",\"git_url\":\"git://github.com/microsoft/vscode.git\",\"ssh_url\":\"git@github.com:microsoft/vscode.git\",\"clone_url\":\"https://github.com/microsoft/vscode.git\",\"svn_url\":\"https://github.com/microsoft/vscode\",\"homepage\":\"https://code.visualstudio.com\",\"size\":1437015,\"stargazers_count\":192561,\"watchers_count\":192561,\"language\":\"TypeScript\",\"has_issues\":true,\"has_projects\":true,\"has_downloads\":false,\"has_wiki\":true,\"has_pages\":false,\"has_discussions\":false,\"forks_count\":42163,\"mirror_url\":null,\"archived\":false,\"disabled\":false,\"open_issues_count\":21127,\"license\":{\"key\":\"mit\",\"name\":\"MIT
+        License\",\"spdx_id\":\"MIT\",\"url\":\"https://api.github.com/licenses/mit\",\"node_id\":\"MDc6TGljZW5zZTEz\"},\"allow_forking\":true,\"is_template\":false,\"web_commit_signoff_required\":false,\"has_pull_requests\":true,\"pull_request_creation_policy\":\"all\",\"topics\":[\"editor\",\"electron\",\"microsoft\",\"typescript\",\"visual-studio-code\"],\"visibility\":\"public\",\"forks\":42163,\"open_issues\":21127,\"watchers\":192561,\"default_branch\":\"main\"}},\"_links\":{\"self\":{\"href\":\"https://api.github.com/repos/microsoft/vscode/pulls/335346\"},\"html\":{\"href\":\"https://github.com/microsoft/vscode/pull/335346\"},\"issue\":{\"href\":\"https://api.github.com/repos/microsoft/vscode/issues/335346\"},\"comments\":{\"href\":\"https://api.github.com/repos/microsoft/vscode/issues/335346/comments\"},\"review_comments\":{\"href\":\"https://api.github.com/repos/microsoft/vscode/pulls/335346/comments\"},\"review_comment\":{\"href\":\"https://api.github.com/repos/microsoft/vscode/pulls/comments{/number}\"},\"commits\":{\"href\":\"https://api.github.com/repos/microsoft/vscode/pulls/335346/commits\"},\"statuses\":{\"href\":\"https://api.github.com/repos/microsoft/vscode/statuses/4bab6ee1c6e97a2d8ff57f711fe2b46d3d5fafad\"}},\"author_association\":\"CONTRIBUTOR\",\"auto_merge\":null,\"stack\":{\"id\":1003197,\"number\":335381,\"base\":{\"ref\":\"main\",\"sha\":\"1328607eb90d69b7a66fb2e8d4fdca49dcc0f9d3\"},\"size\":4,\"position\":2},\"assignee\":{\"login\":\"chryw\",\"id\":7075677,\"node_id\":\"MDQ6VXNlcjcwNzU2Nzc=\",\"avatar_url\":\"https://avatars.githubusercontent.com/u/7075677?v=4\",\"gravatar_id\":\"\",\"url\":\"https://api.github.com/users/chryw\",\"html_url\":\"https://github.com/chryw\",\"followers_url\":\"https://api.github.com/users/chryw/followers\",\"following_url\":\"https://api.github.com/users/chryw/following{/other_user}\",\"gists_url\":\"https://api.github.com/users/chryw/gists{/gist_id}\",\"starred_url\":\"https://api.github.com/users/chryw/starred{/owner}{/repo}\",\"subscriptions_url\":\"https://api.github.com/users/chryw/subscriptions\",\"organizations_url\":\"https://api.github.com/users/chryw/orgs\",\"repos_url\":\"https://api.github.com/users/chryw/repos\",\"events_url\":\"https://api.github.com/users/chryw/events{/privacy}\",\"received_events_url\":\"https://api.github.com/users/chryw/received_events\",\"type\":\"User\",\"user_view_type\":\"public\",\"site_admin\":false},\"active_lock_reason\":null,\"merged\":false,\"mergeable\":true,\"rebaseable\":true,\"mergeable_state\":\"blocked\",\"merged_by\":null,\"comments\":6,\"review_comments\":34,\"maintainer_can_modify\":false,\"commits\":19,\"additions\":47,\"deletions\":7,\"changed_files\":4}"
+    headers:
+      Access-Control-Allow-Origin:
+      - '*'
+      Access-Control-Expose-Headers:
+      - ETag, Link, Location, Retry-After, X-GitHub-OTP, X-RateLimit-Limit, X-RateLimit-Remaining,
+        X-RateLimit-Used, X-RateLimit-Resource, X-RateLimit-Reset, X-OAuth-Scopes,
+        X-Accepted-OAuth-Scopes, X-Poll-Interval, X-GitHub-Media-Type, X-GitHub-SSO,
+        X-GitHub-Request-Id, Deprecation, Sunset, Warning
+      Cache-Control:
+      - private, max-age=60, s-maxage=60
+      Content-Security-Policy:
+      - default-src 'none'
+      Content-Type:
+      - application/json; charset=utf-8
+      Date:
+      - Tue, 15 Sep 2026 16:30:22 GMT
+      ETag:
+      - W/"c43ee974637e51e71808f19cf988549722a8a3246dede268465f34b2a86767d3"
+      Last-Modified:
+      - Tue, 15 Sep 2026 01:16:34 GMT
+      Referrer-Policy:
+      - origin-when-cross-origin, strict-origin-when-cross-origin
+      Server:
+      - github.com
+      Strict-Transport-Security:
+      - max-age=31536000; includeSubdomains; preload
+      Transfer-Encoding:
+      - chunked
+      Vary:
+      - Accept, Authorization, Cookie, X-GitHub-OTP,Accept-Encoding, Accept, X-Requested-With
+      X-Accepted-OAuth-Scopes:
+      - repo
+      X-Content-Type-Options:
+      - nosniff
+      X-Frame-Options:
+      - deny
+      X-GitHub-Media-Type:
+      - github.v3; format=json
+      X-GitHub-Request-Id:
+      - B3A0:102AF:1FF1F5:1EBF84:6AA9729D
+      X-OAuth-Scopes:
+      - admin:public_key, gist, read:org, repo
+      X-RateLimit-Limit:
+      - '5000'
+      X-RateLimit-Remaining:
+      - '4895'
+      X-RateLimit-Reset:
+      - '1789490934'
+      X-RateLimit-Resource:
+      - core
+      X-RateLimit-Used:
+      - '105'
+      X-XSS-Protection:
+      - '0'
+      x-github-api-version-selected:
+      - '2022-11-28'
+      x-github-edge-region:
+      - fra
+      x-oauth-client-id:
+      - 178c6fc778ccc68e1d6a
+      - 178c6fc778ccc68e1d6a
+    status:
+      code: 200
+      message: OK
+- request:
+    body: null
+    headers:
+      Accept:
+      - application/vnd.github+json
+      Accept-Charset:
+      - utf-8
+      Accept-Encoding:
+      - gzip, deflate, zstd
+      Connection:
+      - keep-alive
+      Content-Type:
+      - application/json
+      User-Agent:
+      - github3.py/4.0.1
+    method: GET
+    uri: https://api.github.com/repos/microsoft/vscode/stacks?pull_request=335346
+  response:
+    body:
+      string: '[{"id":1003197,"number":335381,"node_id":"PRS_kwDOAn8RLM4AD069","url":"https://api.github.com/repos/microsoft/vscode/stacks/335381","base":{"ref":"main"},"open":true,"created_at":"2026-09-10T01:12:03Z","pull_requests":[{"number":335345,"state":"open","draft":true,"merged_at":null,"head":{"ref":"cherwan/ui-composition-token-foundations","sha":"34e8c479c71830322cd34ab9833529702d23bd6c"}},{"number":335346,"state":"open","draft":true,"merged_at":null,"head":{"ref":"cherwan/ui-composition-authoring-guidance","sha":"4bab6ee1c6e97a2d8ff57f711fe2b46d3d5fafad"}},{"number":335350,"state":"open","draft":true,"merged_at":null,"head":{"ref":"cherwan/ui-composition-button-ownership","sha":"a50248696be27eb603a9bb8646a8950c9e16dda8"}},{"number":335522,"state":"closed","draft":true,"merged_at":null,"head":{"ref":"cherwan/ui-composition-icon-label-ownership","sha":"7329190113632162cf664975fe26ccbac14cb166"}}]}]'
+    headers:
+      Access-Control-Allow-Origin:
+      - '*'
+      Access-Control-Expose-Headers:
+      - ETag, Link, Location, Retry-After, X-GitHub-OTP, X-RateLimit-Limit, X-RateLimit-Remaining,
+        X-RateLimit-Used, X-RateLimit-Resource, X-RateLimit-Reset, X-OAuth-Scopes,
+        X-Accepted-OAuth-Scopes, X-Poll-Interval, X-GitHub-Media-Type, X-GitHub-SSO,
+        X-GitHub-Request-Id, Deprecation, Sunset, Warning
+      Cache-Control:
+      - private, max-age=60, s-maxage=60
+      Content-Encoding:
+      - gzip
+      Content-Security-Policy:
+      - default-src 'none'
+      Content-Type:
+      - application/json; charset=utf-8
+      Date:
+      - Tue, 15 Sep 2026 16:30:23 GMT
+      ETag:
+      - W/"c42ed03321374ef3cc38c6394a36dd845f971fa41b06d9ab9b3002b630e3769f"
+      Referrer-Policy:
+      - origin-when-cross-origin, strict-origin-when-cross-origin
+      Server:
+      - github.com
+      Strict-Transport-Security:
+      - max-age=31536000; includeSubdomains; preload
+      Transfer-Encoding:
+      - chunked
+      Vary:
+      - Accept, Authorization, Cookie, X-GitHub-OTP,Accept-Encoding, Accept, X-Requested-With
+      X-Accepted-OAuth-Scopes:
+      - ''
+      X-Content-Type-Options:
+      - nosniff
+      X-Frame-Options:
+      - deny
+      X-GitHub-Media-Type:
+      - github.v3; format=json
+      X-GitHub-Request-Id:
+      - B3A2:13D10F:21E00E:20A65D:6AA9729E
+      X-OAuth-Scopes:
+      - admin:public_key, gist, read:org, repo
+      X-RateLimit-Limit:
+      - '5000'
+      X-RateLimit-Remaining:
+      - '4868'
+      X-RateLimit-Reset:
+      - '1789490537'
+      X-RateLimit-Resource:
+      - core
+      X-RateLimit-Used:
+      - '132'
+      X-XSS-Protection:
+      - '0'
+      x-github-api-version-selected:
+      - '2022-11-28'
+      x-github-edge-region:
+      - fra
+      x-oauth-client-id:
+      - 178c6fc778ccc68e1d6a
+    status:
+      code: 200
+      message: OK
+- request:
+    body: null
+    headers:
+      Accept:
+      - application/vnd.github+json
+      Accept-Charset:
+      - utf-8
+      Accept-Encoding:
+      - gzip, deflate, zstd
+      Connection:
+      - keep-alive
+      Content-Type:
+      - application/json
+      User-Agent:
+      - github3.py/4.0.1
+    method: GET
+    uri: https://api.github.com/repos/leynos/git-donkey/pulls/93
+  response:
+    body:
+      string: "{\"url\":\"https://api.github.com/repos/leynos/git-donkey/pulls/93\",\"id\":4538948696,\"node_id\":\"PR_kwDOQ7SZj88AAAABDorcWA\",\"html_url\":\"https://github.com/leynos/git-donkey/pull/93\",\"diff_url\":\"https://github.com/leynos/git-donkey/pull/93.diff\",\"patch_url\":\"https://github.com/leynos/git-donkey/pull/93.patch\",\"issue_url\":\"https://api.github.com/repos/leynos/git-donkey/issues/93\",\"number\":93,\"state\":\"closed\",\"locked\":false,\"title\":\"Adopt
+        the estate Markdown formatting baseline\",\"user\":{\"login\":\"leynos\",\"id\":746767,\"node_id\":\"MDQ6VXNlcjc0Njc2Nw==\",\"avatar_url\":\"https://avatars.githubusercontent.com/u/746767?v=4\",\"gravatar_id\":\"\",\"url\":\"https://api.github.com/users/leynos\",\"html_url\":\"https://github.com/leynos\",\"followers_url\":\"https://api.github.com/users/leynos/followers\",\"following_url\":\"https://api.github.com/users/leynos/following{/other_user}\",\"gists_url\":\"https://api.github.com/users/leynos/gists{/gist_id}\",\"starred_url\":\"https://api.github.com/users/leynos/starred{/owner}{/repo}\",\"subscriptions_url\":\"https://api.github.com/users/leynos/subscriptions\",\"organizations_url\":\"https://api.github.com/users/leynos/orgs\",\"repos_url\":\"https://api.github.com/users/leynos/repos\",\"events_url\":\"https://api.github.com/users/leynos/events{/privacy}\",\"received_events_url\":\"https://api.github.com/users/leynos/received_events\",\"type\":\"User\",\"user_view_type\":\"public\",\"site_admin\":false},\"body\":\"##
+        Summary\\n\\nThis branch adopts the estate Markdown formatting baseline that
+        concordat now audits as the `markdown-formatting-baseline` rule package (PD-002
+        to PD-006), following the `leynos/netsuke` reference wiring. `make fmt` calls
+        `mdtablefix` and `markdownlint-cli2 --fix` directly over the Git-selected
+        Markdown set instead of the `mdformat-all` wrapper, `make check-fmt` runs
+        the matching `mdtablefix --check` so unformatted Markdown fails CI, `.markdownlint-cli2.jsonc`
+        carries every baseline ignore glob, and CI lints Markdown through the pinned
+        `DavidAnson/markdownlint-cli2-action`. The tracked Markdown is reformatted
+        once because `--git` also reaches the hidden `.rules/` documents the wrapper
+        skipped.\\n\\n## Review walkthrough\\n\\n- Start with [Makefile](https://github.com/leynos/git-donkey/blob/markdown-formatting-baseline/Makefile#L1)
+        for the `MDTABLEFIX` variables and the `fmt` and `check-fmt` recipes.\\n-
+        Then [.github/workflows/ci.yml](https://github.com/leynos/git-donkey/blob/markdown-formatting-baseline/.github/workflows/ci.yml#L33):
+        the pinned mdtablefix install replaces the `npm install`, and the action step
+        follows `make check-fmt`.\\n- Finish with [.markdownlint-cli2.jsonc](https://github.com/leynos/git-donkey/blob/markdown-formatting-baseline/.markdownlint-cli2.jsonc#L13);
+        the remaining files are the one-off `mdtablefix` reformat.\\n\\n## Validation\\n\\n```text\\nconcordat
+        artefact rule run markdown-formatting-baseline --repo .\\nmarkdown-formatting-baseline:
+        compliant\\n\\nmdtablefix --check --git --include-untracked --wrap --renumber
+        --breaks --ellipsis --fences\\nmarkdownlint-cli2 \\\"**/*.md\\\"   Summary:
+        0 error(s)\\nmbake validate Makefile       Valid syntax\\n```\\n\\n## Notes\\n\\nPart
+        of the estate rollout driven by leynos/concordat#168; behaviour is guarded
+        by that rule, so no repository-local tests are added.\\n\\n## Summary by Sourcery\\n\\nAdopt
+        the estate Markdown formatting baseline across local tooling, CI, configuration,
+        and repository documentation.\\n\\nEnhancements:\\n- Adopt the estate Markdown
+        formatting baseline and apply its rules consistently across tracked and untracked
+        Markdown files.\\n- Replace the Markdown formatting wrapper with direct table
+        formatting and lint-fix targets, while adding matching formatting checks.\\n-
+        Centralize baseline Markdown lint exclusions in the markdownlint configuration.\\n\\nCI:\\n-
+        Pin and install mdtablefix in CI and lint Markdown through the pinned markdownlint-cli2
+        GitHub Action.\\n\\nChores:\\n- Reformat the repository's Markdown documents
+        to comply with the adopted baseline.\",\"created_at\":\"2026-09-15T15:56:24Z\",\"updated_at\":\"2026-09-15T16:01:52Z\",\"closed_at\":\"2026-09-15T15:57:54Z\",\"merged_at\":\"2026-09-15T15:57:54Z\",\"merge_commit_sha\":\"02ab4e9e1bcb6ec498f2d4dde6e1a7df2d897c41\",\"assignees\":[],\"requested_reviewers\":[],\"requested_teams\":[],\"labels\":[{\"id\":12040893651,\"node_id\":\"LA_kwDOQ7SZj88AAAACzbF00w\",\"url\":\"https://api.github.com/repos/leynos/git-donkey/labels/Issue\",\"name\":\"Issue\",\"color\":\"ededed\",\"default\":false,\"description\":null,\"archived_at\":null,\"archived_by\":null}],\"milestone\":null,\"draft\":false,\"commits_url\":\"https://api.github.com/repos/leynos/git-donkey/pulls/93/commits\",\"review_comments_url\":\"https://api.github.com/repos/leynos/git-donkey/pulls/93/comments\",\"review_comment_url\":\"https://api.github.com/repos/leynos/git-donkey/pulls/comments{/number}\",\"comments_url\":\"https://api.github.com/repos/leynos/git-donkey/issues/93/comments\",\"statuses_url\":\"https://api.github.com/repos/leynos/git-donkey/statuses/cb813a96c4e2cd494a7df4aaa279b71b5765cea5\",\"head\":{\"label\":\"leynos:markdown-formatting-baseline\",\"ref\":\"markdown-formatting-baseline\",\"sha\":\"cb813a96c4e2cd494a7df4aaa279b71b5765cea5\",\"user\":{\"login\":\"leynos\",\"id\":746767,\"node_id\":\"MDQ6VXNlcjc0Njc2Nw==\",\"avatar_url\":\"https://avatars.githubusercontent.com/u/746767?v=4\",\"gravatar_id\":\"\",\"url\":\"https://api.github.com/users/leynos\",\"html_url\":\"https://github.com/leynos\",\"followers_url\":\"https://api.github.com/users/leynos/followers\",\"following_url\":\"https://api.github.com/users/leynos/following{/other_user}\",\"gists_url\":\"https://api.github.com/users/leynos/gists{/gist_id}\",\"starred_url\":\"https://api.github.com/users/leynos/starred{/owner}{/repo}\",\"subscriptions_url\":\"https://api.github.com/users/leynos/subscriptions\",\"organizations_url\":\"https://api.github.com/users/leynos/orgs\",\"repos_url\":\"https://api.github.com/users/leynos/repos\",\"events_url\":\"https://api.github.com/users/leynos/events{/privacy}\",\"received_events_url\":\"https://api.github.com/users/leynos/received_events\",\"type\":\"User\",\"user_view_type\":\"public\",\"site_admin\":false},\"repo\":{\"id\":1135909263,\"node_id\":\"R_kgDOQ7SZjw\",\"name\":\"git-donkey\",\"full_name\":\"leynos/git-donkey\",\"private\":false,\"owner\":{\"login\":\"leynos\",\"id\":746767,\"node_id\":\"MDQ6VXNlcjc0Njc2Nw==\",\"avatar_url\":\"https://avatars.githubusercontent.com/u/746767?v=4\",\"gravatar_id\":\"\",\"url\":\"https://api.github.com/users/leynos\",\"html_url\":\"https://github.com/leynos\",\"followers_url\":\"https://api.github.com/users/leynos/followers\",\"following_url\":\"https://api.github.com/users/leynos/following{/other_user}\",\"gists_url\":\"https://api.github.com/users/leynos/gists{/gist_id}\",\"starred_url\":\"https://api.github.com/users/leynos/starred{/owner}{/repo}\",\"subscriptions_url\":\"https://api.github.com/users/leynos/subscriptions\",\"organizations_url\":\"https://api.github.com/users/leynos/orgs\",\"repos_url\":\"https://api.github.com/users/leynos/repos\",\"events_url\":\"https://api.github.com/users/leynos/events{/privacy}\",\"received_events_url\":\"https://api.github.com/users/leynos/received_events\",\"type\":\"User\",\"user_view_type\":\"public\",\"site_admin\":false},\"html_url\":\"https://github.com/leynos/git-donkey\",\"description\":\"Git
+        subcommands that make branch-based development less of a\u2026 well, you know\",\"fork\":false,\"url\":\"https://api.github.com/repos/leynos/git-donkey\",\"forks_url\":\"https://api.github.com/repos/leynos/git-donkey/forks\",\"keys_url\":\"https://api.github.com/repos/leynos/git-donkey/keys{/key_id}\",\"collaborators_url\":\"https://api.github.com/repos/leynos/git-donkey/collaborators{/collaborator}\",\"teams_url\":\"https://api.github.com/repos/leynos/git-donkey/teams\",\"hooks_url\":\"https://api.github.com/repos/leynos/git-donkey/hooks\",\"issue_events_url\":\"https://api.github.com/repos/leynos/git-donkey/issues/events{/number}\",\"events_url\":\"https://api.github.com/repos/leynos/git-donkey/events\",\"assignees_url\":\"https://api.github.com/repos/leynos/git-donkey/assignees{/user}\",\"branches_url\":\"https://api.github.com/repos/leynos/git-donkey/branches{/branch}\",\"tags_url\":\"https://api.github.com/repos/leynos/git-donkey/tags\",\"blobs_url\":\"https://api.github.com/repos/leynos/git-donkey/git/blobs{/sha}\",\"git_tags_url\":\"https://api.github.com/repos/leynos/git-donkey/git/tags{/sha}\",\"git_refs_url\":\"https://api.github.com/repos/leynos/git-donkey/git/refs{/sha}\",\"trees_url\":\"https://api.github.com/repos/leynos/git-donkey/git/trees{/sha}\",\"statuses_url\":\"https://api.github.com/repos/leynos/git-donkey/statuses/{sha}\",\"languages_url\":\"https://api.github.com/repos/leynos/git-donkey/languages\",\"stargazers_url\":\"https://api.github.com/repos/leynos/git-donkey/stargazers\",\"contributors_url\":\"https://api.github.com/repos/leynos/git-donkey/contributors\",\"subscribers_url\":\"https://api.github.com/repos/leynos/git-donkey/subscribers\",\"subscription_url\":\"https://api.github.com/repos/leynos/git-donkey/subscription\",\"commits_url\":\"https://api.github.com/repos/leynos/git-donkey/commits{/sha}\",\"git_commits_url\":\"https://api.github.com/repos/leynos/git-donkey/git/commits{/sha}\",\"comments_url\":\"https://api.github.com/repos/leynos/git-donkey/comments{/number}\",\"issue_comment_url\":\"https://api.github.com/repos/leynos/git-donkey/issues/comments{/number}\",\"contents_url\":\"https://api.github.com/repos/leynos/git-donkey/contents/{+path}\",\"compare_url\":\"https://api.github.com/repos/leynos/git-donkey/compare/{base}...{head}\",\"merges_url\":\"https://api.github.com/repos/leynos/git-donkey/merges\",\"archive_url\":\"https://api.github.com/repos/leynos/git-donkey/{archive_format}{/ref}\",\"downloads_url\":\"https://api.github.com/repos/leynos/git-donkey/downloads\",\"issues_url\":\"https://api.github.com/repos/leynos/git-donkey/issues{/number}\",\"pulls_url\":\"https://api.github.com/repos/leynos/git-donkey/pulls{/number}\",\"milestones_url\":\"https://api.github.com/repos/leynos/git-donkey/milestones{/number}\",\"notifications_url\":\"https://api.github.com/repos/leynos/git-donkey/notifications{?since,all,participating}\",\"labels_url\":\"https://api.github.com/repos/leynos/git-donkey/labels{/name}\",\"releases_url\":\"https://api.github.com/repos/leynos/git-donkey/releases{/id}\",\"deployments_url\":\"https://api.github.com/repos/leynos/git-donkey/deployments\",\"created_at\":\"2026-01-16T19:08:43Z\",\"updated_at\":\"2026-09-15T15:57:58Z\",\"pushed_at\":\"2026-09-15T15:57:55Z\",\"git_url\":\"git://github.com/leynos/git-donkey.git\",\"ssh_url\":\"git@github.com:leynos/git-donkey.git\",\"clone_url\":\"https://github.com/leynos/git-donkey.git\",\"svn_url\":\"https://github.com/leynos/git-donkey\",\"homepage\":\"\",\"size\":3417,\"stargazers_count\":0,\"watchers_count\":0,\"language\":\"Python\",\"has_issues\":true,\"has_projects\":true,\"has_downloads\":false,\"has_wiki\":true,\"has_pages\":false,\"has_discussions\":false,\"forks_count\":0,\"mirror_url\":null,\"archived\":false,\"disabled\":false,\"open_issues_count\":9,\"license\":{\"key\":\"isc\",\"name\":\"ISC
+        License\",\"spdx_id\":\"ISC\",\"url\":\"https://api.github.com/licenses/isc\",\"node_id\":\"MDc6TGljZW5zZTEw\"},\"allow_forking\":true,\"is_template\":false,\"web_commit_signoff_required\":false,\"has_pull_requests\":true,\"pull_request_creation_policy\":\"all\",\"topics\":[],\"visibility\":\"public\",\"forks\":0,\"open_issues\":9,\"watchers\":0,\"default_branch\":\"main\"}},\"base\":{\"label\":\"leynos:main\",\"ref\":\"main\",\"sha\":\"ba1e9ad9de2b718f77a31005cb23ff87887edb22\",\"user\":{\"login\":\"leynos\",\"id\":746767,\"node_id\":\"MDQ6VXNlcjc0Njc2Nw==\",\"avatar_url\":\"https://avatars.githubusercontent.com/u/746767?v=4\",\"gravatar_id\":\"\",\"url\":\"https://api.github.com/users/leynos\",\"html_url\":\"https://github.com/leynos\",\"followers_url\":\"https://api.github.com/users/leynos/followers\",\"following_url\":\"https://api.github.com/users/leynos/following{/other_user}\",\"gists_url\":\"https://api.github.com/users/leynos/gists{/gist_id}\",\"starred_url\":\"https://api.github.com/users/leynos/starred{/owner}{/repo}\",\"subscriptions_url\":\"https://api.github.com/users/leynos/subscriptions\",\"organizations_url\":\"https://api.github.com/users/leynos/orgs\",\"repos_url\":\"https://api.github.com/users/leynos/repos\",\"events_url\":\"https://api.github.com/users/leynos/events{/privacy}\",\"received_events_url\":\"https://api.github.com/users/leynos/received_events\",\"type\":\"User\",\"user_view_type\":\"public\",\"site_admin\":false},\"repo\":{\"id\":1135909263,\"node_id\":\"R_kgDOQ7SZjw\",\"name\":\"git-donkey\",\"full_name\":\"leynos/git-donkey\",\"private\":false,\"owner\":{\"login\":\"leynos\",\"id\":746767,\"node_id\":\"MDQ6VXNlcjc0Njc2Nw==\",\"avatar_url\":\"https://avatars.githubusercontent.com/u/746767?v=4\",\"gravatar_id\":\"\",\"url\":\"https://api.github.com/users/leynos\",\"html_url\":\"https://github.com/leynos\",\"followers_url\":\"https://api.github.com/users/leynos/followers\",\"following_url\":\"https://api.github.com/users/leynos/following{/other_user}\",\"gists_url\":\"https://api.github.com/users/leynos/gists{/gist_id}\",\"starred_url\":\"https://api.github.com/users/leynos/starred{/owner}{/repo}\",\"subscriptions_url\":\"https://api.github.com/users/leynos/subscriptions\",\"organizations_url\":\"https://api.github.com/users/leynos/orgs\",\"repos_url\":\"https://api.github.com/users/leynos/repos\",\"events_url\":\"https://api.github.com/users/leynos/events{/privacy}\",\"received_events_url\":\"https://api.github.com/users/leynos/received_events\",\"type\":\"User\",\"user_view_type\":\"public\",\"site_admin\":false},\"html_url\":\"https://github.com/leynos/git-donkey\",\"description\":\"Git
+        subcommands that make branch-based development less of a\u2026 well, you know\",\"fork\":false,\"url\":\"https://api.github.com/repos/leynos/git-donkey\",\"forks_url\":\"https://api.github.com/repos/leynos/git-donkey/forks\",\"keys_url\":\"https://api.github.com/repos/leynos/git-donkey/keys{/key_id}\",\"collaborators_url\":\"https://api.github.com/repos/leynos/git-donkey/collaborators{/collaborator}\",\"teams_url\":\"https://api.github.com/repos/leynos/git-donkey/teams\",\"hooks_url\":\"https://api.github.com/repos/leynos/git-donkey/hooks\",\"issue_events_url\":\"https://api.github.com/repos/leynos/git-donkey/issues/events{/number}\",\"events_url\":\"https://api.github.com/repos/leynos/git-donkey/events\",\"assignees_url\":\"https://api.github.com/repos/leynos/git-donkey/assignees{/user}\",\"branches_url\":\"https://api.github.com/repos/leynos/git-donkey/branches{/branch}\",\"tags_url\":\"https://api.github.com/repos/leynos/git-donkey/tags\",\"blobs_url\":\"https://api.github.com/repos/leynos/git-donkey/git/blobs{/sha}\",\"git_tags_url\":\"https://api.github.com/repos/leynos/git-donkey/git/tags{/sha}\",\"git_refs_url\":\"https://api.github.com/repos/leynos/git-donkey/git/refs{/sha}\",\"trees_url\":\"https://api.github.com/repos/leynos/git-donkey/git/trees{/sha}\",\"statuses_url\":\"https://api.github.com/repos/leynos/git-donkey/statuses/{sha}\",\"languages_url\":\"https://api.github.com/repos/leynos/git-donkey/languages\",\"stargazers_url\":\"https://api.github.com/repos/leynos/git-donkey/stargazers\",\"contributors_url\":\"https://api.github.com/repos/leynos/git-donkey/contributors\",\"subscribers_url\":\"https://api.github.com/repos/leynos/git-donkey/subscribers\",\"subscription_url\":\"https://api.github.com/repos/leynos/git-donkey/subscription\",\"commits_url\":\"https://api.github.com/repos/leynos/git-donkey/commits{/sha}\",\"git_commits_url\":\"https://api.github.com/repos/leynos/git-donkey/git/commits{/sha}\",\"comments_url\":\"https://api.github.com/repos/leynos/git-donkey/comments{/number}\",\"issue_comment_url\":\"https://api.github.com/repos/leynos/git-donkey/issues/comments{/number}\",\"contents_url\":\"https://api.github.com/repos/leynos/git-donkey/contents/{+path}\",\"compare_url\":\"https://api.github.com/repos/leynos/git-donkey/compare/{base}...{head}\",\"merges_url\":\"https://api.github.com/repos/leynos/git-donkey/merges\",\"archive_url\":\"https://api.github.com/repos/leynos/git-donkey/{archive_format}{/ref}\",\"downloads_url\":\"https://api.github.com/repos/leynos/git-donkey/downloads\",\"issues_url\":\"https://api.github.com/repos/leynos/git-donkey/issues{/number}\",\"pulls_url\":\"https://api.github.com/repos/leynos/git-donkey/pulls{/number}\",\"milestones_url\":\"https://api.github.com/repos/leynos/git-donkey/milestones{/number}\",\"notifications_url\":\"https://api.github.com/repos/leynos/git-donkey/notifications{?since,all,participating}\",\"labels_url\":\"https://api.github.com/repos/leynos/git-donkey/labels{/name}\",\"releases_url\":\"https://api.github.com/repos/leynos/git-donkey/releases{/id}\",\"deployments_url\":\"https://api.github.com/repos/leynos/git-donkey/deployments\",\"created_at\":\"2026-01-16T19:08:43Z\",\"updated_at\":\"2026-09-15T15:57:58Z\",\"pushed_at\":\"2026-09-15T15:57:55Z\",\"git_url\":\"git://github.com/leynos/git-donkey.git\",\"ssh_url\":\"git@github.com:leynos/git-donkey.git\",\"clone_url\":\"https://github.com/leynos/git-donkey.git\",\"svn_url\":\"https://github.com/leynos/git-donkey\",\"homepage\":\"\",\"size\":3417,\"stargazers_count\":0,\"watchers_count\":0,\"language\":\"Python\",\"has_issues\":true,\"has_projects\":true,\"has_downloads\":false,\"has_wiki\":true,\"has_pages\":false,\"has_discussions\":false,\"forks_count\":0,\"mirror_url\":null,\"archived\":false,\"disabled\":false,\"open_issues_count\":9,\"license\":{\"key\":\"isc\",\"name\":\"ISC
+        License\",\"spdx_id\":\"ISC\",\"url\":\"https://api.github.com/licenses/isc\",\"node_id\":\"MDc6TGljZW5zZTEw\"},\"allow_forking\":true,\"is_template\":false,\"web_commit_signoff_required\":false,\"has_pull_requests\":true,\"pull_request_creation_policy\":\"all\",\"topics\":[],\"visibility\":\"public\",\"forks\":0,\"open_issues\":9,\"watchers\":0,\"default_branch\":\"main\"}},\"_links\":{\"self\":{\"href\":\"https://api.github.com/repos/leynos/git-donkey/pulls/93\"},\"html\":{\"href\":\"https://github.com/leynos/git-donkey/pull/93\"},\"issue\":{\"href\":\"https://api.github.com/repos/leynos/git-donkey/issues/93\"},\"comments\":{\"href\":\"https://api.github.com/repos/leynos/git-donkey/issues/93/comments\"},\"review_comments\":{\"href\":\"https://api.github.com/repos/leynos/git-donkey/pulls/93/comments\"},\"review_comment\":{\"href\":\"https://api.github.com/repos/leynos/git-donkey/pulls/comments{/number}\"},\"commits\":{\"href\":\"https://api.github.com/repos/leynos/git-donkey/pulls/93/commits\"},\"statuses\":{\"href\":\"https://api.github.com/repos/leynos/git-donkey/statuses/cb813a96c4e2cd494a7df4aaa279b71b5765cea5\"}},\"author_association\":\"OWNER\",\"auto_merge\":{\"enabled_by\":{\"login\":\"leynos\",\"id\":746767,\"node_id\":\"MDQ6VXNlcjc0Njc2Nw==\",\"avatar_url\":\"https://avatars.githubusercontent.com/u/746767?v=4\",\"gravatar_id\":\"\",\"url\":\"https://api.github.com/users/leynos\",\"html_url\":\"https://github.com/leynos\",\"followers_url\":\"https://api.github.com/users/leynos/followers\",\"following_url\":\"https://api.github.com/users/leynos/following{/other_user}\",\"gists_url\":\"https://api.github.com/users/leynos/gists{/gist_id}\",\"starred_url\":\"https://api.github.com/users/leynos/starred{/owner}{/repo}\",\"subscriptions_url\":\"https://api.github.com/users/leynos/subscriptions\",\"organizations_url\":\"https://api.github.com/users/leynos/orgs\",\"repos_url\":\"https://api.github.com/users/leynos/repos\",\"events_url\":\"https://api.github.com/users/leynos/events{/privacy}\",\"received_events_url\":\"https://api.github.com/users/leynos/received_events\",\"type\":\"User\",\"user_view_type\":\"public\",\"site_admin\":false},\"merge_method\":\"squash\",\"commit_title\":null,\"commit_message\":null},\"assignee\":null,\"active_lock_reason\":null,\"merged\":true,\"mergeable\":null,\"rebaseable\":null,\"mergeable_state\":\"unknown\",\"merged_by\":{\"login\":\"leynos\",\"id\":746767,\"node_id\":\"MDQ6VXNlcjc0Njc2Nw==\",\"avatar_url\":\"https://avatars.githubusercontent.com/u/746767?v=4\",\"gravatar_id\":\"\",\"url\":\"https://api.github.com/users/leynos\",\"html_url\":\"https://github.com/leynos\",\"followers_url\":\"https://api.github.com/users/leynos/followers\",\"following_url\":\"https://api.github.com/users/leynos/following{/other_user}\",\"gists_url\":\"https://api.github.com/users/leynos/gists{/gist_id}\",\"starred_url\":\"https://api.github.com/users/leynos/starred{/owner}{/repo}\",\"subscriptions_url\":\"https://api.github.com/users/leynos/subscriptions\",\"organizations_url\":\"https://api.github.com/users/leynos/orgs\",\"repos_url\":\"https://api.github.com/users/leynos/repos\",\"events_url\":\"https://api.github.com/users/leynos/events{/privacy}\",\"received_events_url\":\"https://api.github.com/users/leynos/received_events\",\"type\":\"User\",\"user_view_type\":\"public\",\"site_admin\":false},\"comments\":3,\"review_comments\":2,\"maintainer_can_modify\":false,\"commits\":1,\"additions\":410,\"deletions\":390,\"changed_files\":14}"
+    headers:
+      Access-Control-Allow-Origin:
+      - '*'
+      Access-Control-Expose-Headers:
+      - ETag, Link, Location, Retry-After, X-GitHub-OTP, X-RateLimit-Limit, X-RateLimit-Remaining,
+        X-RateLimit-Used, X-RateLimit-Resource, X-RateLimit-Reset, X-OAuth-Scopes,
+        X-Accepted-OAuth-Scopes, X-Poll-Interval, X-GitHub-Media-Type, X-GitHub-SSO,
+        X-GitHub-Request-Id, Deprecation, Sunset, Warning
+      Cache-Control:
+      - private, max-age=60, s-maxage=60
+      Content-Security-Policy:
+      - default-src 'none'
+      Content-Type:
+      - application/json; charset=utf-8
+      Date:
+      - Tue, 15 Sep 2026 16:30:23 GMT
+      ETag:
+      - W/"66a51ea898f04e8ce816184eb5d74a66f57d1afa09fe7f169400e309002eafd3"
+      Last-Modified:
+      - Tue, 15 Sep 2026 16:01:52 GMT
+      Referrer-Policy:
+      - origin-when-cross-origin, strict-origin-when-cross-origin
+      Server:
+      - github.com
+      Strict-Transport-Security:
+      - max-age=31536000; includeSubdomains; preload
+      Transfer-Encoding:
+      - chunked
+      Vary:
+      - Accept, Authorization, Cookie, X-GitHub-OTP,Accept-Encoding, Accept, X-Requested-With
+      X-Accepted-OAuth-Scopes:
+      - repo
+      X-Content-Type-Options:
+      - nosniff
+      X-Frame-Options:
+      - deny
+      X-GitHub-Media-Type:
+      - github.v3; format=json
+      X-GitHub-Request-Id:
+      - B3A8:150A85:23E393:22AF6B:6AA9729F
+      X-OAuth-Scopes:
+      - admin:public_key, gist, read:org, repo
+      X-RateLimit-Limit:
+      - '5000'
+      X-RateLimit-Remaining:
+      - '4893'
+      X-RateLimit-Reset:
+      - '1789490934'
+      X-RateLimit-Resource:
+      - core
+      X-RateLimit-Used:
+      - '107'
+      X-XSS-Protection:
+      - '0'
+      x-github-api-version-selected:
+      - '2022-11-28'
+      x-github-edge-region:
+      - fra
+      x-oauth-client-id:
+      - 178c6fc778ccc68e1d6a
+      - 178c6fc778ccc68e1d6a
+    status:
+      code: 200
+      message: OK
+- request:
+    body: null
+    headers:
+      Accept:
+      - application/vnd.github+json
+      Accept-Charset:
+      - utf-8
+      Accept-Encoding:
+      - gzip, deflate, zstd
+      Connection:
+      - keep-alive
+      Content-Type:
+      - application/json
+      User-Agent:
+      - github3.py/4.0.1
+    method: GET
+    uri: https://api.github.com/repos/leynos/git-donkey/commits/02ab4e9e1bcb6ec498f2d4dde6e1a7df2d897c41/pulls
+  response:
+    body:
+      string: "[{\"url\":\"https://api.github.com/repos/leynos/git-donkey/pulls/93\",\"id\":4538948696,\"node_id\":\"PR_kwDOQ7SZj88AAAABDorcWA\",\"html_url\":\"https://github.com/leynos/git-donkey/pull/93\",\"diff_url\":\"https://github.com/leynos/git-donkey/pull/93.diff\",\"patch_url\":\"https://github.com/leynos/git-donkey/pull/93.patch\",\"issue_url\":\"https://api.github.com/repos/leynos/git-donkey/issues/93\",\"number\":93,\"state\":\"closed\",\"locked\":false,\"title\":\"Adopt
+        the estate Markdown formatting baseline\",\"user\":{\"login\":\"leynos\",\"id\":746767,\"node_id\":\"MDQ6VXNlcjc0Njc2Nw==\",\"avatar_url\":\"https://avatars.githubusercontent.com/u/746767?v=4\",\"gravatar_id\":\"\",\"url\":\"https://api.github.com/users/leynos\",\"html_url\":\"https://github.com/leynos\",\"followers_url\":\"https://api.github.com/users/leynos/followers\",\"following_url\":\"https://api.github.com/users/leynos/following{/other_user}\",\"gists_url\":\"https://api.github.com/users/leynos/gists{/gist_id}\",\"starred_url\":\"https://api.github.com/users/leynos/starred{/owner}{/repo}\",\"subscriptions_url\":\"https://api.github.com/users/leynos/subscriptions\",\"organizations_url\":\"https://api.github.com/users/leynos/orgs\",\"repos_url\":\"https://api.github.com/users/leynos/repos\",\"events_url\":\"https://api.github.com/users/leynos/events{/privacy}\",\"received_events_url\":\"https://api.github.com/users/leynos/received_events\",\"type\":\"User\",\"user_view_type\":\"public\",\"site_admin\":false},\"body\":\"##
+        Summary\\n\\nThis branch adopts the estate Markdown formatting baseline that
+        concordat now audits as the `markdown-formatting-baseline` rule package (PD-002
+        to PD-006), following the `leynos/netsuke` reference wiring. `make fmt` calls
+        `mdtablefix` and `markdownlint-cli2 --fix` directly over the Git-selected
+        Markdown set instead of the `mdformat-all` wrapper, `make check-fmt` runs
+        the matching `mdtablefix --check` so unformatted Markdown fails CI, `.markdownlint-cli2.jsonc`
+        carries every baseline ignore glob, and CI lints Markdown through the pinned
+        `DavidAnson/markdownlint-cli2-action`. The tracked Markdown is reformatted
+        once because `--git` also reaches the hidden `.rules/` documents the wrapper
+        skipped.\\n\\n## Review walkthrough\\n\\n- Start with [Makefile](https://github.com/leynos/git-donkey/blob/markdown-formatting-baseline/Makefile#L1)
+        for the `MDTABLEFIX` variables and the `fmt` and `check-fmt` recipes.\\n-
+        Then [.github/workflows/ci.yml](https://github.com/leynos/git-donkey/blob/markdown-formatting-baseline/.github/workflows/ci.yml#L33):
+        the pinned mdtablefix install replaces the `npm install`, and the action step
+        follows `make check-fmt`.\\n- Finish with [.markdownlint-cli2.jsonc](https://github.com/leynos/git-donkey/blob/markdown-formatting-baseline/.markdownlint-cli2.jsonc#L13);
+        the remaining files are the one-off `mdtablefix` reformat.\\n\\n## Validation\\n\\n```text\\nconcordat
+        artefact rule run markdown-formatting-baseline --repo .\\nmarkdown-formatting-baseline:
+        compliant\\n\\nmdtablefix --check --git --include-untracked --wrap --renumber
+        --breaks --ellipsis --fences\\nmarkdownlint-cli2 \\\"**/*.md\\\"   Summary:
+        0 error(s)\\nmbake validate Makefile       Valid syntax\\n```\\n\\n## Notes\\n\\nPart
+        of the estate rollout driven by leynos/concordat#168; behaviour is guarded
+        by that rule, so no repository-local tests are added.\\n\\n## Summary by Sourcery\\n\\nAdopt
+        the estate Markdown formatting baseline across local tooling, CI, configuration,
+        and repository documentation.\\n\\nEnhancements:\\n- Adopt the estate Markdown
+        formatting baseline and apply its rules consistently across tracked and untracked
+        Markdown files.\\n- Replace the Markdown formatting wrapper with direct table
+        formatting and lint-fix targets, while adding matching formatting checks.\\n-
+        Centralize baseline Markdown lint exclusions in the markdownlint configuration.\\n\\nCI:\\n-
+        Pin and install mdtablefix in CI and lint Markdown through the pinned markdownlint-cli2
+        GitHub Action.\\n\\nChores:\\n- Reformat the repository's Markdown documents
+        to comply with the adopted baseline.\",\"created_at\":\"2026-09-15T15:56:24Z\",\"updated_at\":\"2026-09-15T16:01:52Z\",\"closed_at\":\"2026-09-15T15:57:54Z\",\"merged_at\":\"2026-09-15T15:57:54Z\",\"merge_commit_sha\":\"02ab4e9e1bcb6ec498f2d4dde6e1a7df2d897c41\",\"assignees\":[],\"requested_reviewers\":[],\"requested_teams\":[],\"labels\":[{\"id\":12040893651,\"node_id\":\"LA_kwDOQ7SZj88AAAACzbF00w\",\"url\":\"https://api.github.com/repos/leynos/git-donkey/labels/Issue\",\"name\":\"Issue\",\"color\":\"ededed\",\"default\":false,\"description\":null,\"archived_at\":null,\"archived_by\":null}],\"milestone\":null,\"draft\":false,\"commits_url\":\"https://api.github.com/repos/leynos/git-donkey/pulls/93/commits\",\"review_comments_url\":\"https://api.github.com/repos/leynos/git-donkey/pulls/93/comments\",\"review_comment_url\":\"https://api.github.com/repos/leynos/git-donkey/pulls/comments{/number}\",\"comments_url\":\"https://api.github.com/repos/leynos/git-donkey/issues/93/comments\",\"statuses_url\":\"https://api.github.com/repos/leynos/git-donkey/statuses/cb813a96c4e2cd494a7df4aaa279b71b5765cea5\",\"head\":{\"label\":\"leynos:markdown-formatting-baseline\",\"ref\":\"markdown-formatting-baseline\",\"sha\":\"cb813a96c4e2cd494a7df4aaa279b71b5765cea5\",\"user\":{\"login\":\"leynos\",\"id\":746767,\"node_id\":\"MDQ6VXNlcjc0Njc2Nw==\",\"avatar_url\":\"https://avatars.githubusercontent.com/u/746767?v=4\",\"gravatar_id\":\"\",\"url\":\"https://api.github.com/users/leynos\",\"html_url\":\"https://github.com/leynos\",\"followers_url\":\"https://api.github.com/users/leynos/followers\",\"following_url\":\"https://api.github.com/users/leynos/following{/other_user}\",\"gists_url\":\"https://api.github.com/users/leynos/gists{/gist_id}\",\"starred_url\":\"https://api.github.com/users/leynos/starred{/owner}{/repo}\",\"subscriptions_url\":\"https://api.github.com/users/leynos/subscriptions\",\"organizations_url\":\"https://api.github.com/users/leynos/orgs\",\"repos_url\":\"https://api.github.com/users/leynos/repos\",\"events_url\":\"https://api.github.com/users/leynos/events{/privacy}\",\"received_events_url\":\"https://api.github.com/users/leynos/received_events\",\"type\":\"User\",\"user_view_type\":\"public\",\"site_admin\":false},\"repo\":{\"id\":1135909263,\"node_id\":\"R_kgDOQ7SZjw\",\"name\":\"git-donkey\",\"full_name\":\"leynos/git-donkey\",\"private\":false,\"owner\":{\"login\":\"leynos\",\"id\":746767,\"node_id\":\"MDQ6VXNlcjc0Njc2Nw==\",\"avatar_url\":\"https://avatars.githubusercontent.com/u/746767?v=4\",\"gravatar_id\":\"\",\"url\":\"https://api.github.com/users/leynos\",\"html_url\":\"https://github.com/leynos\",\"followers_url\":\"https://api.github.com/users/leynos/followers\",\"following_url\":\"https://api.github.com/users/leynos/following{/other_user}\",\"gists_url\":\"https://api.github.com/users/leynos/gists{/gist_id}\",\"starred_url\":\"https://api.github.com/users/leynos/starred{/owner}{/repo}\",\"subscriptions_url\":\"https://api.github.com/users/leynos/subscriptions\",\"organizations_url\":\"https://api.github.com/users/leynos/orgs\",\"repos_url\":\"https://api.github.com/users/leynos/repos\",\"events_url\":\"https://api.github.com/users/leynos/events{/privacy}\",\"received_events_url\":\"https://api.github.com/users/leynos/received_events\",\"type\":\"User\",\"user_view_type\":\"public\",\"site_admin\":false},\"html_url\":\"https://github.com/leynos/git-donkey\",\"description\":\"Git
+        subcommands that make branch-based development less of a\u2026 well, you know\",\"fork\":false,\"url\":\"https://api.github.com/repos/leynos/git-donkey\",\"forks_url\":\"https://api.github.com/repos/leynos/git-donkey/forks\",\"keys_url\":\"https://api.github.com/repos/leynos/git-donkey/keys{/key_id}\",\"collaborators_url\":\"https://api.github.com/repos/leynos/git-donkey/collaborators{/collaborator}\",\"teams_url\":\"https://api.github.com/repos/leynos/git-donkey/teams\",\"hooks_url\":\"https://api.github.com/repos/leynos/git-donkey/hooks\",\"issue_events_url\":\"https://api.github.com/repos/leynos/git-donkey/issues/events{/number}\",\"events_url\":\"https://api.github.com/repos/leynos/git-donkey/events\",\"assignees_url\":\"https://api.github.com/repos/leynos/git-donkey/assignees{/user}\",\"branches_url\":\"https://api.github.com/repos/leynos/git-donkey/branches{/branch}\",\"tags_url\":\"https://api.github.com/repos/leynos/git-donkey/tags\",\"blobs_url\":\"https://api.github.com/repos/leynos/git-donkey/git/blobs{/sha}\",\"git_tags_url\":\"https://api.github.com/repos/leynos/git-donkey/git/tags{/sha}\",\"git_refs_url\":\"https://api.github.com/repos/leynos/git-donkey/git/refs{/sha}\",\"trees_url\":\"https://api.github.com/repos/leynos/git-donkey/git/trees{/sha}\",\"statuses_url\":\"https://api.github.com/repos/leynos/git-donkey/statuses/{sha}\",\"languages_url\":\"https://api.github.com/repos/leynos/git-donkey/languages\",\"stargazers_url\":\"https://api.github.com/repos/leynos/git-donkey/stargazers\",\"contributors_url\":\"https://api.github.com/repos/leynos/git-donkey/contributors\",\"subscribers_url\":\"https://api.github.com/repos/leynos/git-donkey/subscribers\",\"subscription_url\":\"https://api.github.com/repos/leynos/git-donkey/subscription\",\"commits_url\":\"https://api.github.com/repos/leynos/git-donkey/commits{/sha}\",\"git_commits_url\":\"https://api.github.com/repos/leynos/git-donkey/git/commits{/sha}\",\"comments_url\":\"https://api.github.com/repos/leynos/git-donkey/comments{/number}\",\"issue_comment_url\":\"https://api.github.com/repos/leynos/git-donkey/issues/comments{/number}\",\"contents_url\":\"https://api.github.com/repos/leynos/git-donkey/contents/{+path}\",\"compare_url\":\"https://api.github.com/repos/leynos/git-donkey/compare/{base}...{head}\",\"merges_url\":\"https://api.github.com/repos/leynos/git-donkey/merges\",\"archive_url\":\"https://api.github.com/repos/leynos/git-donkey/{archive_format}{/ref}\",\"downloads_url\":\"https://api.github.com/repos/leynos/git-donkey/downloads\",\"issues_url\":\"https://api.github.com/repos/leynos/git-donkey/issues{/number}\",\"pulls_url\":\"https://api.github.com/repos/leynos/git-donkey/pulls{/number}\",\"milestones_url\":\"https://api.github.com/repos/leynos/git-donkey/milestones{/number}\",\"notifications_url\":\"https://api.github.com/repos/leynos/git-donkey/notifications{?since,all,participating}\",\"labels_url\":\"https://api.github.com/repos/leynos/git-donkey/labels{/name}\",\"releases_url\":\"https://api.github.com/repos/leynos/git-donkey/releases{/id}\",\"deployments_url\":\"https://api.github.com/repos/leynos/git-donkey/deployments\",\"created_at\":\"2026-01-16T19:08:43Z\",\"updated_at\":\"2026-09-15T15:57:58Z\",\"pushed_at\":\"2026-09-15T15:57:55Z\",\"git_url\":\"git://github.com/leynos/git-donkey.git\",\"ssh_url\":\"git@github.com:leynos/git-donkey.git\",\"clone_url\":\"https://github.com/leynos/git-donkey.git\",\"svn_url\":\"https://github.com/leynos/git-donkey\",\"homepage\":\"\",\"size\":3417,\"stargazers_count\":0,\"watchers_count\":0,\"language\":\"Python\",\"has_issues\":true,\"has_projects\":true,\"has_downloads\":false,\"has_wiki\":true,\"has_pages\":false,\"has_discussions\":false,\"forks_count\":0,\"mirror_url\":null,\"archived\":false,\"disabled\":false,\"open_issues_count\":9,\"license\":{\"key\":\"isc\",\"name\":\"ISC
+        License\",\"spdx_id\":\"ISC\",\"url\":\"https://api.github.com/licenses/isc\",\"node_id\":\"MDc6TGljZW5zZTEw\"},\"allow_forking\":true,\"is_template\":false,\"web_commit_signoff_required\":false,\"has_pull_requests\":true,\"pull_request_creation_policy\":\"all\",\"topics\":[],\"visibility\":\"public\",\"forks\":0,\"open_issues\":9,\"watchers\":0,\"default_branch\":\"main\"}},\"base\":{\"label\":\"leynos:main\",\"ref\":\"main\",\"sha\":\"ba1e9ad9de2b718f77a31005cb23ff87887edb22\",\"user\":{\"login\":\"leynos\",\"id\":746767,\"node_id\":\"MDQ6VXNlcjc0Njc2Nw==\",\"avatar_url\":\"https://avatars.githubusercontent.com/u/746767?v=4\",\"gravatar_id\":\"\",\"url\":\"https://api.github.com/users/leynos\",\"html_url\":\"https://github.com/leynos\",\"followers_url\":\"https://api.github.com/users/leynos/followers\",\"following_url\":\"https://api.github.com/users/leynos/following{/other_user}\",\"gists_url\":\"https://api.github.com/users/leynos/gists{/gist_id}\",\"starred_url\":\"https://api.github.com/users/leynos/starred{/owner}{/repo}\",\"subscriptions_url\":\"https://api.github.com/users/leynos/subscriptions\",\"organizations_url\":\"https://api.github.com/users/leynos/orgs\",\"repos_url\":\"https://api.github.com/users/leynos/repos\",\"events_url\":\"https://api.github.com/users/leynos/events{/privacy}\",\"received_events_url\":\"https://api.github.com/users/leynos/received_events\",\"type\":\"User\",\"user_view_type\":\"public\",\"site_admin\":false},\"repo\":{\"id\":1135909263,\"node_id\":\"R_kgDOQ7SZjw\",\"name\":\"git-donkey\",\"full_name\":\"leynos/git-donkey\",\"private\":false,\"owner\":{\"login\":\"leynos\",\"id\":746767,\"node_id\":\"MDQ6VXNlcjc0Njc2Nw==\",\"avatar_url\":\"https://avatars.githubusercontent.com/u/746767?v=4\",\"gravatar_id\":\"\",\"url\":\"https://api.github.com/users/leynos\",\"html_url\":\"https://github.com/leynos\",\"followers_url\":\"https://api.github.com/users/leynos/followers\",\"following_url\":\"https://api.github.com/users/leynos/following{/other_user}\",\"gists_url\":\"https://api.github.com/users/leynos/gists{/gist_id}\",\"starred_url\":\"https://api.github.com/users/leynos/starred{/owner}{/repo}\",\"subscriptions_url\":\"https://api.github.com/users/leynos/subscriptions\",\"organizations_url\":\"https://api.github.com/users/leynos/orgs\",\"repos_url\":\"https://api.github.com/users/leynos/repos\",\"events_url\":\"https://api.github.com/users/leynos/events{/privacy}\",\"received_events_url\":\"https://api.github.com/users/leynos/received_events\",\"type\":\"User\",\"user_view_type\":\"public\",\"site_admin\":false},\"html_url\":\"https://github.com/leynos/git-donkey\",\"description\":\"Git
+        subcommands that make branch-based development less of a\u2026 well, you know\",\"fork\":false,\"url\":\"https://api.github.com/repos/leynos/git-donkey\",\"forks_url\":\"https://api.github.com/repos/leynos/git-donkey/forks\",\"keys_url\":\"https://api.github.com/repos/leynos/git-donkey/keys{/key_id}\",\"collaborators_url\":\"https://api.github.com/repos/leynos/git-donkey/collaborators{/collaborator}\",\"teams_url\":\"https://api.github.com/repos/leynos/git-donkey/teams\",\"hooks_url\":\"https://api.github.com/repos/leynos/git-donkey/hooks\",\"issue_events_url\":\"https://api.github.com/repos/leynos/git-donkey/issues/events{/number}\",\"events_url\":\"https://api.github.com/repos/leynos/git-donkey/events\",\"assignees_url\":\"https://api.github.com/repos/leynos/git-donkey/assignees{/user}\",\"branches_url\":\"https://api.github.com/repos/leynos/git-donkey/branches{/branch}\",\"tags_url\":\"https://api.github.com/repos/leynos/git-donkey/tags\",\"blobs_url\":\"https://api.github.com/repos/leynos/git-donkey/git/blobs{/sha}\",\"git_tags_url\":\"https://api.github.com/repos/leynos/git-donkey/git/tags{/sha}\",\"git_refs_url\":\"https://api.github.com/repos/leynos/git-donkey/git/refs{/sha}\",\"trees_url\":\"https://api.github.com/repos/leynos/git-donkey/git/trees{/sha}\",\"statuses_url\":\"https://api.github.com/repos/leynos/git-donkey/statuses/{sha}\",\"languages_url\":\"https://api.github.com/repos/leynos/git-donkey/languages\",\"stargazers_url\":\"https://api.github.com/repos/leynos/git-donkey/stargazers\",\"contributors_url\":\"https://api.github.com/repos/leynos/git-donkey/contributors\",\"subscribers_url\":\"https://api.github.com/repos/leynos/git-donkey/subscribers\",\"subscription_url\":\"https://api.github.com/repos/leynos/git-donkey/subscription\",\"commits_url\":\"https://api.github.com/repos/leynos/git-donkey/commits{/sha}\",\"git_commits_url\":\"https://api.github.com/repos/leynos/git-donkey/git/commits{/sha}\",\"comments_url\":\"https://api.github.com/repos/leynos/git-donkey/comments{/number}\",\"issue_comment_url\":\"https://api.github.com/repos/leynos/git-donkey/issues/comments{/number}\",\"contents_url\":\"https://api.github.com/repos/leynos/git-donkey/contents/{+path}\",\"compare_url\":\"https://api.github.com/repos/leynos/git-donkey/compare/{base}...{head}\",\"merges_url\":\"https://api.github.com/repos/leynos/git-donkey/merges\",\"archive_url\":\"https://api.github.com/repos/leynos/git-donkey/{archive_format}{/ref}\",\"downloads_url\":\"https://api.github.com/repos/leynos/git-donkey/downloads\",\"issues_url\":\"https://api.github.com/repos/leynos/git-donkey/issues{/number}\",\"pulls_url\":\"https://api.github.com/repos/leynos/git-donkey/pulls{/number}\",\"milestones_url\":\"https://api.github.com/repos/leynos/git-donkey/milestones{/number}\",\"notifications_url\":\"https://api.github.com/repos/leynos/git-donkey/notifications{?since,all,participating}\",\"labels_url\":\"https://api.github.com/repos/leynos/git-donkey/labels{/name}\",\"releases_url\":\"https://api.github.com/repos/leynos/git-donkey/releases{/id}\",\"deployments_url\":\"https://api.github.com/repos/leynos/git-donkey/deployments\",\"created_at\":\"2026-01-16T19:08:43Z\",\"updated_at\":\"2026-09-15T15:57:58Z\",\"pushed_at\":\"2026-09-15T15:57:55Z\",\"git_url\":\"git://github.com/leynos/git-donkey.git\",\"ssh_url\":\"git@github.com:leynos/git-donkey.git\",\"clone_url\":\"https://github.com/leynos/git-donkey.git\",\"svn_url\":\"https://github.com/leynos/git-donkey\",\"homepage\":\"\",\"size\":3417,\"stargazers_count\":0,\"watchers_count\":0,\"language\":\"Python\",\"has_issues\":true,\"has_projects\":true,\"has_downloads\":false,\"has_wiki\":true,\"has_pages\":false,\"has_discussions\":false,\"forks_count\":0,\"mirror_url\":null,\"archived\":false,\"disabled\":false,\"open_issues_count\":9,\"license\":{\"key\":\"isc\",\"name\":\"ISC
+        License\",\"spdx_id\":\"ISC\",\"url\":\"https://api.github.com/licenses/isc\",\"node_id\":\"MDc6TGljZW5zZTEw\"},\"allow_forking\":true,\"is_template\":false,\"web_commit_signoff_required\":false,\"has_pull_requests\":true,\"pull_request_creation_policy\":\"all\",\"topics\":[],\"visibility\":\"public\",\"forks\":0,\"open_issues\":9,\"watchers\":0,\"default_branch\":\"main\"}},\"_links\":{\"self\":{\"href\":\"https://api.github.com/repos/leynos/git-donkey/pulls/93\"},\"html\":{\"href\":\"https://github.com/leynos/git-donkey/pull/93\"},\"issue\":{\"href\":\"https://api.github.com/repos/leynos/git-donkey/issues/93\"},\"comments\":{\"href\":\"https://api.github.com/repos/leynos/git-donkey/issues/93/comments\"},\"review_comments\":{\"href\":\"https://api.github.com/repos/leynos/git-donkey/pulls/93/comments\"},\"review_comment\":{\"href\":\"https://api.github.com/repos/leynos/git-donkey/pulls/comments{/number}\"},\"commits\":{\"href\":\"https://api.github.com/repos/leynos/git-donkey/pulls/93/commits\"},\"statuses\":{\"href\":\"https://api.github.com/repos/leynos/git-donkey/statuses/cb813a96c4e2cd494a7df4aaa279b71b5765cea5\"}},\"author_association\":\"OWNER\",\"auto_merge\":{\"enabled_by\":{\"login\":\"leynos\",\"id\":746767,\"node_id\":\"MDQ6VXNlcjc0Njc2Nw==\",\"avatar_url\":\"https://avatars.githubusercontent.com/u/746767?v=4\",\"gravatar_id\":\"\",\"url\":\"https://api.github.com/users/leynos\",\"html_url\":\"https://github.com/leynos\",\"followers_url\":\"https://api.github.com/users/leynos/followers\",\"following_url\":\"https://api.github.com/users/leynos/following{/other_user}\",\"gists_url\":\"https://api.github.com/users/leynos/gists{/gist_id}\",\"starred_url\":\"https://api.github.com/users/leynos/starred{/owner}{/repo}\",\"subscriptions_url\":\"https://api.github.com/users/leynos/subscriptions\",\"organizations_url\":\"https://api.github.com/users/leynos/orgs\",\"repos_url\":\"https://api.github.com/users/leynos/repos\",\"events_url\":\"https://api.github.com/users/leynos/events{/privacy}\",\"received_events_url\":\"https://api.github.com/users/leynos/received_events\",\"type\":\"User\",\"user_view_type\":\"public\",\"site_admin\":false},\"merge_method\":\"squash\",\"commit_title\":null,\"commit_message\":null},\"assignee\":null,\"active_lock_reason\":null}]"
+    headers:
+      Access-Control-Allow-Origin:
+      - '*'
+      Access-Control-Expose-Headers:
+      - ETag, Link, Location, Retry-After, X-GitHub-OTP, X-RateLimit-Limit, X-RateLimit-Remaining,
+        X-RateLimit-Used, X-RateLimit-Resource, X-RateLimit-Reset, X-OAuth-Scopes,
+        X-Accepted-OAuth-Scopes, X-Poll-Interval, X-GitHub-Media-Type, X-GitHub-SSO,
+        X-GitHub-Request-Id, Deprecation, Sunset, Warning
+      Cache-Control:
+      - private, max-age=60, s-maxage=60
+      Content-Encoding:
+      - gzip
+      Content-Security-Policy:
+      - default-src 'none'
+      Content-Type:
+      - application/json; charset=utf-8
+      Date:
+      - Tue, 15 Sep 2026 16:30:24 GMT
+      ETag:
+      - W/"3d2f87f94f71116f74067c81fb85356a8fb0929224d5fd261b7a154ac7a08b08"
+      Referrer-Policy:
+      - origin-when-cross-origin, strict-origin-when-cross-origin
+      Server:
+      - github.com
+      Strict-Transport-Security:
+      - max-age=31536000; includeSubdomains; preload
+      Transfer-Encoding:
+      - chunked
+      Vary:
+      - Accept, Authorization, Cookie, X-GitHub-OTP,Accept-Encoding, Accept, X-Requested-With
+      X-Accepted-OAuth-Scopes:
+      - ''
+      X-Content-Type-Options:
+      - nosniff
+      X-Frame-Options:
+      - deny
+      X-GitHub-Media-Type:
+      - github.v3; format=json
+      X-GitHub-Request-Id:
+      - B3B8:102AF:200A48:1ED749:6AA972A0
+      X-OAuth-Scopes:
+      - admin:public_key, gist, read:org, repo
+      X-RateLimit-Limit:
+      - '5000'
+      X-RateLimit-Remaining:
+      - '4891'
+      X-RateLimit-Reset:
+      - '1789490934'
+      X-RateLimit-Resource:
+      - core
+      X-RateLimit-Used:
+      - '109'
+      X-XSS-Protection:
+      - '0'
+      x-github-api-version-selected:
+      - '2022-11-28'
+      x-github-edge-region:
+      - fra
+      x-oauth-client-id:
+      - 178c6fc778ccc68e1d6a
+    status:
+      code: 200
+      message: OK
+version: 1
