@@ -32,6 +32,9 @@ import enum
 import re
 import typing as typ
 
+if typ.TYPE_CHECKING:
+    import collections.abc as cabc
+
 RECORD_VERSION: typ.Final = "v1"
 """Version prefix on every value, so a later revision can extend the grammar."""
 
@@ -586,7 +589,7 @@ def is_object_id(value: str) -> bool:
     return _OBJECT_ID_PATTERN.fullmatch(value) is not None
 
 
-def _record_values(config: typ.Mapping[str, str]) -> dict[RecordKey, str]:
+def _record_values(config: cabc.Mapping[str, str]) -> dict[RecordKey, str]:
     """Return the record's keys from a branch configuration section.
 
     The lookup is case-insensitive because Git lower-cases variable names on
@@ -595,7 +598,7 @@ def _record_values(config: typ.Mapping[str, str]) -> dict[RecordKey, str]:
 
     Parameters
     ----------
-    config : typ.Mapping[str, str]
+    config : cabc.Mapping[str, str]
         Keys and values read from the branch's configuration section.
 
     Returns
@@ -609,7 +612,7 @@ def _record_values(config: typ.Mapping[str, str]) -> dict[RecordKey, str]:
 
 
 def _parse_record(
-    branch: str, values: typ.Mapping[RecordKey, str]
+    branch: str, values: cabc.Mapping[RecordKey, str]
 ) -> StackRecord | RecordMalformed:
     """Build a record from the configuration values, or report why it cannot."""
     missing = [key.value for key in RecordKey if not values.get(key)]
@@ -685,14 +688,14 @@ def record_values(record: StackRecord) -> dict[RecordKey, str]:
     return values
 
 
-def _has_artefacts(values: typ.Mapping[RecordKey, str], anchor: str | None) -> bool:
+def _has_artefacts(values: cabc.Mapping[RecordKey, str], anchor: str | None) -> bool:
     """Return whether either artefact of a record is present."""
     return bool(values) or anchor is not None
 
 
 def reconcile(
     branch: str,
-    config: typ.Mapping[str, str],
+    config: cabc.Mapping[str, str],
     anchor: str | None,
     *,
     branch_exists: bool,
@@ -711,7 +714,7 @@ def reconcile(
     ----------
     branch : str
         Branch the artefacts were read for.
-    config : typ.Mapping[str, str]
+    config : cabc.Mapping[str, str]
         Keys and values read from that branch's configuration section.
     anchor : str | None
         Commit the anchor ref names, or ``None`` when it does not exist.
