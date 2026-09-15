@@ -77,12 +77,14 @@ def remote_repositories(repo: Repo) -> tuple[RemoteRepository, ...]:
         is configured with them.
 
     """
-    reader = repo.config_reader()
     named: list[RemoteRepository] = []
-    for remote in repo.remotes:
-        repository = _first_repository(_urls(reader, remote.name))
-        if repository is not None:
-            named.append(RemoteRepository(remote=remote.name, repository=repository))
+    with repo.config_reader() as reader:
+        for remote in repo.remotes:
+            repository = _first_repository(_urls(reader, remote.name))
+            if repository is not None:
+                named.append(
+                    RemoteRepository(remote=remote.name, repository=repository)
+                )
     return tuple(named)
 
 

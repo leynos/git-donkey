@@ -501,8 +501,10 @@ class Fingerprint:
         ``git stash list``.
     config : tuple[str, ...]
         ``git config --local --list``.
-    fetch_head : str
-        A digest of the repository's ``FETCH_HEAD``, or that it has none.
+    fetch_head : tuple[str, ...]
+        A digest of each working tree's ``FETCH_HEAD``, or that it has none,
+        with the tree's own directory name prefixed like ``status``, because
+        each tree has a file of its own to leave alone.
     files : tuple[str, ...]
         Every file each working tree holds, with its digest, named by the tree
         it belongs to.
@@ -513,7 +515,7 @@ class Fingerprint:
     status: tuple[str, ...]
     stashes: tuple[str, ...]
     config: tuple[str, ...]
-    fetch_head: str
+    fetch_head: tuple[str, ...]
     files: tuple[str, ...]
 
     def differences(
@@ -548,7 +550,7 @@ class Fingerprint:
             ("status", self.status, other.status),
             ("stashes", self.stashes, other.stashes),
             ("config", self.config, other.config),
-            ("fetch-head", (self.fetch_head,), (other.fetch_head,)),
+            ("fetch-head", self.fetch_head, other.fetch_head),
             ("files", self.files, other.files),
         ):
             if mine == theirs:
@@ -582,20 +584,23 @@ def fingerprint(*roots: Path, repo: Repo) -> Fingerprint:
     """
     statuses: list[str] = []
     files: list[str] = []
+    fetch_heads: list[str] = []
     for root in roots:
+        working = Repo(root)
         statuses += [
             f"{root.name}: {line}"
             for line in _lines(
-                Repo(root).git.status("--porcelain=v2", "--branch"),
+                working.git.status("--porcelain=v2", "--branch"),
             )
         ]
+        fetch_heads += [f"{root.name}: {_fetch_head(working)}"]
         files += [f"{root.name}/{name} {digest}" for name, digest in _files(root)]
     return Fingerprint(
         refs=_lines(repo.git.for_each_ref("--format=%(refname) %(objectname)")),
         status=tuple(statuses),
         stashes=_lines(repo.git.stash("list")),
         config=_lines(repo.git.config("--local", "--list")),
-        fetch_head=_fetch_head(repo),
+        fetch_head=tuple(fetch_heads),
         files=tuple(files),
     )
 
@@ -648,6 +653,8 @@ def _fetch_head(repo: Repo) -> str:
     the repository resolves to, which for a linked worktree is that worktree's
     own directory rather than the main checkout's: a run that fetched in one
     working tree would otherwise leave the other's file untouched and pass.
+    :func:`fingerprint` therefore reads it once per working tree it measures,
+    beside that tree's status and files, rather than once for the repository.
 
     Returns
     -------

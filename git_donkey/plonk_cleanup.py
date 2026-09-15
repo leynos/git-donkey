@@ -38,6 +38,8 @@ from git_donkey.plonk_selection import _donkey_worktree_candidates
 from git_donkey.plonk_worktree_adapter import _GitWorktreeAdapter
 
 if typ.TYPE_CHECKING:
+    import collections.abc as cabc
+
     from git_donkey.plonk_records import _PlonkCandidate
 
 _LOGGER = logging.getLogger(__name__)
@@ -57,9 +59,9 @@ def _log_plonk_cleanup_start(mode: _PlonkMode, context: _PlonkContext) -> None:
 
 def _log_plonk_candidates_selected(
     mode: _PlonkMode,
-    candidates: typ.Sequence[_PlonkCandidate],
-    completed_candidates: typ.Sequence[_PlonkCandidate],
-    removable_candidates: typ.Sequence[_PlonkCandidate],
+    candidates: cabc.Sequence[_PlonkCandidate],
+    completed_candidates: cabc.Sequence[_PlonkCandidate],
+    removable_candidates: cabc.Sequence[_PlonkCandidate],
 ) -> None:
     """Log candidate selection counts for completed git-plonk cleanup."""
     _LOGGER.info(
@@ -493,7 +495,7 @@ def _clean_completed_candidate(
 
 
 def _clean_candidates(
-    candidates: typ.Iterable[_PlonkCandidate],
+    candidates: cabc.Iterable[_PlonkCandidate],
     surfaces: _CleanupSurfaces,
     mode: _PlonkMode,
     *,

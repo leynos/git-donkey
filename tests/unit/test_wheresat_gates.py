@@ -56,6 +56,9 @@ _ANCESTRY_TABLE = (
     (Ancestry.UNKNOWN, Ancestry.NOT_ANCESTOR, GateOutcome.INDETERMINATE),
 )
 
+_EXPECTATIONS: typ.Final = (Ancestry.ANCESTOR, Ancestry.NOT_ANCESTOR)
+"""The two polarities a gate can hold, which nothing in the table may omit."""
+
 
 # The gates a run that named no parent pull request never applies.
 _ABSENT_PARENT_GATES = frozenset({
@@ -144,8 +147,13 @@ def test_ancestry_outcome_is_a_truth_table(
 
 def test_the_ancestry_table_covers_every_answer_and_expectation() -> None:
     """The table above is every combination, not a sample of them."""
-    assert len(_ANCESTRY_TABLE) == len(Ancestry) * 2, (
-        "every answer is exercised against both expectations"
+    covered = {(observed, expect) for observed, expect, _ in _ANCESTRY_TABLE}
+    expected = {
+        (observed, expect) for observed in Ancestry for expect in _EXPECTATIONS
+    }
+    assert covered == expected, (
+        "every answer is exercised against both expectations, so a row the "
+        f"table lost is not hidden by a row it repeats: {sorted(map(str, covered))}"
     )
 
 

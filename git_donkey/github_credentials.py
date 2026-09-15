@@ -89,7 +89,9 @@ def write_token(path: Path, token: str, auth_id: int | None) -> None:
     Parameters
     ----------
     path : Path
-        Credential file to write, with its parent created if it is absent.
+        Credential file to write, with its parent created if it is absent. A
+        directory this call creates is created owner-only; an existing one
+        keeps whatever mode it already has.
     token : str
         Token to store, on the first line.
     auth_id : int | None
@@ -104,7 +106,7 @@ def write_token(path: Path, token: str, auth_id: int | None) -> None:
         removed.
 
     """
-    path.parent.mkdir(parents=True, exist_ok=True)
+    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     payload = f"{token}\n"
     if auth_id is not None:
         payload += f"{auth_id}\n"

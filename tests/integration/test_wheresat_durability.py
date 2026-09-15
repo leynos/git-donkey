@@ -42,6 +42,8 @@ from git import Repo
 
 from git_donkey.wheresat_graph import GitWheresatGraph
 from git_donkey.wheresat_refs import (
+    _BOUNDARY_NAMESPACE,
+    _OPERATION_NAMESPACE,
     GitWheresatRefWriter,
     per_run_ref,
 )
@@ -53,8 +55,6 @@ if typ.TYPE_CHECKING:
 pytestmark = pytest.mark.timeout(120)
 
 _ANSWERED_YES: typ.Final = 0
-_PER_RUN_NAMESPACE: typ.Final = "refs/wheresat/op"
-_BOUNDARY_NAMESPACE: typ.Final = "refs/wheresat/boundary"
 _REF_NAME_FORMAT: typ.Final = "--format=%(refname)"
 
 
@@ -198,13 +198,13 @@ def test_a_reported_boundary_survives_garbage_collection(
     )
 
     writer = GitWheresatRefWriter(case.repo)
-    retained = None
+    retained: str | None = None
+    retained_ref = ""
     if not already_reachable:
-        retained = case.repo.git.rev_parse(
-            writer.retain_boundary(case.branch, case.boundary)
-        )
+        retained_ref = writer.retain_boundary(case.branch, case.boundary)
+        retained = case.repo.git.rev_parse(retained_ref)
     writer.release(case.op_id)
-    assert not _refs_under(case.repo, _PER_RUN_NAMESPACE), (
+    assert not _refs_under(case.repo, _OPERATION_NAMESPACE), (
         "the run's own evidence namespace is gone"
     )
     case.repo.git.gc("--prune=now")
@@ -218,9 +218,9 @@ def test_a_reported_boundary_survives_garbage_collection(
         )
     else:
         assert retained == case.boundary, "the retained ref names the boundary"
-        assert _refs_under(case.repo, _BOUNDARY_NAMESPACE) == (
-            f"{_BOUNDARY_NAMESPACE}/{case.branch}",
-        ), "and it is a ref the report can name"
+        assert _refs_under(case.repo, _BOUNDARY_NAMESPACE) == (retained_ref,), (
+            "and the ref the writer reported is the one a report can name"
+        )
 
 
 def test_a_boundary_nothing_retains_is_lost(tmp_path: Path) -> None:

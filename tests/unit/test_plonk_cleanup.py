@@ -381,16 +381,12 @@ def test_hard_mode_refuses_a_branch_whose_own_tip_was_not_preserved() -> None:
         [marker_for(preserved), marker_for(forgotten)], records
     )
 
-    with pytest.raises(AssertionError) as excinfo:
+    with pytest.raises(AssertionError, match="preserves a branch's tip"):
         run_cleanup(
             [preserved, forgotten],
             cleanup_surfaces(adapter, records),
             plonk._PlonkMode.HARD,
         )
-
-    assert "preserves a branch's tip" in str(excinfo.value), (
-        "the refusal names the rule the sweep was about to break"
-    )
     assert forgotten.branch_name not in [branch for branch, _ in records.entombed], (
         "no tombstone names the tip of the branch that was refused"
     )

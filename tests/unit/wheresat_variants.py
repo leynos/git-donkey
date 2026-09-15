@@ -268,8 +268,19 @@ def spoiled(gate: GateName, outcome: GateOutcome) -> Case:
         every other gate passes and the gate under test is the only one that
         did not.
 
+    Raises
+    ------
+    AssertionError
+        If ``outcome`` is ``PASSED``, which names no way to spoil a gate: a
+        case asked for it would otherwise be built as the unanswered one and
+        read as coverage of the wrong answer.
+
     """
-    return _SPOILERS[gate](failed=outcome is GateOutcome.FAILED)
+    if outcome is GateOutcome.FAILED:
+        return _SPOILERS[gate](failed=True)
+    if outcome is GateOutcome.INDETERMINATE:
+        return _SPOILERS[gate](failed=False)
+    raise AssertionError(f"a gate is spoiled as failed or unanswered, not {outcome}")
 
 
 def parented_without_head() -> Case:

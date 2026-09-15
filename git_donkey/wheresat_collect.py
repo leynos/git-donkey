@@ -449,11 +449,14 @@ SOURCES: typ.Final[tuple[tuple[EvidenceKind, EvidenceSource], ...]] = (
     (EvidenceKind.TREE_IDENTITY, _tree_identity_evidence),
     (EvidenceKind.PATCH_IDENTITY, _patch_identity_evidence),
 )
-"""The rungs this version reads, in the precedence order the procedure fixes.
+"""The rungs this version reads, in the order the ladder asks them.
 
 The kind beside each rung is what its observation is labelled with, so the
 evidence tier a rung's answer is recorded under comes from one declaration
-rather than from each rung's memory of what it reads.
+rather than from each rung's memory of what it reads. The order is the reading
+order and never a ranking: which candidate establishes a boundary is decided
+by its evidence tier in :mod:`git_donkey.wheresat_policy`, so a rung's position
+here promotes nothing and two candidates left at one tier remain an ambiguity.
 
 The shared record is second because it is a statement the child's own author
 made, and the ladder reads it once while it walks the association search: the

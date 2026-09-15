@@ -69,7 +69,7 @@ _CHILD_EDIT: typ.Final = "changed by the child"
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
-class SquashedParent:
+class _SquashedParent:
     """A child cut from a parent that was squash-merged into the trunk.
 
     Attributes
@@ -96,7 +96,7 @@ class SquashedParent:
     target: str
 
 
-def _squashed_parent(root: Path) -> SquashedParent:
+def _squashed_parent(root: Path) -> _SquashedParent:
     """Build the squash-merge shape and leave the child checked out at its head.
 
     The parent commits a file the child's own history then reaches, and the
@@ -112,7 +112,7 @@ def _squashed_parent(root: Path) -> SquashedParent:
 
     Returns
     -------
-    SquashedParent
+    _SquashedParent
         The repository and the three commits that describe the shape.
 
     """
@@ -127,12 +127,12 @@ def _squashed_parent(root: Path) -> SquashedParent:
     repo.git.commit("-m", "Squash-merge the parent")
     landed = repo.head.commit.hexsha
     repo.git.checkout("-b", _CHILD, boundary)
-    return SquashedParent(
+    return _SquashedParent(
         repo=repo, root=repo_path, boundary=boundary, landed=landed, target=landed
     )
 
 
-def _facts(shape: SquashedParent, *, candidate: str, child_tip: str) -> GraphFacts:
+def _facts(shape: _SquashedParent, *, candidate: str, child_tip: str) -> GraphFacts:
     """Return the facts a run about ``candidate`` would assemble.
 
     The run is given a parent pull request whose head is the boundary and whose
@@ -142,7 +142,7 @@ def _facts(shape: SquashedParent, *, candidate: str, child_tip: str) -> GraphFac
 
     Parameters
     ----------
-    shape : SquashedParent
+    shape : _SquashedParent
         The repository and the commits the run reasons about.
     candidate : str
         Commit the run proposes as the boundary.

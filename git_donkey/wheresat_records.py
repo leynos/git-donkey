@@ -483,9 +483,12 @@ EXIT_CODES: typ.Final[typ.Mapping[type, int]] = types.MappingProxyType({
 })
 """Exit status per assessment.
 
-``2`` is reserved for a usage, configuration, or credential failure, which is
-decided at the command-line boundary rather than by an assessment.
+``2`` is reserved for a usage, configuration, or write failure, which is
+decided at the command-line boundary rather than by an assessment. A credential
+the ladder needed is not one of those: it is caught where the forge is opened
+and reported as an unanswered question, so the run that wanted GitHub and could
+not reach it exits ``3``.
 """
 
 EXIT_USAGE: typ.Final = 2
-"""Exit status for a usage, configuration, or credential error."""
+"""Exit status for a usage, configuration, or write failure with no assessment."""

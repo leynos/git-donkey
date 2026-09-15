@@ -282,12 +282,18 @@ def test_a_fault_is_refused_rather_than_answered(fault: _Fault) -> None:
 
 
 @pytest.mark.parametrize("fault", _FAULTS, ids=lambda fault: fault.name)
-def test_every_question_refuses_a_fault_the_same_way(fault: _Fault) -> None:
+@pytest.mark.parametrize(
+    "question", _QUESTIONS, ids=lambda question: question.__name__
+)
+def test_every_question_refuses_a_fault_the_same_way(
+    fault: _Fault,
+    question: cabc.Callable[[ApiWheresatGitHub], object],
+) -> None:
     """The classification belongs to the transport, not to one question."""
-    for question in _QUESTIONS:
-        session = _StubSession(fault.answer)
-        with pytest.raises(WheresatGitHubError):
-            question(_client(session))
+    session = _StubSession(fault.answer)
+
+    with pytest.raises(WheresatGitHubError):
+        question(_client(session))
 
 
 def test_a_body_that_is_not_json_is_a_fault() -> None:

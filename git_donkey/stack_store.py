@@ -12,7 +12,7 @@ three reads and is what ``git wheresat`` holds on its default path, where it
 must not be able to write; :class:`StackRecordWriter` adds the five writes and
 is constructed only by a caller that will write.
 
-Three properties are maintained here rather than left to the callers.
+Four properties are maintained here rather than left to the callers.
 
 - **A record is created, never overwritten.** ``create`` refuses unless the
   branch has no record at all, and the anchor write carries an empty
