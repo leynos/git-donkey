@@ -12,11 +12,17 @@ import shutil
 import sys
 import tarfile
 import tomllib
+import typing as typ
 import zipfile
+from email import policy
+from email.parser import BytesParser
 from pathlib import Path, PurePosixPath
 
 import pytest
 from plumbum import local
+
+if typ.TYPE_CHECKING:
+    from email.message import Message
 
 _ROOT = Path(__file__).resolve().parents[2]
 pytestmark = pytest.mark.timeout(180)
@@ -145,6 +151,20 @@ def _manuals(wheel: Path) -> dict[str, bytes]:
         }
 
 
+def _package_metadata(wheel: Path) -> Message:
+    """Read the core metadata embedded in a built wheel."""
+    with zipfile.ZipFile(wheel) as archive:
+        metadata_paths = [
+            name for name in archive.namelist() if name.endswith(".dist-info/METADATA")
+        ]
+        assert len(metadata_paths) == 1, (
+            f"wheel must contain one METADATA file: {metadata_paths}"
+        )
+        return BytesParser(policy=policy.default).parsebytes(
+            archive.read(metadata_paths[0])
+        )
+
+
 @pytest.fixture(scope="module")
 def distributions(tmp_path_factory: pytest.TempPathFactory) -> DistributionBuild:
     """Build from checkout inputs and then independently from the sdist.
@@ -221,6 +241,55 @@ def test_wheel_contains_complete_recorded_manpages(
                 "sha256=" + digest.rstrip(b"=").decode(),
                 str(len(content)),
             ], f"RECORD must hash the installed bytes of {name}"
+
+
+def test_wheels_publish_project_metadata(distributions: DistributionBuild) -> None:
+    """Publish complete PyPI metadata from source and rebuilt distributions."""
+    expected_project_urls = [
+        "Homepage, https://df12.studio",
+        "Repository, https://github.com/leynos/git-donkey",
+        "Issues, https://github.com/leynos/git-donkey/issues",
+    ]
+    expected_classifiers = [
+        "Development Status :: 4 - Beta",
+        "Environment :: Console",
+        "Intended Audience :: Developers",
+        "License :: OSI Approved :: ISC License (ISCL)",
+        "Operating System :: OS Independent",
+        "Programming Language :: Python :: 3",
+        "Programming Language :: Python :: 3.13",
+        "Topic :: Software Development :: Version Control :: Git",
+    ]
+    expected_readme_links = [
+        '[pypi]: https://img.shields.io/pypi/v/git-donkey "PyPI package"',
+        "[package]: https://pypi.org/project/git-donkey/",
+        "https://github.com/leynos/git-donkey/blob/main/skill/git-donkey-worktrees/SKILL.md",
+        "https://github.com/leynos/git-donkey/blob/main/skill/git-donkey-worktrees/references/cleanup.md",
+        "https://github.com/leynos/git-donkey/blob/main/docs/users-guide.md",
+        "https://github.com/leynos/git-donkey/blob/main/LICENSE",
+        "https://github.com/leynos/git-donkey/blob/main/AGENTS.md",
+    ]
+
+    for wheel in (distributions.wheel, distributions.rebuilt_wheel):
+        metadata = _package_metadata(wheel)
+        assert metadata["Summary"] == (
+            "Git subcommands for branch-based development with linked worktrees"
+        ), f"{wheel.name} should publish the package summary"
+        assert metadata["Keywords"] == "cli,developer-tools,git,worktree", (
+            f"{wheel.name} should publish the search keywords"
+        )
+        assert metadata.get_all("Project-URL") == expected_project_urls, (
+            f"{wheel.name} should publish the project URLs"
+        )
+        assert metadata.get_all("Classifier") == expected_classifiers, (
+            f"{wheel.name} should publish the classifiers"
+        )
+        readme = metadata.get_payload()
+        assert isinstance(readme, str), f"{wheel.name} README should be text"
+        for expected_link in expected_readme_links:
+            assert expected_link in readme, (
+                f"{wheel.name} README should publish {expected_link}"
+            )
 
 
 def test_sdist_contains_sources_not_generated_pages(

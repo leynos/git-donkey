@@ -6,6 +6,11 @@
 [deepwiki]: https://deepwiki.com/leynos/git-donkey
 [pypi]: https://img.shields.io/pypi/v/git-donkey "PyPI package"
 [package]: https://pypi.org/project/git-donkey/
+[worktree-management skill]: https://github.com/leynos/git-donkey/blob/main/skill/git-donkey-worktrees/SKILL.md
+[cleanup checklist]: https://github.com/leynos/git-donkey/blob/main/skill/git-donkey-worktrees/references/cleanup.md
+[users' guide]: https://github.com/leynos/git-donkey/blob/main/docs/users-guide.md
+[license]: https://github.com/leynos/git-donkey/blob/main/LICENSE
+[agents.md]: https://github.com/leynos/git-donkey/blob/main/AGENTS.md
 
 *Because sometimes you need a worktree, and a donkey's got your back.*
 
@@ -75,11 +80,10 @@ git donkey-template
 ## Agent skill
 
 The
-[worktree-management skill](https://github.com/leynos/git-donkey/blob/main/skill/git-donkey-worktrees/SKILL.md)
+[worktree-management skill]
 provides an agent workflow for `git donkey` and `git plonk`, including
 remote-default bases, existing-worktree reuse, stacked branches, and reviewed
-cleanup. Its bundled
-[cleanup checklist](https://github.com/leynos/git-donkey/blob/main/skill/git-donkey-worktrees/references/cleanup.md)
+cleanup. Its bundled [cleanup checklist]
 covers the cleanliness check, completion-marker limitations, and other agents'
 active work.
 
@@ -91,18 +95,16 @@ Python package installation does not install this skill automatically.
 ## Learn more
 
 Check out the
-[**Users' Guide**](https://github.com/leynos/git-donkey/blob/main/docs/users-guide.md)
+[**Users' Guide**][users' guide]
 for detailed usage, options, and examples. The donkey's got a lot of tricks up
 its… hooves?
 
 ## License
 
 This project is licensed under the **ISC License**. See the
-[LICENSE](https://github.com/leynos/git-donkey/blob/main/LICENSE) file for
-details.
+[LICENSE] file for details.
 
 ## Contributing
 
 Found a bug? Have an idea? The donkey welcomes contributions! Please ensure
-your changes follow the project's guidelines in
-[AGENTS.md](https://github.com/leynos/git-donkey/blob/main/AGENTS.md).
+your changes follow the project's guidelines in [AGENTS.md].
