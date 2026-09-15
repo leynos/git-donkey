@@ -37,13 +37,15 @@ Replay the recordings, which is what the suite does::
 
 Record them again, which needs a credential and reaches the network::
 
-    env -u GH_TOKEN GITHUB_TOKEN="$(gh auth token)" \
+    env -u GH_TOKEN GITHUB_TOKEN="$(env -u GH_TOKEN gh auth token)" \
       python -m pytest tests/integration/test_wheresat_github.py \
       --record-mode=once -q
 
-``GH_TOKEN`` is unset deliberately: an injected ``GH_TOKEN`` shadows the stored
-``gh`` session and returns HTTP 401. See ``docs/developers-guide.md`` for the
-whole procedure, including what the refusal recording costs.
+``GH_TOKEN`` is unset in both places deliberately: an injected ``GH_TOKEN``
+shadows the stored ``gh`` session, so ``gh auth token`` prints that shadowing
+value, and unsetting it only for the test process would leave the substitution
+reading the wrong token. See ``docs/developers-guide.md`` for the whole
+procedure, including what the refusal recording costs.
 
 """
 

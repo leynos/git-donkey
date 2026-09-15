@@ -1342,7 +1342,64 @@ Stop and escalate rather than improvising when any of these is reached.
     in a different frame each time is what contention looks like, not what a
     defect looks like. This gate must be re-run to green before the branch is
     offered for review; no other gate needs re-running for the failing change,
-    because there is none.
+    because there is none. **Re-run green**: `make test` reports `864 passed`
+    in 142.24 seconds at a load average of 32.98, the five tests slice (f)
+    adds among them, so the red above is recorded as the environment it was
+    and the gate is closed.
+  - Slice (f) is landed. `tests/integration/test_wheresat_github.py` states the
+    parent-metadata contract in five tests against recordings of real GitHub
+    traffic, and both recordings are committed under
+    `tests/integration/cassettes/`. The metadata recording holds seven
+    interactions: this repository's merged squash pull request #93, its open
+    pull request #82, `microsoft/vscode` pull request #335346 with the stack
+    that holds it, and one commit's association page. Nothing about the
+    contract is asserted from a double, because a double written by the same
+    hand as the reader cannot show a renamed field or a merge state GitHub
+    reports as `null`; the merged pull request is asserted with both object IDs
+    — the branch tip under `head.sha` and the squash under `merge_commit_sha`,
+    which are different commits — and the open pull request proves the flag,
+    not the commit, decides.
+  - The refusal is recorded, and recording it is the one part of this milestone
+    that cannot be done for free. GitHub answers a request whose endpoint
+    allowance the credential has spent with `403` and
+    `X-RateLimit-Remaining: 0`, so the recording was made by spending
+    `/search/code`'s ten-requests-per-minute allowance with the credential and
+    asking an eleventh time; that endpoint was chosen because its allowance is
+    per-credential and costs one minute, where the core 5,000-per-hour
+    allowance and the anonymous per-IP allowance are both shared with every
+    other agent on this machine and were left alone. The recording is of a
+    `403` with no `Retry-After`, so the branch the code takes is the exhausted
+    remaining count, and the test asserts both halves of the discrimination:
+    that the refusal says "rate limited" and that it does not say "scopes".
+    It keeps its own cassette and its own fixture, whose docstring states the
+    cost, so that re-recording it is a deliberate act rather than a side effect
+    of refreshing the others.
+  - `tests/integration/conftest.py` now builds every recorder through one
+    `_recorder(record_mode)` with `filter_headers=["authorization"]`, so no
+    recording can carry the token a request was made with, and it gained
+    `wheresat_parent_metadata_cassette` and `wheresat_rate_limited_cassette`.
+    `github_api_cassette` keeps a fixed `none` mode rather than taking
+    `--record-mode`, because that cassette's subject is the _absence_ of API
+    traffic and a recording pass that could write into it would let a command
+    that started calling the API record the call instead of failing the test
+    that forbids it.
+  - The stacked pull request is `microsoft/vscode` #335346, at position 2 of a
+    four-deep stack, so the pull request below it is #335345; the fixture was
+    measured live again before the test depending on it was written, because a
+    stack that has since been rebased or closed would have turned the test into
+    an assertion about GitHub's history rather than about this reader. The test
+    also asserts that the recording holds _no_ `/stacks?pull_request=93`
+    request, which is the property that an unstacked pull request costs no
+    stack question — pinned negatively, because `Cassette.requests` returns
+    what the recording holds rather than what a run asked for, so counting
+    requests proves nothing about a run.
+  - All six gates pass on the slice (f) tree — `make check-fmt`, `make lint` in
+    all seven stages, `make typecheck`, `make markdownlint`, `make nixie`, and
+    `make test` at 864 passed — and `cs check` scores the three touched Python
+    modules 10.00. The conformance check the milestone names was run against
+    both recordings: `grep -c -i '^ *authorization:'` prints `0` for each, and
+    neither holds a `Set-Cookie`, a token prefix, or any other credential
+    material, nor was either edited by hand.
 
 ## Surprises & discoveries
 
@@ -2096,6 +2153,33 @@ Stop and escalate rather than improvising when any of these is reached.
   and unanswered at once; the shape needs an empty replay range and an
   unanswered ancestry question together, which is the shallow-clone face of
   EP-M10's own evidence rather than anything the local fixtures reach.
+
+- Observation: `vcrpy` 7.0.0 ships no pytest plugin, so the recording command
+  this plan's own procedure names does not work as written, and the provenance
+  assertions the first draft of the cassette suite used cannot show what they
+  claimed.
+  Evidence: the installed `vcrpy` 7.0.0 distribution holds no
+  `vcr/pytest_plugin.py` and declares no pytest entry point, so
+  `--record-mode` is an unrecognized argument until a repository declares it —
+  the first recording run failed on exactly that. The root `conftest.py` now
+  declares it through `pytest_addoption`, defaulting to `none`. Two further
+  facts came out of reading `vcr/cassette.py`: `play_count` counts replays
+  only and is `0` while recording, which is why three assertions written as
+  `play_count == played + 1` failed during the recording pass, and the
+  `requests` property returns the interactions the recording holds from
+  `self.data` rather than the requests a run made, so it proves nothing about
+  what a run asked for.
+  Impact: provenance is asserted by the record mode plus an `_asked()` helper
+  that looks for the question in the recording and fails with the questions it
+  does hold. `none` is what makes that sound, because a request the recording
+  does not hold raises inside the adapter rather than reaching the network, so
+  every answer a test asserts is one GitHub really gave and no test can pass by
+  asking a question the recording never saw. The plan's recording procedure had
+  to be corrected in three ways — the option is this repository's, the
+  `GH_TOKEN` that must be unset shadows the `gh auth token` call as well as the
+  run, and the refusal cannot be recorded by an ordinary pass because it costs
+  an endpoint's whole minute allowance — and the developers' guide records all
+  three.
 
 ## Decision log
 
@@ -4539,15 +4623,34 @@ Record a cassette in EP-M10. Do this once, against real traffic, and never
 edit the result by hand:
 
 ```shell
-GITHUB_TOKEN="$(env -u GH_TOKEN gh auth token)" \
+env -u GH_TOKEN GITHUB_TOKEN="$(env -u GH_TOKEN gh auth token)" \
   uv run pytest tests/integration/test_wheresat_github.py \
   --record-mode=once -q 2>&1 | tee "$(LOG cassette)"
 grep -c -i '^ *authorization:' tests/integration/cassettes/wheresat_*.yaml
 ```
 
-The `grep` must print `0` for every file. Note that `GH_TOKEN` is unset
-deliberately: an injected `GH_TOKEN` in this environment shadows the stored
-`gh` session and returns HTTP 401.
+The `grep` must print `0` for every file. Three things the recording pass
+corrected here, and which the procedure now states:
+
+- `GH_TOKEN` is unset **twice** because an injected `GH_TOKEN` shadows the
+  stored `gh` session: `gh auth token` prints the shadowing value, and
+  unsetting it only for the pytest process leaves the substitution reading the
+  wrong token. Measured: the two forms print different tokens, and only the
+  double form prints the stored session's.
+- `--record-mode` is this repository's option, declared in the root
+  `conftest.py`, because `vcrpy` 7.0.0 ships no pytest plugin and no entry
+  point; without the declaration pytest reports `unrecognized arguments`.
+- Provenance cannot be asserted by counting. `play_count` is `0` while a
+  cassette is being written, and `Cassette.requests` returns the interactions
+  the recording holds rather than the requests a run made, so `_asked()` names
+  the request each answer was read from instead.
+
+Re-recording `wheresat_rate_limited.yaml` is a separate, deliberate act with a
+cost: the refusal exists only once an endpoint's allowance is spent, which is
+done by asking `/search/code` eleven times with the credential — ten requests
+consumed, and the eleventh is the `403` with `X-RateLimit-Remaining: 0`. That
+allowance is per credential and per minute, which is why it is the one spent
+rather than the shared core allowance or the anonymous one.
 
 Update a syrupy snapshot deliberately, never as a reflex:
 

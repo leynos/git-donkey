@@ -260,6 +260,50 @@ while `2` is git-donkey's own code for a command that could not run:
 The [users' guide](users-guide.md#git-incoming-and-git-outgoing) documents the
 full command usage, including the console-script aliases.
 
+## New replay-boundary command
+
+0.2.0 adds `git wheresat`, which answers where a stacked branch should be
+replayed onto after the pull request below it was squash-merged, so the branch
+no longer carries its parent's commits as its own. It has no 0.1.0 equivalent,
+and `git rebase --onto` is not one: that command names the destination but not
+the starting point, and recovering the starting point is the whole of what a
+squash merge destroyed. `git donkey` records the boundary when it creates a
+branch, `git plonk` leaves a tombstone when it sweeps the merged parent, and
+`git wheresat` reads what survived:
+
+```shell
+# Ask where this branch should be replayed onto
+git wheresat
+
+# Ask about another branch, or name the parent pull request
+git wheresat --branch issue-123-fix
+git wheresat --parent owner/repo#123
+
+# Print the machine-readable envelope
+git wheresat --json
+```
+
+It exits `0` when it established a boundary, `1` when the evidence refused one
+and the report names the check that refused it, `2` for a usage, environment,
+or credential error, and `3` when the repository or the forge could not answer
+a question the procedure asked. Statuses `1` and `3` are deliberately
+different: a refusal is an answer, and a question that went unanswered is not
+one, so automation never mistakes an unreadable repository for a branch that
+need not move. `--json` prints a versioned envelope on every status, `2` and
+`3` included, so a script never has to parse prose to find out what happened.
+
+A run is read-only unless `--record` is given. Without it, the only refs it
+writes are its own: a per-run namespace it releases when it finishes, and a
+boundary ref retained at `refs/wheresat/boundary/<branch>` so a later
+`git gc` cannot collect an answer the report has already given. `--record`
+refreshes the branch's [stack record](#stack-records-for-new-branches) instead
+of only reading it, and never invents one for a branch nobody recorded.
+
+The [users' guide](users-guide.md#git-wheresat) documents the command's options
+and output, and the [boundary-recovery
+design](squash-restack-boundary-recovery.md) specifies the evidence model the
+answer rests on.
+
 ## Command migration
 
 The examples below show the 0.1.0 command and the 0.2.0 equivalent.

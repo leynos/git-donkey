@@ -194,6 +194,41 @@ protocol and receives the bounded `operation` and `outcome` vocabulary plus
 span durations; `comparison_fetch` and `comparison` can then be counted and
 timed without changing the workflow.
 
+## Machine-readable output
+
+`git wheresat --json` prints one JSON object on **every** exit status, `2` and
+`3` included, so a consumer never has to read prose to find out what happened
+and never receives output it cannot parse. The object carries a `schema` string
+— currently `git-wheresat/1` — and a `verdict` of `established`, `unresolved`,
+`indeterminate`, or `error`. The first three label an assessment and are read
+from the same table the run's observation is labelled from, so the word a
+report prints and the word a recorder stores cannot drift apart; `error` is
+printed by a run that collected no evidence at all.
+
+These are the conventions for any command here that grows machine-readable
+output, not rules about this one command's keys:
+
+- A key may be added in a later minor revision. A key is never removed or
+  retyped without incrementing the schema string, so a consumer reading a key
+  under a schema it knows can keep reading it.
+- Every key of the envelope is present on every path, with a key that holds no
+  value written as `null` rather than omitted. A list is emitted when it is
+  empty too — a consumer never has to tell a missing key from a run with
+  nothing to say.
+- The envelope is spelled out key by key rather than produced by
+  `dataclasses.asdict`. Renaming a field of an internal value is then a private
+  refactor, and the wire format changes only when a key is deliberately added
+  or retyped.
+- When `--json` is set, a failure is not routed through `helpers._die`, which
+  prints prose; the run renders the error envelope instead. The envelope goes
+  to standard output on every path, including this one, because a consumer
+  reading the stream is reading one document and not a mixture of two.
+
+`git_donkey.wheresat_report` owns both renderers, and neither reads anything:
+the text report and the envelope are projections of one assessment and one
+request, so they cannot disagree about what a run found, and a snapshot test
+can pin every forensic path without a repository.
+
 ## git-fafo module boundaries
 
 `git-fafo` is split across three modules, so infrastructure details stay out of
@@ -203,7 +238,13 @@ the orchestration path:
   initialization, and push orchestration.
 - `git_donkey.fafo_github` owns GitHub token discovery, OAuth device-flow
   fallback, repository creation, duplicate-repository detection, and adoption
-  confirmation.
+  confirmation. The credentials file itself — where it lives and the shape of
+  what it holds — belongs to `git_donkey.github_credentials`, which this module
+  and `git wheresat` both read. Two readers of one file is the arrangement in
+  which a second copy of the path becomes a second opinion, so neither command
+  spells it for itself; the shared reader inverts the direction instead, since
+  it is `git fafo` that writes the file and `git wheresat` that only reads it,
+  and a `git wheresat` run never prompts for a token.
 - `git_donkey.fafo_adoption` owns existing-remote classification. It accepts
   only remotes with no refs or one branch containing a single empty initial
   commit.
@@ -325,6 +366,51 @@ called.
   nothing else, and the run calls it from a `finally` block; the namespace is
   never swept wholesale, because refs live in the common ref store and every
   worktree of a checkout shares `refs/wheresat/`.
+- `git_donkey.wheresat_remotes` reads the checkout's configuration to answer
+  two questions: which GitHub repository its remotes name, and which remote
+  holds a given repository. A remote may carry more than one URL and a URL may
+  name no GitHub repository at all — another host, a local path, a bundle, an
+  `insteadOf` short form — and such a URL is answered with nothing rather than
+  read as a near miss, because the callers are looking for the one remote that
+  holds a particular repository and a guess would fetch a parent's head from a
+  stranger. The configuration is read directly rather than through
+  `git remote get-url --all`, which also applies `url.<base>.insteadOf`
+  rewrites: a remapped remote therefore names no repository, and the run
+  reports the head as unfetchable rather than turning the user's configuration
+  into an assumption about where the evidence came from.
+- `git_donkey.wheresat_payload` reads GitHub's decoded bodies. It is pure — no
+  session, no URL, no request — and split out so that the module which speaks
+  HTTP is about requests and their faults and this one is about the shape of
+  what came back. Its strict and lenient readers are separate functions on
+  purpose: a field that is absent is nothing, and a body that is not the shape
+  its endpoint promises is a question that went unanswered, and one tolerant
+  helper would read those two as the same thing.
+- `git_donkey.wheresat_github` is the `WheresatGitHub` port and its `github3.py`
+  adapter, and it asks the forge exactly four questions: what a pull request
+  merged as, what its body says, whether GitHub records it in a stack, and
+  which pull requests a bounded set of commits belongs to. Every question goes
+  through one primitive, so an answer that is not `200` becomes a
+  `WheresatGitHubError` there and nowhere else and a status the module has
+  never seen cannot reach a caller as data. That is INV-5 at this boundary: a
+  `404` from a credential that cannot see a private repository is a question
+  GitHub could not answer, not a parent that is not there. `github3.py` 4.0.1
+  does not model the `stack` field, so it is read through
+  `pull_request.as_dict()`, which returns the raw payload, and the
+  `GET /repos/{owner}/{repo}/stacks` call is made through the library's own
+  `requests.Session` so that `vcrpy` still intercepts it. The association
+  search is bounded by commits and by wall clock, and reports truncation rather
+  than returning the part it saw as the whole answer.
+- `git_donkey.wheresat_parents` identifies the parent pull request the child is
+  stacked on, by asking four rungs in order: an explicit `--parent`, the pull
+  request the child's own stack record names, the stack GitHub records, and
+  last the pull requests associated with the child's commits. Each rung is a
+  weaker statement than the one before it, and a run that answered a stronger
+  question has no business asking a weaker one. There is no forge client here —
+  the ladder asks the port questions — so one walk serves the live API and a
+  recorded one, and a run that was told not to touch the network has nothing to
+  open. A question that goes unanswered is a fault and stops the ladder rather
+  than letting the next rung's weaker answer be presented as the answer to the
+  question that failed, which is the reading ADR-005 forbids.
 - `git_donkey.wheresat_collect` asks the evidence rungs in the procedure's
   order: the stack record, the merge base, the fork point, and the inferred
   comparisons behind `--deep`. A rung returns the candidates it found, or a
@@ -689,15 +775,62 @@ creates temporary `git` and `copier` executables that append their command-line
 arguments to a log file. Scaffold workflow tests should use this fixture
 instead of writing per-test command stubs.
 
-The same module provides the `github_api_cassette` fixture, which loads an
-empty cassette (`interactions: []`) from `tests/integration/cassettes/`
+The same module provides three cassette fixtures. `github_api_cassette` loads
+an empty cassette (`interactions: []`) from `tests/integration/cassettes/`
 through `vcrpy` in its `none` record mode: because no interaction is recorded,
 any HTTP request raises inside the code under test instead of reaching the
 network. The worktree commands reach their remote over the Git protocol,
 which the temporary bare repositories stand in for, so a scenario run under
 the fixture proves that `git donkey` and `git plonk` never consult the
-GitHub API. Record a real cassette only for a command that is meant to call
-the API, and never edit a recording by hand.
+GitHub API. `wheresat_parent_metadata_cassette` and
+`wheresat_rate_limited_cassette` replay the traffic `git wheresat` reads its
+parent evidence from. Record a real cassette only for a command that is meant
+to call the API, and never edit a recording by hand.
+
+Every cassette is played through one `_recorder()` helper, which filters the
+`authorization` header out of each request before the interaction is written,
+so no recording can carry the credential the traffic was recorded with. Replay
+does not miss the header: `vcrpy` matches an interaction on the request's
+method and URL rather than on what it carried, so a run holding a token and a
+run holding none replay the same recording.
+
+`vcrpy` 7.0.0 ships no pytest plugin, so the root `conftest.py` declares the
+`--record-mode` option itself — `none`, `once`, or `new_episodes`, defaulting
+to `none` — rather than relying on one a future release might provide. The
+default is what the suite runs in, and it is the guarantee rather than a
+convenience: an unrecorded request raises inside the code under test instead
+of leaving the machine. Recording is a deliberate pass against live traffic:
+
+```shell
+env -u GH_TOKEN GITHUB_TOKEN="$(env -u GH_TOKEN gh auth token)" \
+  uv run pytest tests/integration/test_wheresat_github.py \
+  --record-mode=once -q
+grep -c -i '^ *authorization:' tests/integration/cassettes/wheresat_*.yaml
+```
+
+`GH_TOKEN` is unset twice on purpose. An injected `GH_TOKEN` shadows the stored
+`gh` session, so `gh auth token` prints the shadowing value and not the
+session's; unsetting it only for the test process would leave the substitution
+reading the wrong token. The `grep` must print `0` for every file: a recording
+that carries a credential is a committed secret.
+
+A recording cannot be shown to have been replayed by counting. `play_count` is
+`0` while a cassette is being written, and `Cassette.requests` returns the
+interactions the recording holds rather than the requests a run made. Provenance
+is therefore the record mode plus an assertion: `_asked()` in
+`tests/integration/test_wheresat_github.py` names the request each answer was
+read from, so a test that starts asking a different question fails as the change
+it is rather than replaying a stale answer.
+
+Re-recording the rate-limit cassette is a deliberate act with a cost. GitHub
+refuses a request whose endpoint allowance the credential has spent with a
+`403` and `X-RateLimit-Remaining: 0`, and that header is how a spent allowance
+is told from a missing scope, which an operator answers in the opposite way.
+The only honest way to record it is to spend a real allowance and ask, so it is
+kept in a cassette of its own and a pass over the other recordings does not
+touch it. Spend `/search/code`'s ten-request-per-minute allowance to reproduce
+it: that costs a minute and affects nobody else, where the core allowance and
+the anonymous one are shared with every other caller of the API.
 
 The behaviours the [worktree-management skill](../skill/git-donkey-worktrees/SKILL.md)
 documents are pinned by behavioural suites that build ephemeral repositories
