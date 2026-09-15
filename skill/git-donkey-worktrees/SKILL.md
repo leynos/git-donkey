@@ -37,8 +37,9 @@ authorization; creating a worktree does not authorize later cleanup.
    ```
 
    Older installations may use different defaults or lack dry-run support. Stop
-   and report a mismatch; do not improvise flags or silently install an upgrade.
-   The package also supplies `git-donkey(1)` and `git-plonk(1)` manual pages.
+   and report a mismatch; do not improvise flags or silently install an
+   upgrade. The package also supplies `git-donkey(1)` and `git-plonk(1)` manual
+   pages.
 3. Inspect the calling checkout and the shared worktree inventory:
 
    ```bash
@@ -58,8 +59,9 @@ authorization; creating a worktree does not authorize later cleanup.
    not change remote configuration to make an assumption fit. Donkey reports
    `Using remote: ...`; verify that this agrees with the intended remote.
 5. Coordinate with other agents before changing shared branch or worktree state.
-   Worktrees have separate working files but share repository refs and other Git
-   metadata. A new checkout is not a separate clone or a permission boundary.
+   Worktrees have separate working files but share repository refs and other
+   Git metadata. A new checkout is not a separate clone or a permission
+   boundary.
 
 In the examples below, assign shell variables to inspected values before use.
 `main_worktree` and `worktree` mean absolute checkout paths, not branch names.
@@ -94,8 +96,8 @@ offline mode, and an explicit local base still does not bypass the initial
 fetch.
 
 New branches do not automatically track the remote default branch. Publishing
-and setting a feature branch's upstream are separate, authorized actions; do not
-point its upstream at trunk merely to silence a missing-upstream error.
+and setting a feature branch's upstream are separate, authorized actions; do
+not point its upstream at trunk merely to silence a missing-upstream error.
 
 ### Choose a different base deliberately
 
@@ -135,11 +137,11 @@ git donkey feature/ff-task release/1.2 --pull-ff
 git donkey feature/rebase-task release/1.2 --pull-rebase
 ```
 
-`--pull-ff` offers a fast-forward-only pull; divergence fails without merging or
-rebasing. `--pull-rebase` offers a pull with rebase. Both retain a confirmation
-prompt when the local base is behind. A declined prompt or non-interactive
-terminal skips the update; the flag alone does not prove an update happened.
-Never pipe an automatic confirmation into this workflow.
+`--pull-ff` offers a fast-forward-only pull; divergence fails without merging
+or rebasing. `--pull-rebase` offers a pull with rebase. Both retain a
+confirmation prompt when the local base is behind. A declined prompt or
+non-interactive terminal skips the update; the flag alone does not prove an
+update happened. Never pipe an automatic confirmation into this workflow.
 
 The options `--pull-ff`, `--pull-rebase`, and `--no-pull` are mutually
 exclusive. An approved update runs in the worktree holding the selected local
@@ -152,8 +154,8 @@ commits.
 
 Donkey prefers an existing local branch, then a same-named branch on the
 principal remote, and otherwise creates a new branch. A remote-only branch gets
-a local tracking branch. An existing local branch keeps its upstream, or needs a
-same-named remote branch from which donkey can set one. A local-only branch
+a local tracking branch. An existing local branch keeps its upstream, or needs
+a same-named remote branch from which donkey can set one. A local-only branch
 without an upstream can therefore fail; do not invent an upstream or push it
 without authorization.
 
@@ -177,11 +179,11 @@ git -C "$worktree" status --short --branch --untracked-files=all
 git -C "$worktree" diff --no-ext-diff --stat
 ```
 
-Confirm the expected branch and, for a new branch, the selected starting commit.
-Recheck any pre-existing checkout whose preservation matters. Do not assume a
-successful command changed the parent shell's directory; use `git -C` or enter
-the verified path explicitly before editing. Read the new checkout's applicable
-instructions before starting work.
+Confirm the expected branch and, for a new branch, the selected starting
+commit. Recheck any pre-existing checkout whose preservation matters. Do not
+assume a successful command changed the parent shell's directory; use `git -C`
+or enter the verified path explicitly before editing. Read the new checkout's
+applicable instructions before starting work.
 
 ### Account for template overlays and partial creation
 
@@ -191,8 +193,8 @@ worktree need not be clean. Inspect its status and diff before editing or
 committing; never sweep unrelated template changes into the task's commit. Do
 not dump local configuration or credentials into logs.
 
-`git donkey-template` displays **and creates** the template directory. It is not
-a read-only inspection command and is unnecessary for ordinary worktree
+`git donkey-template` displays **and creates** the template directory. It is
+not a read-only inspection command and is unnecessary for ordinary worktree
 creation. Do not change templates as a side effect of managing a worktree.
 
 An overlay failure can leave a successfully created worktree behind even when
@@ -204,9 +206,9 @@ retry. Do not run cleanup to erase evidence or blindly repeat creation.
 After a parent branch merges, especially by squash merge, neither donkey nor
 plonk determines the correct child-branch rebase boundary. Keep the recorded
 parent tip and branch relationship. Hand history rewriting to the repository's
-rebase workflow, with verified old and new boundaries and its own safety checks.
-Do not derive the old boundary from a post-squash merge-base alone, and do not
-retire a parent worktree until its dependent work has been accounted for.
+rebase workflow, with verified old and new boundaries and its own safety
+checks. Do not derive the old boundary from a post-squash merge-base alone, and
+do not retire a parent worktree until its dependent work has been accounted for.
 
 ## Clean up only after a reviewed preview
 
@@ -220,8 +222,8 @@ discard.
 
 Default and hard runs, previews included, contact the principal remote: plonk
 discovers and fetches its advertised default branch before every sweep, and
-fails without removing anything when the remote is unreachable or advertises
-no default branch. Start with the preview for the requested mode from a
+fails without removing anything when the remote is unreachable or advertises no
+default branch. Start with the preview for the requested mode from a
 deliberately selected invoking worktree, normally the main worktree. Keep that
 location unchanged between preview and execution:
 
@@ -229,8 +231,8 @@ location unchanged between preview and execution:
 git -C "$main_worktree" plonk --dry-run
 ```
 
-Use `--soft --dry-run` for generated directories or `--hard --dry-run` only when
-branch deletion is in scope. There is no documented per-path or per-branch
+Use `--soft --dry-run` for generated directories or `--hard --dry-run` only
+when branch deletion is in scope. There is no documented per-path or per-branch
 selector. If the preview reaches beyond the authorized scope, do not execute
 that plonk mode. A no-op result is not a reason to escalate to `--hard` or
 `--soft`.

@@ -123,10 +123,10 @@ directories being removed or retained.
   still-valid issues: docs now consistently describe canonical trunk/default
   history, trunk-ref resolution prefers remote default branches before local
   `main`, completed cleanup excludes the invoking linked worktree, and unit
-  plonk assertions now include diagnostics. Superseded on 2026-09-12: the
-  local `main` fallback was removed; trunk-ref resolution now follows the
-  default branch the principal remote advertises, and fails with exit code 1
-  when none is advertised.
+  plonk assertions now include diagnostics. Superseded on 2026-09-12: the local
+  `main` fallback was removed; trunk-ref resolution now follows the default
+  branch the principal remote advertises, and fails with exit code 1 when none
+  is advertised.
 - [x] 2026-06-28: Re-verified the latest failed-check report. The users' guide
   warning was stale. Fixed the still-valid soft-mode architecture and marker
   scan findings by splitting soft setup from trunk cleanup setup and streaming
@@ -180,9 +180,8 @@ directories being removed or retained.
   the main worktree. The workflow then resolved a canonical trunk/default ref,
   preferring the remote default branch and falling back to local `main`, before
   scanning completion history. Superseded on 2026-09-12: the local `main`
-  fallback was removed; resolution now follows the default branch the
-  principal remote advertises, and fails with exit code 1 when none is
-  advertised.
+  fallback was removed; resolution now follows the default branch the principal
+  remote advertises, and fails with exit code 1 when none is advertised.
 - Inline review found soft mode could inspect worktrees and remove nothing but
   still report "No matching git donkey worktrees found." `_PlonkResult` now
   records inspected worktree count so soft mode can report that there were no
@@ -243,10 +242,9 @@ directories being removed or retained.
   may keep local `main` while their configured remote default branch is
   different, and plonk cleanup must follow the repository default rather than a
   stale local branch. Superseded on 2026-09-12: the local `main` fallback was
-  removed; completion is judged against the default branch the principal
-  remote advertises, resolved through `git_donkey.remote_default`, and an
-  unadvertised default fails with exit code 1 rather than falling back to a
-  local branch.
+  removed; completion is judged against the default branch the principal remote
+  advertises, resolved through `git_donkey.remote_default`, and an unadvertised
+  default fails with exit code 1 rather than falling back to a local branch.
 - Decision: keep conflicting `--soft --hard` coverage in both unit CLI-boundary
   tests and the BDD feature. Rationale: the unit test pins the Cyclopts-facing
   usage error cheaply, while the BDD scenario records the user workflow in the
@@ -265,9 +263,10 @@ directories being removed or retained.
 - Decision: adopt `main`'s `uv.lock` wholesale on rebase and prove it canonical,
   rather than re-resolving the lock around the branch's own history. Rationale:
   the branch declares no dependency of its own, so the lock has exactly one
-  authoritative form — the one `main` already validates in CI. `uv lock --check`
-  and a no-op `uv lock` rebuild together show the adopted file is the file the
-  declarations resolve to, which a hand-merged lock could not claim.
+  authoritative form — the one `main` already validates in CI.
+  `uv lock --check` and a no-op `uv lock` rebuild together show the adopted
+  file is the file the declarations resolve to, which a hand-merged lock could
+  not claim.
 - Decision: treat the `cyclopts` bump as the one `main` change with a bearing on
   this branch, and re-run every gate under it. Rationale: the branch rewrites
   the `git plonk` help text, and the parser contract it must satisfy is pinned
@@ -455,20 +454,19 @@ The same revision split `git_donkey.plonk` along its production boundaries —
 `plonk_records` (records and the observation vocabulary), `plonk_selection`
 (worktree stanzas to candidates), and `plonk_summary` (report rendering) — and
 made a refused branch deletion non-fatal. The orchestration, the worktree
-adapters, and the completed-cleanup workflow stay in `git_donkey.plonk`
-because they share its prefix constant, its logger, and the patch seams the
-unit tests use.
+adapters, and the completed-cleanup workflow stay in `git_donkey.plonk` because
+they share its prefix constant, its logger, and the patch seams the unit tests
+use.
 
 The test modules now follow those boundaries. `git plonk` coverage lives in
 `tests/unit/test_plonk.py` (summary rendering),
 `tests/unit/test_plonk_selection.py` (candidate selection, marker derivation,
 and the canonical trunk ref), `tests/unit/test_cli_plonk.py` (the Cyclopts
 parser and its mutually exclusive modes), `tests/unit/test_plonk_cleanup.py`
-(the completed-cleanup workflow),
-`tests/unit/test_plonk_worktree_adapter.py` (the adapter against real Git), and
-`tests/unit/test_plonk_soft_mode.py` (the soft pass). On the integration side,
-`tests/integration/test_git_plonk_bdd.py` binds the scenarios in
-`tests/integration/features/git_plonk.feature`,
+(the completed-cleanup workflow), `tests/unit/test_plonk_worktree_adapter.py`
+(the adapter against real Git), and `tests/unit/test_plonk_soft_mode.py` (the
+soft pass). On the integration side, `tests/integration/test_git_plonk_bdd.py`
+binds the scenarios in `tests/integration/features/git_plonk.feature`,
 `tests/integration/test_git_plonk_trunk_history.py` covers which history
 supplies completion, and `tests/integration/plonk_helpers.py` holds the
 repository builders both suites compose. The split answers the CodeScene Code
@@ -497,11 +495,10 @@ reports the operation name and its duration only.
 Coverage followed the same seams. `tests/unit/test_plonk_selection.py` now
 exercises the stanza filters directly: detached and branchless stanzas, a
 missing `worktree` field, `~` expansion, the worktrees root and paths outside
-it, and unrecognized branches.
-`tests/unit/test_plonk_worktree_adapter.py` runs the production
-`delete_branch()` against real Git for both a deletion and Git's refusal, and
-asserts that each of the three boundaries emits its span, refusals included.
-The completed-cleanup rules moved from examples to properties:
+it, and unrecognized branches. `tests/unit/test_plonk_worktree_adapter.py` runs
+the production `delete_branch()` against real Git for both a deletion and Git's
+refusal, and asserts that each of the three boundaries emits its span, refusals
+included. The completed-cleanup rules moved from examples to properties:
 `tests/unit/test_plonk_cleanup_properties.py` compares a run against a
 reference model over per-candidate states, and the doubles and builders the two
 cleanup suites share now live in `tests/unit/plonk_cleanup_helpers.py`. The

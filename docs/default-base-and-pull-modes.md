@@ -61,9 +61,9 @@ rather than pulling into an unrelated branch in the primary checkout. Local
 bases without a remote counterpart retain the existing skip behaviour.
 
 An omitted base continues to select the remote commit even when an opt-in
-update also synchronizes its local counterpart. An explicit base, including
-`.` for the calling worktree's branch, selects the local branch after any
-confirmed update and therefore can include local commits.
+update also synchronizes its local counterpart. An explicit base, including `.`
+for the calling worktree's branch, selects the local branch after any confirmed
+update and therefore can include local commits.
 
 ## Verification contract
 
@@ -73,10 +73,10 @@ default. They also verify preservation of local commits, the index, tracked
 modifications, and untracked files during default worktree creation.
 
 Pull-mode tests cover accepted and declined prompts, actual rebase and
-fast-forward operations, divergent histories, hostile pull configuration,
-and base branches held in another worktree. CLI tests exercise the Cyclopts
-parser, including conflicting options. Unit tests cover advertisement parsing
-and explicit mode selection.
+fast-forward operations, divergent histories, hostile pull configuration, and
+base branches held in another worktree. CLI tests exercise the Cyclopts parser,
+including conflicting options. Unit tests cover advertisement parsing and
+explicit mode selection.
 
 The change does not alter remote selection, template overlays, `git track`,
 branch cleanup, or the confirmation policy for existing updates. `git plonk`

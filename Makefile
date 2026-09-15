@@ -1,6 +1,13 @@
 MDLINT ?= markdownlint-cli2
 NIXIE ?= nixie
-MDFORMAT_ALL ?= mdformat-all
+# `make fmt` and `make check-fmt` call mdtablefix directly. `--git` selects the
+# Markdown files Git tracks and `--include-untracked` adds the untracked files
+# Git does not ignore, so a new document is formatted before it is staged.
+# Both modes need mdtablefix 0.6.0 or later; CI pins the version in
+# MDTABLEFIX_VERSION in .github/workflows/ci.yml.
+MDTABLEFIX ?= mdtablefix
+MDTABLEFIX_SELECT = --git --include-untracked
+MDTABLEFIX_RULES = --wrap --renumber --breaks --ellipsis --fences
 # Pin Ruff so local and CI runs agree; keep in sync with the ruff== dev
 # dependency in pyproject.toml and .github/workflows/ci.yml. Invoking it through
 # uv means the pinned version is used regardless of what is on PATH.
@@ -13,7 +20,7 @@ TY_VERSION ?= 0.0.79
 TY ?= $(UV_ENV) uv tool run ty@$(TY_VERSION)
 SKYLOS_VERSION ?= 4.33.2
 TYPOS_VERSION ?= 1.48.0
-TOOLS = $(MDFORMAT_ALL) $(MDLINT) uv
+TOOLS = $(MDLINT) uv
 VENV_TOOLS = pytest
 UV_ENV = UV_CACHE_DIR=.uv-cache UV_TOOL_DIR=.uv-tools
 # Pylint targets shared by both passes.
@@ -92,14 +99,15 @@ endif
 makeutil: ## Verify the Makefile parser required by the contract tests
 	$(call ensure_tool,makeutil)
 
-fmt: uv $(MDFORMAT_ALL) ## Format sources
+fmt: uv ## Format sources
 	$(RUFF) format
 	$(RUFF) check --select I --fix
-	$(MDFORMAT_ALL)
+	$(MDTABLEFIX) --in-place $(MDTABLEFIX_SELECT) $(MDTABLEFIX_RULES)
+	@unset FORCE_COLOR; $(MDLINT) --fix "**/*.md"
 
 check-fmt: uv ## Verify formatting
 	$(RUFF) format --check
-	# mdformat-all doesn't currently do checking
+	$(MDTABLEFIX) --check $(MDTABLEFIX_SELECT) $(MDTABLEFIX_RULES)
 
 # No `build` prerequisite: CI runs `make build` as an explicit setup step, and
 # every venv-backed command below goes through `uv run`, which syncs the

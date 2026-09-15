@@ -44,19 +44,19 @@ so a skipped worktree keeps its branch. There is no `--force`-style option in
 as `git worktree remove --force` followed by `git branch -D`.
 
 In hard mode, a local branch that Git refuses to delete does not stop the
-sweep. The worktree still counts as removed, and the branch is listed under
-its own `Failed branch deletions:` heading between the removal sections and
-the skip section. The sweep continues with the remaining candidates, and the
-run exits with status 1.
+sweep. The worktree still counts as removed, and the branch is listed under its
+own `Failed branch deletions:` heading between the removal sections and the
+skip section. The sweep continues with the remaining candidates, and the run
+exits with status 1.
 
 ## Cleanliness rule
 
 The preflight mirrors the check `git worktree remove` performs itself: a
 worktree with modified, staged, or untracked files is refused, while files
 matched by `.gitignore` are not counted, so ignored build output never protects
-a worktree. Sharing the rule with Git matters in both directions.
-Refusing exactly what Git refuses means a candidate is never planned for
-removal only to fail, and never left in place when Git would have removed it.
+a worktree. Sharing the rule with Git matters in both directions. Refusing
+exactly what Git refuses means a candidate is never planned for removal only to
+fail, and never left in place when Git would have removed it.
 
 A completed worktree whose directory is gone gets its own reason, because
 `uncommitted changes` would be inaccurate for it. The reasons are a fixed
@@ -68,8 +68,8 @@ vocabulary:
   also reported on stderr and logged.
 
 Skips keep the run's exit code at 0. A skip is a reported decision, not a
-failure of the command. A branch Git refuses to delete is reported as a
-failed deletion and the run exits 1, unlike a skip.
+failure of the command. A branch Git refuses to delete is reported as a failed
+deletion and the run exits 1, unlike a skip.
 
 ## Trunk discovery
 
