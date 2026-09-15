@@ -48,6 +48,7 @@ from tests.unit.wheresat_helpers import (
     parent_pull_request,
 )
 from tests.unit.wheresat_parents_helpers import (
+    ASSOCIATION_REPOSITORY,
     CHILD_BRANCH,
     CHILD_IDENTITY,
     DECOY_IDENTITY,
@@ -462,18 +463,23 @@ def test_a_limit_below_one_is_read_as_one(
 ) -> None:
     """A search allowed no commits has nothing to report but that it saw none."""
     history = graph_over(CHILD_TIP)
+    forge = Forge(page=association_page({CHILD_TIP: ()}))
 
     ask(
         boundary_request(),
         search_bounds(limit=0),
         run=Run(
             history=history,
-            opener=Opener(forge=Forge(page=association_page({CHILD_TIP: ()}))),
+            opener=Opener(forge=forge),
         ),
     )
 
     assert history.limits == [2], (
         "a limit below one should ask about one commit, and one beyond it"
+    )
+    assert forge.searches == [(ASSOCIATION_REPOSITORY, (CHILD_TIP,))], (
+        "the search should be put to the run's repository with the one commit "
+        "the bound allows, and no other"
     )
 
 
@@ -492,3 +498,7 @@ def test_a_history_within_the_window_is_searched(
     )
 
     assert identified.faults == (), "a history inside the bound is not a refusal"
+    assert forge.searches == [(ASSOCIATION_REPOSITORY, tuple(reversed(commits)))], (
+        "the search should be put to the run's repository for the window the "
+        "walk read, newest commit first"
+    )

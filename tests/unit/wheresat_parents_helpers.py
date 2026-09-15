@@ -206,9 +206,9 @@ def _supplied[Supplied](
     """
     try:
         return provided[number]
-    except KeyError:
+    except KeyError as exc:
         msg = f"the ladder {asking} {number}, unprovided"
-        raise NotImplementedError(msg) from None
+        raise NotImplementedError(msg) from exc
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -236,6 +236,9 @@ class Forge(wheresat_github.WheresatGitHub):
         Every body read, in the order it was asked about. It is kept apart from
         ``read`` because the body is a second question about the child, and a
         rung that answered before it was put should leave this list empty.
+    searches : list[tuple[str, tuple[str, ...]]]
+        Every association search put, as the repository it named and the
+        commits it asked about, in the order they were put.
 
     """
 
@@ -253,6 +256,9 @@ class Forge(wheresat_github.WheresatGitHub):
     )
     read: list[int] = dataclasses.field(default_factory=list)
     bodies_read: list[int] = dataclasses.field(default_factory=list)
+    searches: list[tuple[str, tuple[str, ...]]] = dataclasses.field(
+        default_factory=list
+    )
 
     @typ.override
     def pull_request(
@@ -281,10 +287,28 @@ class Forge(wheresat_github.WheresatGitHub):
     def associated_pull_requests(
         self, repository: str, commits: cabc.Sequence[str]
     ) -> wheresat_github.AssociationPage:
-        """Return the association page this test supplied."""
+        """Return the association page this test supplied.
+
+        The question is recorded whole before it is answered, because what the
+        walk asks about is half of what these tests assert: a search put to the
+        wrong repository, or one whose window is empty or wider than the bound
+        the run set, would otherwise answer with a page no test looks behind.
+
+        Returns
+        -------
+        wheresat_github.AssociationPage
+            The page this test supplied.
+
+        Raises
+        ------
+        AssertionError
+            If the search is put to a repository the run did not name.
+
+        """
         if repository != ASSOCIATION_REPOSITORY:
             msg = "the search should be put to the repository the run names"
             raise AssertionError(msg)
+        self.searches.append((repository, tuple(commits)))
         return self.page
 
 
