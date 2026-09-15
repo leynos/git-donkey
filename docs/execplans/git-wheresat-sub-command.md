@@ -1969,21 +1969,26 @@ Stop and escalate rather than improvising when any of these is reached.
     2026-09-15 on the first attempt and without meeting a rate limit, so no
     `vsleep` retry was needed. The 32 are 6 major, 15 minor, and 11 trivial,
     and they are 23 distinct requests: nine pairs ask for one change twice, in
-    the two places the change appears. Thirty-one are actioned in this
-    revision and one is dismissed on evidence, and every finding was verified
-    against the shipped code before it was answered rather than answered from
-    the review text.
-  - Five of the six majors are declarations the Interfaces section had
+    the two places the change appears. Twenty-two requests are actioned in this
+    revision — one of the 32 findings asking for the Markdown-only gate to run
+    `make fmt` is actioned as `make check-fmt`, because a gate that rewrites
+    the tree cannot report a difference — and one is dismissed on evidence.
+    Every finding was verified against the shipped code before it was answered
+    rather than answered from the review text.
+  - Four of the six majors are declarations the Interfaces section had
     outgrown, and each was read from the shipped code rather than from the
     finding text: `GateResult` gained `applicable`, `BoundaryRequest` gained
-    `heuristic_window`, `ParentPullRequest` gained `head_fetched_from` (gate 1
-    compares it and the sketch omitted it), `run_git_wheresat` gained the
-    keyword-only `*` with `repo` beside `graph`, and `SOURCES` gained the kind
-    that sits beside each rung. `SOURCES` is the one worth naming: the plan
-    declared it as a precedence order, while the shipped tuple labels each
-    rung's observation and establishment is decided by the evidence tier in
-    `wheresat_policy`, never by a rung's position — which the collector's own
-    docstring already said and the plan's lead-in did not. The lead-in now says
+    `heuristic_window`, `run_git_wheresat` gained the keyword-only `*` with
+    `repo` beside `graph`, and `SOURCES` gained a docstring that stops calling
+    itself a ranking. A fifth stale declaration was found beside them while
+    those four were being checked, though no finding named it:
+    `ParentPullRequest` had lost `head_fetched_from`, the field gate 1 exists
+    to compare against the head's own repository, and the sketch omitted it.
+    `SOURCES` is the one worth naming: the plan declared it as a precedence
+    order, while the shipped tuple labels each rung's observation and
+    establishment is decided by the evidence tier in `wheresat_policy`, never
+    by a rung's position — which the collector's own docstring had already
+    been corrected to say and the plan's lead-in had not. The lead-in now says
     what the tuple says.
   - The sixth major is the removal recipe. The plan unset three configuration
     keys where the record has four, so a reader following it left
@@ -2006,21 +2011,36 @@ Stop and escalate rather than improvising when any of these is reached.
     so, which is what makes the contract one contract.
   - The one dismissal is the cassette, and the reason is a rule rather than a
     preference. The finding asks for the recording behind
-    `tests/integration/test_wheresat_github.py` to be sanitised of GitHub
+    `tests/integration/test_wheresat_github.py` to be sanitized of GitHub
     user-specific data. The traffic is public repository metadata for
     `leynos/git-donkey`, which is what a reader without a credential would
-    fetch; `tests/conftest.py` filters the `Authorization` header at record
-    time, so no recording can carry a token; and the edit itself is what the
-    project forbids — `docs/developers-guide.md` says a cassette is recorded
-    once against real traffic "and never edit a recording by hand", and the
-    test module's own docstring repeats the rule. A hand-sanitised cassette
-    would be the defect the rule exists to prevent, which is why the finding is
-    dismissed rather than obeyed.
+    fetch; `tests/integration/conftest.py` filters the `authorization` header
+    at record time, so no recording can carry a token; and the edit itself is
+    what the project forbids — `docs/developers-guide.md` says a cassette is
+    recorded once against real traffic "and never edit a recording by hand",
+    and the test module's own docstring repeats the rule. A hand-sanitized
+    cassette would be the defect the rule exists to prevent, which is why the
+    finding is dismissed rather than obeyed.
   - The disposition is recorded here and posted on the pull request, because
     the reviewer was a command-line run whose findings have no thread to answer
     in. Every actioned finding names the file it changed in that reply, so a
     reader can check the claim against the diff rather than against this
     paragraph.
+  - The merge is what changed the Markdown gate, and the first revision it
+    gated was this one. `origin/main`'s `02ab4e9` ("Adopt the estate Markdown
+    formatting baseline", PR #93) added `mdtablefix --check` to `make
+    check-fmt`, and the branch merged it in `a161557` — after the round-3 gates
+    were run and after the review round was taken. So `check-fmt` checked
+    Python only for every earlier gate run on this branch, and the first
+    Markdown gate over the plan reflowed four paragraphs: three this round's
+    findings touched, and the "Quality method" paragraph, which has been in the
+    plan since `02f8a82` and was never canonical under the new check. Every
+    reflow is word-identical — the paragraphs keep their text and change only
+    where the lines break — and the same gate held this round's prose to the
+    estate's en-GB _Oxford_ convention, which prefers `-ize` endings. Both are
+    recorded rather than silently taken: a reader of the round-3 reply's "the
+    eight gates were run clean" needs to know the gate set itself was still
+    moving under the branch.
 
 ## Surprises & discoveries
 
@@ -5825,11 +5845,10 @@ they vary is whether that record is still reachable.
 
 ### Quality method
 
-Run the four code gates sequentially before every code commit and the
-Markdown gates before every documentation commit, capturing each with `tee` to
-`/tmp`. Delegate full gate runs to the `scrutineer` sub-agent rather than
-running them inline, and read the cited log on failure instead of re-running
-the gate.
+Run the four code gates sequentially before every code commit and the Markdown
+gates before every documentation commit, capturing each with `tee` to `/tmp`.
+Delegate full gate runs to the `scrutineer` sub-agent rather than running them
+inline, and read the cited log on failure instead of re-running the gate.
 
 ## Idempotence and recovery
 
@@ -5837,15 +5856,14 @@ Every step is safely repeatable. `make build` is idempotent. Test runs create
 only temporary repositories under pytest's `tmp_path`.
 
 Without `--record` the command writes only refs under `refs/wheresat/`;
-`--record` additionally refreshes the shared stack record, which is the
-branch's `branch.<name>.stack*` configuration keys and its
-`refs/stack-bases/<branch>` anchor. Two of the refs it writes are
-deliberate and durable: `refs/wheresat/parent-head/<owner>/<repo>/<number>`
-caches an immutable fetched pull request head, so a second run on the same pull
-request performs no fetch at all; and `refs/wheresat/boundary/<branch>` is
-retained only when INV-8 finds the established boundary is otherwise
-unreachable. Per-run namespaces under `refs/wheresat/op/<op-id>/` are deleted
-in a `finally` block.
+`--record` additionally refreshes the shared stack record, which is the branch's
+`branch.<name>.stack*` configuration keys and its `refs/stack-bases/<branch>`
+anchor. Two of the refs it writes are deliberate and durable:
+`refs/wheresat/parent-head/<owner>/<repo>/<number>` caches an immutable fetched
+pull request head, so a second run on the same pull request performs no fetch
+at all; and `refs/wheresat/boundary/<branch>` is retained only when INV-8 finds
+the established boundary is otherwise unreachable. Per-run namespaces under
+`refs/wheresat/op/<op-id>/` are deleted in a `finally` block.
 
 Do **not** sweep the whole namespace. Refs live in the common ref store, so
 every worktree of a checkout shares `refs/wheresat/`, and a global delete will
@@ -6936,11 +6954,10 @@ object IDs and read from the same helpers, so a consumer that performs the
 backup and the replay itself is sent to the same ref and the same command a
 reader of the report is. The command is one line in the envelope; the sample
 above breaks it after the key, which JSON reads as the same string. A run that
-established no boundary proposes no replay:
-it reports `rebaseCommand` and `backupRef` as `null`, and both keys are
-declared in the empty payload too, so the key set is one shape whichever path
-the run took. `landed` stays `null` until an assessment carries the parent's
-landed commit, which none does yet.
+established no boundary proposes no replay: it reports `rebaseCommand` and
+`backupRef` as `null`, and both keys are declared in the empty payload too, so
+the key set is one shape whichever path the run took. `landed` stays `null`
+until an assessment carries the parent's landed commit, which none does yet.
 
 Contract rules, to be written into `docs/developers-guide.md`: a key may be
 added in a later minor revision, but never removed or retyped without

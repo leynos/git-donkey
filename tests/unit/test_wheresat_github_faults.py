@@ -282,9 +282,7 @@ def test_a_fault_is_refused_rather_than_answered(fault: _Fault) -> None:
 
 
 @pytest.mark.parametrize("fault", _FAULTS, ids=lambda fault: fault.name)
-@pytest.mark.parametrize(
-    "question", _QUESTIONS, ids=lambda question: question.__name__
-)
+@pytest.mark.parametrize("question", _QUESTIONS, ids=lambda question: question.__name__)
 def test_every_question_refuses_a_fault_the_same_way(
     fault: _Fault,
     question: cabc.Callable[[ApiWheresatGitHub], object],

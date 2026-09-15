@@ -236,11 +236,11 @@ A branch created from the trunk is not recorded, whatever it is named. That is
 deliberate: a record would make it look stacked, and would offer a boundary for
 a branch that never had a parent.
 
-The record is written after the branch exists, so a store that refuses it leaves
-the branch in place and stops the run with status `1`, reporting that the branch
-was created but its stack record was not written. The branch is usable; only its
-birth boundary is unrecorded, and `git wheresat` has to establish one from the
-surviving evidence instead.
+The record is written after the branch exists, so a store that refuses it
+leaves the branch in place and stops the run with status `1`, reporting that
+the branch was created but its stack record was not written. The branch is
+usable; only its birth boundary is unrecorded, and `git wheresat` has to
+establish one from the surviving evidence instead.
 
 Writing the record changes nothing about tracking — the new branch is still
 created with `--no-track` and inherits nothing. The record is local to one
@@ -660,10 +660,10 @@ nothing would be read as a run with nothing to warn about.
 
 The two honest limits documented under [`git plonk`](#git-plonk) still bound
 what a tombstone can carry here. A tombstone preserves a deleted branch's tip
-and not its reflog, so fork-point recovery for its children is still lost. And a
-branch deleted through plain Git leaves an anchor that names a base and no tip,
-so a run whose only record of the parent is that anchor has no parent head to
-judge and reports the checks that read one as not applicable rather than
+and not its reflog, so fork-point recovery for its children is still lost. And
+a branch deleted through plain Git leaves an anchor that names a base and no
+tip, so a run whose only record of the parent is that anchor has no parent head
+to judge and reports the checks that read one as not applicable rather than
 answering them.
 
 ## git donkey-template
