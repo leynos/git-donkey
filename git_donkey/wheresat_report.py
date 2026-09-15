@@ -18,6 +18,7 @@ exists, so a consumer never has to read prose to find out what happened.
 from __future__ import annotations
 
 import json
+import types
 import typing as typ
 
 from git_donkey.wheresat_records import (
@@ -45,11 +46,13 @@ RENDER_COMMIT_LIMIT: typ.Final = 20
 JSON_SCHEMA: typ.Final = "git-wheresat/1"
 """Version string of the machine-readable envelope."""
 
-VERDICT_WORDS: typ.Final[typ.Mapping[type, WheresatVerdictLabel]] = {
-    Established: "established",
-    Unresolved: "unresolved",
-    Indeterminate: "indeterminate",
-}
+VERDICT_WORDS: typ.Final[typ.Mapping[type, WheresatVerdictLabel]] = (
+    types.MappingProxyType({
+        Established: "established",
+        Unresolved: "unresolved",
+        Indeterminate: "indeterminate",
+    })
+)
 """Verdict word per assessment, keyed as ``EXIT_CODES`` is.
 
 ``error`` is the fourth verdict and is not here, because it is not an
@@ -70,10 +73,10 @@ the vocabulary a recorder stores cannot drift apart: dropping ``error`` from
 typecheck here rather than ship a verdict no consumer knows.
 """
 
-_HEADLINES: typ.Final[typ.Mapping[type, str]] = {
+_HEADLINES: typ.Final[typ.Mapping[type, str]] = types.MappingProxyType({
     Unresolved: "git wheresat: no boundary could be established for",
     Indeterminate: "git wheresat: could not tell where",
-}
+})
 """How a run that established nothing opens its report."""
 
 _NOT_APPLICABLE: typ.Final = "not applicable"
