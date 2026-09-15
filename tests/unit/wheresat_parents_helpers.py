@@ -165,7 +165,26 @@ class Records:
     reads: list[str] = dataclasses.field(default_factory=list)
 
     def read(self, branch: str) -> stack_records.RecordResult:
-        """Return the record this test supplied, or raise its refusal."""
+        """Return the record the test supplied for ``branch``, or refuse it.
+
+        Parameters
+        ----------
+        branch : str
+            Branch the record is asked about, which the double records.
+
+        Returns
+        -------
+        stack_records.RecordResult
+            Whatever the test supplied, which is absent when it supplied none.
+
+        Raises
+        ------
+        Exception
+            The refusal the test built this double with, if it built one. The
+            class is not narrowed because what a case refuses with is the
+            case's own choice, and the ladder is asserted against it as it is.
+
+        """
         self.reads.append(branch)
         if self.refusal is not None:
             raise self.refusal
@@ -264,13 +283,48 @@ class Forge(wheresat_github.WheresatGitHub):
     def pull_request(
         self, identity: stack_records.PullRequestIdentity
     ) -> ParentPullRequest:
-        """Return the payload this test supplied for ``identity``."""
+        """Return the payload this test supplied for ``identity``.
+
+        Parameters
+        ----------
+        identity : stack_records.PullRequestIdentity
+            Pull request read, whose number the double records.
+
+        Returns
+        -------
+        ParentPullRequest
+            The payload the test supplied for that number.
+
+        Raises
+        ------
+        NotImplementedError
+            If the test supplied nothing for that number, which is a defect in
+            the test rather than an answer of nothing.
+
+        """
         self.read.append(identity.number)
         return _supplied(self.payloads, identity.number, asking="read pull request")
 
     @typ.override
     def pull_request_body(self, identity: stack_records.PullRequestIdentity) -> str:
-        """Return the body this test supplied for ``identity``."""
+        """Return the body this test supplied for ``identity``.
+
+        Parameters
+        ----------
+        identity : stack_records.PullRequestIdentity
+            Pull request whose body is read, whose number the double records.
+
+        Returns
+        -------
+        str
+            The body the test supplied for that number.
+
+        Raises
+        ------
+        NotImplementedError
+            If the test supplied no body for that number.
+
+        """
         self.bodies_read.append(identity.number)
         return _supplied(self.bodies, identity.number, asking="read the body of")
 
@@ -278,7 +332,25 @@ class Forge(wheresat_github.WheresatGitHub):
     def stack_parent(
         self, identity: stack_records.PullRequestIdentity
     ) -> stack_records.PullRequestIdentity | None:
-        """Return the pull request this test put below ``identity``, if any."""
+        """Return the pull request this test put below ``identity``, if any.
+
+        Parameters
+        ----------
+        identity : stack_records.PullRequestIdentity
+            Pull request the stack is asked about.
+
+        Returns
+        -------
+        stack_records.PullRequestIdentity | None
+            The pull request the test supplied as the one below, or ``None``
+            when it supplied none.
+
+        Raises
+        ------
+        NotImplementedError
+            If the test supplied no answer for that number.
+
+        """
         return _supplied(
             self.stacks, identity.number, asking="asked about the stack of"
         )
@@ -332,7 +404,22 @@ class Opener:
     opened: list[int] = dataclasses.field(default_factory=list)
 
     def __call__(self) -> wheresat_github.WheresatGitHub:
-        """Return the port, or raise the refusal this opener was built with."""
+        """Return the port, or raise the refusal this opener was built with.
+
+        Returns
+        -------
+        wheresat_github.WheresatGitHub
+            The port the test put in this opener.
+
+        Raises
+        ------
+        Exception
+            The refusal the test built the opener with, if it built one.
+        NotImplementedError
+            If the opener was built with no port and no refusal, which is a
+            defect in the test rather than an opener that offers nothing.
+
+        """
         self.opened.append(1)
         if self.refusal is not None:
             raise self.refusal
@@ -367,7 +454,19 @@ def search_bounds(
 
 
 def graph_over(*commits: str) -> History:
-    """Return a graph answering with ``commits``, oldest first."""
+    """Return a graph answering with ``commits``, oldest first.
+
+    Parameters
+    ----------
+    *commits : str
+        Commits the double holds, oldest first.
+
+    Returns
+    -------
+    History
+        A graph whose history answers with those commits.
+
+    """
     return History(commits=commits)
 
 
@@ -406,12 +505,42 @@ def ask(
     *,
     run: Run | None = None,
 ) -> parents.ParentIdentification:
-    """Put the run's parent question to the ladder."""
+    """Put the run's parent question to the ladder.
+
+    Parameters
+    ----------
+    request : BoundaryRequest
+        What the run was asked, including the window and the offline flag.
+    bounds : parents.SearchBounds
+        How far the search may walk, and in which repository.
+    run : Run | None, optional
+        The reads the walk is handed, or ``None`` for a walk handed an empty
+        history, an absent record, and no forge to open.
+
+    Returns
+    -------
+    parents.ParentIdentification
+        The identification the ladder reached.
+
+    """
     return parents.identify_parent(request, bounds, reads=(run or Run()).reads)
 
 
 def child_payload(*, stacked: bool = False) -> ParentPullRequest:
-    """Return the child's own pull request, as GitHub would report it."""
+    """Return the child's own pull request, as GitHub would report it.
+
+    Parameters
+    ----------
+    stacked : bool, optional
+        Whether GitHub records the child in a stack, which is what makes the
+        ladder ask the forge for the stack at all.
+
+    Returns
+    -------
+    ParentPullRequest
+        The child's payload, headed by :data:`CHILD_BRANCH`.
+
+    """
     return parent_pull_request(
         identity=CHILD_IDENTITY,
         head_ref=CHILD_BRANCH,
@@ -421,7 +550,19 @@ def child_payload(*, stacked: bool = False) -> ParentPullRequest:
 
 
 def stack_record(parent: stack_records.StackParent) -> stack_records.StackRecord:
-    """Return the child's record, stacked as ``parent`` says."""
+    """Return the child's record, stacked as ``parent`` says.
+
+    Parameters
+    ----------
+    parent : stack_records.StackParent
+        Who the branch is stacked on, as the record stores it.
+
+    Returns
+    -------
+    stack_records.StackRecord
+        A record for :data:`CHILD_BRANCH` whose boundary is :data:`BOUNDARY`.
+
+    """
     return stack_records.StackRecord(
         branch=CHILD_BRANCH,
         parent=parent,
@@ -434,14 +575,38 @@ def stack_record(parent: stack_records.StackParent) -> stack_records.StackRecord
 def stacked_on(
     pull_request: stack_records.PullRequestIdentity,
 ) -> stack_records.StackRecord:
-    """Return a record naming a pull request, as a refreshed one does."""
+    """Return a record naming a pull request, as a refreshed one does.
+
+    Parameters
+    ----------
+    pull_request : stack_records.PullRequestIdentity
+        Parent pull request the record names.
+
+    Returns
+    -------
+    stack_records.StackRecord
+        The record, holding that pull request and no branch.
+
+    """
     return stack_record(
         stack_records.StackParent(branch=None, pull_request=pull_request)
     )
 
 
 def born_on(branch: str) -> stack_records.StackRecord:
-    """Return a record naming a branch, as one written at birth does."""
+    """Return a record naming a branch, as one written at birth does.
+
+    Parameters
+    ----------
+    branch : str
+        Parent branch the record names.
+
+    Returns
+    -------
+    stack_records.StackRecord
+        The record, holding that branch and no pull request.
+
+    """
     return stack_record(stack_records.StackParent(branch=branch, pull_request=None))
 
 
@@ -472,7 +637,14 @@ def shared_body(number: int, *, boundary: str = BOUNDARY) -> str:
 
 
 def parent_payload() -> ParentPullRequest:
-    """Return the parent pull request, as GitHub would report it."""
+    """Return the parent pull request, as GitHub would report it.
+
+    Returns
+    -------
+    ParentPullRequest
+        The parent's payload, headed by the commit :data:`PARENT_HEAD`.
+
+    """
     return parent_pull_request(identity=PARENT_IDENTITY, head_sha=PARENT_HEAD)
 
 
@@ -481,7 +653,23 @@ def association_page(
     *,
     truncated: bool = False,
 ) -> wheresat_github.AssociationPage:
-    """Return the association page a search would answer with."""
+    """Return the association page a search would answer with.
+
+    Parameters
+    ----------
+    associations : collections.abc.Mapping
+        Pull requests per commit, keyed by the commit GitHub associated them
+        with and holding a tuple of identities each.
+    truncated : bool, optional
+        Whether the page reports history it did not examine, which is what
+        makes an empty answer ambiguous.
+
+    Returns
+    -------
+    wheresat_github.AssociationPage
+        The page, whose examined count is the number of commits keyed.
+
+    """
     return wheresat_github.AssociationPage(
         associations=associations,
         commits_examined=len(associations),
