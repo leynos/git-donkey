@@ -2153,6 +2153,123 @@ Stop and escalate rather than improvising when any of these is reached.
     reader can check the claim against the diff rather than against this
     paragraph.
 
+  - Review round: `coderabbit review --agent --base origin/main` reports 17
+    findings over the tree at `2d35e37` (log
+    `/tmp/coderabbit-git-donkey-git-wheresat-sub-command-6.out`, the agent-mode
+    stream whose 17 `finding` records are kept as
+    `/tmp/coderabbit-findings-6.jsonl` for triage), taken on 2026-09-16 between
+    00:47 and 00:58 in one attempt and without meeting a rate limit. The 17 are
+    2 major, 8 minor, and 7 trivial, and they are 12 distinct requests: five of
+    them are raised twice, once in each of the two places the same change is
+    visible. All 12 are actioned and none is dismissed, so this is the second
+    round on the branch with no finding left unchallenged. Every request was
+    verified against the shipped code before it was answered, and two of the
+    twelve needed that check made against a rule or a second document rather
+    than against the code the finding named.
+  - The docstring major was read too narrowly, and that is the round's first
+    lesson. The finding names a window —
+    `tests/unit/wheresat_parents_helpers.py:167-172`, around `Records.read` —
+    and asks for the public methods and functions of the affected helpers; the
+    first pass expanded the thirteen functions around that window and left
+    three module-level helpers (`boundary_request`, `search_bounds`, and
+    `Run.reads`) as one-line summaries. Sixteen functions of the module carried
+    a one-line summary before the change, which is what the sentence asked for
+    and what the window did not show, and the three are expanded in `4ced60f`:
+    `Parameters` and `Returns` for the builders, and a `Raises` section for the
+    five doubles that answer an unasked question with a refusal. A finding's
+    line window locates the complaint and its sentence states the scope, and
+    where the two disagree the sentence is the request.
+  - The second major is the spoiler table's type, and the reason to believe it
+    is the reason it was fixed. `_SPOILERS` was declared as
+    `cabc.Callable[..., Case]`, and an ellipsis accepts every signature there
+    is: a spoiler taking `failed` positionally, or not taking it at all, was
+    registered with the table none the wiser, and the mismatch would have
+    surfaced as a `TypeError` from inside whichever `spoiled` call happened to
+    draw that row. `_Spoiler` is a protocol whose `__call__` takes the
+    keyword-only `failed` that `spoiled` passes, so every row is checked at
+    registration, and naming `collections.abc` for `Callable` made that import
+    typing-only, which moved it under the `TYPE_CHECKING` guard the rest of the
+    repository reads it through.
+  - The credential reader took the decision the finding asked for rather than
+    the smallest edit that would silence it. `write_token` writes UTF-8 and
+    `read_token` read the file back with the machine's locale encoding, so a
+    credential file holding a byte that locale cannot decode raised
+    `UnicodeDecodeError` out of the reader: an unreadable credential ended the
+    run as an unhandled failure rather than being the absent token the contract
+    calls it. The reader decodes as UTF-8 and answers `None` for bytes that are
+    not it, which is the answer it already gives a file it cannot open, and a
+    regression test writes a file that is not UTF-8 and asserts a token that is
+    not there. The two halves of that file's contract are one encoding now.
+  - The exit-status defect was found a second time, in another document that
+    states it. Round 5 corrected the plan's invariant, `EXIT_CODES`'s
+    docstring, `EXIT_USAGE`'s docstring, and the users' guide's Table 1; this
+    round found the same claim standing in the migration guide, where a
+    credential error was still listed among the status `2` cases.
+    `WheresatCredentialError`'s own docstring and the users' guide both say `3`,
+    so the guide is what moved, and status `2` keeps its meaning of a usage or
+    environment error. The claim is stated in five places and took two rounds
+    because the first corrected four of them, which is the lesson: a claim
+    corrected where it was found is corrected in one place, and the rest are
+    found by looking for them.
+  - Three requests were the suite telling the truth about what it ran. The
+    refused-run case read its vector for the options and then ran without the
+    vector's `where`, so it invoked the shared runner in the default working
+    directory while every sibling case ran where its row said; both fields come
+    from the row now. The worktree suite asked Git for its version at import
+    and marked itself with a `skipif`, so a machine whose Git is missing or
+    refuses to run failed at collection — a question that could not be put,
+    reported as a broken module — and the version is asked for in an autouse
+    fixture now. The deep comparison's double listed a bounded history as
+    `self.commits[-limit:]`, where `commits[-0:]` is the whole list: a case
+    asking for a bound of zero compared against a history of every commit,
+    which is the reading the bound exists to deny and the one the ladder's own
+    double already refuses.
+  - The recording procedure now says what the parent-metadata cassette depends
+    on, which is what the two findings naming that test module ask for. The
+    paragraph at `docs/developers-guide.md:906-916` names the public-preview
+    Stacks API and the pull request `stack` field, names the two
+    `microsoft/vscode` pull requests the recording holds, says what has to
+    still be true for a re-recording, and says why no test depends on it: the
+    suite replays the committed cassette in the default `none` record mode, so
+    the cases keep passing once the live stack moves on and fail only when the
+    reader starts asking a question the recording cannot answer.
+  - The remaining three are shapes. `VERDICT_WORDS` and `_HEADLINES` are
+    `types.MappingProxyType` now, matching `TIERS` and `EXIT_CODES`, so the
+    `Final` declaration is true of a mutation rather than only of a rebinding.
+    The two properties that draw a subset of a listing share one mask helper,
+    so the two cannot come to choose their subsets by different rules. And
+    `_recorded` reads the port's answer with a `match` over its own types, so
+    the branch that offers the record-less advice is the branch that recognizes
+    an absence.
+  - The `cabc` request is the one that needed an argument rather than a
+    reading, and the argument is recorded so the next reader need not rebuild
+    it. More modules of this tree write `typ.Mapping` than `cabc.Mapping` —
+    fourteen against seven — so the request reads like a preference, and the
+    neighbouring annotations are evidence against it. It is the house rule
+    nevertheless, recorded at :1831-1836 from round 4 and already applied in
+    `wheresat_payload.py` and `wheresat_writes.py`, and `stack_records.py` is
+    the third module brought to it: the six annotations and their docstring
+    type lines name `cabc` there now, with `typing` kept for the guard itself
+    and the module's `typ.Final`.
+  - The nine checks are green over `06b8f23`, which is what the fixes for the
+    twelve requests are pushed as, and over `4ced60f`, which finishes the
+    docstring pass: `test` reports 957 passed with 22 snapshots (one more than
+    round 5's 956, which is the credential regression), `lint` completes all
+    seven stages with both pylint configs at 10.00/10, `typecheck` is clean
+    under `ty` 0.0.79, `check-fmt` reports 174 files formatted and 29
+    unchanged, `markdownlint` lints 30 files with 0 errors, `nixie` validates
+    every diagram, `spelling` passes, `build` is a no-op, and
+    `cs delta origin/main` reports no issues, each log under
+    `/tmp/<gate>-git-donkey-git-wheresat-sub-command.out`. The run was taken
+    over the working tree before it was split into commits, and the tree was
+    byte-identical before and after it — the pre- and post-run `git status`
+    snapshots match, and no gate rewrote a tracked file — so every commit in
+    the split inherits a green run over its own content.
+  - The disposition is posted on the pull request (round 6,
+    `#issuecomment-5689368044`), each request naming the file it changed, so a
+    reader can check the claim against the diff rather than against this
+    paragraph.
+
 ## Surprises & discoveries
 
 - Observation: this repository has no roadmap document.
