@@ -516,9 +516,11 @@ full lifecycle.
 
 `git wheresat` answers "where should this branch be rebased onto?" for a
 stacked branch. It locates the exclusive replay boundary — the commit before
-the branch's own work — and prints one command:
-`git rebase --onto <target> <old-base> <branch>`. Work already landed in the
-trunk (a squash merge, for example) is dropped by that replay.
+the branch's own work — and prints a replay plan: a backup ref for the child
+tip, then `git rebase --onto <target> <old-base> <branch>` with the target and
+the boundary in full, so the replay can be checked before it is run and undone
+from that ref if it is wrong. Work already landed in the trunk (a squash merge,
+for example) is dropped by that replay.
 
 ```shell
 # Report the replay boundary of the branch checked out here
@@ -561,8 +563,10 @@ Options:
 - `--remote` names the principal remote to read.
 - `--limit` is accepted and has no effect yet: the report's own cap of `20`
   commits per range is a fixed constant, not this option.
-- `--heuristic-window` is accepted and has no effect yet; it would bound the
-  fork-point search, and defaults to `200`.
+- `--heuristic-window` is accepted and has no effect yet; the deep scan is not
+  run, and when it is, this bounds the trunk commits it examines — the target's
+  history, counted backwards, read for tree-identity and
+  cumulative-patch-identity evidence. It defaults to `200`.
 - `--explain` prints the gate table: every check, its outcome, and the reason
   for it.
 - `--json` prints the versioned envelope described above.

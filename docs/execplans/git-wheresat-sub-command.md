@@ -1054,15 +1054,47 @@ Stop and escalate rather than improvising when any of these is reached.
     _permissive_: the rewritten-parent case gate 6 exists to catch goes
     unnoticed rather than leaving the run unresolved. That is the opposite of
     the conservative direction, and it is why the rung is owed rather than
-    optional. This milestone's remaining work adds the rung and its test; the
-    docstring that called the two the "order the procedure fixes" is corrected
-    with it.
-  - Slice (c) is next: the report and the `--json` envelope are written but
-    three of their values are still placeholders — `backupRef` is hardcoded
-    `None`, the child-tip statement is not printed, and the report prints
-    full 40-character IDs where the plan's conventions ask for
-    `COMMIT_ABBREVIATION` — and slice (d) then owes `--deep`'s two rungs, the
-    `heuristic_window` plumbing, the cassettes, the behavioural scenario in
+    optional. **Closed**: `wheresat_graph.remote_tracking_ref` asks in the
+    order the branch itself (when what is in hand is already a full ref path),
+    `refs/remotes/<branch>`, then `refs/remotes/<remote>/<branch>` for each
+    remote in Git's own configuration order, and answers with the ref _name_
+    rather than the object ID it names, because the name is what says where the
+    head was read from. A candidate that does not resolve is an absence and a
+    candidate Git cannot read is a fault, which is the split the rung above it
+    already made. `wheresat_collect`'s ladder is now tombstone, then
+    remote-tracking ref, with a rung that finds nothing falling through to the
+    next and a rung that faults stopping the ladder and returning the reason;
+    both modules' docstrings say so, including the module docstring that had
+    named only the tombstone. Measured rather than assumed: with the new rung
+    neutered the positive case renders `not applicable parent-history-intact`
+    with the same boundary, and with it in place the row reads `passed`, so the
+    test's claim is about the rung and not about the fixture. Nine tests in
+    `tests/integration/test_wheresat_remote_tracking_ref.py` pin the candidate
+    order (two remotes added in non-alphabetical order, so an alphabetical
+    answer fails), the ref-name return, the absence-versus-fault split, the
+    fall-through, and the two command-level cases read through `--explain`.
+    The syntax-check segment is also a gate in its own right here: the suite
+    has no `__init__.py`, so two modules sharing a basename are a collection
+    error rather than a styling question, and the integration file was named
+    `test_wheresat_parent_head.py` beside the unit suite of that name until a
+    combined run refused to collect. It is
+    `test_wheresat_remote_tracking_ref.py` because a unique basename is what
+    pytest needs and because the rung, not the head, is what it is about.
+  - Slice (c) is landed. The Replay block prints a backup ref under
+    `refs/wheresat-backup/<branch>`, the `git rebase --onto` command with the
+    target and the boundary as full 40-character object IDs, an undo line
+    naming the same ref, and a closing premise — `the child tip must still be
+    <abbreviated tip>` — with each command on one unwrapped line so that it is
+    one paste rather than a line broken by the terminal. The envelope gained
+    `backupRef`, filled only by a run that established a boundary, because a
+    run that established none proposes no replay and has no ref to name; the
+    key stays declared in the empty payload so the key set is one shape, and no
+    key was added, so `git-wheresat/1` stands. Fifteen report snapshots were
+    regenerated, and the end-to-end acceptance asserts the token tuples exactly
+    — the `git update-ref` with the full child tip, the rebase with both full
+    IDs, and the undo line — rather than matching substrings.
+  - Slice (d) is next and owes `--deep`'s two rungs, the `heuristic_window`
+    plumbing, the cassettes, the behavioural scenario in
     `git_wheresat.feature`, and INV-1's fetch-path non-vacuity assertion in the
     read-only matrix.
   - The first full gate run over slices (a) and (b) found three mechanical
@@ -1168,6 +1200,42 @@ Stop and escalate rather than improvising when any of these is reached.
     and which nothing clears; and the option text in `docs/man/git-wheresat.rst`
     and `docs/users-guide.md` that still describes `--limit`, `--no-fetch`,
     `--offline`, and a named `--parent` as inert.
+  - All five of those are now closed, and the closures are worth stating
+    because two of them were closed by correcting a claim rather than a
+    behaviour. The `TypedDict` is `ParentPullRequestOverrides`, unpacked with
+    `typ.Unpack` at both helper signatures, so a misspelled key is a static
+    error instead of a runtime surprise. `ApiWheresatGitHub` percent-encodes
+    each path component and refuses `.` and `..` outright, so a slug cannot
+    walk out of the path it is joined into. `_write_birth_record` reports a
+    record the store would not write as what it is — a branch that exists with
+    no record, which is not a failed worktree — and dies with the store's own
+    message. The tombstone-plus-live-record window is documented as benign
+    rather than repairable: the sweep resolves only records whose branch is
+    gone, so clearing a live branch's record in the name of tidying up would
+    destroy the only attestation of that branch's boundary and leave the branch
+    in place, and the state resolves itself in whichever direction the branch's
+    fate takes. The claim in `docs/plonk-cleanup-policy.md` that the next sweep
+    clears it was the defect, not the sweep's behaviour, and
+    `test_a_tombstone_beside_a_live_branch_survives_a_sweep` now pins the
+    benign state: the branch keeps its record and its anchor, the tombstone
+    stands, and the sweep reports no orphan. The option text is the one item
+    left, and it belongs with slice (e) below, because it can only be corrected
+    against the behaviour `--deep` and the window plumbing give those options.
+  - The same review's remaining style findings are rebutted rather than
+    actioned, and this round adds three names to that list for the reason the
+    first four were already on it. `MappingProxyType` over two module-level
+    lookup tables nothing mutates, promoting `wheresat_gates`' private helpers
+    to public names, grouping three module-level tests into a class, and an
+    upper bound on `requests` where the repository's policy is a floor were
+    rebutted in the previous round. Joining them: promoting
+    `wheresat_collect._asked` and `_Fault` for the same reason (the repository
+    imports a sibling module's private helper deliberately, and renaming them
+    would say the two callers are a public interface when they are one
+    implementation split across two files); recommending the sweep reconcile a
+    live record that has a tombstone, which the paragraph above answers on the
+    merits; and reading the report's replay block as needing to stay inside
+    `COMMIT_ABBREVIATION`, which the requirement for pasteable full object IDs
+    overrides.
 
 ## Surprises & discoveries
 
@@ -2930,6 +2998,57 @@ Stop and escalate rather than improvising when any of these is reached.
   indeterminate result, because a fault means the evidence set is not known to
   be complete.
   Date/Author: 2026-09-14, implementation agent, EP-M10.
+- Decision: the Replay block prints a backup ref, the ``git rebase --onto``
+  command with the target and the boundary as full 40-character object IDs, an
+  undo line, and a closing premise naming the child tip the answer was computed
+  against, one command per unwrapped line; and the envelope's ``backupRef`` is
+  filled only by a run that established a boundary, superseding the EP-M9 entry
+  that declared the key and left it ``null`` for the milestone that would have
+  something to put in it.
+  Rationale: the report is a thing to paste, and a line broken to fit a
+  terminal is a line that runs half a command when it is pasted; the full IDs
+  are what removes the race between reading the report and running it, which
+  ``COMMIT_ABBREVIATION`` cannot do because an abbreviation is re-resolved at
+  run time. The abbreviation stays where it was decided to stay — detail lines
+  and reasons — and the premise line carries it, because the user's check is
+  "is the tip still what this was computed from", which is a comparison rather
+  than an argument. A refusal proposes no replay, so it names no backup ref and
+  has nothing to put in the key; the key is declared in the empty payload
+  anyway, so a consumer reads one shape whether the run established nothing or
+  never started, and no key was added, which is what keeps the schema string at
+  ``git-wheresat/1``.
+  Date/Author: 2026-09-15, implementation agent, EP-M10.
+- Decision: INV-7's six-pair invariant is a parametrized matrix of exactly
+  those six pairs rather than a Hypothesis property, superseding the earlier
+  note in ``Progress`` that the property "exhausts" the space.
+  Rationale: the domain is finite and each case builds a real repository and
+  runs a real command line, which is the same reasoning recorded under
+  ``Invariants and lemmas`` for INV-1's matrix and for the same cost — a
+  generated example in this suite straddles Hypothesis's 200 ms deadline under
+  the per-test timeout. The property also needed its
+  ``function_scoped_fixture`` health check suppressed to run at all, and a
+  suppression is a standing invitation to stop noticing what it was hiding. A
+  parametrized matrix cannot silently stop covering a pair: a pair that is no
+  longer run is a test that disappeared from the report rather than a draw that
+  was never made.
+  Date/Author: 2026-09-15, implementation agent, EP-M10.
+- Decision: gate 6's ``PARENT_HEAD`` ladder is the fetched pull request head,
+  then the parent branch's tombstone, then its remote-tracking ref — the
+  tombstone rung before the ref rung, and a rung that faults stops the ladder
+  rather than falling through.
+  Rationale: the ladder's order is the strength of what each rung names. A
+  fetched head is the commit a pull request reports; a tombstone is the tip a
+  deletion observed, which is the artefact that survives the branch being
+  deleted and is why the command exists; a remote-tracking ref is what is left
+  when neither was ever made, and it is weaker because it moves whenever
+  somebody pushes. Reading the weakest first would answer a stronger question
+  with a weaker answer, which is the failure mode gate 1 exists to catch. A
+  rung that faults stops the ladder because "the tombstone would not open" and
+  "there is no tombstone" are different answers, and only the second one may
+  fall through: an unreadable ref is a repository that needs repair, and
+  answering around it would report a boundary the run could not actually
+  establish.
+  Date/Author: 2026-09-15, implementation agent, EP-M10.
 
 ## Outcomes & retrospective
 
@@ -5524,16 +5643,22 @@ rather than the range's size:
              "applicable": true}],
   "reasons": [],
   "warnings": [],
-  "rebaseCommand": "git rebase --onto 7c8d9e0f… 1a2b3c4d… feature/child",
-  "backupRef": null
+  "rebaseCommand": "git rebase --onto 7c8d9e0f1a2b… 1a2b3c4d5e6f… feature/child",
+  "backupRef": "refs/wheresat-backup/feature/child"
 }
 ```
 
 `gates` carries one object per candidate and gate, not one per gate: each
 candidate is checked against the same questions, and the envelope reports the
-conjunction that was actually evaluated (see the Surprises). `landed` and
-`backupRef` are declared and stay `null` until the milestone that has
-something to put in them.
+conjunction that was actually evaluated (see the Surprises). `rebaseCommand`
+and `backupRef` are the replay plan the text report prints, in the same full
+object IDs and read from the same helpers, so a consumer that performs the
+backup and the replay itself is sent to the same ref and the same command a
+reader of the report is. A run that established no boundary proposes no replay:
+it reports `rebaseCommand` and `backupRef` as `null`, and both keys are declared
+in the empty payload too, so the key set is one shape whichever path the run
+took. `landed` stays `null` until an assessment carries the parent's landed
+commit, which none does yet.
 
 Contract rules, to be written into `docs/developers-guide.md`: a key may be
 added in a later minor revision, but never removed or retyped without

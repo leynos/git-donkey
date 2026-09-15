@@ -611,8 +611,12 @@ class GitStackRecordWriter(GitStackRecordReader):
 
         The tombstone is written first and is written whether or not the branch
         has a record, because the deletion that follows is forced and always
-        succeeds. A crash between the two steps leaves a tombstone and a live
-        record, which the sweep clears; the reverse order would lose the tip.
+        succeeds. A crash between the two steps leaves a tombstone beside a live
+        record, and the branch itself is still there. The sweep does not touch
+        that state, because it resolves only records whose branch is gone: a
+        live branch keeps the record that attests its own boundary, and a
+        tombstone is evidence that a deletion started, not that it finished. The
+        reverse order would lose the tip.
 
         Parameters
         ----------

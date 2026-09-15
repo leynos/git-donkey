@@ -220,7 +220,7 @@ this document does not restate them.
 | ---- | ------------------------------------------------------------ |
 | `0`  | a boundary was established                                   |
 | `1`  | the boundary could not be established from complete evidence |
-| `2`  | a usage, configuration, or credential error                  |
+| `2`  | a usage or configuration error                               |
 | `3`  | indeterminate: the repository or the forge could not answer  |
 
 _Table 2: the four exit statuses._

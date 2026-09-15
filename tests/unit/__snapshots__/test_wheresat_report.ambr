@@ -42,7 +42,12 @@
     a ref that outlives this run already reaches the boundary
   
   Replay
-    git rebase --onto 7777777 8888888 child
+    # back up the child tip first, then replay onto the target
+    git update-ref refs/wheresat-backup/child 1111111111111111111111111111111111111111
+    git rebase --onto 7777777777777777777777777777777777777777 8888888888888888888888888888888888888888 child
+    # undo: git reset --hard refs/wheresat-backup/child
+  
+    Verify before running: the child tip must still be 1111111
   
   '''
 # ---
@@ -86,7 +91,12 @@
     a ref that outlives this run already reaches the boundary
   
   Replay
-    git rebase --onto 7777777 8888888 child
+    # back up the child tip first, then replay onto the target
+    git update-ref refs/wheresat-backup/child 1111111111111111111111111111111111111111
+    git rebase --onto 7777777777777777777777777777777777777777 8888888888888888888888888888888888888888 child
+    # undo: git reset --hard refs/wheresat-backup/child
+  
+    Verify before running: the child tip must still be 1111111
   
   '''
 # ---
@@ -187,7 +197,7 @@
         "reasons": [],
         "warnings": [],
         "rebaseCommand": "git rebase --onto 7777777777777777777777777777777777777777 8888888888888888888888888888888888888888 child",
-        "backupRef": null
+        "backupRef": "refs/wheresat-backup/child"
       }
   
     ''',
@@ -289,7 +299,7 @@
         "reasons": [],
         "warnings": [],
         "rebaseCommand": "git rebase --onto 7777777777777777777777777777777777777777 8888888888888888888888888888888888888888 child",
-        "backupRef": null
+        "backupRef": "refs/wheresat-backup/child"
       }
   
     ''',
@@ -813,7 +823,12 @@
     a ref that outlives this run already reaches the boundary
   
   Replay
-    git rebase --onto 7777777 8888888 child
+    # back up the child tip first, then replay onto the target
+    git update-ref refs/wheresat-backup/child 1111111111111111111111111111111111111111
+    git rebase --onto 7777777777777777777777777777777777777777 8888888888888888888888888888888888888888 child
+    # undo: git reset --hard refs/wheresat-backup/child
+  
+    Verify before running: the child tip must still be 1111111
   
   '''
 # ---
@@ -839,7 +854,12 @@
     a ref that outlives this run already reaches the boundary
   
   Replay
-    git rebase --onto 7777777 8888888 child
+    # back up the child tip first, then replay onto the target
+    git update-ref refs/wheresat-backup/child 1111111111111111111111111111111111111111
+    git rebase --onto 7777777777777777777777777777777777777777 8888888888888888888888888888888888888888 child
+    # undo: git reset --hard refs/wheresat-backup/child
+  
+    Verify before running: the child tip must still be 1111111
   
   '''
 # ---
@@ -1095,7 +1115,7 @@
       "the worktree holding child could not be read, so whether a replay can run there is not known: fatal: no such worktree"
     ],
     "rebaseCommand": "git rebase --onto 7777777777777777777777777777777777777777 8888888888888888888888888888888888888888 child",
-    "backupRef": null
+    "backupRef": "refs/wheresat-backup/child"
   }
   
   '''
@@ -1126,7 +1146,12 @@
     a ref that outlives this run already reaches the boundary
   
   Replay
-    git rebase --onto 7777777 8888888 child
+    # back up the child tip first, then replay onto the target
+    git update-ref refs/wheresat-backup/child 1111111111111111111111111111111111111111
+    git rebase --onto 7777777777777777777777777777777777777777 8888888888888888888888888888888888888888 child
+    # undo: git reset --hard refs/wheresat-backup/child
+  
+    Verify before running: the child tip must still be 1111111
   
   '''
 # ---
@@ -1153,7 +1178,12 @@
     a ref that outlives this run already reaches the boundary
   
   Replay
-    git rebase --onto 7777777 8888888 child
+    # back up the child tip first, then replay onto the target
+    git update-ref refs/wheresat-backup/child 1111111111111111111111111111111111111111
+    git rebase --onto 7777777777777777777777777777777777777777 8888888888888888888888888888888888888888 child
+    # undo: git reset --hard refs/wheresat-backup/child
+  
+    Verify before running: the child tip must still be 1111111
   
   '''
 # ---
@@ -1180,7 +1210,12 @@
     a ref that outlives this run already reaches the boundary
   
   Replay
-    git rebase --onto 7777777 8888888 child
+    # back up the child tip first, then replay onto the target
+    git update-ref refs/wheresat-backup/child 1111111111111111111111111111111111111111
+    git rebase --onto 7777777777777777777777777777777777777777 8888888888888888888888888888888888888888 child
+    # undo: git reset --hard refs/wheresat-backup/child
+  
+    Verify before running: the child tip must still be 1111111
   
   '''
 # ---
@@ -1223,7 +1258,12 @@
     a ref that outlives this run already reaches the boundary
   
   Replay
-    git rebase --onto 7777777 8888888 child
+    # back up the child tip first, then replay onto the target
+    git update-ref refs/wheresat-backup/child 1111111111111111111111111111111111111111
+    git rebase --onto 7777777777777777777777777777777777777777 8888888888888888888888888888888888888888 child
+    # undo: git reset --hard refs/wheresat-backup/child
+  
+    Verify before running: the child tip must still be 1111111
   
   '''
 # ---
@@ -1249,7 +1289,12 @@
     a ref that outlives this run already reaches the boundary
   
   Replay
-    git rebase --onto 7777777 8888888 child
+    # back up the child tip first, then replay onto the target
+    git update-ref refs/wheresat-backup/child 1111111111111111111111111111111111111111
+    git rebase --onto 7777777777777777777777777777777777777777 8888888888888888888888888888888888888888 child
+    # undo: git reset --hard refs/wheresat-backup/child
+  
+    Verify before running: the child tip must still be 1111111
   
   '''
 # ---

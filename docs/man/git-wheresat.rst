@@ -45,8 +45,9 @@ the record is read as derived evidence, so it may still support the commit it
 names once another source agrees with it.
 
 The report names the boundary, the commits the branch still carries above it,
-the commits it would drop, and a ``git rebase --onto`` command that performs
-the replay.
+the commits it would drop, and a replay plan: a ref to keep the child tip
+under, then a ``git rebase --onto`` command, in full object IDs, that performs
+the replay, and the child tip the answer was computed against.
 The command never rebases anything itself.
 
 The command exits with one of the following statuses:
@@ -211,7 +212,9 @@ Emit the envelope for a script to consume::
 
     git wheresat --json
 
-A run that established a boundary prints the partition and the replay::
+A run that established a boundary prints the partition and the replay. The
+commands are shown in full, because they are meant to be pasted, and a backup
+ref precedes them so the replay can be undone::
 
     git wheresat: boundary for issue-123-fix
       child tip   4d5e6f7a
@@ -219,7 +222,12 @@ A run that established a boundary prints the partition and the replay::
       boundary    1a2b3c4d
     ...
     Replay
-      git rebase --onto 7c8d9e0f 1a2b3c4d issue-123-fix
+      # back up the child tip first, then replay onto the target
+      git update-ref refs/wheresat-backup/issue-123-fix 4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e
+      git rebase --onto 7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d 1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b issue-123-fix
+      # undo: git reset --hard refs/wheresat-backup/issue-123-fix
+
+      Verify before running: the child tip must still be 4d5e6f7
 
 SEE ALSO
 ========

@@ -42,6 +42,7 @@ import dataclasses
 import os
 import time
 import typing as typ
+import urllib.parse
 
 import github3.session as github3_session
 import requests
@@ -368,10 +369,17 @@ class ApiWheresatGitHub:
         business. Both raise the same class, which is what leaves this method
         the one place a caller has to know about.
 
+        Every component is percent-encoded before it is joined, so a value
+        holding ``?`` or ``#`` asks for the path it spells rather than ending
+        the path and opening a query. A component of ``.`` or ``..`` is
+        refused instead of encoded, because encoding leaves a dot as it found
+        it and the path such a component names is not one this API root
+        serves.
+
         Parameters
         ----------
         *parts : str
-            Path below the API root, unescaped and unjoined.
+            Path below the API root, unencoded and unjoined.
         params : collections.abc.Mapping[str, str] | None, optional
             Query parameters, when the endpoint takes any.
 
@@ -383,6 +391,9 @@ class ApiWheresatGitHub:
 
         Raises
         ------
+        WheresatUsageError
+            If a component is ``.`` or ``..``, which names a step of the path
+            rather than a resource at it.
         WheresatGitHubError
             If the request did not produce a ``200`` with a JSON body, which
             is every way a question can go unanswered: a status GitHub chose,
@@ -390,7 +401,8 @@ class ApiWheresatGitHub:
             resolve.
 
         """
-        url = "/".join((_API_ROOT, *parts))
+        encoded = tuple(_path_component(part) for part in parts)
+        url = "/".join((_API_ROOT, *encoded))
         return _decoded(self._answered(url, params), url)
 
     def _answered(
@@ -606,8 +618,11 @@ def _slug(repository: str) -> tuple[str, str]:
     WheresatUsageError
         If the value is not an ``OWNER/REPOSITORY`` slug. Every identity
         reaching here is parsed from a command line or a record, both of which
-        validate it, so this is a refusal to build a URL from a value that
-        would put some other path in it.
+        validate it, so what is left for this to refuse is a value that is not
+        a slug at all. The two components are returned unescaped: ``.`` and
+        ``..`` among them are refused, and every other character that could
+        end a path or open a query is encoded, where the API path is joined
+        from them.
 
     """
     owner, separator, name = repository.partition("/")
@@ -615,6 +630,41 @@ def _slug(repository: str) -> tuple[str, str]:
         msg = f"{repository!r} is not an OWNER/REPOSITORY slug"
         raise WheresatUsageError(msg)
     return owner, name
+
+
+def _path_component(value: str) -> str:
+    """Return one component of an API path, percent-encoded.
+
+    A component is encoded before it is joined to the others because ``/``,
+    ``?``, and ``#`` are characters a value here may hold and any of them left
+    as it was would end the path or open a query — a different request than
+    the one asked for. ``quote`` leaves ``.`` alone, so an owner spelled
+    ``.github`` survives encoding as itself; a component that is exactly ``.``
+    or ``..`` is therefore refused first, because such a component is a step
+    of the path rather than a resource at it.
+
+    Parameters
+    ----------
+    value : str
+        One component of a path below the API root.
+
+    Returns
+    -------
+    str
+        The component, with every character that is not a letter, a digit, or
+        one of ``-._~`` replaced by its percent-escape.
+
+    Raises
+    ------
+    WheresatUsageError
+        If the component is ``.`` or ``..``, which no endpoint here names a
+        resource with and which encoding would pass through unchanged.
+
+    """
+    if value in {".", ".."}:
+        msg = f"{value!r} is a step of a path, not a component of an API path"
+        raise WheresatUsageError(msg)
+    return urllib.parse.quote(value, safe="")
 
 
 def _pull_path(identity: stack_records.PullRequestIdentity) -> tuple[str, ...]:

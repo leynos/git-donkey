@@ -32,6 +32,7 @@ from git_donkey.wheresat_records import (
     Indeterminate,
     Unresolved,
     WorktreeState,
+    backup_ref,
 )
 
 if typ.TYPE_CHECKING:
@@ -275,6 +276,44 @@ def _text_ranges(assessment: Established) -> list[str]:
     return lines
 
 
+def _replay_plan(assessment: Established, request: BoundaryRequest) -> list[str]:
+    """Render the commands that replay the child's work onto the target.
+
+    The commands are printed to be pasted, so they are not abbreviated the way
+    a detail line is: the target and the boundary are full object IDs, because
+    an abbreviation is resolved against whatever the repository holds when it is
+    read, and a replay is run later than the run that proposed it. The backup
+    ref is stated in full for the same reason — it is what the user returns to
+    if the replay is wrong — and the child tip is printed once more beside the
+    commands, so the premise the answer was computed against can be checked
+    before it is acted on rather than after.
+
+    Returns
+    -------
+    list[str]
+        The rendered section, whose first command keeps the child tip and whose
+        last line is the check to make before running anything.
+
+    """
+    backup = backup_ref(request.branch)
+    return [
+        "",
+        "Replay",
+        "  # back up the child tip first, then replay onto the target",
+        f"  git update-ref {backup} {request.child_tip}",
+        (
+            f"  git rebase --onto {request.target} "
+            f"{assessment.old_base} {request.branch}"
+        ),
+        f"  # undo: git reset --hard {backup}",
+        "",
+        (
+            "  Verify before running: the child tip must still be "
+            f"{_abbreviate(request.child_tip)}"
+        ),
+    ]
+
+
 def _text_established(
     assessment: Established,
     request: BoundaryRequest,
@@ -282,7 +321,7 @@ def _text_established(
     explain: bool,
     warnings: typ.Sequence[str] = (),
 ) -> list[str]:
-    """Render an established boundary, its evidence, and the replay command."""
+    """Render an established boundary, its evidence, and the replay plan."""
     lines = [
         f"git wheresat: boundary for {request.branch}",
         f"  child tip   {_abbreviate(request.child_tip)}",
@@ -299,14 +338,7 @@ def _text_established(
         lines.append("  a ref that outlives this run already reaches the boundary")
     else:
         lines.append(f"  retained by {assessment.durable_ref}")
-    lines += [
-        "",
-        "Replay",
-        (
-            f"  git rebase --onto {_abbreviate(request.target)} "
-            f"{_abbreviate(assessment.old_base)} {request.branch}"
-        ),
-    ]
+    lines += _replay_plan(assessment, request)
     return lines
 
 
@@ -474,13 +506,13 @@ def _empty_payload() -> _Payload:
         "target": None,
         "parent": None,
         "parentHead": None,
-        # ``landed`` and ``backupRef`` are declared here and stay null until
-        # the milestone that has something to put in them: the parent's landed
-        # commit, which no assessment carries yet, and the ref the report would
-        # have the user keep before the rebase it proposes, which it does not
-        # yet spell out. Declaring them beside the keys a run does fill keeps
-        # the key set in one place, so a consumer reads one shape from a run
-        # that established nothing and from one that never started.
+        # ``landed`` stays null until an assessment carries the parent's landed
+        # commit, which none does yet; ``backupRef`` is filled by a run that
+        # established a boundary, because a run that established none proposes
+        # no rebase and so has no ref to name. Declaring both beside the keys a
+        # run does fill keeps the key set in one place, so a consumer reads one
+        # shape from a run that established nothing and from one that never
+        # started.
         "landed": None,
         "oldBase": None,
         "durableRef": None,
@@ -536,6 +568,11 @@ def _json_payload(assessment: Assessment, request: BoundaryRequest) -> _Payload:
             f"git rebase --onto {request.target} {established.old_base} "
             f"{request.branch}"
         )
+        # The ref the text report tells the user to create first. It is the
+        # same string the plan prints, read from one helper, so a consumer that
+        # performs the backup itself cannot be sent to a different ref than a
+        # reader of the report was.
+        payload["backupRef"] = backup_ref(request.branch)
     return payload
 
 

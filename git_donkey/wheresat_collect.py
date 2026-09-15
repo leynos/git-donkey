@@ -8,9 +8,12 @@ unanswered" are different answers and only one of them is a refusal (INV-5).
 
 What one rung cannot answer another can. A branch with no record still has a
 merge base; a parent branch that was deleted still has the tombstone ``git
-plonk`` left behind, and that tombstone is where ``PARENT_HEAD`` comes from. It
-proposes no boundary of its own: it feeds the rungs that need a parent head,
-which is exactly the role the recovery procedure gives it.
+plonk`` left behind, and a parent that was pushed and never plonked still has a
+remote-tracking ref. Either is where ``PARENT_HEAD`` comes from — the tombstone
+first, then the ref, because the tombstone is the artefact that survives the
+branch being deleted. It proposes no boundary of its own: it feeds the rungs
+that need a parent head, which is exactly the role the recovery procedure gives
+it.
 
 The candidate set is bounded by :data:`MAX_CANDIDATES`, because a set that hit
 the bound is not known to be complete: exceeding it is reported as a fault and
@@ -120,8 +123,12 @@ class CollectionContext:
         cannot read a different record than the one the pipeline provisioned
         the parent head from.
     parent_head : ParentHead | None, optional
-        The parent's tip: the head the run fetched, or the one the tombstone
-        names when it fetched none.
+        The parent's tip as the run already has it: the head the run fetched,
+        or, when it fetched none, the one the tombstone names or the one the
+        parent branch's remote-tracking ref resolves to. A parent that was
+        never plonked but was pushed still has a remote-tracking ref, and
+        reading it is what gives the parent-history gate a head to ask its
+        ancestry question about rather than leaving it inapplicable.
 
     Notes
     -----
@@ -488,22 +495,32 @@ def _parent_head(
     """Return the parent's tip, sought in the order the procedure fixes.
 
     The order is the fetched pull request head, then the tombstone ``git plonk``
-    wrote for the parent branch. A head the run already has is the procedure's
-    first answer and is taken as given: it was fetched from the pull request
-    the run identified, so seeking a tombstone below it would be asking a
-    weaker question after a stronger one was answered. A run that reads no
-    forge reaches the tombstone instead, which is the one that survives the
-    parent branch being deleted — the degradation this command exists for. A
-    tombstone that cannot be read is a fault and not an absence: "no tombstone"
-    and "the tombstone would not open" are different answers.
+    wrote for the parent branch, then that branch's remote-tracking ref. A head
+    the run already has is the procedure's first answer and is taken as given:
+    it was fetched from the pull request the run identified, so seeking a
+    tombstone below it would be asking a weaker question after a stronger one
+    was answered. A run that reads no forge reaches the tombstone instead, which
+    is the one that survives the parent branch being deleted — the degradation
+    this command exists for. The remote-tracking ref is the rung below that: a
+    parent that was never plonked, and a child whose record names no parent pull
+    request, usually still has one, because the parent branch was pushed
+    somewhere before the child was stacked on it. Reading it is what makes the
+    parent-history gate applicable — with no ``PARENT_HEAD`` at all that gate is
+    not applicable, and the case this command exists for, a parent rewritten
+    after the child was stacked, goes unnoticed.
+
+    A rung that finds nothing falls through to the next one. A rung that hits a
+    fault stops the ladder and returns the reason, because "no tombstone" and
+    "the tombstone would not open" are different answers.
 
     Returns
     -------
     tuple[ParentHead | None, str | None]
         The parent's head and the ref it was read from, or no head and the
         reason it could not be recovered. No head and no reason is the honest
-        answer for a run whose child names no parent branch and whose parent
-        pull request named no head.
+        answer for a run whose child names no parent branch, whose parent pull
+        request named no head, and whose parent branch left neither a tombstone
+        nor a remote-tracking ref.
 
     """
     if context.parent_head is not None:
@@ -511,6 +528,33 @@ def _parent_head(
     branch = _parent_branch(context.record)
     if branch is None:
         return None, None
+    head, reason = _tombstoned_head(context, branch)
+    if head is not None or reason is not None:
+        return head, reason
+    return _remote_tracked_head(context, branch)
+
+
+def _tombstoned_head(
+    context: CollectionContext, branch: str
+) -> tuple[ParentHead | None, str | None]:
+    """Return the parent's tip as the tombstone ``git plonk`` left behind names it.
+
+    Parameters
+    ----------
+    context : CollectionContext
+        Everything the rung may read.
+    branch : str
+        Parent branch the child's record names.
+
+    Returns
+    -------
+    tuple[ParentHead | None, str | None]
+        The head the tombstone names and the ref it was read from, or no head
+        and the reason the tombstone could not be read. No head and no reason
+        says the parent branch has no tombstone, which is an absence and not a
+        fault: the ladder has a rung below this one to try.
+
+    """
     try:
         commit = context.records.tombstone(branch)
     except (stack_store.StackRecordError, WheresatGraphError, ValueError) as exc:
@@ -518,6 +562,37 @@ def _parent_head(
     if commit is None:
         return None, None
     return ParentHead(commit, stack_records.tombstone_ref_path(branch)), None
+
+
+def _remote_tracked_head(
+    context: CollectionContext, branch: str
+) -> tuple[ParentHead | None, str | None]:
+    """Return the parent's tip as the branch's remote-tracking ref names it.
+
+    Parameters
+    ----------
+    context : CollectionContext
+        Everything the rung may read.
+    branch : str
+        Parent branch the child's record names.
+
+    Returns
+    -------
+    tuple[ParentHead | None, str | None]
+        The head the remote-tracking ref resolves to and the ref it was read
+        from, or no head and the reason the ref could not be read. No head and
+        no reason says the branch has no remote-tracking ref — a parent branch
+        that was never pushed, or pushed from a checkout that never fetched it
+        back.
+
+    """
+    try:
+        ref = context.graph.remote_tracking_ref(branch)
+        if ref is None:
+            return None, None
+        return ParentHead(context.graph.resolve(ref), ref), None
+    except WheresatGraphError as exc:
+        return None, f"the remote-tracking ref for {branch} could not be read: {exc}"
 
 
 def _parent_branch(record: stack_records.RecordResult) -> str | None:

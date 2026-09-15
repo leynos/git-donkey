@@ -151,6 +151,45 @@ def range_key(base: str, tip: str) -> str:
     return f"{base}..{tip}"
 
 
+BACKUP_REF_PREFIX: typ.Final = "refs/wheresat-backup/"
+"""Namespace the replay plan proposes keeping the child tip in.
+
+Deliberately outside ``refs/wheresat/``, which is the evidence namespace a run
+writes fetched objects into: a plan that kept the child tip inside it would be
+naming a ref the next run could delete as its own, and the point of the backup
+is that nothing but the user's own recovery touches it.
+"""
+
+
+def backup_ref(branch: str) -> str:
+    """Return the ref the replay plan proposes for ``branch``'s child tip.
+
+    Nothing here creates it. A run writes no ref outside the evidence namespace,
+    so the ref belongs to the user, who is told to create it before the rebase
+    the plan prints — which is what makes that rebase reversible.
+
+    Parameters
+    ----------
+    branch : str
+        Child branch the run is about.
+
+    Returns
+    -------
+    str
+        The fully qualified ref name, which the text report prints and the
+        envelope carries. A branch name is a valid ref name by construction,
+        because Git refuses to create one that is not, so concatenating it
+        cannot put the ref outside the namespace above.
+
+    Examples
+    --------
+    >>> backup_ref("issue-123-fix")
+    'refs/wheresat-backup/issue-123-fix'
+
+    """
+    return f"{BACKUP_REF_PREFIX}{branch}"
+
+
 @dataclasses.dataclass(frozen=True, slots=True)
 class AttestedCandidate:
     """A boundary recorded by a deliberate act naming the exact commit."""

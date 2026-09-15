@@ -5,12 +5,15 @@ from this module, so the default path holds nothing that could change the
 repository (INV-1). A run that does construct one reaches only three ref
 namespaces:
 
-- ``refs/wheresat/op/<op-id>/`` holds the evidence this run fetched for
-  itself. :meth:`WheresatRefWriter.release` deletes that namespace and nothing
-  else, and the run calls it from a ``finally`` block. The namespace is never
-  swept wholesale: refs live in the common ref store, so every worktree of a
-  checkout shares ``refs/wheresat/``, and a blanket delete would take a
-  sibling worktree's in-flight evidence with it.
+- ``refs/wheresat/op/<op-id>/`` is where a transported boundary's evidence
+  would be fetched to, one namespace per run.
+  :meth:`WheresatRefWriter.release` deletes that namespace and nothing else.
+  No console run creates one today: the one fetch this command performs writes
+  the durable cache ref below, so the namespace is the surface a run that
+  transported a boundary into it would use, and the durability suite is what
+  exercises it. The namespace is never swept wholesale: refs live in the common
+  ref store, so every worktree of a checkout shares ``refs/wheresat/``, and a
+  blanket delete would take a sibling worktree's in-flight evidence with it.
 - ``refs/wheresat/parent-head/<owner>/<repository>/<number>`` caches a fetched
   pull request head, so a second run on the same pull request performs no
   fetch at all.
@@ -54,7 +57,11 @@ _REF_NAME_FORMAT: typ.Final = "--format=%(refname)"
 """Format asking ``git for-each-ref`` for a ref's full name and nothing else."""
 
 _OPERATION_NAMESPACE: typ.Final = "refs/wheresat/op"
-"""Refs a run creates for its own evidence and deletes when it finishes."""
+"""Refs a transported boundary would be fetched into, one namespace per run.
+
+No console run creates one: the fetch this command performs writes the durable
+cache ref, so this is the surface a run that transported a boundary would use.
+"""
 
 _CACHE_NAMESPACE: typ.Final = "refs/wheresat/parent-head"
 """Durable refs caching a fetched pull request head, one per pull request."""
@@ -95,11 +102,17 @@ EvidenceRef = typ.NewType("EvidenceRef", str)
 def per_run_ref(op_id: str, name: str) -> EvidenceRef:
     """Return ``refs/wheresat/op/<op-id>/<name>``.
 
+    The destination a transported boundary would be fetched into. No console
+    run reaches this: the fetch this command performs caches the pull request
+    head under :func:`parent_head_ref`, so the per-run namespace stays the
+    surface a run that transported a boundary would use, and the durability
+    suite is what exercises it.
+
     Parameters
     ----------
     op_id : str
-        Name of this run's namespace, from ``--op-id`` or a generated
-        identifier.
+        Name of the namespace a transported boundary would be fetched into,
+        from ``--op-id`` or a generated identifier.
     name : str
         Name of the ref within that namespace, such as ``parent-head``.
 
@@ -256,7 +269,7 @@ class WheresatRefWriter(typ.Protocol):
         """Keep a durable ref for an otherwise unreachable boundary (INV-8)."""
 
     def release(self, op_id: str) -> None:
-        """Delete this run's per-run namespace, and only that namespace."""
+        """Delete a run's per-run namespace, and only that namespace."""
 
     def write_record(
         self, record: stack_records.StackRecord, expected_old: str | None
@@ -380,7 +393,12 @@ class GitWheresatRefWriter:
         return ref
 
     def release(self, op_id: str) -> None:
-        """Delete this run's per-run namespace, and only that namespace.
+        """Delete a run's per-run namespace, and only that namespace.
+
+        A console run never holds one to release — the fetch it performs writes
+        the durable cache ref — so this is the cleanup a run that transported a
+        boundary into its own namespace performs, and the durability suite is
+        where it is exercised.
 
         The refs are enumerated and deleted one at a time rather than by
         prefix, because Git refuses to delete a name that only has refs
@@ -392,8 +410,7 @@ class GitWheresatRefWriter:
         Parameters
         ----------
         op_id : str
-            Name of this run's namespace, the one its refs were created
-            under.
+            Name of the namespace, the one its refs were created under.
 
         Raises
         ------

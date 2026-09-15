@@ -190,13 +190,16 @@ def test_the_boundary_comes_back_from_the_record_and_the_tombstone(
     comes from now that the parent branch is gone — so the answer is attested
     rather than derived, and the report has to say which artefact each line of
     evidence came from. The replay it prints is the child's work on the trunk, at
-    the boundary the sweep did not destroy.
+    the boundary the sweep did not destroy: the commands are full object IDs with
+    a backup ref ahead of them, which is the form a user pastes into a shell.
     """
     run = _run(plonked, capsys)
     lines = _tokens(run.stdout)
     width = wheresat_records.COMMIT_ABBREVIATION
     boundary = plonked.boundary[:width]
-    target = plonked.repo.heads["main"].commit.hexsha[:width]
+    full_target = plonked.repo.heads["main"].commit.hexsha
+    target = full_target[:width]
+    backup = wheresat_records.backup_ref(CHILD)
 
     assert run.exit_code == 0, run.stderr
     assert not run.stderr, "a successful run writes nothing to the error stream"
@@ -204,6 +207,9 @@ def test_the_boundary_comes_back_from_the_record_and_the_tombstone(
         "the child's one commit is reported as one commit"
     )
     assert ("boundary", boundary) in lines, "the answer names the boundary in full"
+    assert ("target", target) in lines, (
+        "and names the target's commit, abbreviated as a detail line is"
+    )
     assert (
         "attested",
         "stack-record-birth",
@@ -233,14 +239,23 @@ def test_the_boundary_comes_back_from_the_record_and_the_tombstone(
         "the",
         "child",
     ) in lines, f"expected the tombstoned parent head to be used, got:\n{run.stdout}"
+    assert ("git", "update-ref", backup, plonked.tip) in lines, (
+        f"expected the plan to keep the child tip first, got:\n{run.stdout}"
+    )
     assert (
         "git",
         "rebase",
         "--onto",
-        target,
-        boundary,
+        full_target,
+        plonked.boundary,
         CHILD,
-    ) in lines, f"expected the child's replay, got:\n{run.stdout}"
+    ) in lines, f"expected the child's replay in full, got:\n{run.stdout}"
+    assert ("#", "undo:", "git", "reset", "--hard", backup) in lines, (
+        f"expected the replay to be undoable from that ref, got:\n{run.stdout}"
+    )
+    assert f"the child tip must still be {plonked.tip[:width]}" in run.stdout, (
+        f"expected the premise to be checkable, got:\n{run.stdout}"
+    )
     assert (plonked.tip[:width],) in lines, (
         "and the child's tip is listed on the included side"
     )

@@ -64,7 +64,11 @@ _REF_NAME_FORMAT: typ.Final = "--format=%(refname)"
 """Format asking ``git for-each-ref`` for a ref's full name and nothing else."""
 
 _PER_RUN_NAMESPACE: typ.Final = "refs/wheresat/op/"
-"""Refs a run creates for its own evidence and deletes in its ``finally`` block."""
+"""Refs a transported boundary would be fetched into, one namespace per run.
+
+No console run creates one: the fetch this command performs writes the durable
+cache ref, so nothing a run does puts a commit under this namespace.
+"""
 
 _SHALLOW_REFUSAL: typ.Final = (
     "the repository's history is shallow, so Git's traversal stops at the "
@@ -93,6 +97,9 @@ class WheresatGraph(typ.Protocol):
 
     def symbolic_ref(self, name: str) -> str | None:
         """Return what a symbolic ref points at, or None when it is not one."""
+
+    def remote_tracking_ref(self, branch: str) -> str | None:
+        """Return the remote-tracking ref a branch names, or None when none does."""
 
     def history(self, rev: str, *, limit: int | None = None) -> tuple[str, ...]:
         """Return commits reachable from rev, oldest first, newest ``limit`` of them."""
@@ -393,6 +400,60 @@ class GitWheresatGraph:
             raise WheresatGraphError(msg)
         return str(output).strip() or None
 
+    def remote_tracking_ref(self, branch: str) -> str | None:
+        """Return the remote-tracking ref a branch names, or ``None`` when none does.
+
+        A branch reaches the remote's copy of itself through a ref the last
+        fetch left behind, and that ref's name is not the branch's: the branch
+        is ``refs/heads/<branch>`` while the ref that tracks its remote is
+        ``refs/remotes/<remote>/<branch>``, and a caller that guessed the
+        remote could name the wrong one. So every name the branch could be
+        known by is tried and the first that resolves to a commit is the
+        answer: the name itself when it is already a full ref path, because a
+        record that kept one names its own ref; ``refs/remotes/<branch>``, the
+        short form a record may have written; and
+        ``refs/remotes/<remote>/<branch>`` for each remote the repository
+        configures, in Git's own configuration order.
+
+        Parameters
+        ----------
+        branch : str
+            Branch name, or the full ref path a record wrote in its place.
+
+        Returns
+        -------
+        str | None
+            The first candidate that resolves to a commit, as the ref *name*
+            and never the object ID it names: a caller that wants the commit
+            resolves the name itself, and the name is what says where the head
+            was read from. ``None`` says no candidate names a commit, which is
+            an answer and not a fault — a branch nobody ever fetched has no
+            remote-tracking ref, and that is a fact about the repository rather
+            than a question Git could not put.
+
+        Raises
+        ------
+        WheresatGraphError
+            If Git cannot put the question about one of the candidates.
+
+        """
+        for candidate in self._remote_tracking_candidates(branch):
+            status, _, stderr = self.repo.git.rev_parse(
+                "--verify",
+                "--quiet",
+                "--end-of-options",
+                f"{candidate}^{{commit}}",
+                with_extended_output=True,
+                with_exceptions=False,
+            )
+            if status == _ANSWERED_YES:
+                return candidate
+            if status != _ANSWERED_NO:
+                reported = _reported(stderr, status)
+                msg = f"cannot tell whether {candidate!r} is a ref: {reported}"
+                raise WheresatGraphError(msg)
+        return None
+
     def history(self, rev: str, *, limit: int | None = None) -> tuple[str, ...]:
         """Return the commits reachable from ``rev``, oldest first.
 
@@ -573,7 +634,8 @@ class GitWheresatGraph:
     def is_reachable_from_durable_ref(self, commit: str) -> bool:
         """Return whether any ref outside the evidence namespace reaches it.
 
-        A commit named only by a run's per-run evidence refs is one a
+        A commit named only by the per-run evidence refs — the namespace a
+        transported boundary would be fetched into — is one a
         ``git gc --prune=now`` would take with them, so a boundary read from
         one is retained under its own ref before it is reported (INV-8). Every
         other ref counts as durable: branches, tags, remote-tracking refs, the
@@ -642,6 +704,30 @@ class GitWheresatGraph:
 
         """
         return worktree_state(self.repo, branch)
+
+    def _remote_tracking_candidates(self, branch: str) -> tuple[str, ...]:
+        """Return the ref names ``branch`` could be known by, in the order tried.
+
+        Parameters
+        ----------
+        branch : str
+            Branch name, or the full ref path a record wrote in its place.
+
+        Returns
+        -------
+        tuple[str, ...]
+            One candidate per spelling, most specific first: ``branch`` itself
+            when it is already a full ref path, the short
+            ``refs/remotes/<branch>`` form, then one candidate per configured
+            remote in the order the repository configures them.
+
+        """
+        candidates = [branch] if branch.startswith("refs/") else []
+        candidates.append(f"refs/remotes/{branch}")
+        candidates.extend(
+            f"refs/remotes/{remote.name}/{branch}" for remote in self.repo.remotes
+        )
+        return tuple(candidates)
 
     def _is_shallow(self) -> bool:
         """Return whether a graft cuts Git's traversal short."""

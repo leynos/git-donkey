@@ -355,6 +355,81 @@ def test_a_search_that_runs_out_of_time_says_so() -> None:
     assert page.truncated is True, "the search should say it stopped short"
 
 
+def test_a_slug_component_of_dots_is_refused_before_the_transport() -> None:
+    """A ``..`` component is refused, and the transport is never reached.
+
+    ``is_repository_slug`` asks only that a slug be two non-empty components,
+    so ``../git-donkey`` is a slug by that rule; it is the encoder that knows
+    ``..`` names a step of the path rather than a resource at it. The refusal
+    must come before the request, or the value would already have been put
+    into a URL the transport was handed.
+    """
+    repository = "../git-donkey"
+    session = _StubSession(_StubResponse(200, body={}))
+
+    with pytest.raises(WheresatUsageError) as raised:
+        _client(session).pull_request(
+            stack_records.PullRequestIdentity(repository=repository, number=80)
+        )
+
+    assert "'..'" in str(raised.value), (
+        f"{repository!r}: the refusal should name the offending component; "
+        f"it says {raised.value!r}"
+    )
+    assert not session.calls, (
+        f"{repository!r}: a traversing component should never reach the "
+        f"transport; the adapter asked for {session.calls!r}"
+    )
+
+
+def test_an_encoded_component_cannot_open_a_query() -> None:
+    """A component holding ``?`` is encoded, not read as a separator.
+
+    The slug's owner is a whole path component, so a ``?`` left unencoded
+    would end the path there and turn everything after it into a query — a
+    request for a different resource than the one asked for. The URL the
+    transport receives is the encoded one, and it carries no query.
+    """
+    repository = "a?b/c"
+    session = _StubSession(_StubResponse(200, body={}))
+
+    _client(session).pull_request(
+        stack_records.PullRequestIdentity(repository=repository, number=80)
+    )
+
+    urls = list(session.calls)
+    assert urls == ["https://api.github.com/repos/a%3Fb/c/pulls/80"], (
+        f"{repository!r}: the request should carry the encoded component; "
+        f"the adapter asked for {urls!r}"
+    )
+    assert "?" not in urls[0], (
+        f"{repository!r}: the '?' should be encoded rather than open a query; "
+        f"the adapter asked for {urls[0]!r}"
+    )
+
+
+def test_a_legal_slug_is_asked_for_as_written() -> None:
+    """A slug whose owner holds a dot is unchanged by the encoding.
+
+    ``.github`` is a legal owner name, so the encoder must leave a dot as it
+    found it and refuse only a component that is nothing but dots. This is
+    the case that pins the hardening against having altered valid input.
+    """
+    repository = ".github/git-donkey"
+    session = _StubSession(_StubResponse(200, body={}))
+
+    _client(session).pull_request(
+        stack_records.PullRequestIdentity(repository=repository, number=80)
+    )
+
+    assert session.calls == [
+        "https://api.github.com/repos/.github/git-donkey/pulls/80"
+    ], (
+        f"{repository!r}: a legal slug should be asked for as written; "
+        f"the adapter asked for {session.calls!r}"
+    )
+
+
 def _without_credential(monkeypatch: pytest.MonkeyPatch, path: Path) -> None:
     """Leave the run with no credential to find and a terminal it could use."""
     for variable in ("GITHUB_TOKEN", "GH_TOKEN"):

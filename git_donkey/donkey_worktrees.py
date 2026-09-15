@@ -262,6 +262,52 @@ def _ensure_base_branch_available(
         )
 
 
+def _write_birth_record(
+    *,
+    branch: str,
+    stack: _StackContext,
+    base: str,
+) -> None:
+    """Write ``branch``'s stack record, reporting a refusal as a failed record.
+
+    The branch exists by the time this runs, so a store that refuses the record
+    leaves a branch whose birth could not be recorded, not a failed birth. A
+    refusal reaches here as the store's own error, as a ``ValueError`` from the
+    validation its ref paths run, or as a ``GitCommandError`` from a write the
+    store does not wrap, and all three mean the same thing: the write did not
+    happen. None of them is a failed worktree, which the branch's existence
+    proves it was not.
+
+    Parameters
+    ----------
+    branch : str
+        Branch that was just created.
+    stack : _StackContext
+        Parent the branch is stacked on and the store the record is written to.
+    base : str
+        Commit the branch was created at, frozen before the branch existed.
+
+    Raises
+    ------
+    SystemExit
+        When the record could not be written, carrying the store's message.
+
+    """
+    try:
+        _birth_record(
+            branch=branch,
+            parent=stack.parent,
+            base=base,
+            writer=stack.writer,
+        )
+    except (stack_store.StackRecordError, GitCommandError, ValueError) as exc:
+        helpers._die(
+            _GIT_DONKEY_PREFIX,
+            f"the branch was created but its stack record was not written: {exc}",
+            1,
+        )
+
+
 def _add_worktree_for_new_branch(
     *,
     context: _WorktreeContext,
@@ -288,23 +334,17 @@ def _add_worktree_for_new_branch(
             str(request.target_path),
             start_point,
         )
-        # The record is written after the branch exists, because the anchor is
-        # a ref and the record's whole point is to keep the boundary reachable
-        # for as long as the branch it belongs to.
-        if request.stack is not None:
-            _birth_record(
-                branch=request.branch_name,
-                parent=request.stack.parent,
-                base=start_point,
-                writer=request.stack.writer,
-            )
     except (GitCommandError, ValueError) as exc:
         helpers._die(_GIT_DONKEY_PREFIX, f"worktree add failed: {exc}", 1)
-    except stack_store.StackRecordError as exc:
-        helpers._die(
-            _GIT_DONKEY_PREFIX,
-            f"the branch was created but its stack record was not written: {exc}",
-            1,
+
+    # The record is written after the branch exists, because the anchor is a
+    # ref and the record's whole point is to keep the boundary reachable for as
+    # long as the branch it belongs to.
+    if request.stack is not None:
+        _write_birth_record(
+            branch=request.branch_name,
+            stack=request.stack,
+            base=start_point,
         )
 
 

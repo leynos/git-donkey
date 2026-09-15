@@ -8,21 +8,21 @@ whose result was unresolved. Every one of them builds its own checkout, because
 a record write is not a change a shared fixture could survive.
 
 Five further tests stand beside those. One is the invariant over the space of
-pairs rather than over five points in it: it draws whether the anchor ref is
-still there and what the run is told it holds, and holds the write to proceeding
-exactly when the two agree, so the five cases are examples of it rather than the
-whole of the claim. The other four keep the five from passing vacuously. One
-proves a boundary no record attests is never written back, which is the
-difference between refreshing a claim and inventing one. One proves that a
-record the branch has moved past is read as evidence rather than restated, which
-is what makes a birth record go stale once the parent has been integrated and
-the branch restacked. One proves a refreshed record is still read as attested
-evidence, so the write cannot poison the record it just made. One proves
-``--record`` is the only path that builds the command's writer, which is what
-keeps the read-only promise (INV-1) a property of the code rather than of the
-flags a caller happened to pass. The observations the run records are read for
-the same reason: they say which path a run took, where the exit status alone
-would not.
+pairs rather than over five points in it: it runs every pair of whether the
+anchor ref is still there and what the run is told it holds, and holds the write
+to proceeding exactly when the two agree, so the five cases are examples of it
+rather than the whole of the claim. The other four keep the five from passing
+vacuously. One proves a boundary no record attests is never written back, which
+is the difference between refreshing a claim and inventing one. One proves that
+a record the branch has moved past is read as evidence rather than restated,
+which is what makes a birth record go stale once the parent has been integrated
+and the branch restacked. One proves a refreshed record is still read as
+attested evidence, so the write cannot poison the record it just made. One
+proves ``--record`` is the only path that builds the command's writer, which is
+what keeps the read-only promise (INV-1) a property of the code rather than of
+the flags a caller happened to pass. The observations the run records are read
+for the same reason: they say which path a run took, where the exit status
+alone would not.
 
 The record is read back through Git — the anchor ref with ``rev-parse``, the four
 values with ``config --list`` — rather than through the value the run reported,
@@ -33,13 +33,12 @@ from __future__ import annotations
 
 import dataclasses
 import functools
+import itertools
 import tempfile
 import typing as typ
 from pathlib import Path
 
 import pytest
-from hypothesis import HealthCheck, given, settings
-from hypothesis import strategies as st
 
 from git_donkey import (
     observability,
@@ -145,11 +144,18 @@ def _parent_value() -> str:
     )
 
 
-_ANCHOR_IS_PRESENT = st.booleans()
-"""Whether the record's anchor ref is still there when the run is made."""
+_EXPECTATIONS: typ.Final = ("none", "boundary", "tip")
+"""The commits a run can be told the record's anchor ref holds: none, or one."""
 
-_EXPECTATION = st.sampled_from(("none", "boundary", "tip"))
-"""Which commit, if any, the run is told the record's anchor ref holds."""
+_AGREEMENT_PAIRS: typ.Final = tuple(itertools.product((False, True), _EXPECTATIONS))
+"""Every pair of anchor state and expectation the invariant ranges over.
+
+The space is finite — whether the anchor ref is still there, crossed with what
+the run is told it holds — so it is spelled out and run once per pair rather
+than sampled: six cases, each of which builds a real repository and runs a real
+command line, which is the same reason INV-1's matrix is parameterized rather
+than generated.
+"""
 
 
 def _names(scenario: WheresatScenario, expectation: str) -> str | None:
@@ -161,8 +167,8 @@ def _names(scenario: WheresatScenario, expectation: str) -> str | None:
         The checkout the expectation is named against, since both commits it
         can name are the scenario's.
     expectation : str
-        One of the names ``_EXPECTATION`` draws: no expectation, the boundary
-        the record attests, or the child tip above it.
+        One of ``_EXPECTATIONS``: no expectation, the boundary the record
+        attests, or the child tip above it.
 
     Returns
     -------
@@ -496,15 +502,7 @@ def test_a_boundary_no_record_attests_is_not_written_back(
     assert not before.differences(reading(scenario)), "and nothing was written"
 
 
-@given(present=_ANCHOR_IS_PRESENT, expectation=_EXPECTATION)
-@settings(
-    # ``tmp_path`` is the parent each example makes its own ``mkdtemp``
-    # checkout under, not state the example reads, and ``capsys`` is drained by
-    # the run helper before and after every run, so neither carries anything
-    # from the example before. The health check is about fixtures reused as
-    # they stand, which these are not.
-    suppress_health_check=[HealthCheck.function_scoped_fixture],
-)
+@pytest.mark.parametrize(("present", "expectation"), _AGREEMENT_PAIRS)
 def test_only_a_pair_that_agrees_replaces_the_record(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
@@ -523,9 +521,10 @@ def test_only_a_pair_that_agrees_replaces_the_record(
     A disagreeing pair that wrote anything is the failure this invariant exists
     to prevent, and it is the one a five-case matrix can only sample.
 
-    The space is six pairs, and small enough that a run covers it rather than
-    sampling it: the reporting above the assertion says how many of the six were
-    drawn, which is what keeps this test honest about the ground it covered.
+    The space is six pairs, and the matrix is exactly those six: the test is
+    parametrized over every pair rather than run once over a generated sample,
+    so a pair that stopped being covered would be a test that disappeared rather
+    than a draw that was never made.
     """
     scenario = stacked_child(Path(tempfile.mkdtemp(dir=tmp_path, prefix="case-")))
     if not present:

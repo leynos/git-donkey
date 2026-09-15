@@ -58,7 +58,7 @@ from hypothesis.stateful import (
     run_state_machine_as_test,
 )
 
-from git_donkey import stack_records, stack_store
+from git_donkey import donkey_worktrees, helpers, stack_records, stack_store
 from tests import git_repo_helpers
 
 pytestmark = pytest.mark.timeout(120)
@@ -557,3 +557,84 @@ def test_the_exclusivity_check_rejects_a_record_beside_a_tombstone(
 
     with pytest.raises(AssertionError, match="live record and a tombstone"):
         _assert_exclusive(_Snapshot.read(repo), "child")
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class _RefusingWriter:
+    """A record writer whose every write is refused with the configured error.
+
+    Parameters
+    ----------
+    failure : Exception
+        Error raised when a record write is attempted, standing for the two
+        ways the store refuses one: its own error, and the ``ValueError`` its
+        ref-path validation raises.
+
+    """
+
+    failure: Exception
+
+    def create(self, record: stack_records.StackRecord) -> None:
+        """Refuse to write ``record``, raising the configured failure."""
+        raise self.failure
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [
+        stack_store.StackRecordError("the store refused the record"),
+        ValueError("the branch name is not a ref path component"),
+    ],
+    ids=["store-error", "value-error"],
+)
+def test_a_refused_record_write_is_reported_as_a_failed_record(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    failure: Exception,
+) -> None:
+    """A record refused after the branch exists is not reported as a bad birth.
+
+    The write is refused twice: once with the store's own error and once with
+    the ``ValueError`` its ref-path validation raises. Both leave the branch
+    created, so both must be reported as a birth whose record could not be
+    written rather than as a worktree that could not be added.
+    """
+    repo = git_repo_helpers.seed_repo(tmp_path / "repo", branch=_TRUNK)
+    target = tmp_path / "worktrees" / "child"
+    target.parent.mkdir(parents=True)
+    context = donkey_worktrees._WorktreeContext(
+        repo_home=repo,
+        remote="origin",
+        branch_to_worktree={},
+    )
+    request = donkey_worktrees._WorktreeRequest(
+        branch_name="child",
+        base_branch=_TRUNK,
+        target_path=target,
+        stack=donkey_worktrees._StackContext(
+            parent=_TRUNK,
+            writer=typ.cast(
+                "stack_store.GitStackRecordWriter",
+                _RefusingWriter(failure),
+            ),
+        ),
+    )
+
+    with pytest.raises(SystemExit) as excinfo:
+        donkey_worktrees._add_worktree_for_new_branch(
+            context=context,
+            request=request,
+        )
+
+    stderr = capsys.readouterr().err
+    assert excinfo.value.code == 1, "a record that cannot be written is an error"
+    assert "the branch was created but its stack record was not written" in stderr, (
+        "the failure names the record write rather than the worktree creation"
+    )
+    assert str(failure) in stderr, "the store's own message is carried through"
+    assert "worktree add failed" not in stderr, (
+        "the record write is not reported as a failed worktree"
+    )
+    assert helpers._local_branch_exists(repo, "child"), (
+        "the message is true: the branch really was created"
+    )

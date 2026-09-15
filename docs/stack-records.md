@@ -129,9 +129,13 @@ what it is, and never as a name to be looked up in one particular namespace.
 A branch with no record of its own is still entombed. That is the common case,
 not an edge case: a parent created from the trunk is not itself stacked, so it
 has no record, yet its tip is exactly what a surviving child needs. Placing the
-tombstone write before the branch deletion is required rather than optional,
-because `git branch -D` always succeeds when the branch exists and there is no
-refusal to fall back on.
+tombstone write before the branch deletion is required rather than optional.
+`git branch -D` bypasses the merged-status check, so it is the deletion that
+loses the tip when no tombstone precedes it, but a refusal is still possible:
+Git refuses a branch that another worktree holds checked out, and a
+reference-transaction hook can refuse any deletion at all. A tombstone written
+first is what makes the tip recoverable either way, and a refused deletion is
+reported rather than treated as a fatal error.
 
 ## Reconciliation
 

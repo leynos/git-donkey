@@ -284,6 +284,42 @@ def test_sweep_keeps_a_tombstone_that_already_exists(tmp_path: Path) -> None:
     assert config_section(repo, CHILD) == {}, "the live record is cleared"
 
 
+def test_a_tombstone_beside_a_live_branch_survives_a_sweep(tmp_path: Path) -> None:
+    """The crash window inside ``entomb`` is left alone rather than tidied up.
+
+    ``entomb`` writes the tombstone first and clears the record second, so an
+    interruption leaves both, with the branch itself still there. Clearing that
+    in the sweep would look symmetrical and would be wrong: the sweep resolves
+    only records whose branch is gone, because a live branch's record is the
+    only attestation of that branch's boundary, and clearing it would destroy
+    the attestation while leaving the branch in place. The state is benign, and
+    resolves itself when the branch is next selected for deletion, so a run
+    reports it as neither an orphan nor anything to sweep.
+    """
+    repo = make_repo(tmp_path)
+    base = repo.head.commit.hexsha
+    repo.git.branch(CHILD, base)
+    store = make_writer(repo)
+    store.create(make_record(CHILD, base))
+    tip = commit_on(repo, CHILD)
+    repo.git.update_ref("--create-reflog", stack_records.tombstone_ref_path(CHILD), tip)
+
+    assert not store.orphans(), (
+        "a branch that still exists is not an orphan, whatever else is written"
+    )
+    assert not store.sweep(store.orphans()), "so the sweep has nothing to convert"
+
+    assert store.tombstone(CHILD) == tip, "the tombstone the crash left is kept"
+    assert isinstance(store.read(CHILD), stack_records.StackRecord), (
+        "the live record still attests the branch's boundary"
+    )
+    assert anchor(repo, CHILD) == base, "and its anchor still reaches that boundary"
+    assert namespace_violations(repo) == set(), (
+        "and the branch it belongs to is still there, so INV-9 never broke"
+    )
+    assert config_section(repo, CHILD) != {}, "nor was its record cleared"
+
+
 def test_sweep_clears_an_unreadable_record_without_inventing_a_tombstone(
     tmp_path: Path,
 ) -> None:

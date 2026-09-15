@@ -23,6 +23,7 @@ import pytest
 
 from git_donkey import wheresat_report as report
 from git_donkey.wheresat_records import (
+    COMMIT_ABBREVIATION,
     EXIT_CODES,
     EXIT_USAGE,
     Assessment,
@@ -35,6 +36,7 @@ from git_donkey.wheresat_records import (
     Indeterminate,
     Unresolved,
     WorktreeState,
+    backup_ref,
 )
 from tests.unit.wheresat_helpers import (
     FORK_POINT_SOURCE,
@@ -368,9 +370,43 @@ def test_the_established_envelope_names_the_partition_and_the_replay() -> None:
     assert payload["rebaseCommand"] == (
         f"git rebase --onto {request.target} {assessment.old_base} {request.branch}"
     ), "the envelope names the same replay the text report prints"
+    assert payload["backupRef"] == backup_ref(request.branch), (
+        "and the ref the report tells the user to keep the child tip under"
+    )
     assert [entry["commit"] for entry in payload["support"]] == [
         candidate.commit for candidate in assessment.support
     ], "the support is reported in the order the assessment holds it"
+
+
+def test_the_replay_plan_is_pasteable_and_reversible() -> None:
+    """The commands are full object IDs, and a backup ref precedes them.
+
+    A detail line may be abbreviated, because a reader resolves it against the
+    repository in front of them; these commands are run later than the run that
+    proposed them, so an abbreviation would be resolved against a history that
+    may have moved. The ref is what the user returns to if the replay is wrong,
+    and the child tip is stated beside the commands so the premise the answer
+    was computed against can be checked before they are run.
+    """
+    assessment, request = _established()
+    rendered = report.render_text(assessment, request)
+    backup = backup_ref(request.branch)
+    width = COMMIT_ABBREVIATION
+    tip = request.child_tip
+
+    assert f"git update-ref {backup} {tip}" in rendered, (
+        "the plan keeps the child tip under a ref the user creates"
+    )
+    assert (
+        f"git rebase --onto {request.target} {assessment.old_base} {request.branch}"
+        in rendered
+    ), "and replays onto the target with the boundary in full"
+    assert f"git reset --hard {backup}" in rendered, (
+        "and says how to undo the replay from that ref"
+    )
+    assert f"the child tip must still be {tip[:width]}" in rendered, (
+        "and states the child tip the answer was computed against"
+    )
 
 
 def test_a_refusal_envelope_lists_the_candidates_it_collected() -> None:

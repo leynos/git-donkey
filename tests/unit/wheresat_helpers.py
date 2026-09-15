@@ -185,12 +185,34 @@ def parented() -> _Case:
     )
 
 
-def parent_pull_request(**overrides: object) -> ParentPullRequest:
+class ParentPullRequestOverrides(typ.TypedDict, total=False):
+    """The parent pull request's fields an example may replace.
+
+    Only the fields the examples here override are named, and every one is
+    optional, so an example states just the field it is changing and the
+    builder keeps its defaults for the rest. Naming them, with their types, is
+    what lets a type checker reject an override that is misspelled or of the
+    wrong type, which a bare ``**overrides: object`` could not.
+    """
+
+    identity: stack_records.PullRequestIdentity
+    merged: bool
+    merged_at: str | None
+    head_sha: str
+    head_ref: str
+    head_repository: str
+    head_fetched_from: str | None
+    stacked: bool
+
+
+def parent_pull_request(
+    **overrides: typ.Unpack[ParentPullRequestOverrides],
+) -> ParentPullRequest:
     """Return a merged parent pull request whose head came from its own repo.
 
     Parameters
     ----------
-    **overrides : object
+    **overrides : ParentPullRequestOverrides, optional
         Fields to replace, for the examples that spoil one of them.
 
     Returns
@@ -212,7 +234,7 @@ def parent_pull_request(**overrides: object) -> ParentPullRequest:
         landed=LANDED,
         stacked=False,
     )
-    return dataclasses.replace(base, **typ.cast("typ.Any", overrides))
+    return dataclasses.replace(base, **overrides)
 
 
 def _candidate[C: (AttestedCandidate, DerivedCandidate, InferredCandidate)](

@@ -39,7 +39,12 @@ from git import Repo
 
 from git_donkey import observability, wheresat_refs, wheresat_writes
 from tests import git_repo_helpers
-from tests.unit.wheresat_helpers import PR_IDENTITY, PR_REPOSITORY, parent_pull_request
+from tests.unit.wheresat_helpers import (
+    PR_IDENTITY,
+    PR_REPOSITORY,
+    ParentPullRequestOverrides,
+    parent_pull_request,
+)
 
 if typ.TYPE_CHECKING:
     from git_donkey.wheresat_records import ParentPullRequest
@@ -64,7 +69,9 @@ _HEAD_NOT_FETCHED: typ.Final = "not fetched"
 """Wording every refusal shares: the run has no head to reason from."""
 
 
-def _parent(**overrides: object) -> ParentPullRequest:
+def _parent(
+    **overrides: typ.Unpack[ParentPullRequestOverrides],
+) -> ParentPullRequest:
     """Return the parent pull request as the forge would report it.
 
     The head is not yet fetched, which is the state the payload is in when the
@@ -73,7 +80,7 @@ def _parent(**overrides: object) -> ParentPullRequest:
 
     Parameters
     ----------
-    **overrides : object
+    **overrides : ParentPullRequestOverrides, optional
         Fields to replace, for the cases that change the head or its refs.
 
     Returns
@@ -82,7 +89,9 @@ def _parent(**overrides: object) -> ParentPullRequest:
         The payload, with no repository recorded as the head's origin.
 
     """
-    return parent_pull_request(head_fetched_from=None, **overrides)
+    payload: ParentPullRequestOverrides = {"head_fetched_from": None}
+    payload.update(overrides)
+    return parent_pull_request(**payload)
 
 
 def _origin(root: pathlib.Path) -> Repo:

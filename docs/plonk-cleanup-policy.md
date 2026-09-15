@@ -106,12 +106,24 @@ deletion would otherwise take with it. Before a hard-mode branch is deleted,
 its tip is written to the tombstone ref `refs/stack-tombstones/<branch>` and
 the live record is then cleared — the four `branch.<name>.stack*` keys and
 the `refs/stack-bases/<branch>` anchor. The tombstone is written first and the
-branch is deleted second, because a crash between the two leaves a tombstone
-beside a live record, which the next run's sweep clears, while the reverse
-order loses the tip outright: the branch's reflog and its whole
-`branch.<name>` configuration section go with the ref. For the same reason, a
-branch whose entombment fails is not deleted at all. The tip is the one thing
-the deletion was about to make unrecoverable.
+branch is deleted second, because the reverse order loses the tip outright: the
+branch's reflog and its whole `branch.<name>` configuration section go with the
+ref. A crash between the two steps therefore leaves a tombstone beside a live
+record, with the branch itself still there.
+
+That state is benign rather than something to repair. The branch keeps the
+record that attests its own boundary, and the tombstone beside it is evidence
+that a deletion started, not that it finished. The sweep leaves it alone,
+because the sweep resolves only records whose branch is gone: clearing a live
+branch's record in the name of tidying up would destroy the only attestation of
+that branch's boundary, and leave the branch in place. The state resolves
+itself in whichever direction the branch's fate takes — a later completed run
+that deletes the branch rewrites the tombstone with the tip that deletion
+observed, and a branch that is kept leaves a tombstone that expires on the
+usual horizon like any other.
+
+For the same reason, a branch whose entombment fails is not deleted at all.
+The tip is the one thing the deletion was about to make unrecoverable.
 
 A tombstone preserves the tip, not the reflog, and that limit is real: a
 tombstone rescues the parent's identity and its boundary commit, but it does
