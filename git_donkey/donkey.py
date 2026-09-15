@@ -243,6 +243,12 @@ def _remote_head_alias(context: _DonkeyContext) -> str:
     first slash: a branch may itself contain slashes, as ``feature/deep`` does,
     and only the leading ``<remote>/`` is known to be a separator.
 
+    Parameters
+    ----------
+    context : _DonkeyContext
+        Resolved repository state, including the remote whose ``HEAD`` alias
+        is read.
+
     Returns
     -------
     str
