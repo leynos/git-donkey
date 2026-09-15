@@ -1371,9 +1371,11 @@ Stop and escalate rather than improvising when any of these is reached.
     cost, so that re-recording it is a deliberate act rather than a side effect
     of refreshing the others.
   - `tests/integration/conftest.py` now builds every recorder through one
-    `_recorder(record_mode)` with `filter_headers=["authorization"]`, so no
-    recording can carry the token a request was made with, and it gained
-    `wheresat_parent_metadata_cassette` and `wheresat_rate_limited_cassette`.
+    `_recorder(record_mode)` whose `filter_headers` names the `authorization`
+    header — the set was widened to the four-header one in the seventh review
+    round, below — so no recording can carry the token a request was made
+    with, and it gained `wheresat_parent_metadata_cassette` and
+    `wheresat_rate_limited_cassette`.
     `github_api_cassette` keeps a fixed `none` mode rather than taking
     `--record-mode`, because that cassette's subject is the _absence_ of API
     traffic and a recording pass that could write into it would let a command
@@ -2015,7 +2017,8 @@ Stop and escalate rather than improvising when any of these is reached.
     user-specific data. The traffic is public repository metadata for
     `leynos/git-donkey`, which is what a reader without a credential would
     fetch; `tests/integration/conftest.py` filters the `authorization` header
-    at record time, so no recording can carry a token; and the edit itself is
+    and the three OAuth headers the API answers with at record time, so no
+    recording can carry a token; and the edit itself is
     what the project forbids — `docs/developers-guide.md` says a cassette is
     recorded once against real traffic "and never edit a recording by hand",
     and the test module's own docstring repeats the rule. A hand-sanitized
@@ -2267,6 +2270,141 @@ Stop and escalate rather than improvising when any of these is reached.
     the split inherits a green run over its own content.
   - The disposition is posted on the pull request (round 6,
     `#issuecomment-5689368044`), each request naming the file it changed, so a
+    reader can check the claim against the diff rather than against this
+    paragraph.
+
+  - Review round: `coderabbit review --agent --base origin/main` reports 11
+    findings over the tree at `7fda7c1`, the log
+    `/tmp/coderabbit-git-donkey-git-wheresat-sub-command-7.out` holding the
+    agent-mode stream whose 11 `finding` records were kept as
+    `/tmp/coderabbit-findings-7.jsonl` for triage. The run was taken on
+    2026-09-16 between 01:20 and 01:31, in one attempt, without meeting a rate
+    limit, over 115 reviewed files. The 11 are 7 minor and 4 trivial, and they
+    are nine distinct requests: two of them are raised twice, once for each of
+    the two places the same change is visible. All nine are actioned. One
+    finding is split — its code change is taken and its second half declined —
+    and the reason is a rule this repository already records rather than a
+    judgement about the finding.
+  - The pull-request number's parser was asked a question about digits and
+    answered it with `str.isdigit`, which is not a question about ASCII. A
+    superscript two is a digit by that method, and `int("²")` raises
+    `ValueError`: `parse_parent("v1:pr:owner/repository#²")` raised out of a
+    parser whose docstring promises `None` for unrecognized text, so a stored
+    value nobody could have written deliberately could end a run as an
+    unhandled failure. An Arabic-Indic three is also a digit there, and
+    `int("٣") == 3`, so `#٣` was _accepted_ as the pull request numbered three:
+    the one method gave a crash for one Unicode digit and a number for
+    another, which is what makes it the wrong question. The whole of the text
+    is matched against `0*[1-9][0-9]*` now, so the answer is ASCII decimal or
+    nothing, and there is no `int` call left to raise.
+  - The two findings on that function disagree, and the disagreement is this
+    round's first lesson: the sketch in one of them rejects leading zeros and
+    the sentence of the other asks that `001` be _preserved_. The sentence is
+    the request and the shipped behaviour is the tie-breaker — `int("001")` is
+    one, which is what the old expression accepted and what a record written
+    by hand may hold — so leading zeros are part of the form. The fix is
+    pinned by two rows in
+    `test_unparsable_parent_values_are_rejected_rather_than_guessed`
+    (`superscript-number` and `arabic-indic-number`, both of which the old
+    implementation failed) and by
+    `test_a_number_with_a_leading_zero_is_still_a_number`, which also records
+    the asymmetry a reader will otherwise trip over: `#001` parses as the
+    count one and a later render writes it back as `#1`, because rendering is
+    what writes a number and `int` is what reads one.
+  - The remote-URL reader compared its host with `!=`, so the same repository
+    was named by `https://github.com/owner/name` and unnamed by
+    `https://GitHub.com/owner/name`. A host name is case-insensitive and a
+    remote is configured by hand, so the comparison lower-cases the host it
+    read, and the docstring says why. Both spellings the parser reads are in
+    `tests/unit/test_wheresat_remotes.py`'s `_GITHUB_SPELLINGS` now, the
+    scp-like one with its capitals in the host rather than in the path, so the
+    two branches of the parser are each covered by a spelling whose host case
+    differs from the constant it is compared against.
+  - The cassette request is the split one, and the rule is what split it. The
+    recorder filtered only `authorization`, so a future recording could carry
+    the three OAuth headers GitHub's API answers with; `filter_headers` names
+    all four of them now, and the helper's docstring says what each is and why
+    the metadata is filtered alongside the credential: none of the three
+    proves access, but together they name the client and the allowance it was
+    granted, which is a description of the recording's author that a recording
+    has no reason to hold. The half of the request that asked for the
+    committed recording to be re-recorded or sanitized is not taken, and the
+    reason is the rule two paragraphs above the recorder's own subject in
+    `docs/developers-guide.md`: a recording is never edited by hand. It is also
+    not needed — `vcrpy` applies the filter when a request is written and
+    again before an interaction is matched, it can only ever _remove_ headers,
+    and matching is on method and URL — so the committed recording replays
+    exactly as it was taken, and the guide's paragraph now names the
+    four-header set and says in one sentence why a recording made before the
+    filter grew is left as it was recorded rather than repaired. The two
+    statements of the old one-header set elsewhere in this Progress section
+    are corrected in the same commit as this entry, because a claim the review
+    found in one place is a claim to look for everywhere.
+  - Four requests are shapes. `tests/unit/plonk_cleanup_helpers.py`'s doubles
+    annotated abstract collections through `typing`, and the module is brought
+    to the house rule as `stack_records.py` was in round 6: the eight
+    annotations name `collections.abc` there now — the base class's three
+    parameters and two generator returns, the subclass's parameter, and the
+    two candidate parameters — because a rule applied to the subclass and not
+    to the class it extends is a rule a reader has to hold in their head.
+    `typing` stays for the `TYPE_CHECKING` guard and the module's `typ.cast`
+    calls. `tests/integration/wheresat_helpers.py`'s `reading` and
+    `configuration` gained the `Returns` sections the module's other public
+    readers already carry, `git_donkey/wheresat_report.py`'s `_listed` returns
+    its slice of `RENDER_COMMIT_LIMIT` directly rather than through a local
+    used once, and `git_donkey/donkey.py`'s `_remote_head_alias` gained the
+    `Parameters` section its two siblings already had.
+  - Two findings are the estate's spelling in Python prose, which the spelling
+    gate does not read: `make spelling` runs the shared dictionary over
+    `git ls-files '*.md'` and nothing else. They are actioned anyway — the
+    estate's en-GB _Oxford_ dictionary prefers `-ize`, which round 5 recorded,
+    and the two words this round changed carried the `-ise` spelling of
+    `generalize` and of `recognizable` instead — and running that same
+    dictionary by hand over the branch's Python sources is what showed the two
+    are not alone: it reports 52 flags across 26 Python files. Those are left
+    where they stand, because the gate's scope is Markdown and several of the
+    flags are identifiers in four test names, which would be renamed for a
+    spelling's sake alone, or text in files this branch never touched. One of
+    the flags is neither: a comment in `tests/unit/wheresat_helpers.py`, a file
+    this branch adds, misspells `inapplicable`, and it is corrected here rather
+    than left for a round that cannot see it. The line between the two is worth
+    stating once: prose this branch wrote is corrected, a repository-wide sweep
+    of files it did not touch is not, and a rename of a test is not a spelling
+    fix.
+  - The nine checks are green over the tree the fixes were made in, which is
+    what they are pushed as: `test` reports 962 passed with 22 snapshots (five
+    more than round 6's 957 — two more rows in the unparsable-parent table, the
+    new leading-zero case, and two more spellings in the remote-URL corpus),
+    `lint` completes all seven stages with both pylint configs at 10.00/10,
+    `typecheck` is clean under `ty` 0.0.79, `check-fmt` reports 174 files
+    formatted and 29 unchanged, `markdownlint` lints 30 files with 0 errors,
+    `nixie` validates every diagram, `spelling` passes, `build` is a no-op, and
+    `cs delta origin/main` reports no issues, each log under
+    `/tmp/<gate>-git-donkey-git-wheresat-sub-command.out`. The run was taken
+    over the working tree before it was split into commits, and the tree was
+    byte-identical before and after it, so every commit in the split inherits a
+    green run over its own content.
+  - The first run of those checks was red twice, and each failure is this
+    round's second lesson. `make check-fmt` failed on
+    `docs/developers-guide.md` with `+4 -4` from `mdtablefix`, which was
+    re-wrapping the very paragraph this round added there: `mdtablefix --wrap`
+    fills to its own width, so a paragraph wrapped by hand to eighty columns is
+    not yet a formatted paragraph. The fix is `mdtablefix`'s own output applied
+    to that file, and the diff is the evidence that it is enough — nothing
+    outside the added paragraph moved, so the paragraph was the only thing
+    wrong and the rewrite is confined to it rather than spread over the 28
+    files already unchanged.
+  - `make markdownlint` failed on this plan, on the entry being written here.
+    The entry was inserted where the Progress section ends, and the insertion
+    consumed the blank line that separated the list from the heading that
+    follows it, so the list was not surrounded by blank lines (MD032) and the
+    heading had none above it (MD022). The blank line is restored. The general
+    form is worth keeping: a paragraph appended by hand to a list owns the
+    blank lines around it, and the gate that says so is a Markdown gate, which
+    runs over prose rather than over the Python the round was about.
+  - The disposition is posted on the pull request (round 7,
+    `#issuecomment-TBD`), each request naming the file it changed and the one
+    request that was partly declined naming the rule that declined it, so a
     reader can check the claim against the diff rather than against this
     paragraph.
 
