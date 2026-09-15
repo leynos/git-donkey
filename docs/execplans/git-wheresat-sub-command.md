@@ -1802,6 +1802,17 @@ Stop and escalate rather than improvising when any of these is reached.
     `/tmp/ruff-format-git-donkey-git-wheresat-sub-command.out`). The eight
     commit gates are run over the whole tree before these bullets are
     committed, and the review is asked for only after they are green.
+  - `cs delta origin/main` named one file once the new modules were tracked:
+    `git_donkey/wheresat_shared_record.py` sat at Code Health 9.53, with a
+    `Complex Method` on `parse_shared_record` and a `Bumpy Road Ahead` on
+    `_claims`. No commit gate reads code health, so this is the one signal the
+    branch would have carried into the PR unexplained. The reader's three jobs
+    are now three functions: `_claims` walks the body and reads each line twice
+    — once for each label, through `_read_parent` and `_read_boundary` —
+    `_identified` says what the claims make of a record, `_missing_line` names
+    the line a half-written body did not write, and `_readings` pairs each
+    parent with each boundary. The module is back to 10.00 and the branch
+    reports no issues at all.
   - `docs/developers-guide.md` carries the split the way it carries the rest of
     the command: a bullet of its own for `git_donkey.wheresat_ladder` and one
     for `git_donkey.wheresat_request`, each stating what the module owns rather

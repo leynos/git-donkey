@@ -136,22 +136,7 @@ def parse_shared_record(body: str) -> SharedRecordResult:
     parents, boundaries, faults = _claims(body)
     if faults:
         return SharedRecordMalformed(reason="; ".join(faults))
-    if not parents and not boundaries:
-        return SharedRecordAbsent()
-    if not parents:
-        msg = f"the shared record is missing its {PARENT_LABEL} line"
-        return SharedRecordMalformed(reason=msg)
-    if not boundaries:
-        msg = f"the shared record is missing its {BOUNDARY_LABEL} line"
-        return SharedRecordMalformed(reason=msg)
-    readings = tuple(
-        SharedRecord(parent=parent, boundary=boundary)
-        for parent in dict.fromkeys(parents)
-        for boundary in dict.fromkeys(boundaries)
-    )
-    if len(readings) == 1:
-        return readings[0]
-    return SharedRecordAmbiguous(records=readings)
+    return _identified(parents, boundaries)
 
 
 def render_shared_record(record: SharedRecord) -> str:
@@ -199,6 +184,11 @@ def _claims(
 ) -> tuple[list[stack_records.PullRequestIdentity], list[str], list[str]]:
     """Return the values the body carries and the lines that did not read.
 
+    Every line is read once for each label, because a line claims one fact
+    rather than one of them: a body that writes both on one line is read the
+    same way as one that writes them on two, and a line that claims neither is
+    not a line that failed.
+
     Parameters
     ----------
     body : str
@@ -216,24 +206,157 @@ def _claims(
     boundaries: list[str] = []
     faults: list[str] = []
     for text in _content(body):
-        parent = _value(text, PARENT_LABEL)
-        if parent is not None:
-            identity = stack_records.parse_pull_request_identity(parent)
-            if identity is None:
-                msg = f"the shared record has an unreadable parent value {parent!r}"
-                faults.append(msg)
-            else:
-                parents.append(identity)
-        boundary = _value(text, BOUNDARY_LABEL)
-        if boundary is not None:
-            if stack_records.is_object_id(boundary):
-                boundaries.append(boundary)
-            else:
-                faults.append(
-                    "the shared record names a boundary that is not a full "
-                    f"object ID: {boundary!r}"
-                )
+        _read_parent(text, parents, faults)
+        _read_boundary(text, boundaries, faults)
     return parents, boundaries, faults
+
+
+def _read_parent(
+    text: str,
+    parents: list[stack_records.PullRequestIdentity],
+    faults: list[str],
+) -> None:
+    """Add what one line claims about the parent, or why it could not be read.
+
+    Parameters
+    ----------
+    text : str
+        One line of the body, with its leading whitespace removed.
+    parents : list[stack_records.PullRequestIdentity]
+        The parents read so far, which this line's claim is appended to.
+    faults : list[str]
+        The faults read so far, which this line's fault is appended to.
+
+    """
+    value = _value(text, PARENT_LABEL)
+    if value is None:
+        return
+    identity = stack_records.parse_pull_request_identity(value)
+    if identity is None:
+        faults.append(f"the shared record has an unreadable parent value {value!r}")
+        return
+    parents.append(identity)
+
+
+def _read_boundary(text: str, boundaries: list[str], faults: list[str]) -> None:
+    """Add what one line claims about the boundary, or why it could not be read.
+
+    Parameters
+    ----------
+    text : str
+        One line of the body, with its leading whitespace removed.
+    boundaries : list[str]
+        The boundaries read so far, which this line's claim is appended to.
+    faults : list[str]
+        The faults read so far, which this line's fault is appended to.
+
+    """
+    value = _value(text, BOUNDARY_LABEL)
+    if value is None:
+        return
+    if stack_records.is_object_id(value):
+        boundaries.append(value)
+        return
+    faults.append(
+        f"the shared record names a boundary that is not a full object ID: {value!r}"
+    )
+
+
+def _identified(
+    parents: list[stack_records.PullRequestIdentity],
+    boundaries: list[str],
+) -> SharedRecordResult:
+    """Return the record two sets of claims name, or why they name none.
+
+    A body that claimed neither line carries no record; one that claimed only
+    one of the two was written as a record and did not hold together, which is
+    a fault rather than an absence. Every parent the body names is read with
+    every boundary it names, and one reading is the answer while several are
+    the disagreement this result refuses to settle.
+
+    Parameters
+    ----------
+    parents : list[stack_records.PullRequestIdentity]
+        The parents the body names, in the order it gives them.
+    boundaries : list[str]
+        The boundaries the body names, in the order it gives them.
+
+    Returns
+    -------
+    SharedRecordResult
+        The one record the claims agree on, the absence of any claim, the
+        missing line that stopped the body from holding together, or every
+        reading it supports.
+
+    """
+    if not parents and not boundaries:
+        return SharedRecordAbsent()
+    missing = _missing_line(parents, boundaries)
+    if missing is not None:
+        return missing
+    readings = _readings(parents, boundaries)
+    if len(readings) == 1:
+        return readings[0]
+    return SharedRecordAmbiguous(records=readings)
+
+
+def _missing_line(
+    parents: list[stack_records.PullRequestIdentity],
+    boundaries: list[str],
+) -> SharedRecordMalformed | None:
+    """Return the fault naming the line a body wrote only one of, if it did.
+
+    The label named is the one the body did not write, because that is the line
+    its author has to add.
+
+    Parameters
+    ----------
+    parents : list[stack_records.PullRequestIdentity]
+        The parents the body names, in the order it gives them.
+    boundaries : list[str]
+        The boundaries the body names, in the order it gives them.
+
+    Returns
+    -------
+    SharedRecordMalformed | None
+        The fault naming the line that is missing, or ``None`` when the body
+        named both.
+
+    """
+    if not parents:
+        reason = f"the shared record is missing its {PARENT_LABEL} line"
+        return SharedRecordMalformed(reason=reason)
+    if not boundaries:
+        reason = f"the shared record is missing its {BOUNDARY_LABEL} line"
+        return SharedRecordMalformed(reason=reason)
+    return None
+
+
+def _readings(
+    parents: list[stack_records.PullRequestIdentity],
+    boundaries: list[str],
+) -> tuple[SharedRecord, ...]:
+    """Return one reading per distinct parent and distinct boundary.
+
+    Parameters
+    ----------
+    parents : list[stack_records.PullRequestIdentity]
+        The parents the body names, in the order it gives them.
+    boundaries : list[str]
+        The boundaries the body names, in the order it gives them.
+
+    Returns
+    -------
+    tuple[SharedRecord, ...]
+        Every pairing of a parent with a boundary, each parent and each
+        boundary taken once however often the body repeated it.
+
+    """
+    return tuple(
+        SharedRecord(parent=parent, boundary=boundary)
+        for parent in dict.fromkeys(parents)
+        for boundary in dict.fromkeys(boundaries)
+    )
 
 
 def _value(text: str, label: str) -> str | None:
