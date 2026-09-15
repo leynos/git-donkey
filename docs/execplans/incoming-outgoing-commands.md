@@ -152,23 +152,23 @@ Mercurial bundles, templates, phases, or bookmark comparison output.
   `docs/developers-guide.md` (kept both main's tooling sections and this
   branch's module-boundaries section). Regenerated `typos.toml` with
   `scripts/generate_typos_config.py` rather than hand-merging it. The reported
-  `ty` failure (`unresolved-import` for `typos_rollout`) came from the
-  branch's older `Makefile`, which lacked `--extra-search-path scripts`;
-  main's `Makefile` and CI workflow were adopted unchanged, after which
+  `ty` failure (`unresolved-import` for `typos_rollout`) came from the branch's
+  older `Makefile`, which lacked `--extra-search-path scripts`; main's
+  `Makefile` and CI workflow were adopted unchanged, after which
   `make typecheck` passed on ty 0.0.79 with no diagnostics. Took `uv.lock` from
   main and verified it with `uv lock --check`.
 - [x] (2026-09-10 00:00Z) Adapted this branch's own code to main's stricter
   gates: named the "command could not run" exit code in both incoming and
   outgoing test modules (ruff `magic-value-comparison`); turned emptiness
   assertions into truthiness checks and added failure messages to the CLI
-  wrapper assertions (pylint
-  `use-implicit-booleaness-not-comparison-to-string` and the df12
-  `assert-missing-message`); read `pyproject.toml` with an explicit encoding
-  in the alias test (`unspecified-encoding`); and reduced the protocol method
-  bodies in `git_donkey/incoming_outgoing.py` and `git_donkey/cli.py` to their
-  docstrings (`unnecessary-ellipsis`). All six gates pass and the branch was
-  force-pushed with lease (remote `https://github.com/leynos/git-donkey.git`,
-  PR `https://github.com/leynos/git-donkey/pull/18`).
+  wrapper assertions (pylint `use-implicit-booleaness-not-comparison-to-string`
+  and the df12 `assert-missing-message`); read `pyproject.toml` with an
+  explicit encoding in the alias test (`unspecified-encoding`); and reduced the
+  protocol method bodies in `git_donkey/incoming_outgoing.py` and
+  `git_donkey/cli.py` to their docstrings (`unnecessary-ellipsis`). All six
+  gates pass and the branch was force-pushed with lease (remote
+  `https://github.com/leynos/git-donkey.git`, PR
+  `https://github.com/leynos/git-donkey/pull/18`).
 - [x] (2026-09-10 00:00Z) Extracted only the optional remote fetch from
   `_run_comparison` into `_fetch_comparison_remote`, which reports whether the
   comparison may proceed, so the fetch guard, its two records, and the
@@ -180,9 +180,8 @@ Mercurial bundles, templates, phases, or bookmark comparison output.
 - [x] (2026-09-10 00:00Z) Rebased onto `origin/main` at 111232a ("Use the remote
   default branch and make pulls opt-in"), which also brings in 756384e ("Adopt
   Skylos dead-code detection"). No conflicts arose: `git range-diff` pairs
-  every replayed commit with its predecessor and shows only context shifts
-  from main's edited README and developers guide, so all branch patches are
-  intact.
+  every replayed commit with its predecessor and shows only context shifts from
+  main's edited README and developers guide, so all branch patches are intact.
 - [x] (2026-09-10 00:00Z) Added the fetch completion record the review asked
   for: `_fetch_comparison_remote` now emits an `INFO` "Completed comparison
   fetch" record carrying `operation`, `direction`, `remote`, and
@@ -200,43 +199,43 @@ Mercurial bundles, templates, phases, or bookmark comparison output.
   (`e41a148...d5c9243`), and a CodeRabbit review was queued with comenq
   (identifier `7470f047`).
 - [x] (2026-09-11 00:00Z) Actioned the second review round. The policy now
-  returns the longest matching remote, so a nested `team/core` wins over
-  `team` whatever the order of `remote_names`, with regression tests for both
-  orders and for exact-name and canonical-prefix matching. The fetch and the
+  returns the longest matching remote, so a nested `team/core` wins over `team`
+  whatever the order of `remote_names`, with regression tests for both orders
+  and for exact-name and canonical-prefix matching. The fetch and the
   comparison read are timed as `comparison_fetch` and `comparison` and report
   bounded outcomes through `git_donkey.observability`, and the comparison
   start, completion (`found`/`empty`), and failure records are asserted with
   `caplog` for both runners. The console entrypoints `git-incoming` and
-  `git-in` are now exercised against a real repository through `sys.argv`.
-  The instrumentation first pushed `_run_comparison` to 81 lines, past
-  CodeScene's large-method threshold of 70, so the comparison read, its
-  `comparison` span, its outcome records, and the exit-code mapping now live
-  in `_read_comparison`.
-  Skipped with reasons: a per-repository inter-process lock (git already locks
-  ref updates; the process holds no other shared mutable state), removing the
-  justified per-file `assert` ignores for tests (main's policy, outside this
-  diff), and widening the adapter's upstream lookup to separate "no upstream"
-  from a failed read (both cases already exit 2 with the same diagnostic).
+  `git-in` are now exercised against a real repository through `sys.argv`. The
+  instrumentation first pushed `_run_comparison` to 81 lines, past CodeScene's
+  large-method threshold of 70, so the comparison read, its `comparison` span,
+  its outcome records, and the exit-code mapping now live in
+  `_read_comparison`. Skipped with reasons: a per-repository inter-process lock
+  (git already locks ref updates; the process holds no other shared mutable
+  state), removing the justified per-file `assert` ignores for tests (main's
+  policy, outside this diff), and widening the adapter's upstream lookup to
+  separate "no upstream" from a failed read (both cases already exit 2 with the
+  same diagnostic).
 - [x] (2026-09-11 00:00Z) Actioned the third review round. The five
   integration assertions that identified the compared commit by the seeded
-  subject `"Seed commit"` now assert the printed short commit hash instead,
-  so none of them can pass on the baseline commit. Skipped with reasons:
-  exposing upstream-lookup fallibility through `_ComparisonAdapter` (the task
-  keeps the Git adapter boundary unchanged, and the missing-upstream and
-  failed-lookup cases already exit 2 with the same diagnostic and produce no
-  log or observability records; the misleading diagnostic for an
-  environmental `rev-parse` failure is tracked in issue #76), and adding a
-  metrics adapter for the comparison spans and outcomes (the project has no
-  metrics backend, so the developers' guide now names the recorder as the
-  integration point for one).
+  subject `"Seed commit"` now assert the printed short commit hash instead, so
+  none of them can pass on the baseline commit. Skipped with reasons: exposing
+  upstream-lookup fallibility through `_ComparisonAdapter` (the task keeps the
+  Git adapter boundary unchanged, and the missing-upstream and failed-lookup
+  cases already exit 2 with the same diagnostic and produce no log or
+  observability records; the misleading diagnostic for an environmental
+  `rev-parse` failure is tracked in issue #76), and adding a metrics adapter
+  for the comparison spans and outcomes (the project has no metrics backend, so
+  the developers' guide now names the recorder as the integration point for
+  one).
 - [x] (2026-09-11 00:00Z) Rebased onto `origin/main` (the PR's remote target)
   with the repository's configured weave merge driver; every replayed commit
   passed a per-commit structural guard (`compileall` plus TOML parsing), the
   rebase finished with no manual conflict resolution, and the result is behind
   `origin/main` by zero commits with this branch's commits replayed on top.
-  Post-rebase verification: the diff between the pre-rebase branch tip and
-  the post-rebase tip is exactly the set of files `origin/main` changed; the
-  three files touched by both sides (the incoming/outgoing integration test
+  Post-rebase verification: the diff between the pre-rebase branch tip and the
+  post-rebase tip is exactly the set of files `origin/main` changed; the three
+  files touched by both sides (the incoming/outgoing integration test
   `tests/integration/test_git_incoming_outgoing.py`,
   `docs/developers-guide.md`, and this execplan) contain both sides' content;
   and `sem diff` runs cleanly on the rebased range.
@@ -259,13 +258,13 @@ Mercurial bundles, templates, phases, or bookmark comparison output.
   `_outgoing_cli`). The manpage contract tests pass. `docs/users-guide.md` now
   names all nine manuals and lists the four new installed page paths.
 - [x] (2026-09-11 00:00Z) All six gates passed on the rebased branch
-  (`make check-fmt`, `make test` with 318 tests, `make typecheck`,
-  `make lint`, `make markdownlint`, and `make nixie`), the round was committed,
-  and the branch was force-pushed with lease. The manpage packaging
-  integration test resolves its build requirements from `.uv-cache` with the
-  network disabled, so it must run through `make test`, whose `build`
-  prerequisite populates that cache. Running pytest on that file directly
-  fails with a cache-miss message that imitates a manual-source failure.
+  (`make check-fmt`, `make test` with 318 tests, `make typecheck`, `make lint`,
+  `make markdownlint`, and `make nixie`), the round was committed, and the
+  branch was force-pushed with lease. The manpage packaging integration test
+  resolves its build requirements from `.uv-cache` with the network disabled,
+  so it must run through `make test`, whose `build` prerequisite populates that
+  cache. Running pytest on that file directly fails with a cache-miss message
+  that imitates a manual-source failure.
 - [x] (2026-09-11 00:00Z) Actioned the fourth review round on PR #18. Seven
   findings were verified against the current code with a read-only
   reconnaissance pass: two inline comments, one out-of-diff comment, two failed
@@ -280,9 +279,9 @@ Mercurial bundles, templates, phases, or bookmark comparison output.
   `rev-parse` cannot resolve; and `_run_comparison()` logs and records both
   outcomes with distinct diagnostics. Both paths still exit 2, so the public
   exit-code contract and the `_ComparisonAdapter` method signatures are
-  unchanged. This implements issue #76 ("Distinguish a missing upstream from
-  a failed upstream lookup"), which the pull request references so it closes
-  on merge rather than staying deferred.
+  unchanged. This implements issue #76 ("Distinguish a missing upstream from a
+  failed upstream lookup"), which the pull request references so it closes on
+  merge rather than staying deferred.
 - [x] (2026-09-11 00:00Z) Added the two missing outgoing entrypoint
   integration tests. `test_git_outgoing_entrypoint_reports_local_only_commit`
   and `test_git_out_alias_entrypoint_reports_local_only_commit` invoke
@@ -301,8 +300,8 @@ Mercurial bundles, templates, phases, or bookmark comparison output.
   `canonicalize_name(Requirement(requirement).name)` against the expected
   distribution name instead of using `str.startswith`, which previously let
   `docutils-stubs` satisfy a `docutils` requirement. `packaging` was added to
-  the `dev` dependency group and `uv.lock` was regenerated by `make build`;
-  the lock grew by two lines and no resolved version changed.
+  the `dev` dependency group and `uv.lock` was regenerated by `make build`; the
+  lock grew by two lines and no resolved version changed.
 - [x] (2026-09-11 00:00Z) Cleared the two `make lint` failures this round
   introduced. `with_unresolvable_upstream` first needed a numpydoc `Returns`
   section; that fix then pushed `tests/unit/test_incoming_outgoing.py` to 816
@@ -365,8 +364,8 @@ Mercurial bundles, templates, phases, or bookmark comparison output.
   conflict, even though both the ours and theirs stages carried it. Evidence:
   stage inspection showed the docstring in the ours and theirs versions but
   absent from the merged file. Impact: conflict resolutions here should be
-  checked stage by stage with `git show :1:/:2:/:3:` rather than by
-  reading the merged file alone.
+  checked stage by stage with `git show :1:/:2:/:3:` rather than by reading the
+  merged file alone.
 
 ## Decision log
 
@@ -407,11 +406,11 @@ Mercurial bundles, templates, phases, or bookmark comparison output.
   documented in `docs/users-guide.md` and signposted from `README.md`.
   Date/Author: 2026-09-10, Claude. Superseded in part (2026-09-10): the
   migration-guide skip no longer applies, because this branch extends
-  `docs/v0-2-0-migration-guide.md` with a `New comparison commands`
-  section covering the console aliases, the upstream default, explicit
-  refs, fetch-by-default for remote-backed refs, `--no-fetch`, and the
-  `0`/`1`/`2` exit codes, and `docs/contents.md` indexes the guide. The
-  policy and adapter split above still stands.
+  `docs/v0-2-0-migration-guide.md` with a `New comparison commands` section
+  covering the console aliases, the upstream default, explicit refs,
+  fetch-by-default for remote-backed refs, `--no-fetch`, and the `0`/`1`/`2`
+  exit codes, and `docs/contents.md` indexes the guide. The policy and adapter
+  split above still stands.
 - Decision: On rebase, take `Makefile`, `.github/workflows/ci.yml`, and
   `uv.lock` from main unchanged, and regenerate `typos.toml` with
   `scripts/generate_typos_config.py` instead of hand-merging generated files.
@@ -419,30 +418,29 @@ Mercurial bundles, templates, phases, or bookmark comparison output.
   wholesale, and regeneration keeps the shared dictionary and the local overlay
   consistent. Date/Author: 2026-09-10, Claude.
 - Decision: Reverse the third-round deferral and separate a failed upstream
-  read from an unset upstream inside `git_donkey.incoming_outgoing`, keeping
-  the `_ComparisonAdapter` method signatures and the exit-code contract
-  unchanged. Rationale: the deferral rested on both cases exiting 2 with the
-  same diagnostic and producing no records, which is exactly the defect the
-  fourth round reported; a detached HEAD previously produced the factually
-  wrong "no upstream branch configured" message, and a transient `rev-parse`
-  failure was indistinguishable from a genuinely unset upstream. The fix is
-  confined to the workflow module, so the adapter boundary the task constrains
-  is preserved. Date/Author: 2026-09-11, Claude.
+  read from an unset upstream inside `git_donkey.incoming_outgoing`, keeping the
+  `_ComparisonAdapter` method signatures and the exit-code contract unchanged.
+  Rationale: the deferral rested on both cases exiting 2 with the same
+  diagnostic and producing no records, which is exactly the defect the fourth
+  round reported; a detached HEAD previously produced the factually wrong "no
+  upstream branch configured" message, and a transient `rev-parse` failure was
+  indistinguishable from a genuinely unset upstream. The fix is confined to the
+  workflow module, so the adapter boundary the task constrains is preserved.
+  Date/Author: 2026-09-11, Claude.
 - Decision: Reuse the existing bounded vocabulary for the two new outcomes
   rather than extending it: `unavailable` for an unset upstream and `failure`
   with `git_command_error` for a failed lookup. Rationale: both values are
-  already declared in `git_donkey.observability`, so the pinned
-  vocabulary assertions in `tests/unit/test_observability.py` stay untouched
-  while the unset-versus-failed distinction remains observable.
+  already declared in `git_donkey.observability`, so the pinned vocabulary
+  assertions in `tests/unit/test_observability.py` stay untouched while the
+  unset-versus-failed distinction remains observable.
 - Decision: Keep `ref` and `remote` in the comparison `_LOGGER` records and
-  document the retention as an intentional exception to the bounded
-  vocabulary, rather than removing them. Rationale: the bounded-vocabulary
-  rule governs `Observation` records; the operational log contract already
-  retains `branch`, `remote`, and `worktree` in other modules, and the
-  comparison ref is the most useful diagnostic for why a comparison compared
-  what it compared. The review finding made this retention conditional on its
-  being intentional, so the guide now states the exception explicitly.
-  Date/Author: 2026-09-11, Claude.
+  document the retention as an intentional exception to the bounded vocabulary,
+  rather than removing them. Rationale: the bounded-vocabulary rule governs
+  `Observation` records; the operational log contract already retains `branch`,
+  `remote`, and `worktree` in other modules, and the comparison ref is the most
+  useful diagnostic for why a comparison compared what it compared. The review
+  finding made this retention conditional on its being intentional, so the
+  guide now states the exception explicitly. Date/Author: 2026-09-11, Claude.
 - Decision: Action the review-requested `packaging` dev dependency despite the
   plan's "stop and escalate before adding any package dependency" tolerance.
   Rationale: the dependency was requested by the reviewer, the user directed
@@ -457,11 +455,11 @@ Mercurial bundles, templates, phases, or bookmark comparison output.
   policy decisions, fetch-helper observability, and end-to-end command
   workflows, which are three different reasons to change. The workflow module
   also needed a second trim anyway to stay under pylint's 800-line limit. The
-  split gives each module one reason to change and keeps private support
-  symbols (`_FakeAdapter`, `_comparison_records`, and `_FakeRepo`) local to the
-  module that uses them, so no test module imports another test module's
-  private names. Production code is untouched, so the split cannot change
-  behaviour. Date/Author: 2026-09-11, Claude.
+  split gives each module one reason to change and keeps private support symbols
+  (`_FakeAdapter`, `_comparison_records`, and `_FakeRepo`) local to the module
+  that uses them, so no test module imports another test module's private
+  names. Production code is untouched, so the split cannot change behaviour.
+  Date/Author: 2026-09-11, Claude.
 
 ## Outcomes & retrospective
 
@@ -768,25 +766,25 @@ and `1`. Revised again on 2026-09-10 to record the remote-fetch extraction from
 more on 2026-09-10 to record the rebase onto 111232a, the fetch completion
 record, and the comparison commands' migration-guide entry. Revised on
 2026-09-11 to record the second review round: longest-match remote selection,
-bounded recorder spans and outcomes for the comparison workflow, the
-comparison log-record tests, the console entrypoint integration tests, the
-decision-record supersession of the migration-guide skip, and the
-`_read_comparison` extraction the instrumentation required. Revised on
-2026-09-11 (third review round) to record the hash-based commit assertions in
-the integration tests, the upstream-lookup deferral with its follow-up issue,
-and the metrics integration-point note in the developers' guide. Revised on
-2026-09-11 (rebase and manuals round) to record the rebase onto `origin/main`
-under the weave merge driver, the post-rebase verification, the four new
-console-script manuals and their local rendering check, and the build and
-manpage-test registrations. Revised on 2026-09-11 (fourth review round) to
-record the upstream-resolution fix and the observability records that
-supersede the third-round deferral and close issue #76, the outgoing
-entrypoint integration tests, the `Protocol` contracts replacing the broad
-`Callable` annotations, the PEP 508 dependency assertion and the `packaging`
-dev dependency, the deliberate retention of `ref` and `remote` in the
-operational log records, and the [Scope overrun](#scope-overrun) disclosure.
-Revised later on 2026-09-11 to record the two `make lint` fixes that round
-required: the missing `Returns` section and the test-module trim that holds
+bounded recorder spans and outcomes for the comparison workflow, the comparison
+log-record tests, the console entrypoint integration tests, the decision-record
+supersession of the migration-guide skip, and the `_read_comparison` extraction
+the instrumentation required. Revised on 2026-09-11 (third review round) to
+record the hash-based commit assertions in the integration tests, the
+upstream-lookup deferral with its follow-up issue, and the metrics
+integration-point note in the developers' guide. Revised on 2026-09-11 (rebase
+and manuals round) to record the rebase onto `origin/main` under the weave
+merge driver, the post-rebase verification, the four new console-script manuals
+and their local rendering check, and the build and manpage-test registrations.
+Revised on 2026-09-11 (fourth review round) to record the upstream-resolution
+fix and the observability records that supersede the third-round deferral and
+close issue #76, the outgoing entrypoint integration tests, the `Protocol`
+contracts replacing the broad `Callable` annotations, the PEP 508 dependency
+assertion and the `packaging` dev dependency, the deliberate retention of `ref`
+and `remote` in the operational log records, and the
+[Scope overrun](#scope-overrun) disclosure. Revised later on 2026-09-11 to
+record the two `make lint` fixes that round required: the missing `Returns`
+section and the test-module trim that holds
 `tests/unit/test_incoming_outgoing.py` under pylint's 800-line limit without
 weakening either upstream test. Revised again on 2026-09-11 to record the
 `_report_upstream_lookup_failure` extraction and the split of the incoming and

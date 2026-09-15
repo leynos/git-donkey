@@ -103,8 +103,8 @@ would stop resolving as soon as an unrelated object shared the prefix.
 The branch name in a `v1:branch:` value is the base ref **as it was selected**,
 not a normalized branch name. When a caller names a base explicitly the stored
 value is that name — so a base selected as `refs/remotes/origin/main` is stored
-as such, and so is a local `main`. Reads treat it as the name of a ref, which is
-what it is, and never as a name to be looked up in one particular namespace.
+as such, and so is a local `main`. Reads treat it as the name of a ref, which
+is what it is, and never as a name to be looked up in one particular namespace.
 
 ## Who writes what
 
@@ -226,20 +226,22 @@ git config --local --unset "branch.$BRANCH.stackBaseEvidence"
 That is the removal the record's own writer performs, and it leaves the rest of
 the branch section alone: a tracking branch keeps its `remote` and `merge`, and
 any other setting of the branch survives. The shortcut for a section that holds
-nothing but the record is `git config --local --remove-section "branch.$BRANCH"`
-(adding `2>/dev/null || true` where the section may already be gone), and it
-takes every other setting with it. Removing the record for a branch that still
-exists leaves nothing to clean up; the sweep only concerns records whose branch
-is already gone.
+nothing but the record is
+`git config --local --remove-section "branch.$BRANCH"` (adding
+`2>/dev/null || true` where the section may already be gone), and it takes
+every other setting with it. Removing the record for a branch that still exists
+leaves nothing to clean up; the sweep only concerns records whose branch is
+already gone.
 
 A deletion through plain Git is the one case the record cannot answer for.
-`git branch -D` removes the whole `branch.<name>` section along with the branch,
-so the only artefact left is the anchor, which holds the base and not the tip.
-The sweep reports such an orphan and clears it, but there is no recorded tip
-left for it to preserve, and `git plonk` cannot tombstone a branch nobody asked
-it to delete. A deletion that removes only the ref — `git update-ref -d
-refs/heads/<name>`, as some scripts and other tools do — leaves the
-configuration behind, and there the sweep does salvage the tip it recorded.
+`git branch -D` removes the whole `branch.<name>` section along with the
+branch, so the only artefact left is the anchor, which holds the base and not
+the tip. The sweep reports such an orphan and clears it, but there is no
+recorded tip left for it to preserve, and `git plonk` cannot tombstone a branch
+nobody asked it to delete. A deletion that removes only the ref —
+`git update-ref -d refs/heads/<name>`, as some scripts and other tools do —
+leaves the configuration behind, and there the sweep does salvage the tip it
+recorded.
 
 ## Verification contract
 
@@ -257,14 +259,15 @@ rename, entomb, delete-via-plonk, delete-via-git, delete-by-ref-surgery, sweep,
 and prune, run against a real temporary repository. After every step it reads
 `refs/heads/`, `refs/stack-bases/`, and `refs/stack-tombstones/` in one
 `for-each-ref` and the `branch.*` sections in one `config --list`, reconciles
-them, and asserts that for any branch exactly one of the three states holds — no
-record, a live record, or a tombstone — that the records whose branch has gone
-are exactly the orphans the store reports, and that the subset invariant still
-holds. Its `start` rule reaches a tombstone, a refresh, and an orphan before the
-first step is generated, because the generator does not reach them reliably: a
-generated step draws one of a subset of the enabled rules, and over twenty runs
-a refresh was reached in fifteen of them. The negative control is a record
-written beside a tombstone by hand, which the exclusivity check must reject.
+them, and asserts that for any branch exactly one of the three states holds —
+no record, a live record, or a tombstone — that the records whose branch has
+gone are exactly the orphans the store reports, and that the subset invariant
+still holds. Its `start` rule reaches a tombstone, a refresh, and an orphan
+before the first step is generated, because the generator does not reach them
+reliably: a generated step draws one of a subset of the enabled rules, and over
+twenty runs a refresh was reached in fifteen of them. The negative control is a
+record written beside a tombstone by hand, which the exclusivity check must
+reject.
 
 The three commands' use of the record is pinned behaviourally:
 `tests/integration/features/git_donkey_stack.feature` covers birth in both

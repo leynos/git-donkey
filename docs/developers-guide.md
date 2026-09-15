@@ -15,10 +15,10 @@ the configuration rather than changing generated entries by hand.
 
 `git_donkey.donkey.run_git_donkey()` is the workflow function behind the
 `git donkey` console script. The [users' guide](users-guide.md) documents the
-command from the outside, and the [default-base and pull-mode
-design](default-base-and-pull-modes.md) records the behavioural contract. This
-section describes the pipeline and the invariants a contributor must preserve
-when editing the workflow.
+command from the outside, and the
+[default-base and pull-mode design](default-base-and-pull-modes.md) records the
+behavioural contract. This section describes the pipeline and the invariants a
+contributor must preserve when editing the workflow.
 
 The module split mirrors `git-fafo` and `git-plonk`: `git_donkey.cli` owns
 Cyclopts parsing, `git_donkey.donkey` owns the workflow, and
@@ -48,13 +48,13 @@ and the fields of `_PullOptions` onto the workflow call, then raises
 
 Validation runs before repository discovery, so conflicting options cannot
 touch the repository. Base resolution and any opted-in update complete before
-the worktree is created. Failures route through `helpers._die()`, which writes
-a `git-donkey:`-prefixed message to stderr and raises `SystemExit`:
-conflicting pull flags and precondition failures exit 2, while fetch, pull,
-worktree, and filesystem failures exit 1. `_apply_template_overlay()` is the
-one step that reports failure by returning `False`; `run_git_donkey()` then
-returns 1 after the helper prints the reason. A missing overlay, or a
-repository whose template directory cannot be selected, is not a failure.
+the worktree is created. Failures route through `helpers._die()`, which writes a
+`git-donkey:`-prefixed message to stderr and raises `SystemExit`: conflicting
+pull flags and precondition failures exit 2, while fetch, pull, worktree, and
+filesystem failures exit 1. `_apply_template_overlay()` is the one step that
+reports failure by returning `False`; `run_git_donkey()` then returns 1 after
+the helper prints the reason. A missing overlay, or a repository whose template
+directory cannot be selected, is not a failure.
 
 ### Pull options and modes
 
@@ -68,8 +68,8 @@ one immutable default rather than declaring their own.
 strategies, with `None` meaning no update. `_pull_mode(options, *, no_pull)`
 maps the flags onto that type and rejects conflicting combinations before any
 repository discovery or mutation, exiting 2 with the `git-donkey:` prefix.
-`no_pull` participates in the same mutual-exclusion check, so it stays valid
-on its own and conflicts with either pull flag.
+`no_pull` participates in the same mutual-exclusion check, so it stays valid on
+its own and conflicts with either pull flag.
 
 ### Pull invariants
 
@@ -82,12 +82,12 @@ on its own and conflicts with either pull flag.
   checkout when no worktree holds it.
 - The behind count is a query. `_base_branch_behind_count()` must not create
   a tracking branch to measure a base: that would leave a branch no worktree
-  holds and that this command cannot pull into. A base with no local branch
-  has nothing to update and counts as zero behind.
+  holds and that this command cannot pull into. A base with no local branch has
+  nothing to update and counts as zero behind.
 - In the workflow, the prompt is the only path to
   `_update_base_branch_in_worktree()`. `_maybe_update_base_branch()` prompts
-  through `helpers._prompt_yes_no()` and skips the update when the answer is
-  no or the terminal is non-interactive.
+  through `helpers._prompt_yes_no()` and skips the update when the answer is no
+  or the terminal is non-interactive.
 
 ### Base resolution
 
@@ -98,11 +98,11 @@ calling directory. That branch was captured during context loading by
 resolution.
 
 Implicit discovery is deliberately a command rather than a query, and is shared
-with `git plonk` through `git_donkey.remote_default`. That module owns principal
-remote selection (`principal_remote()`), the pure
+with `git plonk` through `git_donkey.remote_default`. That module owns
+principal remote selection (`principal_remote()`), the pure
 `advertised_default_branch()` parser for `ls_remote --symref` output,
-`discover_default_branch()`, and `fetch_default_branch_ref()`, which fetches the
-named branch into `refs/remotes/{remote}/{branch}`.
+`discover_default_branch()`, and `fetch_default_branch_ref()`, which fetches
+the named branch into `refs/remotes/{remote}/{branch}`.
 `git_donkey.donkey._fetch_remote_default_ref()` composes discovery with the
 fetch for base selection. For completion history, `git_donkey.plonk` splits the
 same resolution into a query and a command, because a query must not fetch:
@@ -151,8 +151,8 @@ failure.
   directory cannot be selected), `started`, `success`, or `failure` with
   `os_error`.
 - `comparison_fetch`: `not_requested` when `--no-fetch` is used or the
-  comparison ref is a local ref owned by no remote, `success`, or `failure`
-  with `git_command_error`.
+  comparison ref is a local ref owned by no remote, `success`, or `failure` with
+  `git_command_error`.
 - `comparison`: `found`, `empty`, `unavailable` when no upstream is configured
   and no explicit ref was supplied, or `failure` with `git_command_error`.
 - `worktree_preflight`: `success`, or `skipped` with `skip_reason` `dirty` or
@@ -256,8 +256,8 @@ variables, credential files, or OAuth prompts.
 
 ## git-plonk module boundaries
 
-`git-plonk` is split across pure policy and selection, shared records,
-summary rendering, CLI parsing, and infrastructure mutation:
+`git-plonk` is split across pure policy and selection, shared records, summary
+rendering, CLI parsing, and infrastructure mutation:
 
 - `git_donkey.cli` exposes the `git-plonk` console script and maps `--soft`,
   `--hard`, and `--dry-run` to `git_donkey.plonk.run_git_plonk()`.
@@ -344,9 +344,9 @@ graph facts, the gates, the policy, and the two renderers are separate modules;
   `EXIT_CODES` map with `EXIT_USAGE`. It holds values only — no Git,
   filesystem, network, or process — so a forensic path such as a superseded
   record, a gate that could not be answered, or a stored tip that no longer
-  exists is a value a test builds without a repository. Its only
-  intra-package import is `stack_records`, for the pull request identity the
-  shared record carries.
+  exists is a value a test builds without a repository. Its only intra-package
+  import is `stack_records`, for the pull request identity the shared record
+  carries.
 - `git_donkey.wheresat_errors` is the failure vocabulary, and holds nothing
   that reads anything: `WheresatGraphError` and its `ShallowHistoryError`
   subclass, `WheresatGitHubError`, `WheresatUsageError` and its
@@ -428,8 +428,8 @@ graph facts, the gates, the policy, and the two renderers are separate modules;
   than returning the part it saw as the whole answer.
 - `git_donkey.wheresat_shared_record` owns the prose form a pull request body
   may carry in place of a local record: a `Stack parent:` line and a
-  `Replay boundary (exclusive):` line, which travel to a clone the record
-  never reached. It parses that block and renders it back, and it is pure and
+  `Replay boundary (exclusive):` line, which travel to a clone the record never
+  reached. It parses that block and renders it back, and it is pure and
   resolves nothing — a value outside the grammar, half a record, and a body
   that supports several readings are each reported as they were found, because
   what it returns is a claim the run then validates rather than an instruction
@@ -448,8 +448,8 @@ graph facts, the gates, the policy, and the two renderers are separate modules;
   requests associated with the child's commits. Each rung is a weaker statement
   than the one before it, and a run that answered a stronger question has no
   business asking a weaker one. There is no forge client here — the ladder asks
-  the port questions — so one walk serves the live API and a recorded one, and a
-  run that was told not to touch the network has nothing to open. A question
+  the port questions — so one walk serves the live API and a recorded one, and
+  a run that was told not to touch the network has nothing to open. A question
   that goes unanswered is a fault and stops the ladder rather than letting the
   next rung's weaker answer be presented as the answer to the question that
   failed, which is the reading ADR-005 forbids. The body's claim is read here
@@ -474,8 +474,8 @@ graph facts, the gates, the policy, and the two renderers are separate modules;
   answers and only one of them is a refusal. The shared record is read by the
   ladder rather than here, so this rung asks no forge, and it is silent for a
   claim the ladder already refused — one unusable claim is reported once, where
-  it was found. The parent head the gates ask about is the one
-  `wheresat_heads` recovered.
+  it was found. The parent head the gates ask about is the one `wheresat_heads`
+  recovered.
 - `git_donkey.wheresat_deep` is the content-comparison scan behind `--deep`,
   and the one rung that answers a question of its own rather than reading
   something recorded: has the work a child commit carries already landed on the
@@ -498,10 +498,10 @@ graph facts, the gates, the policy, and the two renderers are separate modules;
   corroboration rule, and the module owns precedence — candidates at the
   strongest tier a run found are the only ones that can serve, so a lone
   derived candidate is not outranked by four inferred ones under it, and two
-  candidates left at the same tier are an ambiguity the run refuses rather
-  than a tie broken by source order. A record whose attested claim gate 8
-  refused is demoted to derived evidence rather than discarded, so it can
-  still support the commit it names once another source agrees with it.
+  candidates left at the same tier are an ambiguity the run refuses rather than
+  a tie broken by source order. A record whose attested claim gate 8 refused is
+  demoted to derived evidence rather than discarded, so it can still support
+  the commit it names once another source agrees with it.
 - `git_donkey.wheresat_report` renders an assessment as text or as the
   versioned JSON envelope. Nothing in it reads anything: both renderers are
   projections of the assessment and the request, so they cannot disagree about
@@ -547,11 +547,11 @@ evidence a run is entitled to write is classified as allowed rather than as a
 difference. `--record` is the one flag that writes a record, so it is measured
 by `tests/integration/test_wheresat_record.py` instead, which also pins that a
 run asked for no write builds no writer at all, and the run asked for one
-builds exactly one.
-`tests/integration/test_wheresat_end_to_end.py` runs the three commands in the
-order the feature exists for: `git donkey` cuts a child and records the
-boundary, `git plonk --hard` sweeps the merged parent and leaves a tombstone,
-and `git wheresat` has to answer for the child from what survived.
+builds exactly one. `tests/integration/test_wheresat_end_to_end.py` runs the
+three commands in the order the feature exists for: `git donkey` cuts a child
+and records the boundary, `git plonk --hard` sweeps the merged parent and
+leaves a tombstone, and `git wheresat` has to answer for the child from what
+survived.
 
 `syrupy` pins the text report and the JSON envelope, and Hypothesis drives the
 pure policy over arbitrary gate corpora: `tests/unit/test_wheresat_report.py`,
@@ -850,13 +850,13 @@ The same module provides three cassette fixtures. `github_api_cassette` loads
 an empty cassette (`interactions: []`) from `tests/integration/cassettes/`
 through `vcrpy` in its `none` record mode: because no interaction is recorded,
 any HTTP request raises inside the code under test instead of reaching the
-network. The worktree commands reach their remote over the Git protocol,
-which the temporary bare repositories stand in for, so a scenario run under
-the fixture proves that `git donkey` and `git plonk` never consult the
-GitHub API. `wheresat_parent_metadata_cassette` and
-`wheresat_rate_limited_cassette` replay the traffic `git wheresat` reads its
-parent evidence from. Record a real cassette only for a command that is meant
-to call the API, and never edit a recording by hand.
+network. The worktree commands reach their remote over the Git protocol, which
+the temporary bare repositories stand in for, so a scenario run under the
+fixture proves that `git donkey` and `git plonk` never consult the GitHub API.
+`wheresat_parent_metadata_cassette` and `wheresat_rate_limited_cassette` replay
+the traffic `git wheresat` reads its parent evidence from. Record a real
+cassette only for a command that is meant to call the API, and never edit a
+recording by hand.
 
 Every cassette is played through one `_recorder()` helper, which filters the
 `authorization` header out of each request before the interaction is written,
@@ -866,11 +866,11 @@ method and URL rather than on what it carried, so a run holding a token and a
 run holding none replay the same recording.
 
 `vcrpy` 7.0.0 ships no pytest plugin, so the root `conftest.py` declares the
-`--record-mode` option itself — `none`, `once`, or `new_episodes`, defaulting
-to `none` — rather than relying on one a future release might provide. The
+`--record-mode` option itself — `none`, `once`, or `new_episodes`, defaulting to
+`none` — rather than relying on one a future release might provide. The
 default is what the suite runs in, and it is the guarantee rather than a
-convenience: an unrecorded request raises inside the code under test instead
-of leaving the machine. Recording is a deliberate pass against live traffic:
+convenience: an unrecorded request raises inside the code under test instead of
+leaving the machine. Recording is a deliberate pass against live traffic:
 
 ```shell
 env -u GH_TOKEN GITHUB_TOKEN="$(env -u GH_TOKEN gh auth token)" \
@@ -887,11 +887,11 @@ that carries a credential is a committed secret.
 
 A recording cannot be shown to have been replayed by counting. `play_count` is
 `0` while a cassette is being written, and `Cassette.requests` returns the
-interactions the recording holds rather than the requests a run made. Provenance
-is therefore the record mode plus an assertion: `_asked()` in
+interactions the recording holds rather than the requests a run made.
+Provenance is therefore the record mode plus an assertion: `_asked()` in
 `tests/integration/test_wheresat_github.py` names the request each answer was
-read from, so a test that starts asking a different question fails as the change
-it is rather than replaying a stale answer.
+read from, so a test that starts asking a different question fails as the
+change it is rather than replaying a stale answer.
 
 Re-recording the rate-limit cassette is a deliberate act with a cost. GitHub
 refuses a request whose endpoint allowance the credential has spent with a
@@ -903,22 +903,23 @@ touch it. Spend `/search/code`'s ten-request-per-minute allowance to reproduce
 it: that costs a minute and affects nobody else, where the core allowance and
 the anonymous one are shared with every other caller of the API.
 
-The behaviours the [worktree-management skill](../skill/git-donkey-worktrees/SKILL.md)
-documents are pinned by behavioural suites that build ephemeral repositories
-and real `git donkey` worktrees. `tests/integration/test_git_donkey_bases_bdd.py`
-binds `features/git_donkey_bases.feature`: the mandatory fetch, the equivalence
-of `--no-pull` and the default, the pull-option usage error raised before any
+The behaviours the
+[worktree-management skill](../skill/git-donkey-worktrees/SKILL.md) documents
+are pinned by behavioural suites that build ephemeral repositories and real
+`git donkey` worktrees. `tests/integration/test_git_donkey_bases_bdd.py` binds
+`features/git_donkey_bases.feature`: the mandatory fetch, the equivalence of
+`--no-pull` and the default, the pull-option usage error raised before any
 repository access, the non-interactive prompt, `.` as a base, the principal
 remote, and the absence of GitHub API calls.
 `tests/integration/test_git_donkey_reuse_bdd.py` binds
-`features/git_donkey_reuse.feature`, and both share the `DonkeyScenario`
-record and runners in `tests/integration/donkey_helpers.py`: branch reuse and
-its upstream rules,
-occupied-branch and existing-path conflicts, detached `HEAD`, nested branch
-paths, and overlay overwrites. `tests/integration/test_git_plonk_trunk_bdd.py`
-and `test_git_plonk_markers_bdd.py` cover trunk discovery (a non-`main`
-default, a missing advertisement, an unreachable remote, the fetch a dry run
-performs, and the absence of GitHub API calls) and completion-marker semantics.
+`features/git_donkey_reuse.feature`, and both share the `DonkeyScenario` record
+and runners in `tests/integration/donkey_helpers.py`: branch reuse and its
+upstream rules, occupied-branch and existing-path conflicts, detached `HEAD`,
+nested branch paths, and overlay overwrites.
+`tests/integration/test_git_plonk_trunk_bdd.py` and
+`test_git_plonk_markers_bdd.py` cover trunk discovery (a non-`main` default, a
+missing advertisement, an unreachable remote, the fetch a dry run performs, and
+the absence of GitHub API calls) and completion-marker semantics.
 `tests/integration/test_git_plonk_scope_bdd.py` and
 `test_git_plonk_outcomes_bdd.py` cover the path-based worktree scope, remote
 branches surviving hard mode, soft mode's reach, missing directories, skipped
@@ -957,11 +958,11 @@ below CodeScene's Low Cohesion threshold of four.
 
 ## Manual pages
 
-Every console entrypoint has an authored reStructuredText source in `docs/man/`,
-and the wheel build generates that command's section-one manual from it. The
-`hatch-build-scripts` hook and Docutils are build-system requirements, not
-runtime dependencies: they are declared in `[build-system] requires` and must
-never appear in `[project] dependencies`. The
+Every console entrypoint has an authored reStructuredText source in
+`docs/man/`, and the wheel build generates that command's section-one manual
+from it. The `hatch-build-scripts` hook and Docutils are build-system
+requirements, not runtime dependencies: they are declared in
+`[build-system] requires` and must never appear in `[project] dependencies`. The
 [manpage packaging design](manpages-design.md) records the decision, and the
 [users' guide](users-guide.md) documents installation and how to read the
 installed pages.
@@ -987,20 +988,20 @@ The wheel's `shared-data` mapping puts each generated page under
 as `<environment>/share/man/man1/<command>.1` without running a generator. The
 source distribution instead keeps the `.rst` sources, the Docutils
 configuration, and the build configuration, and excludes the generated `.1`
-pages, so a subsequent wheel build regenerates them rather than reusing
-build outputs.
+pages, so a subsequent wheel build regenerates them rather than reusing build
+outputs.
 
 Generated pages are build output only. They are ignored by Git and regenerated
-in place whenever the wheel build hook runs, so a stale `docs/man/*.1`
-never reaches a distribution. Edit the `.rst` source and rebuild; never edit
-or commit a `.1` file.
+in place whenever the wheel build hook runs, so a stale `docs/man/*.1` never
+reaches a distribution. Edit the `.rst` source and rebuild; never edit or
+commit a `.1` file.
 
 A change to a console script's arguments or options must update
 `docs/man/<command>.rst` and the users' guide in the same change.
-`tests/unit/test_manpage_sources.py` resolves the command-line parameters
-from `git_donkey/cli.py` and fails when a manual omits one. It follows
-Cyclopts `Parameter(name="*")` spreads: the annotated type's fields, not the
-parameter's own name, are the options that the manual must document.
+`tests/unit/test_manpage_sources.py` resolves the command-line parameters from
+`git_donkey/cli.py` and fails when a manual omits one. It follows Cyclopts
+`Parameter(name="*")` spreads: the annotated type's fields, not the parameter's
+own name, are the options that the manual must document.
 `tests/integration/test_manpage_packaging.py` builds both distributions and
 checks the packaged and installed pages. It seeds stale pages and malformed or
 missing sources, so it also proves that a build replaces or refuses them rather

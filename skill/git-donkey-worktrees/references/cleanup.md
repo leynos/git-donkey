@@ -27,8 +27,8 @@ does not sweep arbitrary unregistered directories.
 Default and hard modes exclude the invoking worktree. Soft mode does **not**
 exclude it. All modes can affect other agents' worktrees. Execute a reviewed
 preview from the same invoking worktree: changing directory can change the
-candidate set. Running from the main worktree avoids excluding a linked worktree
-merely because the shell happens to be inside it.
+candidate set. Running from the main worktree avoids excluding a linked
+worktree merely because the shell happens to be inside it.
 
 ## Know what the cleanliness check protects
 
@@ -52,10 +52,11 @@ The check protects only what Git itself would refuse to discard:
   as `worktree removal failed`, and the worktree stays registered.
 
 Hard mode deletes a branch only after its worktree was removed, using
-`git branch -D`. That deletion performs no merged or ancestry check, so a branch
-carrying commits after the matching marker is deleted with them. A branch Git
-refuses to delete is listed under `Failed branch deletions:`; its worktree is
-already gone, the sweep continues, and the run exits with status `1`.
+`git branch -D`. That deletion performs no merged or ancestry check, so a
+branch carrying commits after the matching marker is deleted with them. A
+branch Git refuses to delete is listed under `Failed branch deletions:`; its
+worktree is already gone, the sweep continues, and the run exits with status
+`1`.
 
 ## Resolve completion history before default or hard cleanup
 
@@ -97,9 +98,9 @@ cleanup recognize it.
 Plonk scans commit messages, not GitHub issue state, pull-request merge status,
 patch equivalence, or branch ancestry. A matching reference anywhere in a trunk
 commit message is enough. A squash-merge suffix often names a pull request,
-which may have a different number from the issue in the branch name. Verify that
-the marker really corresponds to the completed work; neither a closed issue nor
-an unrelated `(#123)` establishes that relationship.
+which may have a different number from the issue in the branch name. Verify
+that the marker really corresponds to the completed work; neither a closed
+issue nor an unrelated `(#123)` establishes that relationship.
 
 A branch may contain new commits after an earlier matching merge. Several
 worktrees can also share the same issue marker. Review every candidate
@@ -109,8 +110,8 @@ individually; do not approve a batch solely because one matching task finished.
 
 1. Establish authorization for the **entire** preview, including each worktree
    and, in hard mode, each branch. Identify its owner, dependent branches,
-   running agents, builds, watchers, and shells. Coordinate a pause or handover;
-   do not terminate another task merely to make cleanup possible.
+   running agents, builds, watchers, and shells. Coordinate a pause or
+   handover; do not terminate another task merely to make cleanup possible.
 2. Record each candidate's absolute path, branch, and tip commit. Inspect
    tracked, untracked, ignored, and submodule state. Do not log secret file
    contents:
@@ -123,12 +124,12 @@ individually; do not approve a batch solely because one matching task finished.
    git -C "$worktree" submodule status --recursive
    ```
 
-   A clean ordinary status does not prove that ignored local data is expendable:
-   the cleanliness check skips modified, staged, and untracked files, but
-   ignored data is deleted with the worktree. Inspect submodule working changes
-   separately when present. Leave unresolved edits or in-progress Git
-   operations untouched. Saving a tip commit alone does not preserve working
-   files or ignored data.
+   A clean ordinary status does not prove that ignored local data is
+   expendable: the cleanliness check skips modified, staged, and untracked
+   files, but ignored data is deleted with the worktree. Inspect submodule
+   working changes separately when present. Leave unresolved edits or
+   in-progress Git operations untouched. Saving a tip commit alone does not
+   preserve working files or ignored data.
 3. Assign `trunk_ref` to `refs/remotes/<remote>/<branch>` for the advertised
    default inspected above. Inspect commits that trunk does not reach:
 
@@ -144,8 +145,8 @@ individually; do not approve a batch solely because one matching task finished.
    branch preserves committed history, but not the checkout's uncommitted data.
 4. For hard mode, establish that the local branch has no needed unique history,
    recovery role, or unresolved stack dependency. A marker match does not
-   authorize `-D`. Retain branches by choosing default mode when branch deletion
-   is not necessary or not explicitly in scope.
+   authorize `-D`. Retain branches by choosing default mode when branch
+   deletion is not necessary or not explicitly in scope.
 5. Re-run the same dry-run immediately before execution from the same invoking
    worktree. Confirm that candidate tips, local changes, and active-task
    ownership have not changed. A preview is not a lock or a transaction. If
@@ -212,10 +213,11 @@ soft mode as an unsolicited disk-pressure or post-task housekeeping action.
 ## Verify and report
 
 Re-read `git worktree list --porcelain`, check retained branch refs and paths,
-and inspect surviving checkouts after execution. Compare actual results with the
-reviewed preview, including each skipped worktree and its reason. Confirm that
-default mode retained branches, soft mode retained worktrees and branches, or
-hard mode deleted only the local branches of removed worktrees, as applicable.
+and inspect surviving checkouts after execution. Compare actual results with
+the reviewed preview, including each skipped worktree and its reason. Confirm
+that default mode retained branches, soft mode retained worktrees and branches,
+or hard mode deleted only the local branches of removed worktrees, as
+applicable.
 
 Read the exit status. `0` means the sweep did everything it planned, reported
 skips included. `1` means trunk could not be resolved, or a branch deletion
@@ -224,7 +226,7 @@ skip is not an error, and a failed branch deletion is not a skip; a run in
 which every candidate was skipped lists those skips rather than reporting that
 no matching worktrees were found.
 
-Cleanup can partially succeed before a later removal fails. Report completed and
-failed actions separately, re-inspect state, and stop rather than retrying the
-whole batch blindly. Do not claim that Git can recover deleted untracked or
+Cleanup can partially succeed before a later removal fails. Report completed
+and failed actions separately, re-inspect state, and stop rather than retrying
+the whole batch blindly. Do not claim that Git can recover deleted untracked or
 ignored files, or that a failed command rolled earlier removals back.

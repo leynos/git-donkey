@@ -1,7 +1,7 @@
 # Add `git wheresat` and the shared stack record
 
-This ExecPlan (execution plan) is a living document. The sections
-`Constraints`, `Tolerances (exception triggers)`, `Risks`, `Progress`,
+This ExecPlan (execution plan) is a living document. The sections `Constraints`,
+`Tolerances (exception triggers)`, `Risks`, `Progress`,
 `Surprises & discoveries`, `Decision log`, `Outcomes & retrospective`,
 `Conformance basis`, and `Verification plan` must be kept up to date as work
 proceeds.
@@ -39,17 +39,15 @@ and get back a report naming the boundary, the evidence that establishes it,
 the gate results that justify it, the commits that will be replayed, the
 commits that will be excluded, a backup ref to recover from, and the exact
 `git rebase --onto` command to run with full object IDs. When the available
-evidence cannot establish the boundary, the command says so plainly, prints
-the surviving candidates, the gate that stopped it, and the unresolved
-distinction between the candidates, and exits without proposing a command. It
-never guesses.
+evidence cannot establish the boundary, the command says so plainly, prints the
+surviving candidates, the gate that stopped it, and the unresolved distinction
+between the candidates, and exits without proposing a command. It never guesses.
 
 The command is a **discovery** tool. By default it never rebases, pushes,
-deletes a branch, checks anything out, prompts for credentials, or touches
-the working tree or the index. Its only writes are objects fetched into a
-private, namespaced evidence ref, plus — behind an explicit opt-in flag — a
-local stack record naming the boundary so the next incident does not need
-forensics at all.
+deletes a branch, checks anything out, prompts for credentials, or touches the
+working tree or the index. Its only writes are objects fetched into a private,
+namespaced evidence ref, plus — behind an explicit opt-in flag — a local stack
+record naming the boundary so the next incident does not need forensics at all.
 
 The behaviour is observable end to end: on a repository constructed to
 reproduce the squash scenario, `git wheresat` exits `0` and prints the boundary
@@ -69,133 +67,130 @@ against itself on exactly that point.
 then passes `--no-track` so that nothing records it. The fact the forensic
 ladder exists to reconstruct was in hand milliseconds earlier and was thrown
 away. Meanwhile `git plonk --hard` deletes a completed local branch with
-`git branch -D` (`git_donkey/plonk.py:182`), which destroys the branch ref,
-its reflog, and — as measured in `Surprises & discoveries` — the entire
+`git branch -D` (`git_donkey/plonk.py:182`), which destroys the branch ref, its
+reflog, and — as measured in `Surprises & discoveries` — the entire
 `branch.<name>` configuration section. That is precisely the evidence
-`git wheresat` would need to recover the boundary for any child still
-stacked on it.
+`git wheresat` would need to recover the boundary for any child still stacked
+on it.
 
 This plan therefore **requires** a single shared artefact, the **stack
-record**, with one owner module and one lifecycle spanning all three
-commands:
+record**, with one owner module and one lifecycle spanning all three commands:
 
 - **Birth — `git donkey`.** When it creates a branch from a base that is not
-  the trunk, it writes the stack record: the parent's identity and the
-  frozen base commit. This is the strongest possible evidence, because it is
-  an exact observation made at the instant the fact was true.
+  the trunk, it writes the stack record: the parent's identity and the frozen
+  base commit. This is the strongest possible evidence, because it is an exact
+  observation made at the instant the fact was true.
 - **Life — `git wheresat`.** It reads the record as its highest-precedence
   evidence, validates it against everything else it can observe, and under
   `--record` refreshes it after a restack, with an expected-old check.
 - **Death — `git plonk`.** Before deleting a branch it converts that
-  branch's record into a **tombstone** preserving the tip, and removes the
-  live record so the record namespace never outlives the branch namespace.
-  It also sweeps records orphaned by a plain `git branch -d`, and prunes
-  tombstones older than the retention window. Cleanup is already plonk's
-  job; this makes it the garbage collector for the stack namespace too.
+  branch's record into a **tombstone** preserving the tip, and removes the live
+  record so the record namespace never outlives the branch namespace. It also
+  sweeps records orphaned by a plain `git branch -d`, and prunes tombstones
+  older than the retention window. Cleanup is already plonk's job; this makes
+  it the garbage collector for the stack namespace too.
 
 The three commands share one format module and one store module. Neither
 `git donkey` nor `git plonk` learns anything about squash merges, pull
-requests, or evidence tiers; they read and write one small, versioned
-record through the same interface `git wheresat` reads it through. That is
-the whole interoperability contract, and it is a hard constraint rather than
-a follow-up.
+requests, or evidence tiers; they read and write one small, versioned record
+through the same interface `git wheresat` reads it through. That is the whole
+interoperability contract, and it is a hard constraint rather than a follow-up.
 
-With the record in place, the forensic ladder becomes the fallback for
-branches created before this feature, branches created by hand or by another
-tool, and recovery from a different clone. GitHub's own stacked pull requests
-(public preview since July 2026) make the same bet from the server side: for
-a natively stacked pull request, GitHub records the relationship and
-retargets the remaining branches when one in the stack merges. The
-populations the ladder serves are finite and shrinking; that is why the
-record is delivered first, in EP-M2 through EP-M4, and the ladder afterwards.
+With the record in place, the forensic ladder becomes the fallback for branches
+created before this feature, branches created by hand or by another tool, and
+recovery from a different clone. GitHub's own stacked pull requests (public
+preview since July 2026) make the same bet from the server side: for a natively
+stacked pull request, GitHub records the relationship and retargets the
+remaining branches when one in the stack merges. The populations the ladder
+serves are finite and shrinking; that is why the record is delivered first, in
+EP-M2 through EP-M4, and the ladder afterwards.
 
 ## Constraints
 
-These are hard invariants. Violating one requires escalation, not a
-workaround.
+These are hard invariants. Violating one requires escalation, not a workaround.
 
 - By default, `git wheresat` must not mutate repository state outside the
   evidence namespace. Specifically it must not rebase, merge, cherry-pick,
-  push, fetch into a tracked ref, delete or create a branch, move `HEAD`,
-  alter the index, or modify any file in the working tree. Every fetch must
-  land under `refs/wheresat/…` and must use `--no-write-fetch-head` so that
-  `FETCH_HEAD` is left alone.
+  push, fetch into a tracked ref, delete or create a branch, move `HEAD`, alter
+  the index, or modify any file in the working tree. Every fetch must land under
+  `refs/wheresat/…` and must use `--no-write-fetch-head` so that `FETCH_HEAD`
+  is left alone.
 - The capability to write must not be held by code that only needs to read.
   Read-only Git queries and ref-writing live in separate modules behind
   separate protocols, and the writing object is constructed only when the run
   will actually write.
 - `git wheresat` must never initiate an interactive OAuth device flow and
   must never block waiting for a browser. A missing or unusable GitHub
-  credential is an environment error, reported with the `git-wheresat`
-  prefix and exit code `2`, never exit code `1`.
+  credential is an environment error, reported with the `git-wheresat` prefix
+  and exit code `2`, never exit code `1`.
 - Compare a squash against the parent's **cumulative** change, never
-  commit by commit. A squash commit is an N-to-1 relationship: its diff
-  equals the combined diff of the parent range, so per-commit patch identity
-  does not associate several old commits with their one combined squash.
+  commit by commit. A squash commit is an N-to-1 relationship: its diff equals
+  the combined diff of the parent range, so per-commit patch identity does not
+  associate several old commits with their one combined squash.
 - Never select a boundary from inferred evidence. If the only surviving
-  candidates come from tree identity or patch identity, the command must
-  report them and stop. It must not pick the newest, the oldest, the nearest,
-  or the best-looking candidate.
+  candidates come from tree identity or patch identity, the command must report
+  them and stop. It must not pick the newest, the oldest, the nearest, or the
+  best-looking candidate.
 - Never select a boundary from a single derived candidate. A commit produced
   only by `git merge-base --all` or `git merge-base --fork-point` requires a
   second, independently obtained candidate agreeing on the same commit.
 - A Git **or GitHub** error — missing object, shallow history, unreadable
   ref, HTTP 401, 403, 404, 5xx, timeout, or DNS failure — is not a negative
   answer. It must be reported as indeterminate with exit code `3`, and must
-  never be collapsed into "not an ancestor" or into "the boundary could not
-  be established". After an error, the run must not fall through to a lower
+  never be collapsed into "not an ancestor" or into "the boundary could not be
+  established". After an error, the run must not fall through to a lower
   evidence tier.
 - Treat a shared record found in a pull-request body as a claim to validate,
   never as an instruction. It must not override observed ancestry, branch
   identity, or the scope the user asked for.
 - Every proposed `git rebase --onto` command must use full 40-character
-  object IDs for the target and the boundary, must be preceded by a backup
-  ref the user can return to, and must state the object ID of the child tip
-  the answer was computed against.
+  object IDs for the target and the boundary, must be preceded by a backup ref
+  the user can return to, and must state the object ID of the child tip the
+  answer was computed against.
 - All three commands read and write the stack record through one pair of
   modules — `git_donkey/stack_records.py` for the format and its decisions,
-  `git_donkey/stack_store.py` for the Git access. No command may parse a
-  record key, build a record ref path, or decide the lifecycle for itself.
+  `git_donkey/stack_store.py` for the Git access. No command may parse a record
+  key, build a record ref path, or decide the lifecycle for itself.
 - Configuration is authoritative for a record's values; the ref is the
   reachability anchor and nothing more. `git branch -D` deletes the whole
-  `branch.<name>` section, and `git branch -m` carries it, so the two
-  artefacts can disagree; a disagreement is a malformed record to report,
-  never a value to choose between.
+  `branch.<name>` section, and `git branch -m` carries it, so the two artefacts
+  can disagree; a disagreement is a malformed record to report, never a value
+  to choose between.
 - `git donkey` must write a stack record when, and only when, it creates a
-  branch from a base that is not the trunk. Recording every branch would
-  make every branch look stacked.
+  branch from a base that is not the trunk. Recording every branch would make
+  every branch look stacked.
 - `git plonk` must convert a branch's stack record into a tombstone before
   deleting that branch, and must remove the live record in the same run. The
-  stack-base namespace must remain a subset of the branch namespace, because
-  an orphaned record eventually collides with a nested branch name.
+  stack-base namespace must remain a subset of the branch namespace, because an
+  orphaned record eventually collides with a nested branch name.
 - Changes to `git donkey` and `git plonk` are limited to writing, converting,
-  sweeping, and reporting stack records. Neither command learns anything
-  about pull requests, squash merges, or evidence tiers.
+  sweeping, and reporting stack records. Neither command learns anything about
+  pull requests, squash merges, or evidence tiers.
 - Preserve the existing `git track`, `git fafo`, `git incoming`,
   `git outgoing`, and `git donkey-template` behaviours and every console
-  entrypoint. `git donkey` and `git plonk` gain the record behaviours above
-  and nothing else; in particular `git donkey` must not alter the `--no-track`
+  entrypoint. `git donkey` and `git plonk` gain the record behaviours above and
+  nothing else; in particular `git donkey` must not alter the `--no-track`
   decision at `git_donkey/donkey_worktrees.py:184-192`, because
   `branch.<name>.stack*` keys are a separate namespace from
   `branch.<name>.remote` and `.merge`.
 - Use the repository's existing tooling: Python 3.13+, Cyclopts, GitPython,
   `github3.py`, `loctocat`, Ruff, `ty`, Pyright, Pylint, Skylos, pytest,
-  pytest-bdd, Hypothesis, syrupy, and vcrpy. Adding any new runtime
-  dependency requires a tolerance exception.
+  pytest-bdd, Hypothesis, syrupy, and vcrpy. Adding any new runtime dependency
+  requires a tolerance exception.
 - Never hand-author or hand-edit a vcrpy cassette.
   `docs/developers-guide.md:557-558` states the rule: "Record a real cassette
-  only for a command that is meant to call the API, and never edit a
-  recording by hand." Cassettes are recorded once against real GitHub
-  traffic, with the `Authorization` header filtered.
+  only for a command that is meant to call the API, and never edit a recording
+  by hand." Cassettes are recorded once against real GitHub traffic, with the
+  `Authorization` header filtered.
 - Write tests before production code for every new behaviour, following the
   Red-Green-Refactor discipline in `AGENTS.md`, milestone by milestone.
 - Documentation in `docs/` is part of the change, not a follow-up. The
   users' guide, developers' guide, documentation index, README command
-  overview, migration guide, design document, ADR, and manual page must all
-  be updated before the work is considered complete.
-- Gate every code commit with `make check-fmt`, `make lint`, `make
-  typecheck`, and `make test`, run sequentially. Gate Markdown-only commits
-  with `make markdownlint` and `make nixie`. Capture output with `tee` to a
+  overview, migration guide, design document, ADR, and manual page must all be
+  updated before the work is considered complete.
+- Gate every code commit with `make check-fmt`, `make lint`, `make typecheck`,
+  and `make test`, run sequentially. Gate Markdown-only commits with
+  `make markdownlint` and `make nixie`. Capture output with `tee` to a
   branch-specific file under `/tmp`.
 - All prose follows `docs/documentation-style-guide.md`: en-GB Oxford
   spelling, sentence-case headings, prose wrapped at 80 columns, code at 120,
@@ -206,12 +201,12 @@ workaround.
 Stop and escalate rather than improvising when any of these is reached.
 
 - Scope, hard limit: more than sixteen new or modified non-test source files,
-  or more than 1,800 net lines of production code. The budget grew from
-  twelve files and 1,400 lines when the shared stack record became a
-  requirement, because the change now spans three commands.
+  or more than 1,800 net lines of production code. The budget grew from twelve
+  files and 1,400 lines when the shared stack record became a requirement,
+  because the change now spans three commands.
 - Scope, checkpoint: at 1,200 net lines of production code, stop and record
-  an explicit continue-or-cut decision in `Decision log`, naming what would
-  be cut. This checkpoint exists because the most recent comparable plan,
+  an explicit continue-or-cut decision in `Decision log`, naming what would be
+  cut. This checkpoint exists because the most recent comparable plan,
   `docs/execplans/incoming-outgoing-commands.md`, overran its own 450-line
   tolerance by 68 per cent and its retrospective recommended exactly this
   treatment. For calibration, `git plonk` is 1,122 lines across five modules
@@ -226,8 +221,8 @@ Stop and escalate rather than improvising when any of these is reached.
 - Network: more than 25 GitHub requests for a single invocation, or any code
   path that cannot be tested from a committed cassette.
 - Evidence semantics: a proposed rule would let inferred evidence establish a
-  boundary, would let a lone derived candidate establish one, or would
-  silently narrow a candidate set.
+  boundary, would let a lone derived candidate establish one, or would silently
+  narrow a candidate set.
 - Observability vocabulary: adding a value to an existing `typing.Literal`
   in `git_donkey/observability.py` beyond the additions listed in
   `Interfaces and dependencies`.
@@ -237,135 +232,120 @@ Stop and escalate rather than improvising when any of these is reached.
   would produce materially different answers for the same repository.
 - Roadmap: the instruction to mark a roadmap entry as done cannot be
   satisfied, because this repository has no roadmap document (see
-  `Surprises & discoveries`). If a roadmap is added before this work
-  completes, stop and confirm which entry to mark.
+  `Surprises & discoveries`). If a roadmap is added before this work completes,
+  stop and confirm which entry to mark.
 
 ## Risks
 
 - Risk: the command returns a **confidently wrong** boundary and the user
   runs the proposed rebase, silently duplicating or discarding work. This is
-  the catastrophic failure mode; everything else is an inconvenience.
-  Severity: high. Likelihood: medium.
-  Mitigation: three independent defences. The evidence tier model makes weak
-  evidence structurally incapable of establishing a boundary; every gate has
-  a specified decision procedure and a test in which that gate alone fails;
-  and the report always emits a backup ref plus the child tip the answer was
-  computed against, so the rebase is reversible and its premise re-checkable.
+  the catastrophic failure mode; everything else is an inconvenience. Severity:
+  high. Likelihood: medium. Mitigation: three independent defences. The
+  evidence tier model makes weak evidence structurally incapable of
+  establishing a boundary; every gate has a specified decision procedure and a
+  test in which that gate alone fails; and the report always emits a backup ref
+  plus the child tip the answer was computed against, so the rebase is
+  reversible and its premise re-checkable.
 - Risk: the boundary is genuinely unrecoverable, because the parent branch
-  was rewritten and its old refs and reflogs are gone.
-  Severity: high. Likelihood: medium.
-  Mitigation: make refusal a first-class, well-tested outcome with its own
-  exit code, and deliver the stack record early (EP-M3) so the next incident
-  does not depend on forensics.
+  was rewritten and its old refs and reflogs are gone. Severity: high.
+  Likelihood: medium. Mitigation: make refusal a first-class, well-tested
+  outcome with its own exit code, and deliver the stack record early (EP-M3) so
+  the next incident does not depend on forensics.
 - Risk: a tree-identity or patch-identity match looks conclusive but is not.
-  An added change followed by its revert produces a later prefix with the
-  same tree and the same net patch; `git patch-id` also ignores whitespace.
-  Severity: high. Likelihood: medium.
-  Mitigation: classify these as the `INFERRED` tier, and make it a type error
-  for an `Established` result to carry an inferred candidate. Pin with a
-  property test and a mutation-style negative control.
+  An added change followed by its revert produces a later prefix with the same
+  tree and the same net patch; `git patch-id` also ignores whitespace.
+  Severity: high. Likelihood: medium. Mitigation: classify these as the
+  `INFERRED` tier, and make it a type error for an `Established` result to
+  carry an inferred candidate. Pin with a property test and a mutation-style
+  negative control.
 - Risk: `git merge-base --fork-point` returns a plausible but wrong commit,
-  or nothing, depending on reflog retention.
-  Severity: medium. Likelihood: high.
-  Mitigation: classify fork-point and merge-base results as the `DERIVED`
+  or nothing, depending on reflog retention. Severity: medium. Likelihood:
+  high. Mitigation: classify fork-point and merge-base results as the `DERIVED`
   tier, which requires a second independently obtained candidate agreeing on
   the same commit before it can establish anything.
 - Risk: an authentication or authorization degradation (a lost SAML session,
   a token missing `repo` scope) returns HTTP 404 for a private parent
   repository, and the command reads "not found" as "no parent", falls through
-  to weaker evidence, and answers anyway.
-  Severity: high. Likelihood: medium.
+  to weaker evidence, and answers anyway. Severity: high. Likelihood: medium.
   Mitigation: map every GitHub error class to `INDETERMINATE` and exit `3`;
-  never fall through to a lower evidence tier after an error. Cover each
-  class with a faulted-adapter test.
+  never fall through to a lower evidence tier after an error. Cover each class
+  with a faulted-adapter test.
 - Risk: the parent pull request was opened from a fork, so its head ref lives
-  in a different repository from the child's `origin`.
-  Severity: medium. Likelihood: medium.
-  Mitigation: derive the fetch remote from the pull request's own
-  `head.repo.full_name`, never from the child's `origin`, and cover the fork
-  case in a behavioural scenario.
+  in a different repository from the child's `origin`. Severity: medium.
+  Likelihood: medium. Mitigation: derive the fetch remote from the pull
+  request's own `head.repo.full_name`, never from the child's `origin`, and
+  cover the fork case in a behavioural scenario.
 - Risk: the parent pull request was force-pushed, so its current head is not
-  the incarnation the child actually inherited.
-  Severity: medium. Likelihood: medium.
-  Mitigation: require the `boundary-is-ancestor-of-child` and
+  the incarnation the child actually inherited. Severity: medium. Likelihood:
+  medium. Mitigation: require the `boundary-is-ancestor-of-child` and
   `parent-history-intact` gates before accepting the fetched head, and report
   the mismatch explicitly rather than falling back to something convenient.
 - Risk: the established boundary commit is reachable only through this run's
-  evidence ref, so a later `git gc --prune=now` collects it and the answer
-  the user is holding stops working.
-  Severity: medium. Likelihood: medium.
-  Mitigation: check durability before exiting; if the boundary is not
-  reachable from any ref that survives the process, retain
+  evidence ref, so a later `git gc --prune=now` collects it and the answer the
+  user is holding stops working. Severity: medium. Likelihood: medium.
+  Mitigation: check durability before exiting; if the boundary is not reachable
+  from any ref that survives the process, retain
   `refs/wheresat/boundary/<branch>` and say so in the report (INV-8).
 - Risk: concurrent runs in sibling worktrees share one ref store, and a
   global `refs/wheresat/**` sweep deletes another run's in-flight evidence.
-  Severity: medium. Likelihood: medium.
-  Mitigation: mint the operation identifier from `uuid4`, never document a
-  global sweep, and reap only namespaces older than an hour.
+  Severity: medium. Likelihood: medium. Mitigation: mint the operation
+  identifier from `uuid4`, never document a global sweep, and reap only
+  namespaces older than an hour.
 - Risk: the commit-to-pull-request association search issues one API request
   per commit and exhausts the rate limit on a long child branch. GitHub's
   documented budget is 5,000 requests per hour, with a secondary limit of
-  roughly 900 points per minute.
-  Severity: medium. Likelihood: medium.
+  roughly 900 points per minute. Severity: medium. Likelihood: medium.
   Mitigation: bound the search at 20 commits by default, make exceeding it a
   hard stop advising `--parent`, and add the 25-request tolerance above.
 - Risk: patch-identity heuristics scan an unbounded trunk range. git-machete
   documents its equivalent `exact` mode as having "a significant performance
-  impact on large repositories".
-  Severity: medium. Likelihood: medium.
+  impact on large repositories". Severity: medium. Likelihood: medium.
   Mitigation: `--heuristic-window`, default 200 commits, with a cheap
   tree-identity pass first and patch identity only over the survivors; report
   the window scanned so a partial scan never reads as a complete one.
 - Risk: the property tests that build real repositories exceed the 30-second
   pytest timeout under `-n auto`, and Hypothesis's 200 ms default deadline
   makes them flake; a genuine counterexample then arrives as a timeout during
-  shrinking rather than as a minimal failing case.
-  Severity: medium. Likelihood: high.
-  Mitigation: register a Hypothesis profile (`deadline=None`, reduced
-  `max_examples`), keep Hypothesis for pure properties over generated graph
-  _data_, and use a parameterized matrix for the tests that build real
+  shrinking rather than as a minimal failing case. Severity: medium.
+  Likelihood: high. Mitigation: register a Hypothesis profile (`deadline=None`,
+  reduced `max_examples`), keep Hypothesis for pure properties over generated
+  graph _data_, and use a parameterized matrix for the tests that build real
   repositories, with `@pytest.mark.timeout(120)`.
 - Risk: `git plonk --hard` deletes the completed local parent branch with
   `git branch -D`, destroying the branch ref, its reflog, and the whole
   `branch.<name>` configuration section — exactly the evidence the
-  `parent-history-intact` gate and the fork-point rung depend on.
-  Severity: high. Likelihood: high.
-  Mitigation: no longer a follow-up. EP-M4 makes tombstoning a required part
-  of plonk's delete path, so the parent's tip survives deletion. The
-  limitation is stated honestly: a tombstone preserves the tip, not the
-  reflog, so fork-point recovery is still lost. That is acceptable because
-  the tip is what gates 6 and 7 and the merge-base rung actually need.
+  `parent-history-intact` gate and the fork-point rung depend on. Severity:
+  high. Likelihood: high. Mitigation: no longer a follow-up. EP-M4 makes
+  tombstoning a required part of plonk's delete path, so the parent's tip
+  survives deletion. The limitation is stated honestly: a tombstone preserves
+  the tip, not the reflog, so fork-point recovery is still lost. That is
+  acceptable because the tip is what gates 6 and 7 and the merge-base rung
+  actually need.
 - Risk: a stack record outlives its branch — deleted by a plain
   `git branch -d` outside plonk, or orphaned when `git branch -m` carries the
   configuration but leaves `refs/stack-bases/<old>` behind. An orphaned flat
   record eventually collides with a nested branch name: measured in this
   worktree, `refs/stack-bases/alpha` blocks the creation of
-  `refs/stack-bases/alpha/beta`.
-  Severity: medium. Likelihood: medium.
+  `refs/stack-bases/alpha/beta`. Severity: medium. Likelihood: medium.
   Mitigation: state the subset invariant (INV-9), have the reader ignore and
   report a record with no branch rather than trusting it, have plonk sweep
   orphans into tombstones on every run, and have the writer detect a
   directory/file collision and report it instead of crashing.
 - Risk: tombstones accumulate indefinitely, pinning objects against
-  `git gc` forever.
-  Severity: low. Likelihood: high.
-  Mitigation: tombstones expire. Plonk prunes those older than
-  `stack.tombstoneExpire`, defaulting to 90 days to match Git's own
-  `gc.reflogExpire` default — so a tombstone lasts exactly as long as the
-  reflog it stands in for would have.
+  `git gc` forever. Severity: low. Likelihood: high. Mitigation: tombstones
+  expire. Plonk prunes those older than `stack.tombstoneExpire`, defaulting to
+  90 days to match Git's own `gc.reflogExpire` default — so a tombstone lasts
+  exactly as long as the reflog it stands in for would have.
 - Risk: `git donkey` writes a record for every branch it creates, so every
-  branch looks stacked and `git wheresat` proposes a boundary for branches
-  that never had a parent.
-  Severity: medium. Likelihood: medium.
-  Mitigation: record only when the resolved base is not the trunk, decided by
-  the pure policy in `stack_records.py` against
-  `remote_default.discover_default_branch`, and covered by a behavioural
-  scenario in both directions.
+  branch looks stacked and `git wheresat` proposes a boundary for branches that
+  never had a parent. Severity: medium. Likelihood: medium. Mitigation: record
+  only when the resolved base is not the trunk, decided by the pure policy in
+  `stack_records.py` against `remote_default.discover_default_branch`, and
+  covered by a behavioural scenario in both directions.
 - Risk: `make fmt` reflows untouched Markdown across the repository, creating
-  unrelated churn in this branch.
-  Severity: low. Likelihood: high.
-  Mitigation: use `make markdownlint` for Markdown gating and stage only the
-  files this change owns.
+  unrelated churn in this branch. Severity: low. Likelihood: high. Mitigation:
+  use `make markdownlint` for Markdown gating and stage only the files this
+  change owns.
 
 ## Progress
 
@@ -757,7 +737,7 @@ Stop and escalate rather than improvising when any of these is reached.
     found it, which is the write-a-five-case-matrix-cannot-forbid. Two things
     about it are recorded because they were not what the plan assumed. The
     strategy space is six pairs and Hypothesis exhausts it rather than sampling
-    it ("6 passing ... Stopped because nothing left to do"), so no
+    it ("6 passing … Stopped because nothing left to do"), so no
     `max_examples` is set and the docstring says the count is ground covered
     rather than a budget. And `@given` with `tmp_path` trips Hypothesis's
     `function_scoped_fixture` health check, which is suppressed with the reason
@@ -831,8 +811,8 @@ Stop and escalate rather than improvising when any of these is reached.
     `/tmp/coderabbit-git-donkey-git-wheresat-sub-command-5.out`), taken at
     `1656db6`, the commit this entry describes, on the first attempt and without
     meeting a rate limit, so no `vsleep` retry was needed. The reviewer's list
-    of paths is an exact set match against `git diff --name-only
-    origin/main...HEAD` at that commit — 77 each way, no path in one list and
+    of paths is an exact set match against `git diff --name-only` for
+    `origin/main...HEAD` at that commit — 77 each way, no path in one list and
     not the other — so the four paths this milestone adds are among those read
     rather than only the ones it changes: `git_donkey/wheresat_writes.py` and
     the three behavioural artefacts. The review is taken against `origin/main`
@@ -1125,7 +1105,8 @@ Stop and escalate rather than improvising when any of these is reached.
     is deliberately not here — the cassettes, the behavioural scenario in
     `git_wheresat.feature`, and INV-1's fetch-path non-vacuity assertion in the
     read-only matrix — is still owed and is listed below.
-  - The comparison is measured from both sides. `tests/unit/test_wheresat_deep.py`
+  - The comparison is measured from both sides.
+    `tests/unit/test_wheresat_deep.py`
     states it in 14 tests over a double that records every question put to it:
     which commits a twin names and in whose order, that the change pass is
     reached only for the commits the tree pass left unmatched, that the two
@@ -1936,264 +1917,249 @@ Stop and escalate rather than improvising when any of these is reached.
 - Observation: this repository has no roadmap document.
   Evidence: a repository-wide search of `README.md`, `.github/`, and `docs/`
   finds no roadmap file. The only matches for "roadmap" are the roadmap
-  _branch-naming_ convention used by `git plonk`
-  (`git_donkey/plonk_policy.py`) and a generic roadmap-authoring template in
-  `docs/documentation-style-guide.md`.
-  Impact: the standing instruction to mark a roadmap entry as done on
-  completion has no target. The implementor should instead add the new
-  documents to `docs/contents.md`, set this plan's status to `COMPLETE`, and
-  escalate if a roadmap document appears before the work lands.
+  _branch-naming_ convention used by `git plonk` (`git_donkey/plonk_policy.py`)
+  and a generic roadmap-authoring template in
+  `docs/documentation-style-guide.md`. Impact: the standing instruction to mark
+  a roadmap entry as done on completion has no target. The implementor should
+  instead add the new documents to `docs/contents.md`, set this plan's status to
+  `COMPLETE`, and escalate if a roadmap document appears before the work lands.
 - Observation: `git donkey` already holds the parent identity at branch
-  birth, and deliberately discards it.
-  Evidence: `git_donkey/donkey_worktrees.py:184-192` resolves
-  `start_point = context.repo_home.commit(request.base_branch).hexsha` and
-  then passes `--no-track` to `git worktree add`, with the comment "Freeze
-  the selected ref once and never track the remote default branch from a new
-  feature branch".
-  Impact: most of the forensic ladder exists to reconstruct a fact the tool
-  family had in hand milliseconds earlier. This is why the shared stack
-  record is a requirement of this plan rather than a follow-up, and why
+  birth, and deliberately discards it. Evidence:
+  `git_donkey/donkey_worktrees.py:184-192` resolves
+  `start_point = context.repo_home.commit(request.base_branch).hexsha` and then
+  passes `--no-track` to `git worktree add`, with the comment "Freeze the
+  selected ref once and never track the remote default branch from a new
+  feature branch". Impact: most of the forensic ladder exists to reconstruct a
+  fact the tool family had in hand milliseconds earlier. This is why the shared
+  stack record is a requirement of this plan rather than a follow-up, and why
   `git donkey` writes it at EP-M3, before `git wheresat` exists.
 - Observation: `git plonk --hard` destroys the evidence this command needs.
-  Evidence: `git_donkey/plonk.py:160` `delete_branch` deletes a completed
-  local branch with `git branch -D`; Git removes the branch's reflog and its
-  whole configuration section along with the ref.
-  Impact: the highest-likelihood cause of the refusal path is another command
-  in the same package. EP-M8 addresses it; until then the users' guide must
-  warn that running `git plonk --hard` on a parent worktree forecloses
-  fork-point recovery for its children.
+  Evidence: `git_donkey/plonk.py:160` `delete_branch` deletes a completed local
+  branch with `git branch -D`; Git removes the branch's reflog and its whole
+  configuration section along with the ref. Impact: the highest-likelihood
+  cause of the refusal path is another command in the same package. EP-M8
+  addresses it; until then the users' guide must warn that running
+  `git plonk --hard` on a parent worktree forecloses fork-point recovery for
+  its children.
 - Observation: the existing vcrpy fixture proves the _absence_ of GitHub
   traffic rather than replaying traffic, and the developers' guide forbids
-  hand-editing recordings.
-  Evidence: `tests/integration/conftest.py:79-100` defines
-  `github_api_cassette`, replaying
+  hand-editing recordings. Evidence: `tests/integration/conftest.py:79-100`
+  defines `github_api_cassette`, replaying
   `tests/integration/cassettes/github_api_no_interactions.yaml` (body:
   `interactions: []`) in VCR `none` record mode.
-  `docs/developers-guide.md:557-558` states "Record a real cassette only for
-  a command that is meant to call the API, and never edit a recording by
-  hand."
-  Impact: EP-M7 records genuine cassettes against this repository's own
-  merged pull requests rather than authoring fictions, and sets
-  `allow_playback_repeats=True` where one cassette serves several
-  parameterized cases.
+  `docs/developers-guide.md:557-558` states "Record a real cassette only for a
+  command that is meant to call the API, and never edit a recording by hand."
+  Impact: EP-M7 records genuine cassettes against this repository's own merged
+  pull requests rather than authoring fictions, and sets
+  `allow_playback_repeats=True` where one cassette serves several parameterized
+  cases.
 - Observation: GitHub now models stacked pull requests natively, and the
-  relationship is readable through the REST API.
-  Evidence: verified against the live API from this working tree on
-  2026-09-14. `GET /repos/leynos/git-donkey/stacks` returns `[]` (HTTP 200,
-  so the endpoint exists), and
-  `GET /repos/leynos/git-donkey/pulls/80` returns a payload containing
-  `"stack": null`. The feature entered public preview in July 2026 and,
-  per GitHub's documentation, retargets the remaining branches automatically
-  when one pull request in a stack merges; it requires all branches to be in
-  the same repository.
-  Impact: a natively stacked pull request is an attested statement of the
-  parent relationship, so EP-M7 reads it as the highest-precedence source of
-  parent _identity_. It also bounds the problem: this command is for stacks
-  GitHub does not manage, and for stacks spanning forks.
+  relationship is readable through the REST API. Evidence: verified against the
+  live API from this working tree on 2026-09-14.
+  `GET /repos/leynos/git-donkey/stacks` returns `[]` (HTTP 200, so the endpoint
+  exists), and `GET /repos/leynos/git-donkey/pulls/80` returns a payload
+  containing `"stack": null`. The feature entered public preview in July 2026
+  and, per GitHub's documentation, retargets the remaining branches
+  automatically when one pull request in a stack merges; it requires all
+  branches to be in the same repository. Impact: a natively stacked pull
+  request is an attested statement of the parent relationship, so EP-M7 reads
+  it as the highest-precedence source of parent _identity_. It also bounds the
+  problem: this command is for stacks GitHub does not manage, and for stacks
+  spanning forks.
 - Observation: `github3.py` 4.0.1 does not model the `stack` field.
   Evidence: `github3.pulls._PullRequest._update_attributes` sets
   `merge_commit_sha`, `merged_at`, `base`, and `head`, but no `stack`;
   `github3.models.GitHubCore.as_dict()` returns `self._json_data`, the raw
-  payload.
-  Impact: read `stack` through `pull_request.as_dict().get("stack")`, and
-  reach `GET /repos/{owner}/{repo}/stacks` through the library's
+  payload. Impact: read `stack` through `pull_request.as_dict().get("stack")`,
+  and reach `GET /repos/{owner}/{repo}/stacks` through the library's
   `requests.Session` so that vcrpy still intercepts it. Record this in the
   developers' guide.
 - Observation: `git patch-id --stable` is not the default.
   Evidence: `git patch-id --help` on Git 2.52.0 documents `--stable` as "the
   default if `patchid.stable` is set to true", so `--unstable` is the default
-  otherwise. Both forms ignore all whitespace within the patch.
-  Impact: the adapter must pass `--stable` explicitly rather than relying on
-  the user's configuration, or two runs on two machines can disagree.
+  otherwise. Both forms ignore all whitespace within the patch. Impact: the
+  adapter must pass `--stable` explicitly rather than relying on the user's
+  configuration, or two runs on two machines can disagree.
 - Observation: `git branch -D` deletes the entire `branch.<name>`
-  configuration section, including keys Git knows nothing about.
-  Evidence: measured in a scratch repository on Git 2.52.0 on 2026-09-14.
-  After setting `branch.feat.stackParent` and `branch.feat.stackBase` and
-  running `git branch -D feat`, `git config --local --get-regexp '^branch\.'`
-  returns nothing.
-  Impact: this is the single fact that shapes the record lifecycle. A
+  configuration section, including keys Git knows nothing about. Evidence:
+  measured in a scratch repository on Git 2.52.0 on 2026-09-14. After setting
+  `branch.feat.stackParent` and `branch.feat.stackBase` and running
+  `git branch -D feat`, `git config --local --get-regexp '^branch\.'` returns
+  nothing. Impact: this is the single fact that shapes the record lifecycle. A
   branch's own record cannot survive that branch's deletion, so the tombstone
   must carry what the next reader needs, and it must carry it in a ref.
 - Observation: `git branch -m` carries custom `branch.<name>.*` keys to the
-  new section, but does not move `refs/stack-bases/<name>`.
-  Evidence: same measurement; after `git branch -m feat feat2`,
-  `branch.feat2.stackParent` and `branch.feat2.stackBase` are present.
-  Impact: configuration is the durable half of the record and is therefore
-  authoritative for values; the ref is only an anchor that keeps the boundary
-  commit reachable, and may legitimately be missing after a rename.
+  new section, but does not move `refs/stack-bases/<name>`. Evidence: same
+  measurement; after `git branch -m feat feat2`, `branch.feat2.stackParent` and
+  `branch.feat2.stackBase` are present. Impact: configuration is the durable
+  half of the record and is therefore authoritative for values; the ref is only
+  an anchor that keeps the boundary commit reachable, and may legitimately be
+  missing after a rename.
 - Observation: a flat record namespace has real directory/file collisions.
-  Evidence: with `refs/stack-bases/alpha` present, `git update-ref
-  refs/stack-bases/alpha/beta` fails with "cannot lock ref … 'alpha' exists".
-  Impact: the flat form from the supplied procedure is safe only while the
-  namespace stays a subset of `refs/heads`, which is why INV-9 and plonk's
-  sweep exist.
+  Evidence: with `refs/stack-bases/alpha` present,
+  `git update-ref refs/stack-bases/alpha/beta` fails with "cannot lock ref …
+  'alpha' exists". Impact: the flat form from the supplied procedure is safe
+  only while the namespace stays a subset of `refs/heads`, which is why INV-9
+  and plonk's sweep exist.
 - Observation: `git worktree add --no-track -b <name>` writes no
-  `branch.<name>` configuration at all.
-  Evidence: same measurement; `git config --local --get-regexp
-  '^branch\.wtb\.'` returns nothing after the worktree is added.
-  Impact: `git donkey`'s record write is the first writer of that section, so
-  it is not racing or overwriting anything Git set up, and it does not
-  disturb the deliberate `--no-track` decision.
+  `branch.<name>` configuration at all. Evidence: same measurement;
+  `git config --local --get-regexp '^branch\.wtb\.'` returns nothing after the
+  worktree is added. Impact: `git donkey`'s record write is the first writer of
+  that section, so it is not racing or overwriting anything Git set up, and it
+  does not disturb the deliberate `--no-track` decision.
 - Observation: `git plonk` deletes branches with `git branch -D`, not `-d`.
-  Evidence: `git_donkey/plonk.py:182`.
-  Impact: deletion always succeeds when the branch exists, so the tombstone
-  must be written before the call and cannot rely on a refusal to protect
-  anything.
+  Evidence: `git_donkey/plonk.py:182`. Impact: deletion always succeeds when
+  the branch exists, so the tombstone must be written before the call and
+  cannot rely on a refusal to protect anything.
 - Observation: `git merge-base --is-ancestor` returns 128, not 2, for an
-  unknown object on this Git version.
-  Evidence: measured in this working tree on Git 2.52.0 — exit `0` for an
-  ancestor, `1` for a non-ancestor, `128` for a nonexistent object ID.
-  Impact: the adapter must treat any status other than `0` or `1` as
-  indeterminate rather than assuming a specific error code.
+  unknown object on this Git version. Evidence: measured in this working tree
+  on Git 2.52.0 — exit `0` for an ancestor, `1` for a non-ancestor, `128` for a
+  nonexistent object ID. Impact: the adapter must treat any status other than
+  `0` or `1` as indeterminate rather than assuming a specific error code.
 - Observation: the sweep can salvage a tip only when the record outlives the
-  ref that recorded it.
-  Evidence: measured through the EP-M2 state machine. A branch whose record
-  was written and then deleted with `git branch -D` leaves an anchor and
-  nothing else, because Git destroyed the configuration section with the ref;
-  `reconcile` reports that as `RecordMalformed`, and `_sweep_one` has no tip
-  to preserve, so it clears the anchor and reports nothing. A branch deleted
-  with `git update-ref -d refs/heads/<name>` leaves the configuration behind,
-  and the sweep does convert the tip it recorded into a tombstone.
-  Impact: the machine needs both deletion rules — the plain-`git branch -D`
-  one because it is the common case and its orphan must still be cleared, and
-  the ref-surgery one because it is the only route by which a foreign deletion
+  ref that recorded it. Evidence: measured through the EP-M2 state machine. A
+  branch whose record was written and then deleted with `git branch -D` leaves
+  an anchor and nothing else, because Git destroyed the configuration section
+  with the ref; `reconcile` reports that as `RecordMalformed`, and `_sweep_one`
+  has no tip to preserve, so it clears the anchor and reports nothing. A branch
+  deleted with `git update-ref -d refs/heads/<name>` leaves the configuration
+  behind, and the sweep does convert the tip it recorded into a tombstone.
+  Impact: the machine needs both deletion rules — the plain-`git branch -D` one
+  because it is the common case and its orphan must still be cleared, and the
+  ref-surgery one because it is the only route by which a foreign deletion
   leaves anything worth preserving. The limitation is now stated in
   `docs/stack-records.md`: a parent deleted through plain Git cannot be
   resurrected by the sweep, only reported.
 - Observation: a foreign rename onto a tombstoned name puts one name in two of
-  INV-10's states, and nothing repairs it.
-  Evidence: the machine reached, before this was fenced off,
-  `entomb_unrecorded(child)` (a tombstone for `child`), then a rename of a
-  recorded `parent` whose first unused target was `child`, and the exclusivity
-  check reported "`'child' has a live record and a tombstone at the same
-  time`".
-  Impact: `_reusable_names()` (for a new branch) and `_unused_names()` (for a
-  rename target) are deliberately different sets, and the machine never asks
-  the question the design has not answered. The gap is real for users of plain
-  Git, and the follow-up belongs to EP-M4 or EP-M6: retire a tombstone whose
-  name is live again, and never read a tombstone for a name that still has a
-  branch. Only `create` retires a tombstone today, and a rename does not reach
-  `create`.
+  INV-10's states, and nothing repairs it. Evidence: the machine reached,
+  before this was fenced off, `entomb_unrecorded(child)` (a tombstone for
+  `child`), then a rename of a recorded `parent` whose first unused target was
+  `child`, and the exclusivity check reported
+  "`'child' has a live record and a tombstone at the same time`". Impact:
+  `_reusable_names()` (for a new branch) and `_unused_names()` (for a rename
+  target) are deliberately different sets, and the machine never asks the
+  question the design has not answered. The gap is real for users of plain Git,
+  and the follow-up belongs to EP-M4 or EP-M6: retire a tombstone whose name is
+  live again, and never read a tombstone for a name that still has a branch.
+  Only `create` retires a tombstone today, and a rename does not reach `create`.
 - Observation: Hypothesis does not sample its stateful rules uniformly, and
-  coverage cannot be forced through preconditions.
-  Evidence: over twenty runs of thirty examples and fifteen steps, a refresh
-  was reached in fifteen and a swept tip in eight, and one run's first twelve
-  draws were twelve draws of the same no-argument rule (`prune`, which sorts
-  first among the rules). Narrowing the enabled rules to the ones that reach a
-  missing class — the obvious fix — failed twice: with the gate reading a set
-  that outlived the example, Hypothesis raised `FlakyStrategyDefinition`
-  ("while selecting a rule to run"), and with the gate narrowed to a single
-  valid rule it raised `FailedHealthCheck: filter_too_much` (seven inputs
-  generated against fifty filtered out), because a step must draw from a
-  subset of the enabled rules and the filter then rejects it. A related
-  finding for any future instrumentation: `RuleStrategy._setup_for` is
-  `@lru_cache`d per machine class and each `Rule` holds `function=<original>`,
-  so wrapping rule functions to count calls has no effect.
-  Impact: the machine reaches its required classes from a deterministic
-  `start` rule instead, calling the same rules a generated step calls with
-  the same check after each. Anti-vacuity is guaranteed by construction
-  rather than asked of the generator, and the requirement to reach each class
-  is still asserted at the end of the run.
+  coverage cannot be forced through preconditions. Evidence: over twenty runs
+  of thirty examples and fifteen steps, a refresh was reached in fifteen and a
+  swept tip in eight, and one run's first twelve draws were twelve draws of the
+  same no-argument rule (`prune`, which sorts first among the rules). Narrowing
+  the enabled rules to the ones that reach a missing class — the obvious fix —
+  failed twice: with the gate reading a set that outlived the example,
+  Hypothesis raised `FlakyStrategyDefinition` ("while selecting a rule to
+  run"), and with the gate narrowed to a single valid rule it raised
+  `FailedHealthCheck: filter_too_much` (seven inputs generated against fifty
+  filtered out), because a step must draw from a subset of the enabled rules
+  and the filter then rejects it. A related finding for any future
+  instrumentation: `RuleStrategy._setup_for` is `@lru_cache`d per machine class
+  and each `Rule` holds `function=<original>`, so wrapping rule functions to
+  count calls has no effect. Impact: the machine reaches its required classes
+  from a deterministic `start` rule instead, calling the same rules a generated
+  step calls with the same check after each. Anti-vacuity is guaranteed by
+  construction rather than asked of the generator, and the requirement to reach
+  each class is still asserted at the end of the run.
 - Observation: `scripts/mdformat-all.sh` ignores `--help` and reformats every
-  Markdown file in the repository.
-  Evidence: invoking it with `--help` printed its own source and then ran
-  `mdtablefix` and `markdownlint-cli2 --fix` over the whole tree; it rewrote
-  twelve tracked files this change does not own and introduced an MD013
-  violation at `docs/execplans/git-wheresat-sub-command.md:3071:81` by
-  reflowing an 80-column URL line. Reverted with `git checkout --`.
-  Impact: never run that script, including with `--help`. Format only the
-  files this change owns. `make markdownlint` is safe and is the gate.
+  Markdown file in the repository. Evidence: invoking it with `--help` printed
+  its own source and then ran `mdtablefix` and `markdownlint-cli2 --fix` over
+  the whole tree; it rewrote twelve tracked files this change does not own and
+  introduced an MD013 violation at
+  `docs/execplans/git-wheresat-sub-command.md:3071:81` by reflowing an
+  80-column URL line. Reverted with `git checkout --`. Impact: never run that
+  script, including with `--help`. Format only the files this change owns.
+  `make markdownlint` is safe and is the gate.
 - Observation: the `skylos` dead-code gate counts liveness only from the
-  production roots, so a module that only its tests call is dead code.
-  Evidence: `make lint`'s last stage runs `skylos git_donkey --category
-  dead_code --gate` (Makefile:117, strict per `pyproject.toml:404-405`). EP-M2
-  first landed `stack_records.py` whole and the gate refused the parts no
-  command reached. There is no inline pragma: the only escapes are
-  `[[tool.skylos.dead_code.entrypoints]]` and
+  production roots, so a module that only its tests call is dead code. Evidence:
+  `make lint`'s last stage runs
+  `skylos git_donkey --category dead_code --gate` (Makefile:117, strict per
+  `pyproject.toml:404-405`). EP-M2 first landed `stack_records.py` whole and
+  the gate refused the parts no command reached. There is no inline pragma: the
+  only escapes are `[[tool.skylos.dead_code.entrypoints]]` and
   `[tool.skylos.whitelist.documented]`, and
-  `tests/unit/test_skylos_lint_contract.py` pins both sets. Reachability is
-  not transitive through test code, and a dead caller does not confer
-  liveness on its callee. Class methods are shielded — `NullRecorder`'s are
-  entry points for exactly this reason — while module-level functions and
-  constants are not.
+  `tests/unit/test_skylos_lint_contract.py` pins both sets. Reachability is not
+  transitive through test code, and a dead caller does not confer liveness on
+  its callee. Class methods are shielded — `NullRecorder`'s are entry points
+  for exactly this reason — while module-level functions and constants are not.
   Impact: the contract could not land ahead of its first consumer. EP-M2
-  therefore landed `EVIDENCE_BIRTH` only because EP-M3 was sliced to consume
-  it in the same pull request, and deferred `EVIDENCE_REFRESHED` to EP-M9 and
+  therefore landed `EVIDENCE_BIRTH` only because EP-M3 was sliced to consume it
+  in the same pull request, and deferred `EVIDENCE_REFRESHED` to EP-M9 and
   `DEFAULT_TOMBSTONE_EXPIRE` to EP-M4; the lifecycle tests spell those two
   values locally rather than importing a constant that does not exist yet.
   Corollary, and the reason it matters beyond EP-M2: **a milestone cannot be
-  sliced by layer.** The interface sketch below lists `wheresat_records.py`
-  and `wheresat_policy.py` as EP-M6 with no command reaching them until
-  EP-M8, and `wheresat_graph.py` as EP-M7 with no consumer until EP-M8. Those
-  milestones are now sliced so that each lands code a command reaches — the
-  pure core and its ports land with, or behind, the collection step that
-  calls them — even where that means a larger single milestone than the plan
-  first described. The alternative was a whitelist entry per deferred symbol,
-  which would have to be removed again when the consumer arrived.
+  sliced by layer.** The interface sketch below lists `wheresat_records.py` and
+  `wheresat_policy.py` as EP-M6 with no command reaching them until EP-M8, and
+  `wheresat_graph.py` as EP-M7 with no consumer until EP-M8. Those milestones
+  are now sliced so that each lands code a command reaches — the pure core and
+  its ports land with, or behind, the collection step that calls them — even
+  where that means a larger single milestone than the plan first described. The
+  alternative was a whitelist entry per deferred symbol, which would have to be
+  removed again when the consumer arrived.
 - Observation: a branch created _at_ the trunk commit is not stacked, even
-  when the base it was selected from is a feature branch.
-  Evidence: measured through the EP-M3 behavioural suite. Its first version
-  created `parent` from `main` with no commit of its own and then asked
-  `git donkey` for `child` from `parent`; the run wrote no record, because
-  `should_record` compares the frozen base commit against the trunk commit
-  and both were the same commit. `INV-11` is satisfied in the letter — the
-  base ref differs from the trunk ref — while the branch has no stack in the
-  sense the design means.
-  A third deviation followed from covering the implicit base: the new
-  ``When`` step needed wording of its own, because ``parsers.parse`` matches
-  step names with a greedy ``{branch}`` and ``fullmatch``, so
+  when the base it was selected from is a feature branch. Evidence: measured
+  through the EP-M3 behavioural suite. Its first version created `parent` from
+  `main` with no commit of its own and then asked `git donkey` for `child` from
+  `parent`; the run wrote no record, because `should_record` compares the
+  frozen base commit against the trunk commit and both were the same commit.
+  `INV-11` is satisfied in the letter — the base ref differs from the trunk ref
+  — while the branch has no stack in the sense the design means. A third
+  deviation followed from covering the implicit base: the new ``When`` step
+  needed wording of its own, because ``parsers.parse`` matches step names with
+  a greedy ``{branch}`` and ``fullmatch``, so
   ``I create a branch {branch} with git donkey`` also accepts the explicit
   step's text and captures ``child from parent`` as the branch. Registering
   both made the three explicit scenarios fail with no base at all; the
   scenarios now say "naming no base". Relevant to every ``git wheresat``
-  scenario that follows: two steps that both accept one piece of Gherkin do
-  not split it tidily, and pytest-bdd will not report the collision.
-  Impact: this is the decision working as specified, not a defect, but it has
-  two consequences the plan did not anticipate. The BDD fixture's Given step
-  now advances `parent` by one commit, which is what EP-M5's
-  `advanced_parent_stack()` will do; and every future scenario about a
-  stacked branch must advance its parent, or it is silently testing the
-  trunk case. The scenario text records this: it reads "a feature branch
-  parent one commit ahead of main" rather than the plan's "created from
-  main". A second deliberate deviation from the plan's verbatim Gherkin:
-  each scenario gained an explicit `Then git donkey succeeds`, so a run that
-  fails before writing anything fails on the exit code rather than on a
-  confusing missing-record assertion.
+  scenario that follows: two steps that both accept one piece of Gherkin do not
+  split it tidily, and pytest-bdd will not report the collision. Impact: this
+  is the decision working as specified, not a defect, but it has two
+  consequences the plan did not anticipate. The BDD fixture's Given step now
+  advances `parent` by one commit, which is what EP-M5's
+  `advanced_parent_stack()` will do; and every future scenario about a stacked
+  branch must advance its parent, or it is silently testing the trunk case. The
+  scenario text records this: it reads "a feature branch parent one commit
+  ahead of main" rather than the plan's "created from main". A second
+  deliberate deviation from the plan's verbatim Gherkin: each scenario gained
+  an explicit `Then git donkey succeeds`, so a run that fails before writing
+  anything fails on the exit code rather than on a confusing missing-record
+  assertion.
 - Observation: `git symbolic-ref --short` renders a remote-tracking alias as
-  `<remote>/<branch>`, not as `<branch>`.
-  Evidence: measured directly. With `refs/remotes/origin/HEAD` pointing at
-  `refs/remotes/origin/main`, `git symbolic-ref --short refs/remotes/origin/HEAD`
-  prints `origin/main`. EP-M3's explicit-base path reads that alias to learn
-  the remote's default branch without contacting it, and the first version
-  passed the result straight into `refs/remotes/<remote>/<default>`, producing
+  `<remote>/<branch>`, not as `<branch>`. Evidence: measured directly. With
+  `refs/remotes/origin/HEAD` pointing at `refs/remotes/origin/main`,
+  `git symbolic-ref --short refs/remotes/origin/HEAD` prints `origin/main`.
+  EP-M3's explicit-base path reads that alias to learn the remote's default
+  branch without contacting it, and the first version passed the result
+  straight into `refs/remotes/<remote>/<default>`, producing
   `refs/remotes/origin/origin/main`. The ref does not exist, the trunk came
   back unknown, and the stacked-branch scenario failed with `RecordAbsent()`.
-  Impact: a silent wrong answer rather than an error, and one that no unit
-  test caught — the stubbed discovery tests never exercised the alias path at
-  all, and only a real repository with a real alias exposes it. The prefix is
-  now removed with `str.removeprefix` against the known
-  `f"{remote}/"` and only when the target really starts with it; a branch name
-  may itself contain slashes (`feature/deep`), so splitting on the first slash
-  would be wrong, and an alias naming a different remote is refused rather
-  than guessed at. Worth remembering for EP-M7, which reads refs directly.
+  Impact: a silent wrong answer rather than an error, and one that no unit test
+  caught — the stubbed discovery tests never exercised the alias path at all,
+  and only a real repository with a real alias exposes it. The prefix is now
+  removed with `str.removeprefix` against the known `f"{remote}/"` and only
+  when the target really starts with it; a branch name may itself contain
+  slashes (`feature/deep`), so splitting on the first slash would be wrong, and
+  an alias naming a different remote is refused rather than guessed at. Worth
+  remembering for EP-M7, which reads refs directly.
 - Observation: `ty` must be run at the pinned version, and GitPython's
-  published `execute` overloads omit `with_exceptions`.
-  Evidence: two separate measurements from the same gate run. `make typecheck`
-  runs `uv tool run ty@0.0.79`, and `uv run ty check` inside the virtualenv
-  resolves a different `ty` that reports a diagnostic in
+  published `execute` overloads omit `with_exceptions`. Evidence: two separate
+  measurements from the same gate run. `make typecheck` runs
+  `uv tool run ty@0.0.79`, and `uv run ty check` inside the virtualenv resolves
+  a different `ty` that reports a diagnostic in
   `git_donkey/incoming_outgoing_policy.py:55` — a file this branch never
   touches, and one the pinned release accepts. Separately, `git/cmd.py` in the
   installed GitPython overloads `execute` five times and not one overload
   carries `with_exceptions`, so a correctly typed call to it is rejected even
   though the implementation accepts the keyword and returns stdout without
-  raising (measured at `git/cmd.py:1406`: `if with_exceptions and status != 0`).
-  Impact: an unpinned `ty` invocation is a false alarm generator, and the
-  pinned one is the only verdict that counts. The fix for the overload gap is
-  dynamic dispatch — `repo.git.config(..., with_exceptions=False)` — which is
-  already how this codebase issues every Git command and how
-  `stack_store._config_entries` reads configuration. A test that needs a
-  non-raising Git query should reach for that form directly rather than for
-  `execute`, which only ever typechecks in its raising form.
+  raising (measured at `git/cmd.py:1406`:
+  `if with_exceptions and status != 0`). Impact: an unpinned `ty` invocation is
+  a false alarm generator, and the pinned one is the only verdict that counts.
+  The fix for the overload gap is dynamic dispatch —
+  `repo.git.config(..., with_exceptions=False)` — which is already how this
+  codebase issues every Git command and how `stack_store._config_entries` reads
+  configuration. A test that needs a non-raising Git query should reach for
+  that form directly rather than for `execute`, which only ever typechecks in
+  its raising form.
 - Observation: Skylos 4.33.2 does not credit a call made from inside an
   `except` handler, and does not credit `raise X(...)` as a use of `X`.
   Evidence: measured with four probes against a scratch copy of the package, so
@@ -2208,107 +2174,107 @@ Stop and escalate rather than improvising when any of these is reached.
   the `raise` that carries it. Probe 4 named the `StackRecordConflictError`
   subclass rather than `StackRecordError` in `donkey_worktrees._birth_record`'s
   handler: the class finding disappeared, and the class is the only one of the
-  two for which a real fix existed.
-  Impact: the dead-code gate flagged two symbols that are live, and the two
-  dispositions differ. `_birth_record` now catches the subclass its own
-  `Raises` section and its `stack_record_conflict` observation kind already
-  described — the only failure `create` reports, since an existing record and
-  an anchor write that loses the race are the same finding. `_git_failure` has
-  no such fix: it is called from two handler bodies and from nowhere else, and
-  inlining it would duplicate the stderr formatter. It therefore carries a
-  documented exception, pinned in `tests/unit/test_skylos_lint_contract.py`
-  alongside the recorder entry points. A typed entry point would have modelled
-  it wrongly: an entry point asserts the symbol is a root, where the truth is
-  that its callers are explicit and the tool does not traverse their bodies.
+  two for which a real fix existed. Impact: the dead-code gate flagged two
+  symbols that are live, and the two dispositions differ. `_birth_record` now
+  catches the subclass its own `Raises` section and its `stack_record_conflict`
+  observation kind already described — the only failure `create` reports, since
+  an existing record and an anchor write that loses the race are the same
+  finding. `_git_failure` has no such fix: it is called from two handler bodies
+  and from nowhere else, and inlining it would duplicate the stderr formatter.
+  It therefore carries a documented exception, pinned in
+  `tests/unit/test_skylos_lint_contract.py` alongside the recorder entry
+  points. A typed entry point would have modelled it wrongly: an entry point
+  asserts the symbol is a root, where the truth is that its callers are
+  explicit and the tool does not traverse their bodies.
 - Observation: `make skylos-allow` could not run at all, because `flock` execs
-  its command directly and `UV_ENV` holds two assignments.
-  Evidence: the target invoked
+  its command directly and `UV_ENV` holds two assignments. Evidence: the target
+  invoked
   `flock .skylos-whitelist.lock UV_CACHE_DIR=.uv-cache UV_TOOL_DIR=.uv-tools uv
-  tool run ...`, and flock reported `failed to execute UV_CACHE_DIR=.uv-cache:
-  No such file or directory`, exit 69. The recipe works only when `SKYLOS_CLI`
-  is a bare path, which is exactly the shape the contract test stubs it into,
-  so no gate ever exercised the real command.
-  Impact: the documented remedy for a verified false positive was itself
-  broken, and it broke on the first attempt to use it. The recipe now passes
-  the CLI through `env`, the same idiom the `spelling` recipe already uses for
-  `xargs -0 -r env $(UV_ENV) uv tool run`, and the contract test pins the added
-  token. The reason string is the other half of the remedy: it names both
-  callers, so a later reader can check the claim rather than trust it.
+  tool run`
+  with the remaining arguments elided, and flock reported
+  `failed to execute UV_CACHE_DIR=.uv-cache: No such file or directory`, exit
+  69 (EX_UNAVAILABLE). The recipe works only when `SKYLOS_CLI` is a bare path,
+  which is exactly the shape the contract test stubs it into, so no gate ever
+  exercised the real command. Impact: the documented remedy for a verified
+  false positive was itself broken, and it broke on the first attempt to use
+  it. The recipe now passes the CLI through `env`, the same idiom the
+  `spelling` recipe already uses for `xargs -0 -r env $(UV_ENV) uv tool run`,
+  and the contract test pins the added token. The reason string is the other
+  half of the remedy: it names both callers, so a later reader can check the
+  claim rather than trust it.
 - Observation: a tombstone can be aged from the environment, so the retention
-  window is testable without waiting for it.
-  Evidence: measured twice, once in a shell and once through GitPython. A ref
-  written with `git update-ref --create-reflog` takes its reflog entry's
-  timestamp from `GIT_COMMITTER_DATE`, and GitPython 3.1.46 passes an `env`
-  mapping through to the subprocess, so
+  window is testable without waiting for it. Evidence: measured twice, once in
+  a shell and once through GitPython. A ref written with
+  `git update-ref --create-reflog` takes its reflog entry's timestamp from
+  `GIT_COMMITTER_DATE`, and GitPython 3.1.46 passes an `env` mapping through to
+  the subprocess, so
   `repo.git.update_ref("--create-reflog", ref, tip,
-  env={"GIT_COMMITTER_DATE": "2020-01-01T00:00:00 +0000"})` produces a
-  tombstone whose reflog reads `stack-tombstones/probe@{1577836800}`, which
-  `git reflog show --date=unix` confirms. The alternative was a real sleep or
-  a hand-written reflog file, both of which test the fixture rather than the
-  code.
-  Impact: the expired-tombstone scenario builds a tombstone older than any
-  window the suite configures in milliseconds, and the assertion cannot drift
-  with the clock because the instant is a named constant in the fixture
+  env={"GIT_COMMITTER_DATE": "2020-01-01T00:00:00 +0000"})`
+  produces a tombstone whose reflog reads
+  `stack-tombstones/probe@{1577836800}`, which `git reflog show --date=unix`
+  confirms. The alternative was a real sleep or a hand-written reflog file,
+  both of which test the fixture rather than the code. Impact: the
+  expired-tombstone scenario builds a tombstone older than any window the suite
+  configures in milliseconds, and the assertion cannot drift with the clock
+  because the instant is a named constant in the fixture
   (`_TOMBSTONE_WRITTEN_ON`). This is the one place a test reaches into Git's
-  reflog plumbing on purpose, and the Given step asserts the result through
-  the production `expired()` before the scenario runs, so a fixture that
-  stopped working would fail loudly rather than pass vacuously.
+  reflog plumbing on purpose, and the Given step asserts the result through the
+  production `expired()` before the scenario runs, so a fixture that stopped
+  working would fail loudly rather than pass vacuously.
 - Observation: the store's reads were half-implemented on the writer, and no
-  unit test could see it.
-  Evidence: `rescuable`, `expired`, and `expiry` are declared on
-  `GitStackRecordReader`, but the private helpers they call (`_orphan_tip`,
-  `_configured_expire`, `_expiry_cutoff`) were defined inside
+  unit test could see it. Evidence: `rescuable`, `expired`, and `expiry` are
+  declared on `GitStackRecordReader`, but the private helpers they call
+  (`_orphan_tip`, `_configured_expire`, `_expiry_cutoff`) were defined inside
   `GitStackRecordWriter`, so a reader raised `AttributeError` the first time a
   command asked it to sweep or prune. Every EP-M2 store test builds
   `_writer(repo)`, and the doubles answer whatever they declare, so 113 unit
   tests passed over the gap; the EP-M4 behavioural suite failed three of its
-  six scenarios on the first run.
-  Impact: the three helpers moved to the reader, where their callers are, and
-  `test_the_reader_answers_every_read_the_store_declares` now drives every
-  read the protocol declares from a reader built on a real repository. The
-  general lesson is stated as a decision below: a command that only reads must
-  be served by a reader that can answer every read on its own.
+  six scenarios on the first run. Impact: the three helpers moved to the
+  reader, where their callers are, and
+  `test_the_reader_answers_every_read_the_store_declares` now drives every read
+  the protocol declares from a reader built on a real repository. The general
+  lesson is stated as a decision below: a command that only reads must be
+  served by a reader that can answer every read on its own.
 - Observation: `make lint` had never reached its last three stages on this
   branch, because the module-length failure that aborted it sat in stage 4.
   Evidence: the chain is `ruff check` → `interrogate` → `pyscn` → `pylint`
-  (built-in) → `pylint --rcfile=.pylintrc-df12.toml` → `ambrleaks` →
-  `skylos`, and `make` stops at the first non-zero exit. The built-in pass
-  reported the two oversized modules and exited 24, so the df12 pass below it
-  never ran; once the split cleared that, the df12 pass reported four further
-  findings in two test modules — two `trivial-attribute-wrapper` methods on a
-  test double, and two assertions without failure messages. All four predate
-  this milestone's changes; none was visible until the stage above them
-  passed.
+  (built-in) → `pylint --rcfile=.pylintrc-df12.toml` → `ambrleaks` → `skylos`,
+  and `make` stops at the first non-zero exit. The built-in pass reported the
+  two oversized modules and exited 24, so the df12 pass below it never ran;
+  once the split cleared that, the df12 pass reported four further findings in
+  two test modules — two `trivial-attribute-wrapper` methods on a test double,
+  and two assertions without failure messages. All four predate this
+  milestone's changes; none was visible until the stage above them passed.
   Impact: the two trailing stages were hand-run to prove they are clean
   (`ambrleaks tests`, `skylos`), and the fix set was the four df12 findings
-  rather than the two modules. The general lesson for later milestones: a
-  green stage above is not evidence about a stage below it, so a lint failure
-  must be cleared before the stages behind it can be counted at all.
+  rather than the two modules. The general lesson for later milestones: a green
+  stage above is not evidence about a stage below it, so a lint failure must be
+  cleared before the stages behind it can be counted at all.
 - Observation: a best common ancestor is always an ancestor of both commits it
   was computed from, so the parent-history gate cannot refute a merge-base
-  candidate and EP-M5's stated acceptance assertion cannot hold.
-  Evidence: `git merge-base --all A B` lists best common ancestors, each of
-  which is reachable from both `A` and `B` by definition. Measured on the
-  rewritten fixture built in EP-M5: the single answer is the trunk commit both
-  branches came from, and `is_ancestor(parent_head, merge_base)` holds for it.
-  The commit the design describes the gate as refusing — the trunk the parent
+  candidate and EP-M5's stated acceptance assertion cannot hold. Evidence:
+  `git merge-base --all A B` lists best common ancestors, each of which is
+  reachable from both `A` and `B` by definition. Measured on the rewritten
+  fixture built in EP-M5: the single answer is the trunk commit both branches
+  came from, and `is_ancestor(parent_head, merge_base)` holds for it. The
+  commit the design describes the gate as refusing — the trunk the parent
   forked from — is refused, if at all, by the replay range instead: with
-  `PARENT_HEAD` naming the head the child inherited, `git rev-list
-  C..child_tip` holds that head's own work while `git rev-list C..child_tip
-  --not PARENT_HEAD` does not, and only the second is the child's replay range.
-  The plan's sample report, in which gate 6 FAILS on a candidate that is not an
-  ancestor of `parent_head` while gate 7 is INDETERMINATE, is therefore
-  internally impossible.
-  Impact: EP-M6 must not build gate 6 as the rejection point for an advanced or
-  rewritten parent. Gate 6 confirms a candidate that lies on the parent's
-  history; the range check is what refuses a candidate taken from the trunk,
-  and it only refuses it while `PARENT_HEAD` names the head the child actually
-  inherited. The rewritten-shape test asserts both facts, so a gate built in
-  the wrong place fails a fixture test rather than passing quietly.
+  `PARENT_HEAD` naming the head the child inherited,
+  `git rev-list C..child_tip` holds that head's own work while
+  `git rev-list C..child_tip --not PARENT_HEAD` does not, and only the second
+  is the child's replay range. The plan's sample report, in which gate 6 FAILS
+  on a candidate that is not an ancestor of `parent_head` while gate 7 is
+  INDETERMINATE, is therefore internally impossible. Impact: EP-M6 must not
+  build gate 6 as the rejection point for an advanced or rewritten parent. Gate
+  6 confirms a candidate that lies on the parent's history; the range check is
+  what refuses a candidate taken from the trunk, and it only refuses it while
+  `PARENT_HEAD` names the head the child actually inherited. The
+  rewritten-shape test asserts both facts, so a gate built in the wrong place
+  fails a fixture test rather than passing quietly.
 - Observation: the dead-code gate was re-measured before EP-M6 was written, and
   it refuses an unreferenced module however well its tests cover it — so EP-M6,
-  EP-M7, and EP-M8 cannot land as three separate green commits.
-  Evidence: a probe module `git_donkey/_skylos_probe.py` holding one unreferenced
+  EP-M7, and EP-M8 cannot land as three separate green commits. Evidence: a
+  probe module `git_donkey/_skylos_probe.py` holding one unreferenced
   `def probe_function()` made the lint stage's last command exit 1 with
   `git_donkey/_skylos_probe.py:8  SKY-U001  unused function: probe_function`
   (log `/tmp/skylos-probe-git-donkey-git-wheresat-sub-command.out`). Adding
@@ -2326,24 +2292,23 @@ Stop and escalate rather than improvising when any of these is reached.
   only the commits are merged.
 - Observation: `git diff | git patch-id --stable` produces no patch identifier
   at all under a configured external diff driver, which is the state of this
-  machine, so gate 7's patch clause is silently vacuous here.
-  Evidence: with the global `diff.external = difft`,
+  machine, so gate 7's patch clause is silently vacuous here. Evidence: with
+  the global `diff.external = difft`,
   `git diff <boundary> <child_tip> | git patch-id --stable` prints nothing,
-  while `git diff --no-ext-diff <boundary> <child_tip> | git patch-id
-  --stable` prints `3440e6b0…`, the same identifier as the squash commit's own
-  patch; `git diff-tree -p` agrees with the flagged form. Measured on Git
-  2.52.0 in this worktree.
-  Impact: the patch-identity query in `wheresat_graph` must pass
+  while `git diff --no-ext-diff <boundary> <child_tip> | git patch-id --stable`
+  prints `3440e6b0…`, the same identifier as the squash commit's own patch;
+  `git diff-tree -p` agrees with the flagged form. Measured on Git 2.52.0 in
+  this worktree. Impact: the patch-identity query in `wheresat_graph` must pass
   `--no-ext-diff`, or read patches through `git diff-tree -p`, rather than
   inheriting the user's configuration. An empty identifier is not a negative
   answer either — comparing two empties reads as agreement, which would
-  establish a boundary nothing supported — so EP-M6 decides what an empty
-  patch identifier means rather than treating it as evidence.
+  establish a boundary nothing supported — so EP-M6 decides what an empty patch
+  identifier means rather than treating it as evidence.
 - Observation: a truth table that changes one answer at a time cannot always
-  isolate one gate, because two gates can read the same answer.
-  Evidence: gate 5 counts the commits in the replay range and gate 7 subtracts
-  the parent's view of that range from the same listing, so withholding the
-  listing leaves both unanswered. The first run of
+  isolate one gate, because two gates can read the same answer. Evidence: gate
+  5 counts the commits in the replay range and gate 7 subtracts the parent's
+  view of that range from the same listing, so withholding the listing leaves
+  both unanswered. The first run of
   `test_one_gate_unanswered_is_never_read_as_an_answer[replay-range-non-empty]`
   reported `{replay-range-non-empty, replay-range-excludes-landed-work}` where
   the table expected the one gate (log
@@ -2363,55 +2328,52 @@ Stop and escalate rather than improvising when any of these is reached.
   `{landed-reachable-from-target, replay-range-excludes-landed-work}` rejected
   (same log). The plan's wording — "no parent integration _newer_ than the
   record is visible" — was already the right clause; the first implementation
-  read "newer" as the wrong question.
-  Impact: the clause now asks whether the parent's landed commit still holds
-  the recorded boundary. Reaching it and not reaching it are different answers,
-  `NOT_ANCESTOR` is the supersession the gate exists to catch, and a run that
-  resolved no integration passes because it has found nothing that supersedes
-  the record. The first clause's `UNKNOWN` answer became `INDETERMINATE` in the
-  same pass: it had been read as `FAILED`, which is exactly the "an error is
-  not a negative answer" failure the module exists to avoid, and a missing
-  ancestry answer is now never a refusal.
+  read "newer" as the wrong question. Impact: the clause now asks whether the
+  parent's landed commit still holds the recorded boundary. Reaching it and not
+  reaching it are different answers, `NOT_ANCESTOR` is the supersession the
+  gate exists to catch, and a run that resolved no integration passes because
+  it has found nothing that supersedes the record. The first clause's `UNKNOWN`
+  answer became `INDETERMINATE` in the same pass: it had been read as `FAILED`,
+  which is exactly the "an error is not a negative answer" failure the module
+  exists to avoid, and a missing ancestry answer is now never a refusal.
 - Observation: a rule that reads an established boundary's gates from "the
   candidate that carried it" is only total if a candidate without a refusal
-  always exists.
-  Evidence: gate 8 demotes rather than refuses, so cleared candidates may all
-  carry its `FAILED`; the property suite's INV-2 case — two record-kind
-  candidates from two sources, both superseded — raised `StopIteration` in
-  `_carrier`, which is a crash on an input the policy's own contract admits
-  rather than a refusal. It surfaced only when the applicability revert changed
-  which examples establish; no readable case had covered it.
-  Impact: the carrier now falls back to the first supporter in canonical order
-  and the demotion is reported as gate 8 not applying to the evidence the
-  demotion left (see the Decision log). The lesson for the remaining
-  milestones: the property suite is what keeps a _total_ function total, so its
-  input space must include combinations a repository could not present — the
-  all-demoted corpus is one — and a crash there is a defect in the policy, not
-  in the generator.
+  always exists. Evidence: gate 8 demotes rather than refuses, so cleared
+  candidates may all carry its `FAILED`; the property suite's INV-2 case — two
+  record-kind candidates from two sources, both superseded — raised
+  `StopIteration` in `_carrier`, which is a crash on an input the policy's own
+  contract admits rather than a refusal. It surfaced only when the
+  applicability revert changed which examples establish; no readable case had
+  covered it. Impact: the carrier now falls back to the first supporter in
+  canonical order and the demotion is reported as gate 8 not applying to the
+  evidence the demotion left (see the Decision log). The lesson for the
+  remaining milestones: the property suite is what keeps a _total_ function
+  total, so its input space must include combinations a repository could not
+  present — the all-demoted corpus is one — and a crash there is a defect in
+  the policy, not in the generator.
 - Observation: in a shallow clone, `git merge-base --is-ancestor` answers "no"
   for a commit that is an ancestor, and `git rev-list` lists a range that stops
   at the graft as though it were the whole range — a false negative and a
-  truncated answer, neither of which announces itself.
-  Evidence: a probe over a `--depth=1 --no-single-branch` clone of a fixture
-  repository rebuilt the same shapes the plan measures in full clones. The
-  ancestry question whose path crossed the graft returned exit status 1 with
-  no output, which every reader of an exit status takes for _not an ancestor_;
-  the range listing returned the commits above the graft and stopped, with
-  exit status 0. Measured on Git 2.52.0.
-  Impact: the read-only port must not let either answer travel as a fact. This
-  is the second face of the same rule the plan already states for a fault — a
-  question Git did not answer must never be handed back as a negative answer
-  (INV-5) — but it is the harder face, because the shallow answers arrive with
-  a clean exit status rather than as an error, so nothing outside the port can
-  detect them. The contract that follows is recorded as a decision below: the
-  ancestry question downgrades its negative answers to `Ancestry.UNKNOWN`,
-  which already means "could not tell" and already routes to exit code `3`,
-  and the three questions that have no value for "could not tell" — merge
-  bases, fork points, and range listings — refuse in a shallow repository
-  instead of answering, because a boundary read from a partial history would
-  cut the child's work in the wrong place. A _yes_ survives the graft, since
-  Git can only find a path that is really there, so the positive answers are
-  returned as they stand.
+  truncated answer, neither of which announces itself. Evidence: a probe over a
+  `--depth=1 --no-single-branch` clone of a fixture repository rebuilt the same
+  shapes the plan measures in full clones. The ancestry question whose path
+  crossed the graft returned exit status 1 with no output, which every reader
+  of an exit status takes for _not an ancestor_; the range listing returned the
+  commits above the graft and stopped, with exit status 0. Measured on Git
+  2.52.0. Impact: the read-only port must not let either answer travel as a
+  fact. This is the second face of the same rule the plan already states for a
+  fault — a question Git did not answer must never be handed back as a negative
+  answer (INV-5) — but it is the harder face, because the shallow answers
+  arrive with a clean exit status rather than as an error, so nothing outside
+  the port can detect them. The contract that follows is recorded as a decision
+  below: the ancestry question downgrades its negative answers to
+  `Ancestry.UNKNOWN`, which already means "could not tell" and already routes
+  to exit code `3`, and the three questions that have no value for "could not
+  tell" — merge bases, fork points, and range listings — refuse in a shallow
+  repository instead of answering, because a boundary read from a partial
+  history would cut the child's work in the wrong place. A _yes_ survives the
+  graft, since Git can only find a path that is really there, so the positive
+  answers are returned as they stand.
 - Observation: "sources in precedence order" cannot be implemented as a
   ranking of _sources_, which is what a literal reading of it asks for.
   Evidence: the choice the policy makes is between two sets of support, not
@@ -2436,11 +2398,10 @@ Stop and escalate rather than improvising when any of these is reached.
   rendered — every candidate, and the reason naming both commits — by
   `test_text_report_matches_snapshot[unresolved-ambiguous]`.
 - Observation: the gate table is per candidate, not per gate, in both
-  renderers.
-  Evidence: measured on a refusal with two candidates, each carried by two
-  derived sources — the envelope's `gates` array holds sixteen objects, the
-  eight gate names once per candidate, and the text report prints the same four
-  lines per gate per candidate. `assess` builds the tuple with
+  renderers. Evidence: measured on a refusal with two candidates, each carried
+  by two derived sources — the envelope's `gates` array holds sixteen objects,
+  the eight gate names once per candidate, and the text report prints the same
+  four lines per gate per candidate. `assess` builds the tuple with
   `_gates(checked)`, which flattens the per-candidate results, so the
   repetition is what the policy computed rather than a rendering choice.
   Impact: a consumer reading `gates` must read it as (candidate, gate) pairs; a
@@ -2450,213 +2411,205 @@ Stop and escalate rather than improvising when any of these is reached.
   read, so the array is not deduplicated. EP-M10's report conventions must say
   so beside the schema string, and both shapes are now pinned by snapshots.
 - Observation: the report conflated two different reasons for a short listing,
-  and no example had ever reached the branch that renders either.
-  Evidence: a range the _run_ saw cut short and a listing the _renderer_ cut at
-  `RENDER_COMMIT_LIMIT` were both tailed with "... 0 more not listed" — a count
+  and no example had ever reached the branch that renders either. Evidence: a
+  range the _run_ saw cut short and a listing the _renderer_ cut at
+  `RENDER_COMMIT_LIMIT` were both tailed with "… 0 more not listed" — a count
   the run could not vouch for, printed as a total. The suite's truncation cases,
-  `truncated_replay_range` and `truncated_history`, are cut short by the _run_,
-  so nothing exceeded twenty commits and the renderer's own cut never ran at
-  all; `long_replay_range` had to be written before the tail could be seen.
-  The JSON envelope made the same mistake in the other direction, folding both
-  reasons into one `truncated` boolean, so the two renderers disagreed about a
-  fact the text report states in words.
-  Impact: the text report states the two reasons apart — a listing the report
-  shortened names the commits it withheld, a range the run saw cut short says
-  how many commits it saw, which is a floor and not a total — and the envelope
-  now carries the same two facts as `withheld` and `cutShort`, retyping the key
-  before the schema has a consumer rather than after. The lesson is that a
-  snapshot pins what a branch renders and only a case that reaches the branch
-  pins that it renders at all:
+  `truncated_replay_range` and `truncated_history`, are cut short by the
+  _run_, so nothing exceeded twenty commits and the renderer's own cut never
+  ran at all; `long_replay_range` had to be written before the tail could be
+  seen. The JSON envelope made the same mistake in the other direction, folding
+  both reasons into one `truncated` boolean, so the two renderers disagreed
+  about a fact the text report states in words. Impact: the text report states
+  the two reasons apart — a listing the report shortened names the commits it
+  withheld, a range the run saw cut short says how many commits it saw, which
+  is a floor and not a total — and the envelope now carries the same two facts
+  as `withheld` and `cutShort`, retyping the key before the schema has a
+  consumer rather than after. The lesson is that a snapshot pins what a branch
+  renders and only a case that reaches the branch pins that it renders at all:
   `test_the_two_reasons_a_listing_is_short_are_reported_apart` and its envelope
   sibling assert each message appears on its own case and not on the other,
   which no earlier example could have said.
 - Observation: the usage-error path of the command had never run, and its first
-  run raised `NameError`.
-  Evidence: `git_donkey/wheresat.py` line 626, in `_failed`, `return
-  EXIT_USAGE` — `NameError: name 'EXIT_USAGE' is not defined`, observed
-  2026-09-14T15:03:10Z on the read-only matrix's first exit-2 vector. No log was
-  kept for that run (the branch's kept red log is EP-M6's), and every earlier
-  end-to-end example used a well-formed invocation, so the branch that reports
-  a bad one had no coverage at all.
-  Impact: eight vectors now reach exit status `2` — an absent branch, an
-  unresolvable target, a malformed parent, four unsafe op-ids, and one of those
-  paths through `--json` — so the error envelope is rendered by a process that
-  failed before any assessment existed. A path whose first run is also its first
-  test is the whole argument for the matrix running the command rather than
-  calling the entry point: the defect was a missing import, which no amount of
-  unit coverage of the helpers would have found.
-- Observation: a worktree stopped mid-rebase is detached, so `git worktree
-  list` cannot attribute it to the branch a run is reporting on.
+  run raised `NameError`. Evidence: `git_donkey/wheresat.py` line 626, in
+  `_failed`, `return EXIT_USAGE` —
+  `NameError: name 'EXIT_USAGE' is not defined`, observed 2026-09-14T15:03:10Z
+  on the read-only matrix's first exit-2 vector. No log was kept for that run
+  (the branch's kept red log is EP-M6's), and every earlier end-to-end example
+  used a well-formed invocation, so the branch that reports a bad one had no
+  coverage at all. Impact: eight vectors now reach exit status `2` — an absent
+  branch, an unresolvable target, a malformed parent, four unsafe op-ids, and
+  one of those paths through `--json` — so the error envelope is rendered by a
+  process that failed before any assessment existed. A path whose first run is
+  also its first test is the whole argument for the matrix running the command
+  rather than calling the entry point: the defect was a missing import, which
+  no amount of unit coverage of the helpers would have found.
+- Observation: a worktree stopped mid-rebase is detached, so
+  `git worktree list` cannot attribute it to the branch a run is reporting on.
   Evidence: a rebase or a bisect leaves the worktree on no branch at all, so
   the porcelain listing that names the branch a worktree holds shows a bare
   commit, and the branch the reader asked about appears to hold no worktree.
   The state a replay would trip over is in the worktree's own state directory
   instead: `rebase-merge/head-name`, `rebase-apply/head-name`, and
   `BISECT_START`, read by `_state_directory`, `_records_branch`, and
-  `_LEFT_BEHIND` in `git_donkey/wheresat_graph.py`.
-  Impact: the warning is attached to the branch the state directory names, so a
-  stopped rebase is reported against the branch being rebased rather than
-  dropped. A run that warned about nothing would be read as a run with nothing
-  to warn about, which is why `unknown_worktree_warning` exists for the
-  worktree whose state could not be read either.
+  `_LEFT_BEHIND` in `git_donkey/wheresat_graph.py`. Impact: the warning is
+  attached to the branch the state directory names, so a stopped rebase is
+  reported against the branch being rebased rather than dropped. A run that
+  warned about nothing would be read as a run with nothing to warn about, which
+  is why `unknown_worktree_warning` exists for the worktree whose state could
+  not be read either.
 - Observation: the plan asked for the worktree warning under
   `### git_donkey/wheresat.py` but gave it no milestone acceptance evidence.
   Evidence: the requirement is stated in the interface section — a run warns
   when the worktree holding the branch would not accept the replay it prints —
   and no milestone in "Milestones and plateaus" listed it as a deliverable of
-  any of EP-M6 to EP-M10.
-  Impact: it landed with EP-M8, whose subject is the report, because the
-  warning is rendered rather than decided: it changes neither the verdict nor
-  the exit status, and the run collects it after the assessment. The milestone's
-  acceptance evidence was amended to say so, and the fact that nothing else in
-  the plan referenced the requirement is why it survived three milestones
-  unnoticed — an interface sketch is not a deliverable until a milestone names
-  it.
+  any of EP-M6 to EP-M10. Impact: it landed with EP-M8, whose subject is the
+  report, because the warning is rendered rather than decided: it changes
+  neither the verdict nor the exit status, and the run collects it after the
+  assessment. The milestone's acceptance evidence was amended to say so, and
+  the fact that nothing else in the plan referenced the requirement is why it
+  survived three milestones unnoticed — an interface sketch is not a
+  deliverable until a milestone names it.
 - Observation: the trace-link table was written with test names the
-  implementation never used, and nothing checked them.
-  Evidence: seven of the table's fifteen rows named test functions that no
-  test module defines — `test_record_round_trip`,
-  `test_identities_never_conflated`, `test_birth_record_is_attested`,
-  `test_landed_must_reach_target`, `test_inferred_never_establishes`,
-  `test_repository_unchanged`, `test_derived_needs_corroboration` — found by
-  searching every `tests/` module and feature file for each name; a further
-  row named a scenario in `git_wheresat.feature`, which EP-M10 still owes.
-  Impact: a trace link is a claim to be checked rather than a plan for a
-  test, and a row naming a test that does not exist is a broken trace that
-  reads as a satisfied one — which is how all seven survived from the plan's
-  first draft to the plateau's gate run. They are repointed at EP-M8 at the
-  tests that pin the same requirements, and the `REQ-*` identifiers are
-  recorded there as local to this plan rather than keys into a requirements
-  register elsewhere. The rows naming EP-M9 and EP-M10 artefacts stay forward
-  links and become checkable as those milestones land.
+  implementation never used, and nothing checked them. Evidence: seven of the
+  table's fifteen rows named test functions that no test module defines —
+  `test_record_round_trip`, `test_identities_never_conflated`,
+  `test_birth_record_is_attested`, `test_landed_must_reach_target`,
+  `test_inferred_never_establishes`, `test_repository_unchanged`,
+  `test_derived_needs_corroboration` — found by searching every `tests/` module
+  and feature file for each name; a further row named a scenario in
+  `git_wheresat.feature`, which EP-M10 still owes. Impact: a trace link is a
+  claim to be checked rather than a plan for a test, and a row naming a test
+  that does not exist is a broken trace that reads as a satisfied one — which
+  is how all seven survived from the plan's first draft to the plateau's gate
+  run. They are repointed at EP-M8 at the tests that pin the same requirements,
+  and the `REQ-*` identifiers are recorded there as local to this plan rather
+  than keys into a requirements register elsewhere. The rows naming EP-M9 and
+  EP-M10 artefacts stay forward links and become checkable as those milestones
+  land.
 - Observation: the dead-code gate sees module-level functions and not methods,
   so the unreached half of a port is invisible to the gate that exists to catch
-  it.
-  Evidence: `make lint`'s last stage reported four unused functions in
+  it. Evidence: `make lint`'s last stage reported four unused functions in
   `git_donkey/wheresat_refs.py` — `per_run_ref`, `parent_head_ref`,
   `_per_run_namespace`, and `_slug_parts`, in
-  `/tmp/lint-git-donkey-git-wheresat-sub-command.out` — while
-  `fetch_evidence`, `release`, and `write_record`, which no console script
-  reaches either, were not reported at all: they are methods of an
-  instantiated class, and Skylos 4.33.2 reports unreachable module-level
-  functions only.
-  Impact: the gate's verdict on a module is a lower bound on its unreached
-  surface rather than a measurement of it, so a module can pass with a whole
-  method nothing calls. Passing it is therefore not evidence that every symbol
-  is live, and the four names were recorded as documented exceptions (see the
-  Decision log) in the knowledge that the gate will not raise the same
-  question about the three methods when the forge evidence of EP-M10 lands and
-  the surface becomes reachable.
+  `/tmp/lint-git-donkey-git-wheresat-sub-command.out` — while `fetch_evidence`,
+  `release`, and `write_record`, which no console script reaches either, were
+  not reported at all: they are methods of an instantiated class, and Skylos
+  4.33.2 reports unreachable module-level functions only. Impact: the gate's
+  verdict on a module is a lower bound on its unreached surface rather than a
+  measurement of it, so a module can pass with a whole method nothing calls.
+  Passing it is therefore not evidence that every symbol is live, and the four
+  names were recorded as documented exceptions (see the Decision log) in the
+  knowledge that the gate will not raise the same question about the three
+  methods when the forge evidence of EP-M10 lands and the surface becomes
+  reachable.
 
 - Observation: the code-health reviewer's similarity detector reads docstrings,
   so a group of short sibling functions is broken by giving each one its own
-  description rather than by extracting the code they share.
-  Evidence: five functions in `tests/unit/wheresat_helpers.py` were reported as
-  a single group of similar structure — the three tier factories `attested`,
-  `derived`, `inferred` and the two gate readers `failed_gates`,
-  `undecided_gates`. Extracting the factories' shared construction into a
-  `_candidate` builder first, which is the fix the production modules needed,
-  left both the score and the flagged line numbers exactly where they were at
-  9.38, so their bodies were not what grouped them; the module was still 9.38
-  when the builder's `TypeVar` became a PEP 695 type parameter. What the five
-  did share was boilerplate prose: each factory described its parameters with
-  the same three sentences and each reader with the same two. Replacing that
-  with text specific to the function — what that tier's evidence is worth as
-  support, which outcome that reader sifts for — took the file to 10.00 with no
-  change to its code. The counter-example sits in the same file: the one
-  function the detector never flagged, `assessment_of`, is also the one whose
-  docstring is not copied from a neighbour's.
-  Impact: for a fixture module, whose functions exist to be read at their call
-  sites, this is the lever that improves the file rather than the metric — what
-  those descriptions duplicated was a comment, not a computation, whereas the
-  flagged `git_donkey/` modules needed the opposite fix because what they
-  duplicated was behaviour. The corollary is a limit on the gate: a green delta
-  is not evidence that a module's sibling functions are distinct in what they
-  do, only that no group of them reads alike, so each of the four production
-  fixes was checked against its own suite rather than trusted to the score.
+  description rather than by extracting the code they share. Evidence: five
+  functions in `tests/unit/wheresat_helpers.py` were reported as a single group
+  of similar structure — the three tier factories `attested`, `derived`,
+  `inferred` and the two gate readers `failed_gates`, `undecided_gates`.
+  Extracting the factories' shared construction into a `_candidate` builder
+  first, which is the fix the production modules needed, left both the score
+  and the flagged line numbers exactly where they were at 9.38, so their bodies
+  were not what grouped them; the module was still 9.38 when the builder's
+  `TypeVar` became a PEP 695 type parameter. What the five did share was
+  boilerplate prose: each factory described its parameters with the same three
+  sentences and each reader with the same two. Replacing that with text
+  specific to the function — what that tier's evidence is worth as support,
+  which outcome that reader sifts for — took the file to 10.00 with no change
+  to its code. The counter-example sits in the same file: the one function the
+  detector never flagged, `assessment_of`, is also the one whose docstring is
+  not copied from a neighbour's. Impact: for a fixture module, whose functions
+  exist to be read at their call sites, this is the lever that improves the
+  file rather than the metric — what those descriptions duplicated was a
+  comment, not a computation, whereas the flagged `git_donkey/` modules needed
+  the opposite fix because what they duplicated was behaviour. The corollary is
+  a limit on the gate: a green delta is not evidence that a module's sibling
+  functions are distinct in what they do, only that no group of them reads
+  alike, so each of the four production fixes was checked against its own suite
+  rather than trusted to the score.
 
-- Observation: a child branch `git donkey` has just cut has nothing of its own to
-  replay, so a run against it refuses before the record is ever weighed.
-  Evidence: the record's boundary is the parent's tip and the child's tip is the
-  same commit at birth, which is what made the first draft of the record suite's
-  scenarios fail: `--record` reported a refusal, not a boundary, because the
-  replay range was empty. Every scenario in the suite now commits to the child's
-  worktree first, and the helper says so, so that what the tests measure is the
-  record rather than a range with nothing in it.
-  Impact: the INV-7 cases had to be built on a child that has moved past its
-  own boundary, which is also the state a refresh exists for. It also means the
-  fourth BDD scenario — a run with no boundary to record — is the parent's own
-  case (`--branch parent --onto parent`), where the refusal is about the replay
+- Observation: a child branch `git donkey` has just cut has nothing of its own
+  to replay, so a run against it refuses before the record is ever weighed.
+  Evidence: the record's boundary is the parent's tip and the child's tip is
+  the same commit at birth, which is what made the first draft of the record
+  suite's scenarios fail: `--record` reported a refusal, not a boundary,
+  because the replay range was empty. Every scenario in the suite now commits
+  to the child's worktree first, and the helper says so, so that what the tests
+  measure is the record rather than a range with nothing in it. Impact: the
+  INV-7 cases had to be built on a child that has moved past its own boundary,
+  which is also the state a refresh exists for. It also means the fourth BDD
+  scenario — a run with no boundary to record — is the parent's own case
+  (`--branch parent --onto parent`), where the refusal is about the replay
   range and nothing else, rather than a child that has not been worked on. The
   one shape the milestone cannot test through a checkout is a child at birth,
   because the command has nothing to say about it yet.
 
 - Observation: at this milestone a refresh can restate a record's anchor and its
-  written-from tip, but cannot move the boundary the record names.
-  Evidence: the local evidence path has exactly one attested source — the
-  record's own claim — so the boundary a run establishes is the boundary the
-  record already names, and a boundary computed from the merge base or the fork
-  point is derived evidence, which `--record` refuses to write back. The
+  written-from tip, but cannot move the boundary the record names. Evidence:
+  the local evidence path has exactly one attested source — the record's own
+  claim — so the boundary a run establishes is the boundary the record already
+  names, and a boundary computed from the merge base or the fork point is
+  derived evidence, which `--record` refuses to write back. The
   superseded-record test shows the sharp end of it: after a restack, the record
   is demoted to derived evidence, the run still establishes a boundary from the
-  surviving history with exit `0`, and the write is refused with the
-  "boundary rests on derived evidence" warning.
-  Impact: the users' guide says what a refresh does rather than what the
-  milestone's one-line summary implies, and the compare-and-swap on the anchor
-  is documented as the shape a moving boundary needs rather than as a mechanism
-  this milestone exercises to its end. Attested evidence about where a parent
-  went is what makes the boundary move, and that is EP-M10's forge evidence.
+  surviving history with exit `0`, and the write is refused with the "boundary
+  rests on derived evidence" warning. Impact: the users' guide says what a
+  refresh does rather than what the milestone's one-line summary implies, and
+  the compare-and-swap on the anchor is documented as the shape a moving
+  boundary needs rather than as a mechanism this milestone exercises to its
+  end. Attested evidence about where a parent went is what makes the boundary
+  move, and that is EP-M10's forge evidence.
 
 - Observation: two of the four `git_wheresat_record.feature` scenarios sketched
-  in this plan could not be built as written.
-  Evidence: the first asked for a record to be created for a branch that had
-  none ("Recording a stack record for the first time"), and the third asked for
-  the anchor to be shown naming a _new_ boundary. INV-7's obligation is
-  create-only for the anchor and refresh-only for the record, and at this
-  milestone the boundary cannot move — so the first would have tested a write
-  that must not happen and the third a write that cannot. Both are replaced in
-  the as-built feature above.
-  Impact: the plan's own sketch was the first place the create-only rule had
-  been read as an implementation requirement rather than as prose, and re-reading
-  the invariant against it was what produced the two warnings the command now
+  in this plan could not be built as written. Evidence: the first asked for a
+  record to be created for a branch that had none ("Recording a stack record
+  for the first time"), and the third asked for the anchor to be shown naming a
+  _new_ boundary. INV-7's obligation is create-only for the anchor and
+  refresh-only for the record, and at this milestone the boundary cannot move —
+  so the first would have tested a write that must not happen and the third a
+  write that cannot. Both are replaced in the as-built feature above. Impact:
+  the plan's own sketch was the first place the create-only rule had been read
+  as an implementation requirement rather than as prose, and re-reading the
+  invariant against it was what produced the two warnings the command now
   prints. A sketch in a plan is a prediction like any other, and this one was
-  wrong in a way that would have been embarrassing to discover while writing the
-  scenario, which is where it was discovered.
+  wrong in a way that would have been embarrassing to discover while writing
+  the scenario, which is where it was discovered.
 
-- Observation: the fixture that builds each record test's checkout writes a birth
-  record, and the observability recorder cannot tell that write from the one
-  under test.
-  Evidence: three tests failed on the first run with the birth write's outcomes
-  in place of the refresh's, and the machine-readable test parsed the fixture's
-  own `git donkey` output as its envelope. The recorder is now sliced from the
-  run's first observation and the capture drained immediately before each run.
-  Impact: the slicing is a measurement correction that could equally have been
-  papered over by asserting on the last observation, which would have passed for
-  a reason rather than on purpose. The rule the suite follows — a recorder read
-  for one run is sliced to that run, and a capture read for one run is drained
-  before it — is recorded in the two helpers' docstrings so the next suite does
-  not re-learn it.
+- Observation: the fixture that builds each record test's checkout writes a
+  birth record, and the observability recorder cannot tell that write from the
+  one under test. Evidence: three tests failed on the first run with the birth
+  write's outcomes in place of the refresh's, and the machine-readable test
+  parsed the fixture's own `git donkey` output as its envelope. The recorder is
+  now sliced from the run's first observation and the capture drained
+  immediately before each run. Impact: the slicing is a measurement correction
+  that could equally have been papered over by asserting on the last
+  observation, which would have passed for a reason rather than on purpose. The
+  rule the suite follows — a recorder read for one run is sliced to that run,
+  and a capture read for one run is drained before it — is recorded in the two
+  helpers' docstrings so the next suite does not re-learn it.
 
 - Observation: the `tee` log names this project's convention prescribes are per
   branch rather than per milestone, so a later run silently replaces an earlier
-  milestone's evidence at the same path.
-  Evidence: EP-M4's review is cited at
+  milestone's evidence at the same path. Evidence: EP-M4's review is cited at
   `/tmp/coderabbit-git-donkey-git-wheresat-sub-command-2.out` as 45 changed
   files, and `git diff --name-only origin/main...d45762d` — the commit that
   closed EP-M4 — is exactly 45, but the file now lists 73, having been
   overwritten by EP-M8's first pass an hour before this milestone's review. The
-  unsuffixed canonical path was occupied the same way, so EP-M9's review went to
-  the next free suffix (`-5.out`). Two of EP-M8's logs are byte-identical for
-  the related reason that the completion stream carries only the status, the
-  finding count, and the path list, none of which changed between its passes.
-  Impact: a log path identifies a file, not a measurement. Every review citation
-  in this plan now carries a file count and a commit beside its path, the
-  count being checked against `git diff --name-only origin/main...<commit>`
+  unsuffixed canonical path was occupied the same way, so EP-M9's review went
+  to the next free suffix (`-5.out`). Two of EP-M8's logs are byte-identical
+  for the related reason that the completion stream carries only the status,
+  the finding count, and the path list, none of which changed between its
+  passes. Impact: a log path identifies a file, not a measurement. Every review
+  citation in this plan now carries a file count and a commit beside its path,
+  the count being checked against `git diff --name-only origin/main...<commit>`
   rather than against the reviewer's own list or against what the path holds
   today, and the EP-M4 citation is annotated in place instead of deleted. The
   next milestone should claim its suffix before running the review, not after,
-  and should treat a cached review as a hypothesis about the diff rather than as
-  evidence for it.
+  and should treat a cached review as a hypothesis about the diff rather than
+  as evidence for it.
 
 - Observation: the property test found a refusal that claimed the evidence was
   complete while a question about one of its candidates was still open.
@@ -2687,116 +2640,111 @@ Stop and escalate rather than improvising when any of these is reached.
 - Observation: `vcrpy` 7.0.0 ships no pytest plugin, so the recording command
   this plan's own procedure names does not work as written, and the provenance
   assertions the first draft of the cassette suite used cannot show what they
-  claimed.
-  Evidence: the installed `vcrpy` 7.0.0 distribution holds no
-  `vcr/pytest_plugin.py` and declares no pytest entry point, so
-  `--record-mode` is an unrecognized argument until a repository declares it —
-  the first recording run failed on exactly that. The root `conftest.py` now
-  declares it through `pytest_addoption`, defaulting to `none`. Two further
-  facts came out of reading `vcr/cassette.py`: `play_count` counts replays
-  only and is `0` while recording, which is why three assertions written as
+  claimed. Evidence: the installed `vcrpy` 7.0.0 distribution holds no
+  `vcr/pytest_plugin.py` and declares no pytest entry point, so `--record-mode`
+  is an unrecognized argument until a repository declares it — the first
+  recording run failed on exactly that. The root `conftest.py` now declares it
+  through `pytest_addoption`, defaulting to `none`. Two further facts came out
+  of reading `vcr/cassette.py`: `play_count` counts replays only and is `0`
+  while recording, which is why three assertions written as
   `play_count == played + 1` failed during the recording pass, and the
   `requests` property returns the interactions the recording holds from
   `self.data` rather than the requests a run made, so it proves nothing about
-  what a run asked for.
-  Impact: provenance is asserted by the record mode plus an `_asked()` helper
-  that looks for the question in the recording and fails with the questions it
-  does hold. `none` is what makes that sound, because a request the recording
-  does not hold raises inside the adapter rather than reaching the network, so
-  every answer a test asserts is one GitHub really gave and no test can pass by
-  asking a question the recording never saw. The plan's recording procedure had
-  to be corrected in three ways — the option is this repository's, the
-  `GH_TOKEN` that must be unset shadows the `gh auth token` call as well as the
-  run, and the refusal cannot be recorded by an ordinary pass because it costs
-  an endpoint's whole minute allowance — and the developers' guide records all
-  three.
+  what a run asked for. Impact: provenance is asserted by the record mode plus
+  an `_asked()` helper that looks for the question in the recording and fails
+  with the questions it does hold. `none` is what makes that sound, because a
+  request the recording does not hold raises inside the adapter rather than
+  reaching the network, so every answer a test asserts is one GitHub really
+  gave and no test can pass by asking a question the recording never saw. The
+  plan's recording procedure had to be corrected in three ways — the option is
+  this repository's, the `GH_TOKEN` that must be unset shadows the
+  `gh auth token` call as well as the run, and the refusal cannot be recorded
+  by an ordinary pass because it costs an endpoint's whole minute allowance —
+  and the developers' guide records all three.
 
 - Observation: the derived tier establishes a boundary of its own, so the
   refusal scenario 4 asks for is not reachable in the shape the scenario's name
   suggests, and the gate scenario 3 names as its reason is only named by a
-  `--deep` run.
-  Evidence: seven journeys were measured against real checkouts before the
-  feature file was written (`/tmp/probe-out3.txt`, `/tmp/probe-s4b.txt`,
-  `/tmp/probe-s4c.txt`). A run given neither a record nor a parent — the shape
-  scenario 4's Givens describe — proposes the fork point and the merge base of
-  the target and the child, two derived kinds naming one commit, which
-  `may_establish` accepts: it exits `0` on a boundary at the merge base and
-  never reaches the refusal at all. The same run with a parent in hand is
-  refused on the _live_ candidates only: the rewritten head is not an ancestor
-  of the child (gate 4) and the derived merge base still holds a commit the
-  parent head reaches (gate 7's suffix clause), so `parent-history-intact` —
-  the gate scenario 3's `Then` names — is not among the reasons, because the
-  commit that gate refuses, the historical tip, is not proposed by any rung
-  the default run reads. With `--deep` the tree pass proposes it by content,
-  gate 6 refuses it (`… is not an ancestor of …`), and the report shows it.
-  The two-inferred distinction itself needs a narrower shape than "two commits
-  match the landing": every inferred candidate has to clear _every_ applicable
-  gate, so a candidate that _is_ the child's tip fails gate 5 on an empty
-  replay range and drops out of `_twinned_commits`, and the parent's gates have
-  to be out of scope (no `--parent`) or the historical tip is refused by gate 6
-  before the distinction is reached. The fixture that reaches it is the
-  rewritten parent, no record, no `--parent`, `--deep`, with a child that
-  edits the incoming content, restores it, and commits once more: the inherited
-  head and the restoring commit both sit at the landed tree, both clear gates 4
-  and 5, and the run reports `2 commits cleared every applicable gate (…, …)
+  `--deep` run. Evidence: seven journeys were measured against real checkouts
+  before the feature file was written (`/tmp/probe-out3.txt`,
+  `/tmp/probe-s4b.txt`, `/tmp/probe-s4c.txt`). A run given neither a record nor
+  a parent — the shape scenario 4's Givens describe — proposes the fork point
+  and the merge base of the target and the child, two derived kinds naming one
+  commit, which `may_establish` accepts: it exits `0` on a boundary at the
+  merge base and never reaches the refusal at all. The same run with a parent
+  in hand is refused on the _live_ candidates only: the rewritten head is not
+  an ancestor of the child (gate 4) and the derived merge base still holds a
+  commit the parent head reaches (gate 7's suffix clause), so
+  `parent-history-intact` — the gate scenario 3's `Then` names — is not among
+  the reasons, because the commit that gate refuses, the historical tip, is not
+  proposed by any rung the default run reads. With `--deep` the tree pass
+  proposes it by content, gate 6 refuses it (`… is not an ancestor of …`), and
+  the report shows it. The two-inferred distinction itself needs a narrower
+  shape than "two commits match the landing": every inferred candidate has to
+  clear _every_ applicable gate, so a candidate that _is_ the child's tip fails
+  gate 5 on an empty replay range and drops out of `_twinned_commits`, and the
+  parent's gates have to be out of scope (no `--parent`) or the historical tip
+  is refused by gate 6 before the distinction is reached. The fixture that
+  reaches it is the rewritten parent, no record, no `--parent`, `--deep`, with
+  a child that edits the incoming content, restores it, and commits once more:
+  the inherited head and the restoring commit both sit at the landed tree, both
+  clear gates 4 and 5, and the run reports
+  `2 commits cleared every applicable gate (…, …)
   and are named by content comparison alone, which cannot establish a boundary
-  or choose between them` and exits `1`.
-  Impact: scenario 3's `When` gains `--deep` and scenario 4's fixture is the
-  shape above, with its own `Given` naming the rewrite that leaves content
-  comparison as the only evidence. Both amendments are recorded in the Decision
-  log below, and the refusals each scenario asserts are the exact strings the
-  measurement printed.
+  or choose between them`
+  and exits `1`. Impact: scenario 3's `When` gains `--deep` and scenario 4's
+  fixture is the shape above, with its own `Given` naming the rewrite that
+  leaves content comparison as the only evidence. Both amendments are recorded
+  in the Decision log below, and the refusals each scenario asserts are the
+  exact strings the measurement printed.
 
 - Observation: a real journey reaches gate 7's content clause with a commit
   that applies nothing, and the clause refused the boundary it was asked about
-  before `wheresat_facts` was refined.
-  Evidence: a child cut from the parent's head sits at the landed content by
-  construction, so any commit above the boundary that carries no change of its
-  own — an empty commit, or the child's own bookkeeping — has the landed tree
-  and names the boundary as work the target has taken. The refusal then printed
-  a boundary no rebase followed, and the run's own report contradicted itself:
-  `replay-range-excludes-landed-work` failed while the range held nothing the
-  target had taken. `_twins` now counts only commits that both sit at the tree
-  and apply a change (`_applies_a_change`, whose answer is cached per commit),
-  and treats an unreadable parent revision as a fault rather than as
-  "changes nothing".
+  before `wheresat_facts` was refined. Evidence: a child cut from the parent's
+  head sits at the landed content by construction, so any commit above the
+  boundary that carries no change of its own — an empty commit, or the child's
+  own bookkeeping — has the landed tree and names the boundary as work the
+  target has taken. The refusal then printed a boundary no rebase followed, and
+  the run's own report contradicted itself: `replay-range-excludes-landed-work`
+  failed while the range held nothing the target had taken. `_twins` now counts
+  only commits that both sit at the tree and apply a change
+  (`_applies_a_change`, whose answer is cached per commit), and treats an
+  unreadable parent revision as a fault rather than as "changes nothing".
   `tests/unit/test_wheresat_facts.py` builds the squash shape in a real
   repository and pins both halves: a range of nothing but no-ops names no twin,
   and a range that edits the file and puts it back names the restoring commit
-  and not the no-op above it.
-  Impact: measured before the refinement as a refusal of a correct boundary;
-  after it, scenario 2's journey exits `0` where it exited `3` (the empty
-  range's patch identifier is `None`, which is INDETERMINATE by decision, not
-  by accident).
+  and not the no-op above it. Impact: measured before the refinement as a
+  refusal of a correct boundary; after it, scenario 2's journey exits `0` where
+  it exited `3` (the empty range's patch identifier is `None`, which is
+  INDETERMINATE by decision, not by accident).
 
 - Observation: `--no-fetch` measures the flag only while the durable cache is
   cold, because the fetch ladder reads the cache before it reads the option. On
   a warm cache the run that may not fetch establishes the same boundary the run
   that may fetch does, and a test that ran them in that order would pass while
-  measuring nothing about the flag.
-  Evidence: measured on the squash-merged journey, one flag apart
-  (`/tmp/probe-fetch-inv1.py`). The run that may fetch records
-  `parent_identification found` and `evidence_fetch success`, writes the head
-  as `refs/wheresat/parent-head/octocat/hello-world/42`, exits `0`, and
-  establishes; its pair on the same journey with `--no-fetch` records
-  `evidence_fetch success` as well — the head is already cached — and also
-  exits `0`. The same flag against a cold cache records
+  measuring nothing about the flag. Evidence: measured on the squash-merged
+  journey, one flag apart (`/tmp/probe-fetch-inv1.py`). The run that may fetch
+  records `parent_identification found` and `evidence_fetch success`, writes
+  the head as `refs/wheresat/parent-head/octocat/hello-world/42`, exits `0`,
+  and establishes; its pair on the same journey with `--no-fetch` records
+  `evidence_fetch success` as well — the head is already cached — and also exits
+  `0`. The same flag against a cold cache records
   `evidence_fetch not_requested`, exits `3`, establishes nothing, and prints
   the reason verbatim: "the parent's head was not fetched: --no-fetch was given
   and the durable cache holds no head for it; the cache is filled by a run that
-  may fetch, so run once without --no-fetch to fill it".
-  Impact: the read-only suite's two fetch tests each build their own journey,
-  so the cold order is a property of the fixture rather than of the order the
-  tests happen to run in. The trap is worth stating because the cache is the
-  point: the flag that stops a network call still answers from durable
-  evidence, and only a cold cache separates the two.
+  may fetch, so run once without --no-fetch to fill it". Impact: the read-only
+  suite's two fetch tests each build their own journey, so the cold order is a
+  property of the fixture rather than of the order the tests happen to run in.
+  The trap is worth stating because the cache is the point: the flag that stops
+  a network call still answers from durable evidence, and only a cold cache
+  separates the two.
 
 - Observation: GitPython's repository object cannot be asked about a linked
   worktree whose Git directory Git recorded relative, and the mistake it makes
-  is the one the reader under test must not make.
-  Evidence: `git/repo/fun.py:80-96` `find_worktree_git_dir` returns the raw
-  `gitdir:` value; a per-worktree directory holds no `objects` and no `refs`,
-  so `git/repo/fun.py:57-77` `is_git_dir` refuses it and
+  is the one the reader under test must not make. Evidence:
+  `git/repo/fun.py:80-96` `find_worktree_git_dir` returns the raw `gitdir:`
+  value; a per-worktree directory holds no `objects` and no `refs`, so
+  `git/repo/fun.py:57-77` `is_git_dir` refuses it and
   `git/repo/base.py:271-277` falls through to `expand_path`, which
   `git/util.py:525-537` finishes with `osp.abspath` — against the directory the
   reading process happens to run in. Measured on GitPython 3.1.46 against a
@@ -2815,38 +2763,36 @@ Stop and escalate rather than improvising when any of these is reached.
   that has nothing to do with the rule it measures.
 - Observation: the shared-record grammar's two arguable rules settle towards
   reporting more rather than towards choosing, and the sketch in this plan said
-  otherwise for both.
-  Evidence: the sketch had a line inside a block quote skipped as quoted
-  material; the grammar reads a quoted record and strips the quote, because
-  Markdown offers no reliable way to tell a decoration from a citation — the
-  same body may bullet, embolden, or quote a record — and because what the
-  parser returns is a candidate a run then validates, never an instruction it
-  obeys, so reading one claim too many costs a gate that refuses it while
-  skipping one costs the boundary the command exists to find. The sketch also
-  had the ambiguous case mean "two or more disagreeing occurrences"; the
-  grammar reports one reading per distinct pair of a named parent and a named
-  boundary, so a body naming two parents and one boundary yields two readings
-  rather than whichever one a resolver would have picked. The sketch under
-  `### git_donkey/wheresat_shared_record.py` was amended to say both, so the
-  plan does not state a rule the module refuses.
-  Impact: a run that reads a shared record has four results to handle rather
-  than two — absent, malformed, one reading, and several — and the several case
-  is a refusal that names the readings, not a choice between them. It also
-  decides what the wiring slice does with such a body: the run can read the
-  record and still not tell which reading it was, so no candidate is proposed
-  from it at all, because an attested claim that is two claims is not one this
-  run can report as a boundary.
+  otherwise for both. Evidence: the sketch had a line inside a block quote
+  skipped as quoted material; the grammar reads a quoted record and strips the
+  quote, because Markdown offers no reliable way to tell a decoration from a
+  citation — the same body may bullet, embolden, or quote a record — and
+  because what the parser returns is a candidate a run then validates, never an
+  instruction it obeys, so reading one claim too many costs a gate that refuses
+  it while skipping one costs the boundary the command exists to find. The
+  sketch also had the ambiguous case mean "two or more disagreeing
+  occurrences"; the grammar reports one reading per distinct pair of a named
+  parent and a named boundary, so a body naming two parents and one boundary
+  yields two readings rather than whichever one a resolver would have picked.
+  The sketch under `### git_donkey/wheresat_shared_record.py` was amended to
+  say both, so the plan does not state a rule the module refuses. Impact: a run
+  that reads a shared record has four results to handle rather than two —
+  absent, malformed, one reading, and several — and the several case is a
+  refusal that names the readings, not a choice between them. It also decides
+  what the wiring slice does with such a body: the run can read the record and
+  still not tell which reading it was, so no candidate is proposed from it at
+  all, because an attested claim that is two claims is not one this run can
+  report as a boundary.
 
 - Observation: CodeScene's Low Cohesion biomarker counts what a test module's
   tests _call_, not what they import, and it has a size gate as well as a
   cohesion one, so a large suite of independent tests is flagged however the
-  imports are arranged.
-  Evidence: the ladder's suite was scored 9.38 for its length and 8.03 for its
-  cohesion once its fixtures had been carried out, both reported at line 1
-  rather than at a function, and a series of probes over that file, its
-  variants, and the modules beside it separated three effects. A module of
-  isolated tests is scored as one component per test, because nothing joins
-  them; a test that calls an imported helper is still its own component,
+  imports are arranged. Evidence: the ladder's suite was scored 9.38 for its
+  length and 8.03 for its cohesion once its fixtures had been carried out, both
+  reported at line 1 rather than at a function, and a series of probes over
+  that file, its variants, and the modules beside it separated three effects. A
+  module of isolated tests is scored as one component per test, because nothing
+  joins them; a test that calls an imported helper is still its own component,
   because the import is a name and not an edge; and a test that calls a helper
   defined in its own module joins that helper's component, which is why
   `tests/unit/test_wheresat_report.py` (546 lines, 24 tests) and
@@ -2855,244 +2801,218 @@ Stop and escalate rather than improvising when any of these is reached.
   measured separately by removing nothing but prose: a copy of the suite with
   its docstrings stripped passed at 643 lines, and the tests carried into a
   second module passed at 489 and at 342, while the unsplit suite was refused
-  at its own length.
-  Impact: for a suite this size the lever is a split at a seam a reader would
-  recognize, not a rewrite — the eight tests that read what the child itself
-  carries are a subject of their own, and drawing them off left both modules
-  comfortably inside the gate with their tests unchanged. It also means a
-  suite can be made to pass by deleting its docstrings and by adding a helper
-  it never meant to need, which is why the split here is the one the module's
-  own docstring already drew between the forge-side rungs and the child's
-  testimony, and why the line count of every module in this milestone was
-  measured against the gate rather than guessed at.
+  at its own length. Impact: for a suite this size the lever is a split at a
+  seam a reader would recognize, not a rewrite — the eight tests that read what
+  the child itself carries are a subject of their own, and drawing them off
+  left both modules comfortably inside the gate with their tests unchanged. It
+  also means a suite can be made to pass by deleting its docstrings and by
+  adding a helper it never meant to need, which is why the split here is the
+  one the module's own docstring already drew between the forge-side rungs and
+  the child's testimony, and why the line count of every module in this
+  milestone was measured against the gate rather than guessed at.
 
 ## Decision log
 
 - Decision: model the three identities from the recovery procedure —
   `PARENT_HEAD`, `LANDED`, and `OLD_BASE` — as three distinct fields that are
   never interchangeable, and name the child's tip `child_tip` rather than
-  `OLD_HEAD` in code.
-  Rationale: the procedure's central warning is that these are different
-  commits that are easy to conflate. `OLD_HEAD` and `OLD_BASE` share a prefix
-  and mean unrelated things, which is exactly the adjacency this design works
-  to avoid elsewhere; `child_tip` cannot be misread. `OLD_HEAD` survives in
-  prose and in shell transcripts, where fidelity to the published procedure
-  matters.
-  Date/Author: 2026-09-14, planning agent.
+  `OLD_HEAD` in code. Rationale: the procedure's central warning is that these
+  are different commits that are easy to conflate. `OLD_HEAD` and `OLD_BASE`
+  share a prefix and mean unrelated things, which is exactly the adjacency this
+  design works to avoid elsewhere; `child_tip` cannot be misread. `OLD_HEAD`
+  survives in prose and in shell transcripts, where fidelity to the published
+  procedure matters. Date/Author: 2026-09-14, planning agent.
 - Decision: separate **parent identity** evidence from **boundary** evidence.
   Rationale: the two questions have different sources and different failure
   modes. A GitHub native stack or a `stackParent` config value tells you
-  _which_ pull request the parent is; it says nothing about _which commit_
-  the child forked from. Conflating them was why the first draft could not
-  say who owns discovering the child's own pull request.
-  Date/Author: 2026-09-14, planning agent.
+  _which_ pull request the parent is; it says nothing about _which commit_ the
+  child forked from. Conflating them was why the first draft could not say who
+  owns discovering the child's own pull request. Date/Author: 2026-09-14,
+  planning agent.
 - Decision: rank boundary evidence in three tiers — `ATTESTED`, `DERIVED`,
   `INFERRED` — rather than splitting it into heuristic and non-heuristic.
   Rationale: a two-way split classified `FORK_POINT` as establishing, even
-  though `Risks` rates fork-point surprise as the highest-likelihood hazard
-  in the design and the procedure says fork-point output must be "validated
-  as a candidate", never taken as an answer. Three tiers let the rule match
-  the risk: attested evidence may establish alone, derived evidence needs a
-  second independent agreeing candidate, inferred evidence never establishes.
+  though `Risks` rates fork-point surprise as the highest-likelihood hazard in
+  the design and the procedure says fork-point output must be "validated as a
+  candidate", never taken as an answer. Three tiers let the rule match the
+  risk: attested evidence may establish alone, derived evidence needs a second
+  independent agreeing candidate, inferred evidence never establishes.
   Date/Author: 2026-09-14, planning agent.
 - Decision: make the assessment result a discriminated union —
   `Established | Unresolved | Indeterminate` — where `Established.support`
   cannot hold an inferred candidate, and delete the `UNSUPPORTED` verdict.
   Rationale: the first draft promised that heuristic evidence would be
-  "structurally incapable" of establishing a boundary and then implemented
-  that promise as a frozen set and an `if`, guarded only by a property test —
+  "structurally incapable" of establishing a boundary and then implemented that
+  promise as a frozen set and an `if`, guarded only by a property test —
   precisely the arrangement the same paragraph condemned. A union whose
   `Established` arm cannot hold an inferred candidate makes the illegal state
   unrepresentable, and the property test becomes a second line of defence
-  instead of the only one. `UNSUPPORTED` went because nothing in the draft
-  ever said when to choose it over `AMBIGUOUS`, and both mapped to the same
-  exit code; the reason now lives in the `Unresolved.reasons` field that
-  already existed.
-  Date/Author: 2026-09-14, planning agent.
+  instead of the only one. `UNSUPPORTED` went because nothing in the draft ever
+  said when to choose it over `AMBIGUOUS`, and both mapped to the same exit
+  code; the reason now lives in the `Unresolved.reasons` field that already
+  existed. Date/Author: 2026-09-14, planning agent.
 - Decision: separate the read-only Git port (`WheresatGraph`, in
-  `git_donkey/wheresat_graph.py`) from the writing port
-  (`WheresatRefWriter`, in `git_donkey/wheresat_refs.py`), and construct the
-  writer only when the run will write.
-  Rationale: bundling `fetch_evidence` with seven query methods meant every
-  code path that wanted to ask an ancestry question held a fetch capability,
-  and would later hold `update-ref` too. With the split, "read-only by
-  default" is enforced by the writing object not existing, rather than by the
-  domain of a test's argument generator.
-  Date/Author: 2026-09-14, planning agent.
+  `git_donkey/wheresat_graph.py`) from the writing port (`WheresatRefWriter`, in
+  `git_donkey/wheresat_refs.py`), and construct the writer only when the run
+  will write. Rationale: bundling `fetch_evidence` with seven query methods
+  meant every code path that wanted to ask an ancestry question held a fetch
+  capability, and would later hold `update-ref` too. With the split, "read-only
+  by default" is enforced by the writing object not existing, rather than by
+  the domain of a test's argument generator. Date/Author: 2026-09-14, planning
+  agent.
 - Decision: compare a candidate's **cumulative** change against the squash
-  commit, not its per-commit patch identities.
-  Rationale: a squash is an N-to-1 relationship. The decisive comparison is
-  `patch-id(diff(merge-base(candidate, trunk)..candidate)) == patch-id(S)`,
-  or the cheaper tree comparison `tree(candidate) == tree(S)`. The first
-  draft specified `patch_identifiers(revs) -> dict[str, str]`, a per-commit
-  mapping that would only ever fire when the parent happened to be a single
-  commit — it would have shipped a heuristic that silently never matched.
-  This also matches git-machete's `simple` (tree) and `exact` (patch) modes.
-  Date/Author: 2026-09-14, planning agent.
+  commit, not its per-commit patch identities. Rationale: a squash is an N-to-1
+  relationship. The decisive comparison is
+  `patch-id(diff(merge-base(candidate, trunk)..candidate)) == patch-id(S)`, or
+  the cheaper tree comparison `tree(candidate) == tree(S)`. The first draft
+  specified `patch_identifiers(revs) -> dict[str, str]`, a per-commit mapping
+  that would only ever fire when the parent happened to be a single commit — it
+  would have shipped a heuristic that silently never matched. This also matches
+  git-machete's `simple` (tree) and `exact` (patch) modes. Date/Author:
+  2026-09-14, planning agent.
 - Decision: use four exit codes — `0` established, `1` unresolved, `2` usage
   or environment error, `3` indeterminate — departing from the three-code
-  convention used by `git incoming` and `git outgoing`.
-  Rationale: the command has four genuinely different things to say, and the
-  draft's three-code scheme filed "this repository cannot answer" under the
-  same code as "you typed it wrong". That is the machine-readable version of
-  the very conflation the "an error is not a negative answer" constraint
-  exists to prevent. The departure is small, documented in the manual page,
-  and the codes remain ordered by severity.
-  Date/Author: 2026-09-14, planning agent.
+  convention used by `git incoming` and `git outgoing`. Rationale: the command
+  has four genuinely different things to say, and the draft's three-code scheme
+  filed "this repository cannot answer" under the same code as "you typed it
+  wrong". That is the machine-readable version of the very conflation the "an
+  error is not a negative answer" constraint exists to prevent. The departure
+  is small, documented in the manual page, and the codes remain ordered by
+  severity. Date/Author: 2026-09-14, planning agent.
 - Decision: reach GitHub through `github3.py`, which the project already
   depends on and already authenticates in `git_donkey/fafo_github.py`, rather
   than shelling out to the `gh` CLI — but do **not** reuse
-  `fafo_github._github_token()` unchanged.
-  Rationale: consistency with the existing GitHub surface, and decisively,
-  vcrpy intercepts in-process HTTP and cannot see traffic from a `gh`
-  subprocess, so the requirement to mock GitHub with vcrpy is only
-  satisfiable in-process. The token path needs factoring because
-  `fafo_github._ensure_interactive` (`git_donkey/fafo_github.py:84-93`) dies
-  with the `git-fafo` prefix and exit code `1` when there is no terminal,
-  and `_device_flow_token` blocks in `loctocat.poll()` when there is one.
-  For `git wheresat`, exit `1` means "legitimately unresolved", so that
-  behaviour would be actively misleading, and a discovery command must never
-  block on a browser.
-  Date/Author: 2026-09-14, planning agent.
+  `fafo_github._github_token()` unchanged. Rationale: consistency with the
+  existing GitHub surface, and decisively, vcrpy intercepts in-process HTTP and
+  cannot see traffic from a `gh` subprocess, so the requirement to mock GitHub
+  with vcrpy is only satisfiable in-process. The token path needs factoring
+  because `fafo_github._ensure_interactive` (`git_donkey/fafo_github.py:84-93`)
+  dies with the `git-fafo` prefix and exit code `1` when there is no terminal,
+  and `_device_flow_token` blocks in `loctocat.poll()` when there is one. For
+  `git wheresat`, exit `1` means "legitimately unresolved", so that behaviour
+  would be actively misleading, and a discovery command must never block on a
+  browser. Date/Author: 2026-09-14, planning agent.
 - Decision: keep the full evidence ladder from the supplied procedure, and
-  record the recommendation to cut it.
-  Rationale: the design review's strongest recommendation was to ship only
-  stack-record plus pull-request-head evidence and delete the shared record,
-  fork-point, tree identity, and patch identity — three evidence kinds, three
-  gates, four modules. That is a genuinely better cost profile. It is
-  rejected here because the supplied recovery procedure specifies each of
-  those rungs, including their limitations, and the task is to automate that
-  procedure rather than a subset of it. The cost is mitigated by sequencing:
-  EP-M8 ships a working local-evidence command, and the expensive rungs
-  arrive in EP-M10 where a reviewer can see their price in isolation.
-  Date/Author: 2026-09-14, planning agent.
+  record the recommendation to cut it. Rationale: the design review's strongest
+  recommendation was to ship only stack-record plus pull-request-head evidence
+  and delete the shared record, fork-point, tree identity, and patch identity —
+  three evidence kinds, three gates, four modules. That is a genuinely better
+  cost profile. It is rejected here because the supplied recovery procedure
+  specifies each of those rungs, including their limitations, and the task is
+  to automate that procedure rather than a subset of it. The cost is mitigated
+  by sequencing: EP-M8 ships a working local-evidence command, and the
+  expensive rungs arrive in EP-M10 where a reviewer can see their price in
+  isolation. Date/Author: 2026-09-14, planning agent.
 - Decision: reject commit-message trailers as the boundary carrier.
   Rationale: the design review's strongest _alternative_ was to have
-  `git donkey` install a `prepare-commit-msg` hook stamping
-  `Stack-Parent:`/`Stack-Base:` trailers onto the child's first commit, after
-  Gerrit's `Change-Id` and Jujutsu's change IDs. It is genuinely better on
-  durability: trailers survive a fresh clone, a different machine, a
-  fork-based pull request, parent force-push, branch deletion,
-  `git plonk --hard`, and reflog expiry, and they answer the rewritten-parent
-  case this command must otherwise refuse. It is rejected because the
-  supplied procedure states that "No Jira issue or per-commit prefix is
-  necessary", because it irreversibly mutates commit messages, and because it
-  offers nothing for the branches that already exist — which is the acute
-  problem. It is recorded here, and in the ADR, as the alternative to revisit
-  if the stack record proves insufficient in practice.
-  Date/Author: 2026-09-14, planning agent.
+  `git donkey` install a `prepare-commit-msg` hook stamping `Stack-Parent:`/
+  `Stack-Base:` trailers onto the child's first commit, after Gerrit's
+  `Change-Id` and Jujutsu's change IDs. It is genuinely better on durability:
+  trailers survive a fresh clone, a different machine, a fork-based pull
+  request, parent force-push, branch deletion, `git plonk --hard`, and reflog
+  expiry, and they answer the rewritten-parent case this command must otherwise
+  refuse. It is rejected because the supplied procedure states that "No Jira
+  issue or per-commit prefix is necessary", because it irreversibly mutates
+  commit messages, and because it offers nothing for the branches that already
+  exist — which is the acute problem. It is recorded here, and in the ADR, as
+  the alternative to revisit if the stack record proves insufficient in
+  practice. Date/Author: 2026-09-14, planning agent.
 - Decision: require one shared stack record across `git donkey`,
-  `git plonk`, and `git wheresat`, owned by `git_donkey/stack_records.py`
-  and `git_donkey/stack_store.py`, rather than giving `git wheresat` a
-  private record format.
-  Rationale: the first draft left the two most valuable changes as
-  follow-ups, which meant shipping a forensic tool to reconstruct a fact
-  `git donkey` had already discarded, while `git plonk` went on destroying
-  the evidence that tool depends on. Three commands touching one artefact
-  through three private parsers would diverge; one format module and one
-  store module cannot. The commands stay ignorant of each other: neither
-  donkey nor plonk learns anything about pull requests or evidence tiers.
-  Date/Author: 2026-09-14, planning agent.
+  `git plonk`, and `git wheresat`, owned by `git_donkey/stack_records.py` and
+  `git_donkey/stack_store.py`, rather than giving `git wheresat` a private
+  record format. Rationale: the first draft left the two most valuable changes
+  as follow-ups, which meant shipping a forensic tool to reconstruct a fact
+  `git donkey` had already discarded, while `git plonk` went on destroying the
+  evidence that tool depends on. Three commands touching one artefact through
+  three private parsers would diverge; one format module and one store module
+  cannot. The commands stay ignorant of each other: neither donkey nor plonk
+  learns anything about pull requests or evidence tiers. Date/Author:
+  2026-09-14, planning agent.
 - Decision: configuration holds the record; the ref is only a reachability
-  anchor.
-  Rationale: measured behaviour forced this. `git branch -m` carries
+  anchor. Rationale: measured behaviour forced this. `git branch -m` carries
   `branch.<name>.*` to the new section but leaves `refs/stack-bases/<old>`
   behind, so a ref-authoritative design silently loses the record on every
   rename. Conversely `git branch -D` destroys the configuration section
   entirely, which is why the tombstone must be a ref. Splitting the roles —
   configuration for values, ref for reachability — makes each artefact
-  authoritative for the thing it is actually good at, and turns a
-  disagreement between them into a reportable malformed record rather than a
-  coin toss. It also discharges INV-8 for free: the anchor ref is what keeps
-  an established boundary safe from `git gc`.
-  Date/Author: 2026-09-14, planning agent.
+  authoritative for the thing it is actually good at, and turns a disagreement
+  between them into a reportable malformed record rather than a coin toss. It
+  also discharges INV-8 for free: the anchor ref is what keeps an established
+  boundary safe from `git gc`. Date/Author: 2026-09-14, planning agent.
 - Decision: `git plonk` owns the end of the record lifecycle — tombstone,
-  sweep, and prune.
-  Rationale: plonk is already the cleanup command, already enumerates
-  worktrees and branches, and already has a dry-run and a summary to report
-  through. Putting the sweep anywhere else would mean inventing a second
+  sweep, and prune. Rationale: plonk is already the cleanup command, already
+  enumerates worktrees and branches, and already has a dry-run and a summary to
+  report through. Putting the sweep anywhere else would mean inventing a second
   cleanup entry point. Tombstoning before deletion is required rather than
   optional because `git plonk --hard` uses `git branch -D`
   (`git_donkey/plonk.py:182`), which always succeeds — there is no refusal to
-  fall back on.
-  Date/Author: 2026-09-14, planning agent.
+  fall back on. Date/Author: 2026-09-14, planning agent.
 - Decision: keep the flat `refs/stack-bases/<branch>` namespace from the
   supplied procedure, rather than a directory/file-safe layout such as
-  `refs/stack-bases/<branch>/base`.
-  Rationale: a leaf-suffixed layout would make collisions impossible by
-  construction, and the collision is real — measured here,
-  `refs/stack-bases/alpha` blocks `refs/stack-bases/alpha/beta`. The flat
-  form is kept because it is what the supplied procedure specifies verbatim,
-  and because collisions cannot arise while the record namespace stays a
-  subset of the branch namespace: Git already forbids branches `alpha` and
-  `alpha/beta` coexisting. INV-9 states that subset invariant, plonk's sweep
-  maintains it, and the writer reports a collision rather than crashing when
-  it has been violated from outside. If that proves fragile in practice, the
-  leaf-suffixed layout is the recorded fallback.
-  Date/Author: 2026-09-14, planning agent.
+  `refs/stack-bases/<branch>/base`. Rationale: a leaf-suffixed layout would
+  make collisions impossible by construction, and the collision is real —
+  measured here, `refs/stack-bases/alpha` blocks `refs/stack-bases/alpha/beta`.
+  The flat form is kept because it is what the supplied procedure specifies
+  verbatim, and because collisions cannot arise while the record namespace
+  stays a subset of the branch namespace: Git already forbids branches `alpha`
+  and `alpha/beta` coexisting. INV-9 states that subset invariant, plonk's
+  sweep maintains it, and the writer reports a collision rather than crashing
+  when it has been violated from outside. If that proves fragile in practice,
+  the leaf-suffixed layout is the recorded fallback. Date/Author: 2026-09-14,
+  planning agent.
 - Decision: tombstones preserve the tip only, and expire after 90 days.
   Rationale: preserving every incarnation a branch's reflog held would need a
   ref per incarnation and an expiry policy per ref, for a case — recovering a
   superseded force-push of a deleted parent — that the pull request head ref
-  already covers better. The tip is what gates 6 and 7 and the merge-base
-  rung need. Ninety days matches Git's own `gc.reflogExpire` default, so a
-  tombstone lasts exactly as long as the reflog it stands in for would have.
-  The honest consequence, stated in the users' guide: tombstones do not
-  restore fork-point recovery.
-  Date/Author: 2026-09-14, planning agent.
+  already covers better. The tip is what gates 6 and 7 and the merge-base rung
+  need. Ninety days matches Git's own `gc.reflogExpire` default, so a tombstone
+  lasts exactly as long as the reflog it stands in for would have. The honest
+  consequence, stated in the users' guide: tombstones do not restore fork-point
+  recovery. Date/Author: 2026-09-14, planning agent.
 - Decision: `git donkey` records only when the resolved base is not the
-  trunk.
-  Rationale: a record means "this branch is stacked on something". Writing
-  one for every branch would make `git wheresat` offer a boundary for
+  trunk. Rationale: a record means "this branch is stacked on something".
+  Writing one for every branch would make `git wheresat` offer a boundary for
   branches that never had a parent, which is the confidently-wrong-answer
   failure mode arriving through the front door. The trunk test reuses
-  `remote_default.discover_default_branch`, which `git donkey` and
-  `git plonk` already share.
-  Date/Author: 2026-09-14, planning agent.
+  `remote_default.discover_default_branch`, which `git donkey` and `git plonk`
+  already share. Date/Author: 2026-09-14, planning agent.
 - Decision: keep `--json`, and record that the review recommended deferring
-  it.
-  Rationale: the review is right that this invents a repository-wide
+  it. Rationale: the review is right that this invents a repository-wide
   convention for a consumer that does not exist yet. It is kept because the
-  task requires snapshot coverage where "multivariant output format
-  consistency is relevant", because a forensic command whose answer feeds a
-  scripted rebase is the clearest case in this package for machine-readable
-  output, and because the agent skill in `skill/git-donkey-worktrees/` is a
-  plausible first consumer. The convention is written into
-  `docs/developers-guide.md` in EP-M10 so the next command inherits it rather
-  than reinventing it.
-  Date/Author: 2026-09-14, planning agent.
+  task requires snapshot coverage where "multivariant output format consistency
+  is relevant", because a forensic command whose answer feeds a scripted rebase
+  is the clearest case in this package for machine-readable output, and because
+  the agent skill in `skill/git-donkey-worktrees/` is a plausible first
+  consumer. The convention is written into `docs/developers-guide.md` in EP-M10
+  so the next command inherits it rather than reinventing it. Date/Author:
+  2026-09-14, planning agent.
 - Decision: rename `--allow-heuristics` to `--deep`, and document it as a
   cost control that can add candidates to the report but can never change the
-  verdict.
-  Rationale: the flag reads like a semantics switch and is not one — inferred
-  evidence cannot establish a boundary with or without it. What it actually
-  controls is whether a potentially expensive scan of the trunk runs at all.
-  Naming it for what it does removes a false affordance.
-  Date/Author: 2026-09-14, planning agent.
+  verdict. Rationale: the flag reads like a semantics switch and is not one —
+  inferred evidence cannot establish a boundary with or without it. What it
+  actually controls is whether a potentially expensive scan of the trunk runs
+  at all. Naming it for what it does removes a false affordance. Date/Author:
+  2026-09-14, planning agent.
 - Decision: record `git wheresat` in `git_donkey/observability.py` rather
-  than leaving it silent.
-  Rationale: every other command in the package feeds the bounded recorder,
-  and this is the command most likely to be wrong in a way nobody notices.
-  Recording which evidence tier established a boundary, across a fleet, is
-  the single most useful signal for knowing whether the command is
-  trustworthy. The vocabulary additions are enumerated in
+  than leaving it silent. Rationale: every other command in the package feeds
+  the bounded recorder, and this is the command most likely to be wrong in a
+  way nobody notices. Recording which evidence tier established a boundary,
+  across a fleet, is the single most useful signal for knowing whether the
+  command is trustworthy. The vocabulary additions are enumerated in
   `Interfaces and dependencies` and budgeted; anything beyond them trips a
-  tolerance.
-  Date/Author: 2026-09-14, planning agent.
+  tolerance. Date/Author: 2026-09-14, planning agent.
 - Decision: write `docs/squash-restack-boundary-recovery.md` and the ADR
-  **first**, in EP-M1, before any types exist.
-  Rationale: the first draft scheduled them four milestones after the code
-  that implements them, by which point the evidence vocabulary, the gate
-  names, and the verdict model would already be frozen. An architectural
-  decision record written after the types it justifies is a rationalization,
-  and the ambiguity tolerance cannot fire against a document that has not
-  been written.
-  Date/Author: 2026-09-14, planning agent.
+  **first**, in EP-M1, before any types exist. Rationale: the first draft
+  scheduled them four milestones after the code that implements them, by which
+  point the evidence vocabulary, the gate names, and the verdict model would
+  already be frozen. An architectural decision record written after the types
+  it justifies is a rationalization, and the ambiguity tolerance cannot fire
+  against a document that has not been written. Date/Author: 2026-09-14,
+  planning agent.
 - Decision: age a tombstone by its own reflog, and keep a tombstone whose age
-  cannot be read.
-  Rationale: every write through `stack_store` passes `--create-reflog`,
-  because a ref outside `refs/heads/` gets no reflog by default and a
-  tombstone with no reflog has no age to compare against `expire`.
+  cannot be read. Rationale: every write through `stack_store` passes
+  `--create-reflog`, because a ref outside `refs/heads/` gets no reflog by
+  default and a tombstone with no reflog has no age to compare against `expire`.
   `prune()` therefore reads `%gd --date=unix` from the tombstone's reflog and
   keeps anything it cannot parse, so an unreadable timestamp shortens no
   parent's life. Git parses `expire` with its own date grammar, in which an
@@ -3102,104 +3022,96 @@ Stop and escalate rather than improvising when any of these is reached.
   `stack.tombstoneExpire` mitigation and is recorded there as a gap.
   Date/Author: 2026-09-14, implementation agent.
 - Decision: `create` retires a tombstone standing at the same name, and
-  nothing else does.
-  Rationale: a name whose branch was entombed is a name a new branch may
-  legitimately take, and the tombstone of the earlier incarnation must not
-  describe the new one. Retiring it at creation keeps the single-owner
-  lifecycle: the name moves from tombstone to live record in one step. The
-  corollary, measured rather than assumed, is that a _rename_ onto a
+  nothing else does. Rationale: a name whose branch was entombed is a name a
+  new branch may legitimately take, and the tombstone of the earlier
+  incarnation must not describe the new one. Retiring it at creation keeps the
+  single-owner lifecycle: the name moves from tombstone to live record in one
+  step. The corollary, measured rather than assumed, is that a _rename_ onto a
   tombstoned name produces a live record beside a tombstone, which INV-10
   forbids; the design has no answer for it yet, so EP-M2's machine never
-  generates it, and the finding is recorded above for EP-M4 or EP-M6 to
-  close.
+  generates it, and the finding is recorded above for EP-M4 or EP-M6 to close.
   Date/Author: 2026-09-14, implementation agent.
 - Decision: the sweep preserves a tip only from an orphan whose record still
-  parses, and reports which orphans it could not preserve.
-  Rationale: the alternative — inventing a tombstone from the anchor — would
-  record the base as the branch's tip, which is a confidently wrong answer
-  about the very fact the tombstone exists to carry. `sweep()` returns the
-  branches it tombstoned so `git plonk` can report the difference between a
-  parent it rescued and one plain Git destroyed, and the two-sided
-  `orphans == identified - branches` assertion in the state machine pins that
-  neither kind is left behind.
+  parses, and reports which orphans it could not preserve. Rationale: the
+  alternative — inventing a tombstone from the anchor — would record the base
+  as the branch's tip, which is a confidently wrong answer about the very fact
+  the tombstone exists to carry. `sweep()` returns the branches it tombstoned so
+  `git plonk` can report the difference between a parent it rescued and one
+  plain Git destroyed, and the two-sided `orphans == identified - branches`
+  assertion in the state machine pins that neither kind is left behind.
   Date/Author: 2026-09-14, implementation agent.
 - Decision: the state machine's INV-10 anti-vacuity requirement is met by a
   deterministic `start` rule, not by requiring the generator to reach the
-  classes.
-  Rationale: requiring them of the sampler failed in measurement, and forcing
-  them through preconditions failed in two different ways (see Surprises).
-  The `start` rule calls the same rules a generated step would and runs the
-  same check after each, so the classes are reached and checked in every
-  example, and the assertion that they were reached is kept as the statement
-  of the requirement rather than as a hope. The test pins its own
+  classes. Rationale: requiring them of the sampler failed in measurement, and
+  forcing them through preconditions failed in two different ways (see
+  Surprises). The `start` rule calls the same rules a generated step would and
+  runs the same check after each, so the classes are reached and checked in
+  every example, and the assertion that they were reached is kept as the
+  statement of the requirement rather than as a hope. The test pins its own
   `max_examples` and `stateful_step_count` because one step spawns a dozen Git
   subprocesses, which keeps the nightly profile from turning a bounded
-  integration test into an hour-long one.
-  Date/Author: 2026-09-14, implementation agent.
+  integration test into an hour-long one. Date/Author: 2026-09-14,
+  implementation agent.
 
 - Decision: `git plonk` calls `entomb` from `_clean_completed_candidate`, not
   from `_GitWorktreeAdapter.delete_branch` as the interface sketch placed it.
   Rationale: `delete_branch` reports one `bool`, so the three outcomes the
   milestone needs — tombstoned and deleted, tombstoned and refused, and not
   tombstoned so deliberately not deleted — would collapse into two, and
-  `_PlonkResult.entombed_branches` would have nothing to read. Keeping the
-  call in the orchestration also lets a unit double pin the ordering (`entomb`
-  before `git branch -D`) and lets a store double fail on demand; behind the
-  adapter's `bool` neither is observable without a real repository. The
-  adapter's own behaviour is unchanged.
-  Date/Author: 2026-09-14, implementation agent.
+  `_PlonkResult.entombed_branches` would have nothing to read. Keeping the call
+  in the orchestration also lets a unit double pin the ordering (`entomb` before
+  `git branch -D`) and lets a store double fail on demand; behind the adapter's
+  `bool` neither is observable without a real repository. The adapter's own
+  behaviour is unchanged. Date/Author: 2026-09-14, implementation agent.
 - Decision: when the tombstone is written and the deletion is then refused,
-  the tombstone stands.
-  Rationale: INV-10 asks for exactly one of no record, a live record, or a
-  tombstone, and a live branch beside a tombstone is the tombstone state, not
-  a violation. Retiring it would be a second write that can itself fail, and
-  it would discard the only evidence of the tip — the fact the tombstone
-  exists to carry. The run names the entombed branch and the failed deletion
-  in separate sections, so the pair is reported rather than merged. The
-  documented cost is that the tombstone then names the tip the branch had
-  when plonk tried to delete it, which is also the tip it still has.
+  the tombstone stands. Rationale: INV-10 asks for exactly one of no record, a
+  live record, or a tombstone, and a live branch beside a tombstone is the
+  tombstone state, not a violation. Retiring it would be a second write that
+  can itself fail, and it would discard the only evidence of the tip — the fact
+  the tombstone exists to carry. The run names the entombed branch and the
+  failed deletion in separate sections, so the pair is reported rather than
+  merged. The documented cost is that the tombstone then names the tip the
+  branch had when plonk tried to delete it, which is also the tip it still has.
   Date/Author: 2026-09-14, implementation agent.
 - Decision: the reader that reads `stack.tombstoneExpire` validates it, and
-  `prune` keeps its permissive contract for an explicit instant.
-  Rationale: `tests/unit/test_stack_store.py` pins `prune(<a future
-  instant>)` pruning every tombstone written before it, because an explicit
-  instant is a statement in its own right — stated as a number, never as a
-  phrase. The EP-M4 hazard is the _configured_ value, whose typo Git's date
-  grammar reads as "now". So `GitStackRecordReader.expiry()` reads the key
-  (default `90.days.ago`), probes `now` first and rejects `cutoff >= now`,
-  and `git plonk` asks for it before it touches anything: a typo exits 2 with
-  the offending value named instead of emptying the fleet's tombstones.
-  Date/Author: 2026-09-14, implementation agent.
+  `prune` keeps its permissive contract for an explicit instant. Rationale:
+  `tests/unit/test_stack_store.py` pins `prune(<a future instant>)` pruning
+  every tombstone written before it, because an explicit instant is a statement
+  in its own right — stated as a number, never as a phrase. The EP-M4 hazard is
+  the _configured_ value, whose typo Git's date grammar reads as "now". So
+  `GitStackRecordReader.expiry()` reads the key (default `90.days.ago`), probes
+  `now` first and rejects `cutoff >= now`, and `git plonk` asks for it before
+  it touches anything: a typo exits 2 with the offending value named instead of
+  emptying the fleet's tombstones. Date/Author: 2026-09-14, implementation
+  agent.
 - Decision: the sweep and the prune run once per completed run, before the
-  first worktree is removed, and never in soft mode.
-  Rationale: soft mode's contract is that it leaves Git state untouched, so
-  neither belongs there. They precede the candidate loop because a record
-  repair is repository-wide rather than candidate-scoped: failing before any
-  worktree moves leaves a repository that is merely untidied, where failing
-  afterwards would leave one that is half-cleaned and unreported. The order
-  cannot change what they find, because a branch this command deletes is
-  entombed first and so never becomes an orphan, and the one branch it leaves
-  behind is one Git refused to delete, which still exists.
-  Date/Author: 2026-09-14, implementation agent.
+  first worktree is removed, and never in soft mode. Rationale: soft mode's
+  contract is that it leaves Git state untouched, so neither belongs there.
+  They precede the candidate loop because a record repair is repository-wide
+  rather than candidate-scoped: failing before any worktree moves leaves a
+  repository that is merely untidied, where failing afterwards would leave one
+  that is half-cleaned and unreported. The order cannot change what they find,
+  because a branch this command deletes is entombed first and so never becomes
+  an orphan, and the one branch it leaves behind is one Git refused to delete,
+  which still exists. Date/Author: 2026-09-14, implementation agent.
 - Decision: a dry run classifies orphans and expired tombstones with reads
-  (`rescuable`, `expired`) rather than by simulating the writes.
-  Rationale: a preview that listed every orphan as rescued would claim a
-  rescue that would not happen, which is the same inaccuracy the real summary
-  is required to avoid; and the writer's own `sweep` and `prune` are built on
-  those same reads, so the report and the write cannot drift apart.
-  Date/Author: 2026-09-14, implementation agent.
+  (`rescuable`, `expired`) rather than by simulating the writes. Rationale: a
+  preview that listed every orphan as rescued would claim a rescue that would
+  not happen, which is the same inaccuracy the real summary is required to
+  avoid; and the writer's own `sweep` and `prune` are built on those same
+  reads, so the report and the write cannot drift apart. Date/Author:
+  2026-09-14, implementation agent.
 - Decision: every read the store declares is answered by the reader, on the
-  reader alone.
-  Rationale: the commands ask for a `StackRecordReader` and only a write needs
-  the writer — `git wheresat` reads records and writes none of them — so a read
-  whose implementation lives on the writer is a read two of the three commands
-  cannot make. The failure mode is worse than an omission: a protocol that
-  declares a read a reader cannot perform type-checks, and a double answers it,
-  so only a real repository exercises it. The reviewer's read half moved to
-  `GitStackRecordReader` (Surprises records the measurement), and the pin drives
-  every declared read from a reader. A writer that needs the same answer
-  composes the reader rather than reimplementing the rule.
-  Date/Author: 2026-09-14, implementation agent.
+  reader alone. Rationale: the commands ask for a `StackRecordReader` and only
+  a write needs the writer — `git wheresat` reads records and writes none of
+  them — so a read whose implementation lives on the writer is a read two of
+  the three commands cannot make. The failure mode is worse than an omission: a
+  protocol that declares a read a reader cannot perform type-checks, and a
+  double answers it, so only a real repository exercises it. The reviewer's
+  read half moved to `GitStackRecordReader` (Surprises records the
+  measurement), and the pin drives every declared read from a reader. A writer
+  that needs the same answer composes the reader rather than reimplementing the
+  rule. Date/Author: 2026-09-14, implementation agent.
 - Decision: the behavioural feature grows a sixth scenario, and the two routes
   by which a branch leaves Git are exercised apart rather than together.
   Rationale: the milestone's fifth scenario as first written — "a stack record
@@ -3212,18 +3124,17 @@ Stop and escalate rather than improvising when any of these is reached.
   have had to assert whichever route its fixture happened to take and would
   have left the reporting split untested, so the feature keeps the rescue
   scenario (fixtured through `git update-ref -d refs/heads/<name>`, the only
-  deletion that leaves a record behind) and adds "An orphan Git deleted alone is
-  cleared without a tombstone" for the plain case. Each Given step asserts the
-  fixture's premise through the production reader — `rescuable(...)` returns the
-  orphan for one and `()` for the other — so neither scenario can pass by having
-  built the other's state.
-  Date/Author: 2026-09-14, implementation agent.
+  deletion that leaves a record behind) and adds "An orphan Git deleted alone
+  is cleared without a tombstone" for the plain case. Each Given step asserts
+  the fixture's premise through the production reader — `rescuable(...)`
+  returns the orphan for one and `()` for the other — so neither scenario can
+  pass by having built the other's state. Date/Author: 2026-09-14,
+  implementation agent.
 - Decision: split a module that breaches Pylint's 800-line limit along the seam
   its tests already draw, rather than relaxing the limit or adding an
-  exception.
-  Rationale: the second-tier `pylint --rcfile=.pylintrc-df12.toml` pass and
-  the built-in `too-many-lines` check are deliberately active, and the two
-  oversized modules each had a seam waiting for them. `git_donkey/plonk.py`
+  exception. Rationale: the second-tier `pylint --rcfile=.pylintrc-df12.toml`
+  pass and the built-in `too-many-lines` check are deliberately active, and the
+  two oversized modules each had a seam waiting for them. `git_donkey/plonk.py`
   split into the command entry point, `git_donkey/plonk_cleanup.py` (the
   completed-cleanup workflow) and `git_donkey/plonk_worktree_adapter.py` (the
   Git side of a removal) — the two units the test modules
@@ -3231,145 +3142,142 @@ Stop and escalate rather than improvising when any of these is reached.
   `tests/unit/test_plonk_worktree_adapter.py` were already written against.
   `tests/unit/test_stack_store.py` split into a writer suite, a reader suite,
   and the shared builder module `tests/unit/stack_store_helpers.py`, which is
-  the same read/write seam the production store itself is built on. Both
-  splits keep the public behaviour and every existing assertion; only the
-  module boundaries moved. `_GIT_PLONK_PREFIX` was hoisted into
+  the same read/write seam the production store itself is built on. Both splits
+  keep the public behaviour and every existing assertion; only the module
+  boundaries moved. `_GIT_PLONK_PREFIX` was hoisted into
   `git_donkey/_constants.py` so that no module imports upward to get it.
   Date/Author: 2026-09-14, implementation agent.
 - Decision: `git_donkey/wheresat_github.py` was split at 807 lines into itself
   and `git_donkey/wheresat_payload.py`, applying the rule above rather than
-  trimming prose to fit the cap.
-  Rationale: the module had grown to hold two things that only look like one —
-  the transport that asks GitHub a question, with its session, URLs, statuses,
-  and fault vocabulary, and the pure readers that turn a decoded body into this
-  command's values. The second half needs no session to be tested and no status
-  code to be read, and the interface the pair presents is unchanged: the four
-  questions stay in `wheresat_github.py`, and no caller of it sees a payload
-  reader. Nothing was deleted to reach the limit and no check was disabled;
-  `wheresat_github.py` is 628 lines and `wheresat_payload.py` is 221, and both
-  score 10.00 on `cs check`.
+  trimming prose to fit the cap. Rationale: the module had grown to hold two
+  things that only look like one — the transport that asks GitHub a question,
+  with its session, URLs, statuses, and fault vocabulary, and the pure readers
+  that turn a decoded body into this command's values. The second half needs no
+  session to be tested and no status code to be read, and the interface the
+  pair presents is unchanged: the four questions stay in `wheresat_github.py`,
+  and no caller of it sees a payload reader. Nothing was deleted to reach the
+  limit and no check was disabled; `wheresat_github.py` is 628 lines and
+  `wheresat_payload.py` is 221, and both score 10.00 on `cs check`.
   Date/Author: 2026-09-14, implementation agent.
 - Decision: restate EP-M5's acceptance evidence as the property that holds —
   the rewritten fixture's merge base is the trunk commit both branches came
   from, which is an ancestor of the parent's head and is refused by the replay
   range rather than by the parent-history gate — and keep
-  `StackFixture.inherited_head` as a field of its own.
-  Rationale: the milestone as written required
-  `git merge-base --all parent_head child_tip` to "return a commit that is
-  **not** an ancestor of `parent_head`", which no merge base can satisfy, so
-  the acceptance as written could only be met by an assertion that is false
-  about Git. Amending the acceptance rather than the design keeps the
+  `StackFixture.inherited_head` as a field of its own. Rationale: the milestone
+  as written required `git merge-base --all parent_head child_tip` to "return a
+  commit that is **not** an ancestor of `parent_head`", which no merge base can
+  satisfy, so the acceptance as written could only be met by an assertion that
+  is false about Git. Amending the acceptance rather than the design keeps the
   milestone's real object — a fixture whose boundary was lost — and hands the
   design detail it uncovered (which gate does the refusing) to EP-M6, where the
   gates are built; the fixture test states both facts, so the amendment cannot
   hide a gate built in the wrong place. `inherited_head` is a sixth field
   because the rewritten shape's content is exactly the divergence between the
   head the child inherited and the head the parent now has, and a `parent_head`
-  that meant either one would make the shape inexpressible.
-  Date/Author: 2026-09-14, implementation agent, EP-M5.
+  that meant either one would make the shape inexpressible. Date/Author:
+  2026-09-14, implementation agent, EP-M5.
 - Decision: re-slice EP-M6, EP-M7, and EP-M8 into one plateau that lands as
   one commit, and keep their acceptance evidence reported separately.
-  Rationale: the dead-code stage of `make lint` runs `skylos git_donkey
-  --category dead_code --gate` with `strict` set, and liveness is counted only
-  from the production roots, so a module no console script reaches is dead
-  code however thoroughly its tests exercise it. Measured before writing any
-  EP-M6 code: one unreferenced module-level function failed the stage with
-  `SKY-U001`, and a test module importing and calling it did not change the
-  answer. The pure core and its ports therefore have no way to be green before
-  the command that reaches them exists. Landing them behind a temporary
-  whitelist entry was rejected for the reason already recorded: the entry would
-  have to be withdrawn when the consumer arrived, and the pinned exception set
-  in `tests/unit/test_skylos_lint_contract.py` exists to keep the whitelist
-  empty. EP-M6, EP-M7, and EP-M8 are unchanged as pieces of work with their own
-  acceptance evidence; the only thing merged is the commit that lands them.
-  `--record` (EP-M9) and the GitHub evidence and `--json` (EP-M10) stay
-  separate, because each is reachable from the console script the plateau
-  installs and so can be green on its own.
-  Date/Author: 2026-09-14, implementation agent, EP-M6.
+  Rationale: the dead-code stage of `make lint` runs
+  `skylos git_donkey --category dead_code --gate` with `strict` set, and
+  liveness is counted only from the production roots, so a module no console
+  script reaches is dead code however thoroughly its tests exercise it.
+  Measured before writing any EP-M6 code: one unreferenced module-level
+  function failed the stage with `SKY-U001`, and a test module importing and
+  calling it did not change the answer. The pure core and its ports therefore
+  have no way to be green before the command that reaches them exists. Landing
+  them behind a temporary whitelist entry was rejected for the reason already
+  recorded: the entry would have to be withdrawn when the consumer arrived, and
+  the pinned exception set in `tests/unit/test_skylos_lint_contract.py` exists
+  to keep the whitelist empty. EP-M6, EP-M7, and EP-M8 are unchanged as pieces
+  of work with their own acceptance evidence; the only thing merged is the
+  commit that lands them. `--record` (EP-M9) and the GitHub evidence and
+  `--json` (EP-M10) stay separate, because each is reachable from the console
+  script the plateau installs and so can be green on its own. Date/Author:
+  2026-09-14, implementation agent, EP-M6.
 - Decision: decide gate applicability from the run's inputs, and carry it on
   each `GateResult` as an `applicable` flag, rather than inferring it from
-  whether a gate's data arrived.
-  Rationale: the assessment has to say three different things about a gate it
-  did not pass — "this gate does not apply to this run", "this gate applies and
-  failed", and "this gate applies and could not be answered" — and only the
-  first may be dropped from the conjunction. Leaving applicability implicit in
-  the data would make a collection fault silently shrink the gate set, which is
-  the "an error is not a negative answer" failure arriving through the back
-  door; the flag makes the count in the report (`8 applicable, 8 passed`) and
-  the conjunction read from one field. The rule is stated in `Gate semantics`
-  above, and the amendment there records the milestone prose it replaces.
-  Date/Author: 2026-09-14, implementation agent, EP-M6.
+  whether a gate's data arrived. Rationale: the assessment has to say three
+  different things about a gate it did not pass — "this gate does not apply to
+  this run", "this gate applies and failed", and "this gate applies and could
+  not be answered" — and only the first may be dropped from the conjunction.
+  Leaving applicability implicit in the data would make a collection fault
+  silently shrink the gate set, which is the "an error is not a negative
+  answer" failure arriving through the back door; the flag makes the count in
+  the report (`8 applicable, 8 passed`) and the conjunction read from one
+  field. The rule is stated in `Gate semantics` above, and the amendment there
+  records the milestone prose it replaces. Date/Author: 2026-09-14,
+  implementation agent, EP-M6.
 - Decision: decide the applicability of every gate from the run's inputs exactly
   as `Gate semantics` states — gates 1, 2 and 3 when a parent pull request was
   resolved or requested, gate 6 whenever `PARENT_HEAD` is known, gate 7 only
   when `PARENT_HEAD` and `LANDED` are both known — and carry it on each
-  `GateResult` as an `applicable` flag.
-  Rationale: the first cut read the parent gates' applicability off whether a
-  parent was _in play at all_ — named, or else a head or an integration in hand
-  — on the argument that a run holding an answer about a parent is a run asking
-  about that parent. That was a deviation from the plan's paragraph, and it
-  breaks EP-M8's acceptance: the branch `git donkey` cut, whose parent `git
-  plonk` has since deleted, exits `0` and prints the boundary from the record
-  and the tombstone. Such a run consults no forge and names no parent pull
-  request, but it holds `PARENT_HEAD` from the tombstone; under the widened rule
-  gate 3 and gate 7 would become applicable with nothing to answer them, and the
-  run would exit `3` where the acceptance demands `0`. The plan's rule is also
-  the more defensible one: gate 3's subject is the _pull request's_ integration
-  commit, so a run that never involved a pull request has nothing to judge, and
-  gate 7's two clauses "cannot be separated" only when a punch-through check
-  against a forge integration is what the run set out to make. What the widened
-  rule was reaching for is preserved where it belongs: a run that named a parent
-  and could not resolve it still applies gates 1 and 2, which then go
-  unanswered, so a fault cannot shrink the conjunction.
-  Date/Author: 2026-09-14, implementation agent, EP-M6 (revised the same day
-  after re-reading `Gate semantics` while preparing EP-M7).
+  `GateResult` as an `applicable` flag. Rationale: the first cut read the
+  parent gates' applicability off whether a parent was _in play at all_ —
+  named, or else a head or an integration in hand — on the argument that a run
+  holding an answer about a parent is a run asking about that parent. That was
+  a deviation from the plan's paragraph, and it breaks EP-M8's acceptance: the
+  branch `git donkey` cut, whose parent `git plonk` has since deleted, exits
+  `0` and prints the boundary from the record and the tombstone. Such a run
+  consults no forge and names no parent pull request, but it holds
+  `PARENT_HEAD` from the tombstone; under the widened rule gate 3 and gate 7
+  would become applicable with nothing to answer them, and the run would exit
+  `3` where the acceptance demands `0`. The plan's rule is also the more
+  defensible one: gate 3's subject is the _pull request's_ integration commit,
+  so a run that never involved a pull request has nothing to judge, and gate
+  7's two clauses "cannot be separated" only when a punch-through check against
+  a forge integration is what the run set out to make. What the widened rule
+  was reaching for is preserved where it belongs: a run that named a parent and
+  could not resolve it still applies gates 1 and 2, which then go unanswered,
+  so a fault cannot shrink the conjunction. Date/Author: 2026-09-14,
+  implementation agent, EP-M6 (revised the same day after re-reading
+  `Gate semantics` while preparing EP-M7).
 - Decision: read the gates an established boundary reports from the candidate
-  that carried it, not from every candidate that agreed with it.
-  Rationale: gate 8 refuses a superseded record's attested claim without
-  discarding it, so a boundary can be carried by a demoted record beside a
-  corroborating source. Reporting the demoted record's own gates would then
-  print `record-not-superseded failed` beside an established result, which
-  reads as a contradiction. The carrier is the first cleared candidate with no
-  applicable refusal, so an established result's gates are always an all-passed
+  that carried it, not from every candidate that agreed with it. Rationale:
+  gate 8 refuses a superseded record's attested claim without discarding it, so
+  a boundary can be carried by a demoted record beside a corroborating source.
+  Reporting the demoted record's own gates would then print
+  `record-not-superseded failed` beside an established result, which reads as a
+  contradiction. The carrier is the first cleared candidate with no applicable
+  refusal, so an established result's gates are always an all-passed
   conjunction — the one that produced the verdict — and the refusal stays
-  visible wherever nothing establishes and the reasons are read.
-  Date/Author: 2026-09-14, implementation agent, EP-M6.
+  visible wherever nothing establishes and the reasons are read. Date/Author:
+  2026-09-14, implementation agent, EP-M6.
 - Decision: when _every_ supporter of a commit was demoted, an established
   result reports gate 8 as not applicable to that candidate, with the demotion
-  named as the reason, rather than as failed or as passed.
-  Rationale: `Gate semantics` says a `FAILED` gate 8 "demotes the record from
-  `ATTESTED` to `DERIVED`, where the corroboration rule of INV-2b decides
-  whether it can still establish", so a commit whose supporters were all demoted
-  but whose sources are two still establishes on the derived rule — and the
-  carrier rule above then has no supporter without a refusal to read the
-  conjunction from (the first cut raised `StopIteration` here, found by the
-  `wheresat` property suite's INV-2 case rather than by a readable example).
-  Gate 8 is the gate of an _attested_ claim; after the demotion the evidence
-  that carries the boundary is derived, so the gate did not fail the evidence
-  and did not pass it — it stopped being about it. Reporting `FAILED` would put
-  a refusal in the report of a boundary that holds and break INV-4 as the report
-  reads it; reporting `PASSED` would say the record's claim was accepted, which
-  is exactly what gate 8 refused. Nothing is hidden: `support` names the demoted
+  named as the reason, rather than as failed or as passed. Rationale:
+  `Gate semantics` says a `FAILED` gate 8 "demotes the record from `ATTESTED` to
+  `DERIVED`, where the corroboration rule of INV-2b decides whether it can
+  still establish", so a commit whose supporters were all demoted but whose
+  sources are two still establishes on the derived rule — and the carrier rule
+  above then has no supporter without a refusal to read the conjunction from
+  (the first cut raised `StopIteration` here, found by the `wheresat` property
+  suite's INV-2 case rather than by a readable example). Gate 8 is the gate of
+  an _attested_ claim; after the demotion the evidence that carries the
+  boundary is derived, so the gate did not fail the evidence and did not pass
+  it — it stopped being about it. Reporting `FAILED` would put a refusal in the
+  report of a boundary that holds and break INV-4 as the report reads it;
+  reporting `PASSED` would say the record's claim was accepted, which is
+  exactly what gate 8 refused. Nothing is hidden: `support` names the demoted
   candidates and their class is what says the evidence was read as derived.
   Date/Author: 2026-09-14, implementation agent, EP-M6.
 - Decision: render every commit in a detail line and every reason through one
-  abbreviation constant, `COMMIT_ABBREVIATION = 7`.
-  Rationale: the renderings exist so a reader can paste one into Git, and two
-  renderings of one commit that disagree about how much to show are two
-  commits to that reader. Seven is Git's own default `core.abbrev` for a small
-  repository, so the abbreviations the command prints are the ones `git log`
-  prints beside the same commits, and the constant is one place for the length
-  rather than a slice repeated in a dozen format strings.
-  Date/Author: 2026-09-14, implementation agent, EP-M6.
+  abbreviation constant, `COMMIT_ABBREVIATION = 7`. Rationale: the renderings
+  exist so a reader can paste one into Git, and two renderings of one commit
+  that disagree about how much to show are two commits to that reader. Seven is
+  Git's own default `core.abbrev` for a small repository, so the abbreviations
+  the command prints are the ones `git log` prints beside the same commits, and
+  the constant is one place for the length rather than a slice repeated in a
+  dozen format strings. Date/Author: 2026-09-14, implementation agent, EP-M6.
 - Decision: let the policy ask whether a kind is a record kind
-  (`is_record_kind`) rather than re-deriving the set from `TIERS`.
-  Rationale: gate 8 applies to the evidence a stack record supplied, and a
-  shared record in a pull request body is attested evidence but not a stack
-  record — the record's own history question reads `stackBaseRecordedFrom`,
-  which only a stack record has. Deciding that in the records module keeps the
-  two record kinds and the two tier questions in one place, so a kind added to
-  the record set is a kind gate 8 applies to without the policy being edited.
-  Date/Author: 2026-09-14, implementation agent, EP-M6.
+  (`is_record_kind`) rather than re-deriving the set from `TIERS`. Rationale:
+  gate 8 applies to the evidence a stack record supplied, and a shared record
+  in a pull request body is attested evidence but not a stack record — the
+  record's own history question reads `stackBaseRecordedFrom`, which only a
+  stack record has. Deciding that in the records module keeps the two record
+  kinds and the two tier questions in one place, so a kind added to the record
+  set is a kind gate 8 applies to without the policy being edited. Date/Author:
+  2026-09-14, implementation agent, EP-M6.
 - Decision: a shallow repository answers an ancestry question only when the
   answer is _yes_; a _no_ becomes `Ancestry.UNKNOWN`, and the merge-base,
   fork-point, and range-listing questions refuse the repository outright.
@@ -3378,98 +3286,94 @@ Stop and escalate rather than improvising when any of these is reached.
   mistake can be caught (see Surprises). Downgrading is right for ancestry
   because the port already has a third value that means "could not tell" and
   the policy already routes it to exit code `3`; refusing is right for the
-  other three because they have no such value, and because a truncated range
-  or a merge base that is not the best one would be read as a boundary and
-  move the child's work somewhere it never was. Refusing is also the honest
-  report: the remedy is to deepen the clone, which the fault message names.
+  other three because they have no such value, and because a truncated range or
+  a merge base that is not the best one would be read as a boundary and move
+  the child's work somewhere it never was. Refusing is also the honest report:
+  the remedy is to deepen the clone, which the fault message names.
   Date/Author: 2026-09-14, implementation agent, EP-M7.
 - Decision: the read-only port does not expose `WheresatGraph.reflog`, which
-  the interface sketch listed.
-  Rationale: `fork_point` is the only reflog reader the procedure needs, and it
-  answers the question the procedure asks — which commit the upstream ref held
-  before the head diverged — rather than handing a source raw reflog lines.
-  A raw surface would let a source invent a second heuristic outside the
-  procedure's tiers, which is the thing the tiers exist to prevent, and an
-  unread method would fail the dead-code stage of `make lint` besides. The
-  reflog's one other use in the design, aging a tombstone, is read by
-  `stack_store`, where the timestamp belongs.
+  the interface sketch listed. Rationale: `fork_point` is the only reflog
+  reader the procedure needs, and it answers the question the procedure asks —
+  which commit the upstream ref held before the head diverged — rather than
+  handing a source raw reflog lines. A raw surface would let a source invent a
+  second heuristic outside the procedure's tiers, which is the thing the tiers
+  exist to prevent, and an unread method would fail the dead-code stage of
+  `make lint` besides. The reflog's one other use in the design, aging a
+  tombstone, is read by `stack_store`, where the timestamp belongs.
   Date/Author: 2026-09-14, implementation agent, EP-M7.
 - Decision: an op-id may not contain `/`, even though the ref-path validator
   accepts hierarchical names; the per-run namespace is deleted by enumerating
-  the refs Git reports at a slash boundary under it.
-  Rationale: the op-id names a namespace that a run deletes wholesale, and a
-  nested op-id sits inside the namespace of the run that owns its prefix — so
-  releasing the outer run would delete the inner run's evidence mid-fetch,
-  which is the hazard the plan's "do not sweep the whole namespace" rule
-  exists for, one level down. The command line already refuses a `/` in
-  `--op-id`, so no legitimate value is lost by moving the rule to the
-  constructor that builds the ref. The deletion itself enumerates leaves
-  rather than deleting a prefix, both because `git update-ref -d` refuses a
-  name that only has refs beneath it and because Git's own pattern match at a
-  slash boundary is what keeps `run1` from touching `run1nested`.
-  Date/Author: 2026-09-14, implementation agent, EP-M7.
+  the refs Git reports at a slash boundary under it. Rationale: the op-id names
+  a namespace that a run deletes wholesale, and a nested op-id sits inside the
+  namespace of the run that owns its prefix — so releasing the outer run would
+  delete the inner run's evidence mid-fetch, which is the hazard the plan's "do
+  not sweep the whole namespace" rule exists for, one level down. The command
+  line already refuses a `/` in `--op-id`, so no legitimate value is lost by
+  moving the rule to the constructor that builds the ref. The deletion itself
+  enumerates leaves rather than deleting a prefix, both because
+  `git update-ref -d` refuses a name that only has refs beneath it and because
+  Git's own pattern match at a slash boundary is what keeps `run1` from touching
+  `run1nested`. Date/Author: 2026-09-14, implementation agent, EP-M7.
 - Decision: the evidence fetch is confined by its flags — no pruning, no tags,
   no `FETCH_HEAD`, no submodule recursion — and its refspec is not forced.
   Rationale: the fetch is the one place the read-only command talks to a
   remote, so it is the one place the promise can leak. `--no-write-fetch-head`
   keeps the sentinel out of the comparison INV-1 makes, and
   `--no-recurse-submodules` keeps a populated submodule's repository from being
-  fetched into as a side effect of a superproject fetch, which would put
-  writes outside both namespaces this command documents. The refspec is not
-  forced because a destination that appeared between the cache check and the
-  fetch is another run's evidence: fetching the same head twice agrees and
-  costs nothing, and a head that has moved since is reported rather than
-  silently replaced. The same pass replaced the exception-rewrapping form with
-  extended output, so a user-facing message reads
+  fetched into as a side effect of a superproject fetch, which would put writes
+  outside both namespaces this command documents. The refspec is not forced
+  because a destination that appeared between the cache check and the fetch is
+  another run's evidence: fetching the same head twice agrees and costs
+  nothing, and a head that has moved since is reported rather than silently
+  replaced. The same pass replaced the exception-rewrapping form with extended
+  output, so a user-facing message reads
   `fatal: couldn't find remote ref refs/pull/99/head` rather than GitPython's
-  quoted and prefixed rendering of it.
-  Date/Author: 2026-09-14, implementation agent, EP-M7.
+  quoted and prefixed rendering of it. Date/Author: 2026-09-14, implementation
+  agent, EP-M7.
 
 - Decision: rank boundary candidates by the **tier** of the evidence that
   carries them, never by the source's position in a list, and refuse rather
-  than choose between two commits left at one tier.
-  Rationale: the precedence the procedure describes is a precedence among
-  kinds of evidence — a deliberate statement over a computation over an
-  inference — and only the tier survives being read as a set operation. Ranking
-  sources would make the verdict depend on which sources a run collected, and
-  preferring each candidate's best source would make it depend on the
-  comparison between them, neither of which INV-3 allows. Reading `_rank` from
-  the gates' outcome rather than from position is what makes the rule hold for
-  a demoted record too: gate 8 can take an attested claim down to derived
-  evidence, and the commit it names is then ranked with the computations it
-  corroborates.
-  Date/Author: 2026-09-14, implementation agent, EP-M8.
+  than choose between two commits left at one tier. Rationale: the precedence
+  the procedure describes is a precedence among kinds of evidence — a
+  deliberate statement over a computation over an inference — and only the tier
+  survives being read as a set operation. Ranking sources would make the
+  verdict depend on which sources a run collected, and preferring each
+  candidate's best source would make it depend on the comparison between them,
+  neither of which INV-3 allows. Reading `_rank` from the gates' outcome rather
+  than from position is what makes the rule hold for a demoted record too: gate
+  8 can take an attested claim down to derived evidence, and the commit it
+  names is then ranked with the computations it corroborates. Date/Author:
+  2026-09-14, implementation agent, EP-M8.
 - Decision: resolve the default replay target from the principal remote's
   local ``refs/remotes/<remote>/HEAD`` symbolic ref, and exit ``2`` asking for
-  ``--onto`` when that ref is not symbolic.
-  Rationale: the target is needed before any network path exists, and a run
-  that cannot name the remote's default branch must not guess between a local
-  ``main`` and the remote's idea of it — guessing is how a boundary is read
-  against the wrong trunk and the replay drops work. A remote that has never
-  been fetched from has no symbolic ``HEAD`` to read, which is a fact about the
-  repository the run can state, so the refusal names the remedy rather than
-  reporting a missing remote branch.
+  ``--onto`` when that ref is not symbolic. Rationale: the target is needed
+  before any network path exists, and a run that cannot name the remote's
+  default branch must not guess between a local ``main`` and the remote's idea
+  of it — guessing is how a boundary is read against the wrong trunk and the
+  replay drops work. A remote that has never been fetched from has no symbolic
+  ``HEAD`` to read, which is a fact about the repository the run can state, so
+  the refusal names the remedy rather than reporting a missing remote branch.
   Date/Author: 2026-09-14, implementation agent, EP-M8.
 - Decision: ``run_git_wheresat(options, *, repo=None, graph=None)`` — the two
   injection points are keyword-only, and the ``github`` parameter the interface
-  sketch carried is not there yet.
-  Rationale: the sketch's ``(options, graph=None, github=None)`` reads as
-  positional in a call, and a run that inverts two positional arguments would
-  read the wrong repository rather than fail. ``github`` arrives with the
-  milestone that has a forge client to pass, because a parameter no run can
-  supply is a hook the dead-code stage reports and a signature the suite cannot
-  exercise; EP-M10 adds it keyword-only beside the other two.
-  Date/Author: 2026-09-14, implementation agent, EP-M8.
+  sketch carried is not there yet. Rationale: the sketch's
+  ``(options, graph=None, github=None)`` reads as positional in a call, and a
+  run that inverts two positional arguments would read the wrong repository
+  rather than fail. ``github`` arrives with the milestone that has a forge
+  client to pass, because a parameter no run can supply is a hook the dead-code
+  stage reports and a signature the suite cannot exercise; EP-M10 adds it
+  keyword-only beside the other two. Date/Author: 2026-09-14, implementation
+  agent, EP-M8.
 - Decision: both renderers take their warnings from the run; ``explain`` is
-  text-only, and the envelope always carries the gate table.
-  Rationale: the report is a projection and must not read the worktree to find
-  out what to say, so the run collects the warnings and passes them in. A
-  script has no terminal to be unasked in: the reason an established run
-  suppresses the gate table by default is that eight gate results bury the
-  answer a reader asked for, and a consumer parsing an envelope is not reading
-  prose. ``render_json`` therefore takes no ``explain``, which is also why the
-  flag cannot mean two different things in the two renderers.
-  Date/Author: 2026-09-14, implementation agent, EP-M8.
+  text-only, and the envelope always carries the gate table. Rationale: the
+  report is a projection and must not read the worktree to find out what to
+  say, so the run collects the warnings and passes them in. A script has no
+  terminal to be unasked in: the reason an established run suppresses the gate
+  table by default is that eight gate results bury the answer a reader asked
+  for, and a consumer parsing an envelope is not reading prose. ``render_json``
+  therefore takes no ``explain``, which is also why the flag cannot mean two
+  different things in the two renderers. Date/Author: 2026-09-14,
+  implementation agent, EP-M8.
 - Decision: a parent pull request the run was told to consult but cannot read
   is ``unavailable``, which leaves the gates about a parent unanswered and
   makes the run indeterminate (exit ``3``) rather than unresolved (exit ``1``).
@@ -3478,44 +3382,42 @@ Stop and escalate rather than improvising when any of these is reached.
   not answer, not evidence about the boundary. Reporting it as a refusal would
   present an unasked question as answered, and would also widen the run
   silently: a refusal from the gates that did apply is a different claim about
-  the same history.
-  Date/Author: 2026-09-14, implementation agent, EP-M8.
+  the same history. Date/Author: 2026-09-14, implementation agent, EP-M8.
 - Decision: a boundary that cannot be retained under ``refs/wheresat/`` is
-  reported as ``Indeterminate``, not as established.
-  Rationale: the report promises that an answer it has already given survives a
-  ``git gc``, and the retention ref is how that promise is kept (INV-8). A run
-  whose write failed has an answer it cannot keep, so reporting it as
-  established would be the one failure mode this ref exists to prevent; the
-  assessment keeps the support it found as candidates, so the report still
-  shows what the run read while saying the boundary could not be kept.
-  Date/Author: 2026-09-14, implementation agent, EP-M8.
+  reported as ``Indeterminate``, not as established. Rationale: the report
+  promises that an answer it has already given survives a ``git gc``, and the
+  retention ref is how that promise is kept (INV-8). A run whose write failed
+  has an answer it cannot keep, so reporting it as established would be the one
+  failure mode this ref exists to prevent; the assessment keeps the support it
+  found as candidates, so the report still shows what the run read while saying
+  the boundary could not be kept. Date/Author: 2026-09-14, implementation
+  agent, EP-M8.
 - Decision: a branch or target that does not resolve is a usage error (exit
   ``2``), decided before any evidence is collected, and the matrix asserts that
-  such a run writes no ref and leaves the repository unchanged.
-  Rationale: ``2`` is documented as "the command could not run", which is what
-  a name that does not resolve means — there is no boundary question to answer,
-  and inventing a verdict for one would put a claim about evidence where there
-  is none. Deciding it before collection is also what keeps the exit status
+  such a run writes no ref and leaves the repository unchanged. Rationale:
+  ``2`` is documented as "the command could not run", which is what a name that
+  does not resolve means — there is no boundary question to answer, and
+  inventing a verdict for one would put a claim about evidence where there is
+  none. Deciding it before collection is also what keeps the exit status
   honest: a run that cannot name its child has nothing to assess, so no
-  assessment may be constructed for it.
-  Date/Author: 2026-09-14, implementation agent, EP-M8.
+  assessment may be constructed for it. Date/Author: 2026-09-14, implementation
+  agent, EP-M8.
 - Decision: validate ``--op-id`` as the first statement of the session, before
-  the repository is opened.
-  Rationale: the id names a ref namespace, so a value that could escape it,
-  nest inside another run's namespace, or be read as another option is a usage
-  error rather than something to discover while writing refs. Refusing before
-  the first read makes the answer the same whether or not the milestone writes
-  any refs at all, so the check cannot become a property of the fetch path
-  later.
-  Date/Author: 2026-09-14, implementation agent, EP-M8.
+  the repository is opened. Rationale: the id names a ref namespace, so a value
+  that could escape it, nest inside another run's namespace, or be read as
+  another option is a usage error rather than something to discover while
+  writing refs. Refusing before the first read makes the answer the same
+  whether or not the milestone writes any refs at all, so the check cannot
+  become a property of the fetch path later. Date/Author: 2026-09-14,
+  implementation agent, EP-M8.
 - Decision: the ``warnings`` key is present in every envelope, including the
-  error envelope of a run that never reached an assessment.
-  Rationale: the envelope's contract is that a consumer reads one shape and
-  never branches on which keys exist before reading the ones it wants. A key
-  that appears only when a run got far enough to warn would force exactly that
-  branch, and a consumer that skipped the check would read a missing key as
-  "nothing to warn about" — the wrong reading of a run that failed early.
-  Date/Author: 2026-09-14, implementation agent, EP-M8.
+  error envelope of a run that never reached an assessment. Rationale: the
+  envelope's contract is that a consumer reads one shape and never branches on
+  which keys exist before reading the ones it wants. A key that appears only
+  when a run got far enough to warn would force exactly that branch, and a
+  consumer that skipped the check would read a missing key as "nothing to warn
+  about" — the wrong reading of a run that failed early. Date/Author:
+  2026-09-14, implementation agent, EP-M8.
 - Decision: ``landed`` and ``backupRef`` are declared in the envelope now and
   stay ``null`` until the milestone that has something to put in them.
   Rationale: the key set is written once in ``_empty_payload``, which is what
@@ -3524,96 +3426,93 @@ Stop and escalate rather than improvising when any of these is reached.
   fact no assessment field holds, and the backup ref is EP-M9's write — and
   adding a key later is permitted by the envelope's own rule, so declaring them
   beside the keys a run fills costs a consumer nothing and keeps the one place
-  the keys are written honest about what the run knows.
-  Date/Author: 2026-09-14, implementation agent, EP-M8.
+  the keys are written honest about what the run knows. Date/Author:
+  2026-09-14, implementation agent, EP-M8.
 - Decision: re-typed the envelope's ``truncated`` into ``withheld`` and
   ``cutShort`` before the schema has a consumer, so both renderers state the
-  two reasons a listing is short.
-  Rationale: one boolean for both reasons lets a count the run did not vouch
-  for be read as the size of the range — the exact mistake the text report was
-  fixed to avoid in the same pass (see Surprises). The schema string's rule
-  forbids retyping a key _after_ a consumer exists, and none does: the command
-  is unreleased, so the honest shape is worth more than the compatibility of a
-  key nobody has read.
+  two reasons a listing is short. Rationale: one boolean for both reasons lets
+  a count the run did not vouch for be read as the size of the range — the
+  exact mistake the text report was fixed to avoid in the same pass (see
+  Surprises). The schema string's rule forbids retyping a key _after_ a
+  consumer exists, and none does: the command is unreleased, so the honest
+  shape is worth more than the compatibility of a key nobody has read.
   Date/Author: 2026-09-14, implementation agent, EP-M8.
 - Decision: ``--json`` landed with the local-evidence plateau rather than in
-  EP-M10, and the milestones were amended to say so.
-  Rationale: the envelope is the report's second renderer, and the plateau is
-  what the report is for; keeping the flag back would leave the JSON snapshots
-  pinning a shape the command could not produce, and the read-only matrix's
-  error vectors would have no envelope to check. What stays in EP-M10 is the
-  repository-wide convention in ``docs/developers-guide.md`` and the
-  migration-guide entry for the new command, because both are documents about
-  the release rather than about this milestone.
-  Date/Author: 2026-09-14, implementation agent, EP-M8.
+  EP-M10, and the milestones were amended to say so. Rationale: the envelope is
+  the report's second renderer, and the plateau is what the report is for;
+  keeping the flag back would leave the JSON snapshots pinning a shape the
+  command could not produce, and the read-only matrix's error vectors would
+  have no envelope to check. What stays in EP-M10 is the repository-wide
+  convention in ``docs/developers-guide.md`` and the migration-guide entry for
+  the new command, because both are documents about the release rather than
+  about this milestone. Date/Author: 2026-09-14, implementation agent, EP-M8.
 - Decision: INV-1's non-vacuity assertion for the fetch path stays deferred to
-  EP-M10, where the fetch path exists.
-  Rationale: INV-1 is that a run changes nothing but the refs it writes, and
-  the matrix asserts it today by comparing every reading and ref before and
-  after each vector. The stronger form — that the vector actually reached the
-  code under test, so a run that never fetched cannot pass the comparison
-  vacuously — needs a fetch to observe, and asserting it now would pin the
-  absence of the path as though it were the path. EP-M10's ``--deep`` and
-  ``--json`` vectors carry the assertion, and the matrix's module docstring
-  records the deferral.
-  Date/Author: 2026-09-14, implementation agent, EP-M8.
+  EP-M10, where the fetch path exists. Rationale: INV-1 is that a run changes
+  nothing but the refs it writes, and the matrix asserts it today by comparing
+  every reading and ref before and after each vector. The stronger form — that
+  the vector actually reached the code under test, so a run that never fetched
+  cannot pass the comparison vacuously — needs a fetch to observe, and
+  asserting it now would pin the absence of the path as though it were the
+  path. EP-M10's ``--deep`` and ``--json`` vectors carry the assertion, and the
+  matrix's module docstring records the deferral. Date/Author: 2026-09-14,
+  implementation agent, EP-M8.
 - Decision: split the failure vocabulary out of ``wheresat_graph`` into a new
   leaf ``git_donkey/wheresat_errors.py``, and the worktree reader into a new
-  ``git_donkey/wheresat_worktrees.py``.
-  Rationale: the house style caps a module at 800 lines and the plateau had
-  pushed ``wheresat_graph.py`` to 1032 and ``tests/unit/test_wheresat_policy.py``
-  to 815, so the binding constraint was already recorded as "split along
-  production boundaries" for ``incoming-outgoing-commands``. The failures could
-  not stay in the graph module: the worktree reader reports a failed
-  ``git worktree list`` in the same words the graph reader reports a refused
-  question, and the graph reader calls the worktree reader, so the shared
-  vocabulary has to sit below both or the two import each other. The worktree
-  half moved whole, with its own ``WheresatGraphError`` and ``_reported`` names
-  and no other change, so the port's protocol is unmoved: the class method
-  delegates. Production importing a private name across module boundaries is
-  the established convention here (``plonk_records._SkipReason``), so
-  ``_reported`` travelling with the vocabulary is deliberate rather than an
-  oversight. The test module split the other way, on the seam between the gate
-  table and the policy that reads it: every gate outcome, the gate-name order,
-  and the ancestry truth table went to ``test_wheresat_gates.py``, and the
-  policy suite kept what a run does with the gates it collected. The set of test
-  functions is unchanged by the split, checked name by name.
-  Date/Author: 2026-09-14, implementation agent, EP-M6–EP-M8.
+  ``git_donkey/wheresat_worktrees.py``. Rationale: the house style caps a
+  module at 800 lines and the plateau had pushed ``wheresat_graph.py`` to 1032
+  and ``tests/unit/test_wheresat_policy.py`` to 815, so the binding constraint
+  was already recorded as "split along production boundaries" for
+  ``incoming-outgoing-commands``. The failures could not stay in the graph
+  module: the worktree reader reports a failed ``git worktree list`` in the
+  same words the graph reader reports a refused question, and the graph reader
+  calls the worktree reader, so the shared vocabulary has to sit below both or
+  the two import each other. The worktree half moved whole, with its own
+  ``WheresatGraphError`` and ``_reported`` names and no other change, so the
+  port's protocol is unmoved: the class method delegates. Production importing
+  a private name across module boundaries is the established convention here
+  (``plonk_records._SkipReason``), so ``_reported`` travelling with the
+  vocabulary is deliberate rather than an oversight. The test module split the
+  other way, on the seam between the gate table and the policy that reads it:
+  every gate outcome, the gate-name order, and the ancestry truth table went to
+  ``test_wheresat_gates.py``, and the policy suite kept what a run does with
+  the gates it collected. The set of test functions is unchanged by the split,
+  checked name by name. Date/Author: 2026-09-14, implementation agent,
+  EP-M6–EP-M8.
 - Decision: bring the new test modules to the df12 house style in the same pass
-  rather than after the review — one failure message per ``assert``, a ``match``
-  statement for the verdict dispatch, and named expectations (and one syrupy
-  snapshot) where a large literal would otherwise sit inside an assertion.
-  Rationale: ``make lint`` runs the house-style pass and stops at the first
-  failing stage, so that stage had never run over the plateau: the stages before
-  it reported the line-count failures, and the stages after it — the
-  house-style pass, ``ambrleaks``, and the skylos dead-code gate — had never
-  executed at all. Running the house-style pass by hand found 62 assertions
-  without a failure message, a two-branch ``isinstance`` dispatch, a gate-name
-  pin and a warning pin expressed as large inline literals, and three substring
-  probes on one subject. Fixing them here keeps the rule this work is under —
-  that a review is never asked to catch what a deterministic gate can — and the
-  dead-code verdict on the ten new ``wheresat*.py`` modules stays a question for
-  the full gate run rather than one assumed from a partial one. Every fix is a
-  pin, so the claims had to survive it: the snapshot added for the
-  unreadable-worktree warning captures the same three facts the three probes
-  asserted, and the split test modules were checked to hold exactly the test
-  functions they held before.
-  Date/Author: 2026-09-14, implementation agent, EP-M6–EP-M8.
+  rather than after the review — one failure message per ``assert``, a
+  ``match`` statement for the verdict dispatch, and named expectations (and one
+  syrupy snapshot) where a large literal would otherwise sit inside an
+  assertion. Rationale: ``make lint`` runs the house-style pass and stops at
+  the first failing stage, so that stage had never run over the plateau: the
+  stages before it reported the line-count failures, and the stages after it —
+  the house-style pass, ``ambrleaks``, and the skylos dead-code gate — had
+  never executed at all. Running the house-style pass by hand found 62
+  assertions without a failure message, a two-branch ``isinstance`` dispatch, a
+  gate-name pin and a warning pin expressed as large inline literals, and three
+  substring probes on one subject. Fixing them here keeps the rule this work is
+  under — that a review is never asked to catch what a deterministic gate can —
+  and the dead-code verdict on the ten new ``wheresat*.py`` modules stays a
+  question for the full gate run rather than one assumed from a partial one.
+  Every fix is a pin, so the claims had to survive it: the snapshot added for
+  the unreadable-worktree warning captures the same three facts the three
+  probes asserted, and the split test modules were checked to hold exactly the
+  test functions they held before. Date/Author: 2026-09-14, implementation
+  agent, EP-M6–EP-M8.
 - Decision: keep the per-run evidence namespace and its two ref factories in
   ``wheresat_refs``, and record them as documented Skylos exceptions, rather
-  than deleting them until the milestone that calls them.
-  Rationale: the gate refuses a module-level function no console script
-  reaches, and four of the writer's names are in that position —
-  ``per_run_ref`` and ``parent_head_ref`` build the refs a fetch needs,
-  ``_per_run_namespace`` is called only from ``release``, and ``_slug_parts``
-  only from ``parent_head_ref``. The plateau transports nothing, so no console
-  script fetches, and ``release`` has no caller either. Deleting them would
-  contradict the interface section above, which states the writer's whole
-  surface as EP-M7 lands it, and would take the fetched-boundary case out of
-  INV-8's coverage: ``tests/integration/test_wheresat_durability.py`` fetches
-  through ``fetch_evidence`` into a ``per_run_ref`` destination and releases
-  it, and that case is what proves the evidence ref is the thing keeping a
-  fetched boundary from being pruned. They are instead named in
+  than deleting them until the milestone that calls them. Rationale: the gate
+  refuses a module-level function no console script reaches, and four of the
+  writer's names are in that position — ``per_run_ref`` and ``parent_head_ref``
+  build the refs a fetch needs, ``_per_run_namespace`` is called only from
+  ``release``, and ``_slug_parts`` only from ``parent_head_ref``. The plateau
+  transports nothing, so no console script fetches, and ``release`` has no
+  caller either. Deleting them would contradict the interface section above,
+  which states the writer's whole surface as EP-M7 lands it, and would take the
+  fetched-boundary case out of INV-8's coverage:
+  ``tests/integration/test_wheresat_durability.py`` fetches through
+  ``fetch_evidence`` into a ``per_run_ref`` destination and releases it, and
+  that case is what proves the evidence ref is the thing keeping a fetched
+  boundary from being pruned. They are instead named in
   ``[tool.skylos.whitelist.documented]`` with the reason each is unreached and
   the milestone that reaches it, and the consciously approved exception set is
   widened in ``tests/unit/test_skylos_lint_contract.py``, which is where this
@@ -3622,92 +3521,90 @@ Stop and escalate rather than improvising when any of these is reached.
   ``_reported``, and ``GitWheresatRefWriter`` — names whose callers are
   production code that the narrow scan set leaves out — while the four
   documented names stay silent, so the entries suppress what they name rather
-  than the gate having stopped asking.
-  Date/Author: 2026-09-14, implementation agent, EP-M6–EP-M8.
+  than the gate having stopped asking. Date/Author: 2026-09-14, implementation
+  agent, EP-M6–EP-M8.
 - Decision: ``--record`` refreshes and never creates, so the create-only half of
   INV-7 is enforced on the anchor ref and a run on a branch with no record is a
-  reported fact rather than a write.
-  Rationale: INV-7's obligation says the record is created when it does not
-  exist and refreshed when it does, which reads as one either/or rule until it is
-  read against the claim the record carries. A record states the parent the user
-  named at birth; a run reads the parent out of a record it already has and knows
-  nothing else about it, so a record it created would state a boundary it
-  computed as though someone had declared it. That is the promotion INV-7's
-  second sentence exists to forbid: only an attested claim is written back. The
-  create-only spelling therefore belongs to the anchor ref — Git's own empty
-  expected-old value — where it does the work it was written for, which is to
-  lose to a concurrent writer rather than overwrite one (AXIOM-4), and the
-  refresh is the only record write this command has. The consequence is
-  recorded rather than hidden: ``_recorded``'s two refusals (no record, an
-  unreadable record) cannot be reached through the local evidence path at this
-  milestone, because the record's own candidate is the only attested source
-  there is, so an attested support implies a record. They are written anyway,
-  and EP-M10 is where a fetched parent head can be attested while the branch has
-  no record, which is what makes them reachable.
-  Date/Author: 2026-09-14, implementation agent, EP-M9.
+  reported fact rather than a write. Rationale: INV-7's obligation says the
+  record is created when it does not exist and refreshed when it does, which
+  reads as one either/or rule until it is read against the claim the record
+  carries. A record states the parent the user named at birth; a run reads the
+  parent out of a record it already has and knows nothing else about it, so a
+  record it created would state a boundary it computed as though someone had
+  declared it. That is the promotion INV-7's second sentence exists to forbid:
+  only an attested claim is written back. The create-only spelling therefore
+  belongs to the anchor ref — Git's own empty expected-old value — where it
+  does the work it was written for, which is to lose to a concurrent writer
+  rather than overwrite one (AXIOM-4), and the refresh is the only record write
+  this command has. The consequence is recorded rather than hidden:
+  ``_recorded``'s two refusals (no record, an unreadable record) cannot be
+  reached through the local evidence path at this milestone, because the
+  record's own candidate is the only attested source there is, so an attested
+  support implies a record. They are written anyway, and EP-M10 is where a
+  fetched parent head can be attested while the branch has no record, which is
+  what makes them reachable. Date/Author: 2026-09-14, implementation agent,
+  EP-M9.
 - Decision: two distinct warnings say nothing was recorded — one when the run
-  established no boundary, one when the boundary it established rests on derived
-  evidence — and the refused write is observed as ``rejected`` with no error
-  kind, opening no span.
-  Rationale: the two states are different facts about the same absence, and a
-  user who had passed ``--record`` needs to know which one they are in: nothing
-  to write, or something to write that this command may not. A single warning
-  would have to be vague about both. The observation follows the same rule the
-  report's warnings do — a refusal that changes no exit status is not an error —
-  so the trace distinguishes a write that was attempted and declined from one
-  that never started, which is what the recorded span is for. The messages are
-  pinned by value in the record suite and by prose in the BDD binder, so a
-  reworded warning is a failing test rather than a silent change of contract.
-  Date/Author: 2026-09-14, implementation agent, EP-M9.
+  established no boundary, one when the boundary it established rests on
+  derived evidence — and the refused write is observed as ``rejected`` with no
+  error kind, opening no span. Rationale: the two states are different facts
+  about the same absence, and a user who had passed ``--record`` needs to know
+  which one they are in: nothing to write, or something to write that this
+  command may not. A single warning would have to be vague about both. The
+  observation follows the same rule the report's warnings do — a refusal that
+  changes no exit status is not an error — so the trace distinguishes a write
+  that was attempted and declined from one that never started, which is what
+  the recorded span is for. The messages are pinned by value in the record
+  suite and by prose in the BDD binder, so a reworded warning is a failing test
+  rather than a silent change of contract. Date/Author: 2026-09-14,
+  implementation agent, EP-M9.
 - Decision: move the command's whole writing surface into a new
   ``git_donkey/wheresat_writes.py``, and build the ref writer inside the method
-  that needs it rather than holding one on the run's context.
-  Rationale: ``wheresat.py`` had grown past the 800-line house cap once
-  ``--record`` was wired, and the two writes — the retaining ref a boundary no
-  durable ref reaches needs (INV-8) and the record refresh (INV-7) — are one
-  subject: the command's writes, as against its reads. Keeping the writer out of
-  the context is what makes INV-1 a property of the code rather than of the
-  flags: a run that asks for neither write never constructs an object that can
-  write, which the record suite asserts by counting the constructions. The
-  module-qualified call is deliberate — ``wheresat_refs.GitWheresatRefWriter``
-  is named through its module inside the method, so a test can replace the class
-  and count what a run built.
-  Date/Author: 2026-09-14, implementation agent, EP-M9.
+  that needs it rather than holding one on the run's context. Rationale:
+  ``wheresat.py`` had grown past the 800-line house cap once ``--record`` was
+  wired, and the two writes — the retaining ref a boundary no durable ref
+  reaches needs (INV-8) and the record refresh (INV-7) — are one subject: the
+  command's writes, as against its reads. Keeping the writer out of the context
+  is what makes INV-1 a property of the code rather than of the flags: a run
+  that asks for neither write never constructs an object that can write, which
+  the record suite asserts by counting the constructions. The module-qualified
+  call is deliberate — ``wheresat_refs.GitWheresatRefWriter`` is named through
+  its module inside the method, so a test can replace the class and count what
+  a run built. Date/Author: 2026-09-14, implementation agent, EP-M9.
 - Decision: put the anchor read on ``StackRecordReader`` rather than on the
-  writer or in the command's own ref reader.
-  Rationale: a refresh has to compare-and-swap against the anchor's current
-  value, and the reconciliation ``read`` performs is deliberately blind to
-  whether the anchor exists: a record whose anchor has gone still reconciles as
-  a record. So the value the write expects can only come from the ref itself,
-  and a caller that holds no writer must still be able to read it — otherwise
-  the only way to make the read would be to hold the object that writes, which
-  is the coupling INV-1 is measured against. The reader is where every other
-  read lives, and the unit suite now pins the read there for that reason.
-  Date/Author: 2026-09-14, implementation agent, EP-M9.
+  writer or in the command's own ref reader. Rationale: a refresh has to
+  compare-and-swap against the anchor's current value, and the reconciliation
+  ``read`` performs is deliberately blind to whether the anchor exists: a
+  record whose anchor has gone still reconciles as a record. So the value the
+  write expects can only come from the ref itself, and a caller that holds no
+  writer must still be able to read it — otherwise the only way to make the
+  read would be to hold the object that writes, which is the coupling INV-1 is
+  measured against. The reader is where every other read lives, and the unit
+  suite now pins the read there for that reason. Date/Author: 2026-09-14,
+  implementation agent, EP-M9.
 - Decision: the record suite's readers — the anchor, the record's configuration,
-  the fingerprint, the run helper — live in ``tests/integration/
-  wheresat_helpers.py`` beside the checkout that builds them, and the read-only
-  suite's private copies are left alone.
-  Rationale: this repository has no imports across test modules, so a helper two
-  suites need belongs with the fixture they share rather than being copied into
-  the second suite. The read-only suite's own ``_reading`` and ``_run_in`` are
-  not the same functions and are not touched: they are the measurement INV-1's
+  the fingerprint, the run helper — live in
+  ``tests/integration/ wheresat_helpers.py`` beside the checkout that builds
+  them, and the read-only suite's private copies are left alone. Rationale:
+  this repository has no imports across test modules, so a helper two suites
+  need belongs with the fixture they share rather than being copied into the
+  second suite. The read-only suite's own ``_reading`` and ``_run_in`` are not
+  the same functions and are not touched: they are the measurement INV-1's
   evidence was taken with, and re-plumbing them would invalidate that evidence
-  to save four lines.
-  Date/Author: 2026-09-14, implementation agent, EP-M9.
+  to save four lines. Date/Author: 2026-09-14, implementation agent, EP-M9.
 - Decision: supersede the EP-M8 note that "the backup ref is EP-M9's write".
   The ``backupRef`` envelope key stays ``null``, and the comment above it now
   says what the key is for: the ref the report would have the user keep before
-  the rebase it proposes, which the report does not yet spell out.
-  Rationale: ``backupRef`` is not a record write at all, which the milestone
-  established on reading the requirement it comes from — every proposed
+  the rebase it proposes, which the report does not yet spell out. Rationale:
+  ``backupRef`` is not a record write at all, which the milestone established
+  on reading the requirement it comes from — every proposed
   ``git rebase --onto`` command must be preceded by a backup ref the user can
-  return to, and the plan's sample output shows the user running ``git
-  update-ref`` themselves. Nothing about ``--record`` produces it, so EP-M9 was
-  the wrong milestone to name. What the report owes is a rebase plan with a
-  backup ref and the child tip beside the command it already prints, and that
-  belongs with the report work EP-M10 does. One tension is recorded here rather
-  than left for EP-M10 to rediscover: the constraint that every proposed
+  return to, and the plan's sample output shows the user running
+  ``git update-ref`` themselves. Nothing about ``--record`` produces it, so
+  EP-M9 was the wrong milestone to name. What the report owes is a rebase plan
+  with a backup ref and the child tip beside the command it already prints, and
+  that belongs with the report work EP-M10 does. One tension is recorded here
+  rather than left for EP-M10 to rediscover: the constraint that every proposed
   ``git rebase --onto`` command use full 40-character object IDs is met by the
   envelope's ``rebaseCommand`` and not by the text rendering, which abbreviates
   every commit through ``COMMIT_ABBREVIATION`` — EP-M6's decision about detail
@@ -3717,92 +3614,88 @@ Stop and escalate rather than improvising when any of these is reached.
   Date/Author: 2026-09-14, implementation agent, EP-M9.
 - Decision: make the pending rule govern the tie branch of ``assess``, by
   extracting ``_pending`` and ``_awaiting`` and reading them from both
-  ``_refusal`` and ``_ambiguous``.
-  Rationale: a run may claim the evidence is complete only when every question
-  put to evidence that could have established a boundary has been answered, and
-  the two branches that report ``Unresolved`` were not applying the same rule —
-  ``_refusal`` had it, ``_ambiguous`` did not. The tie branch is where it bites,
-  because a candidate that could still clear its gates would either answer over
-  the rivals at a stronger rank or join them at the same one, so its open
-  question is exactly what keeps the tie from being settled. The predicate is
-  deliberately the coarse one the branches now share — "this candidate's support
-  could establish", rather than "no answered gate refused it" — and its
-  imprecision runs in the safe direction: a candidate that is both refused and
-  unanswered still yields ``Indeterminate``, exit 3, with the unanswered gates
-  named in the refusal, where the stricter reading would let the run claim
-  completeness. A wasted retry is recoverable and a confident refusal is not.
-  The stricter predicate, applied to both branches and to the property test's
-  filter, is available and more precise; it is recorded here as the alternative
-  rather than taken, so the next milestone that needs the precision can find the
-  reasoning instead of re-deriving it.
+  ``_refusal`` and ``_ambiguous``. Rationale: a run may claim the evidence is
+  complete only when every question put to evidence that could have established
+  a boundary has been answered, and the two branches that report ``Unresolved``
+  were not applying the same rule — ``_refusal`` had it, ``_ambiguous`` did
+  not. The tie branch is where it bites, because a candidate that could still
+  clear its gates would either answer over the rivals at a stronger rank or
+  join them at the same one, so its open question is exactly what keeps the tie
+  from being settled. The predicate is deliberately the coarse one the branches
+  now share — "this candidate's support could establish", rather than "no
+  answered gate refused it" — and its imprecision runs in the safe direction: a
+  candidate that is both refused and unanswered still yields ``Indeterminate``,
+  exit 3, with the unanswered gates named in the refusal, where the stricter
+  reading would let the run claim completeness. A wasted retry is recoverable
+  and a confident refusal is not. The stricter predicate, applied to both
+  branches and to the property test's filter, is available and more precise; it
+  is recorded here as the alternative rather than taken, so the next milestone
+  that needs the precision can find the reasoning instead of re-deriving it.
   Date/Author: 2026-09-14, implementation agent, EP-M10.
 - Decision: realize the parent-identity ladder of the sketch as an ordered
   sequence of resolvers in a new module, ``git_donkey/wheresat_parents.py``,
-  and do not declare ``ParentSource`` as an enum.
-  Rationale: the sketch's ladder is a precedence order — explicit, stack
-  record, GitHub stack, shared record, association search — and every rung
-  yields a ``PullRequestIdentity`` that the run then reads once through
-  ``pull_request``. That is a sequence of functions, which is what the run
-  calls; an enum whose members nothing reads is exactly the unused name the
-  dead-code gate refuses, and inventing a consumer for it (an envelope key the
-  contract does not have, or an observation vocabulary the recorder does not
-  hold) would be a contract change made to justify a name. The rung that
-  answered is still observable: it is the identity's own payload that the gates
-  read, and _which_ rung supplied it is recorded in the Progress entry and
-  reported through the source of the candidate each rung contributes.
-  Date/Author: 2026-09-14, implementation agent, EP-M10.
+  and do not declare ``ParentSource`` as an enum. Rationale: the sketch's
+  ladder is a precedence order — explicit, stack record, GitHub stack, shared
+  record, association search — and every rung yields a ``PullRequestIdentity``
+  that the run then reads once through ``pull_request``. That is a sequence of
+  functions, which is what the run calls; an enum whose members nothing reads
+  is exactly the unused name the dead-code gate refuses, and inventing a
+  consumer for it (an envelope key the contract does not have, or an
+  observation vocabulary the recorder does not hold) would be a contract change
+  made to justify a name. The rung that answered is still observable: it is the
+  identity's own payload that the gates read, and _which_ rung supplied it is
+  recorded in the Progress entry and reported through the source of the
+  candidate each rung contributes. Date/Author: 2026-09-14, implementation
+  agent, EP-M10.
 - Decision: read the commit-to-pull-request association search as examining the
   child's own history, newest first, and as answering both of the questions the
-  parent ladder needs: which pull request is the child's own, and which
-  pull request is the parent's.
-  Rationale: the flag's own text bounds "commits examined by the
-  commit-to-pull-request association search" and the risk it mitigates is "a
-  long child branch", so the subject is the child's commits rather than the
-  target's. The endpoint's semantics then do the identifying: a commit that is
-  not on the default branch is associated with the open pull requests that
-  contain it, and one that is on the default branch with the merged pull
-  request that introduced it. So the child's own pull request is the first
-  association — walking newest first, and in GitHub's order within a commit —
-  whose payload reports the child branch as its head ref, and the parent is the
-  first association that is not the child's own, which is only reached once the
-  walk passes the boundary into commits the child inherited. This is what the
-  degraded mode "no record, parent pull request merged" needs, because a run
-  that lost its record has no parent branch to look a tombstone up by and no
-  name to ask GitHub about; the only thing left that names the parent is the
-  association of the commits the child inherited from it. The alternative
-  reading — a search over boundary-candidate commits — was rejected because it
-  can only be asked once a boundary is already in hand, which is the one thing
-  the search exists to supply, and because a commit on the default branch
-  answers with whatever pull request introduced it, which for a boundary
-  candidate is the parent's own merge commit and not the parent.
-  Date/Author: 2026-09-14, implementation agent, EP-M10.
+  parent ladder needs: which pull request is the child's own, and which pull
+  request is the parent's. Rationale: the flag's own text bounds "commits
+  examined by the commit-to-pull-request association search" and the risk it
+  mitigates is "a long child branch", so the subject is the child's commits
+  rather than the target's. The endpoint's semantics then do the identifying: a
+  commit that is not on the default branch is associated with the open pull
+  requests that contain it, and one that is on the default branch with the
+  merged pull request that introduced it. So the child's own pull request is
+  the first association — walking newest first, and in GitHub's order within a
+  commit — whose payload reports the child branch as its head ref, and the
+  parent is the first association that is not the child's own, which is only
+  reached once the walk passes the boundary into commits the child inherited.
+  This is what the degraded mode "no record, parent pull request merged" needs,
+  because a run that lost its record has no parent branch to look a tombstone
+  up by and no name to ask GitHub about; the only thing left that names the
+  parent is the association of the commits the child inherited from it. The
+  alternative reading — a search over boundary-candidate commits — was rejected
+  because it can only be asked once a boundary is already in hand, which is the
+  one thing the search exists to supply, and because a commit on the default
+  branch answers with whatever pull request introduced it, which for a boundary
+  candidate is the parent's own merge commit and not the parent. Date/Author:
+  2026-09-14, implementation agent, EP-M10.
 - Decision: a run whose GitHub evidence is unusable reports ``Indeterminate``
   and exits ``3``, never the usage status, and the credential failure is caught
   ahead of the usage handler because ``WheresatCredentialError`` is a subclass
-  of ``WheresatUsageError``.
-  Rationale: ``docs/squash-restack-boundary-recovery.md`` states the behaviour
-  as a row of the degradation table — "No usable GitHub credential →
-  ``Indeterminate``; never a browser prompt, ``3``" — with ``--offline`` named
-  as the remedy, and ADR-005 states the reason: a failure stops the run rather
-  than letting it fall through to a lower evidence tier. The consequence is
-  deliberate and is recorded here so it is not rediscovered as a defect: a run
-  with a usable record but no credential exits ``3`` until it is given a token
-  or told ``--offline``, because without the forge the run cannot know whether
-  a parent pull request exists, and the gates about one are the gates that
-  could have refused the record.
-  Date/Author: 2026-09-14, implementation agent, EP-M10.
+  of ``WheresatUsageError``. Rationale:
+  ``docs/squash-restack-boundary-recovery.md`` states the behaviour as a row of
+  the degradation table — "No usable GitHub credential → ``Indeterminate``;
+  never a browser prompt, ``3``" — with ``--offline`` named as the remedy, and
+  ADR-005 states the reason: a failure stops the run rather than letting it
+  fall through to a lower evidence tier. The consequence is deliberate and is
+  recorded here so it is not rediscovered as a defect: a run with a usable
+  record but no credential exits ``3`` until it is given a token or told
+  ``--offline``, because without the forge the run cannot know whether a parent
+  pull request exists, and the gates about one are the gates that could have
+  refused the record. Date/Author: 2026-09-14, implementation agent, EP-M10.
 - Decision: a fetched parent head is kept at the durable cache ref
   ``parent_head_ref(identity)``, and ``head_fetched_from`` is the pull
   request's own ``head_repository`` both when this run performed the fetch and
-  when it found the head already at that ref.
-  Rationale: the cache ref exists so that a second run on the same pull request
-  performs no fetch, and a gate that went indeterminate on every cache hit
-  would make the cache useless for the one thing it is for. The claim it
-  reports is the claim the ref carries: this command writes that ref and only
-  ever from the pull request's own head repository, so a ref at that path is
-  the same answer. The head is also compared with the ``head_sha`` the payload
-  reports, so a pull request whose head moved is re-fetched rather than judged
-  against a stale cache.
+  when it found the head already at that ref. Rationale: the cache ref exists
+  so that a second run on the same pull request performs no fetch, and a gate
+  that went indeterminate on every cache hit would make the cache useless for
+  the one thing it is for. The claim it reports is the claim the ref carries:
+  this command writes that ref and only ever from the pull request's own head
+  repository, so a ref at that path is the same answer. The head is also
+  compared with the ``head_sha`` the payload reports, so a pull request whose
+  head moved is re-fetched rather than judged against a stale cache.
   Date/Author: 2026-09-14, implementation agent, EP-M10.
 - Decision: ``release`` is not called on the fetch path, and the per-run ref
   factories stay documented Skylos exceptions with a narrowed reason.
@@ -3815,17 +3708,17 @@ Stop and escalate rather than improvising when any of these is reached.
   updated to name the milestone that would reach them (a run that fetches a
   _boundary_ into a per-run namespace). ``parent_head_ref`` and ``_slug_parts``
   become reached and their entries are removed, which is the direction the
-  exception set is meant to move in.
-  Date/Author: 2026-09-14, implementation agent, EP-M10.
+  exception set is meant to move in. Date/Author: 2026-09-14, implementation
+  agent, EP-M10.
 - Decision: ``--deep``'s two rungs compare the child's commits with the target's
-  history inside the ``--heuristic-window``, matching trees first and cumulative
-  patch identifiers second, and the candidate each one names is the _child's_
-  commit whose content has a twin on the target.
-  Rationale: an inferred candidate must be a commit on the child's history,
-  because gate 4 asks whether the candidate is an ancestor of the child and a
-  target-side twin is not; what the twin establishes is that the child's commit
-  has already landed, so the boundary is that commit (or later). The scan reads
-  the target's history once (`history(target, limit=heuristic_window)`) and the
+  history inside the ``--heuristic-window``, matching trees first and
+  cumulative patch identifiers second, and the candidate each one names is the
+  _child's_ commit whose content has a twin on the target. Rationale: an
+  inferred candidate must be a commit on the child's history, because gate 4
+  asks whether the candidate is an ancestor of the child and a target-side twin
+  is not; what the twin establishes is that the child's commit has already
+  landed, so the boundary is that commit (or later). The scan reads the
+  target's history once (`history(target, limit=heuristic_window)`) and the
   child's history once, then compares by lookup keyed on the tree, so its cost
   is linear in the window as the command surface promises, and the report
   states the window it scanned so a cut-short scan never reads as a complete
@@ -3834,71 +3727,68 @@ Stop and escalate rather than improvising when any of these is reached.
   Date/Author: 2026-09-14, implementation agent, EP-M10.
 - Decision: ``run_git_wheresat`` opens the real forge itself when no port was
   injected and the run is not ``--offline``, so ``github=None`` means "nothing
-  was injected" rather than "the forge is out of play".
-  Rationale: the function is the command, and the command consults GitHub, so a
-  caller that supplies nothing must get the product's behaviour rather than a
-  silently weaker one; the parameter exists so a test can substitute a double,
-  which is what the suite does. The alternative — the console entry point opens
-  the port and the function stays forge-free — would leave ``open_github``
-  reached only from a wrapper, put the credential decision in a function with no
-  report to write it into, and split the command's behaviour across two call
-  sites a reader has to hold at once. A credential failure is then decided by
-  the rule already recorded above: the run reports it as a question the forge
-  could not answer, so an unauthenticated ``git wheresat`` exits ``3`` and names
-  the ways to supply a credential, which is Table 3's row and not a defect.
-  Date/Author: 2026-09-14, implementation agent, EP-M10.
+  was injected" rather than "the forge is out of play". Rationale: the function
+  is the command, and the command consults GitHub, so a caller that supplies
+  nothing must get the product's behaviour rather than a silently weaker one;
+  the parameter exists so a test can substitute a double, which is what the
+  suite does. The alternative — the console entry point opens the port and the
+  function stays forge-free — would leave ``open_github`` reached only from a
+  wrapper, put the credential decision in a function with no report to write it
+  into, and split the command's behaviour across two call sites a reader has to
+  hold at once. A credential failure is then decided by the rule already
+  recorded above: the run reports it as a question the forge could not answer,
+  so an unauthenticated ``git wheresat`` exits ``3`` and names the ways to
+  supply a credential, which is Table 3's row and not a defect. Date/Author:
+  2026-09-14, implementation agent, EP-M10.
 - Decision: the parent's head is fetched by a configured remote whose URL names
   the pull request's own repository, and a head repository no remote names is a
-  fault rather than a fallback to the child's remote.
-  Rationale: gate 1 exists because a head fetched from anywhere but the pull
-  request's own repository is not the commit the pull request reports, however
-  similar the names; falling back to the child's remote would make that gate
-  fail on exactly the fork case it was written for, and would turn an honest
-  refusal into an accident. The common case is a remote that does name it —
-  ``origin`` pointing at the parent's repository is the arrangement the command
-  assumes — so the rule costs a lookup rather than a configuration change. A run
-  with no such remote reports the parent head as unavailable and the gates that
-  needed it as unanswered, which is what a fork checkout should say.
-  Date/Author: 2026-09-14, implementation agent, EP-M10.
+  fault rather than a fallback to the child's remote. Rationale: gate 1 exists
+  because a head fetched from anywhere but the pull request's own repository is
+  not the commit the pull request reports, however similar the names; falling
+  back to the child's remote would make that gate fail on exactly the fork case
+  it was written for, and would turn an honest refusal into an accident. The
+  common case is a remote that does name it — ``origin`` pointing at the
+  parent's repository is the arrangement the command assumes — so the rule
+  costs a lookup rather than a configuration change. A run with no such remote
+  reports the parent head as unavailable and the gates that needed it as
+  unanswered, which is what a fork checkout should say. Date/Author:
+  2026-09-14, implementation agent, EP-M10.
 - Decision: the suite's shared run helper injects a double that answers "nothing
   is associated with these commits" and refuses every question about a named
-  pull request.
-  Rationale: with the run opening the real port by default, every existing
-  integration test would otherwise attempt live GitHub traffic, which the
-  milestone forbids. The double is not a convenience: its two halves are the two
-  states the local suites need — a forge that knows nothing about the child (so
-  the association search _answers_, and a refusal stays a refusal) and a forge
-  that cannot answer about the parent the run named (so the parent gates go
-  unanswered, which is what the ``parent-named`` vector has always asserted). A
-  double that refused everything would turn every local refusal into an
-  indeterminate result, because a fault means the evidence set is not known to
-  be complete.
-  Date/Author: 2026-09-14, implementation agent, EP-M10.
+  pull request. Rationale: with the run opening the real port by default, every
+  existing integration test would otherwise attempt live GitHub traffic, which
+  the milestone forbids. The double is not a convenience: its two halves are
+  the two states the local suites need — a forge that knows nothing about the
+  child (so the association search _answers_, and a refusal stays a refusal)
+  and a forge that cannot answer about the parent the run named (so the parent
+  gates go unanswered, which is what the ``parent-named`` vector has always
+  asserted). A double that refused everything would turn every local refusal
+  into an indeterminate result, because a fault means the evidence set is not
+  known to be complete. Date/Author: 2026-09-14, implementation agent, EP-M10.
 - Decision: the Replay block prints a backup ref, the ``git rebase --onto``
   command with the target and the boundary as full 40-character object IDs, an
   undo line, and a closing premise naming the child tip the answer was computed
   against, one command per unwrapped line; and the envelope's ``backupRef`` is
   filled only by a run that established a boundary, superseding the EP-M9 entry
   that declared the key and left it ``null`` for the milestone that would have
-  something to put in it.
-  Rationale: the report is a thing to paste, and a line broken to fit a
-  terminal is a line that runs half a command when it is pasted; the full IDs
-  are what removes the race between reading the report and running it, which
-  ``COMMIT_ABBREVIATION`` cannot do because an abbreviation is re-resolved at
-  run time. The abbreviation stays where it was decided to stay — detail lines
-  and reasons — and the premise line carries it, because the user's check is
-  "is the tip still what this was computed from", which is a comparison rather
-  than an argument. A refusal proposes no replay, so it names no backup ref and
-  has nothing to put in the key; the key is declared in the empty payload
-  anyway, so a consumer reads one shape whether the run established nothing or
-  never started, and no key was added, which is what keeps the schema string at
-  ``git-wheresat/1``.
-  Date/Author: 2026-09-15, implementation agent, EP-M10.
+  something to put in it. Rationale: the report is a thing to paste, and a line
+  broken to fit a terminal is a line that runs half a command when it is
+  pasted; the full IDs are what removes the race between reading the report and
+  running it, which ``COMMIT_ABBREVIATION`` cannot do because an abbreviation
+  is re-resolved at run time. The abbreviation stays where it was decided to
+  stay — detail lines and reasons — and the premise line carries it, because
+  the user's check is "is the tip still what this was computed from", which is
+  a comparison rather than an argument. A refusal proposes no replay, so it
+  names no backup ref and has nothing to put in the key; the key is declared in
+  the empty payload anyway, so a consumer reads one shape whether the run
+  established nothing or never started, and no key was added, which is what
+  keeps the schema string at ``git-wheresat/1``. Date/Author: 2026-09-15,
+  implementation agent, EP-M10.
 - Decision: INV-7's six-pair invariant is a parametrized matrix of exactly
   those six pairs rather than a Hypothesis property, superseding the earlier
-  note in ``Progress`` that the property "exhausts" the space.
-  Rationale: the domain is finite and each case builds a real repository and
-  runs a real command line, which is the same reasoning recorded under
+  note in ``Progress`` that the property "exhausts" the space. Rationale: the
+  domain is finite and each case builds a real repository and runs a real
+  command line, which is the same reasoning recorded under
   ``Invariants and lemmas`` for INV-1's matrix and for the same cost — a
   generated example in this suite straddles Hypothesis's 200 ms deadline under
   the per-test timeout. The property also needed its
@@ -3906,102 +3796,98 @@ Stop and escalate rather than improvising when any of these is reached.
   suppression is a standing invitation to stop noticing what it was hiding. A
   parametrized matrix cannot silently stop covering a pair: a pair that is no
   longer run is a test that disappeared from the report rather than a draw that
-  was never made.
-  Date/Author: 2026-09-15, implementation agent, EP-M10.
+  was never made. Date/Author: 2026-09-15, implementation agent, EP-M10.
 - Decision: gate 6's ``PARENT_HEAD`` ladder is the fetched pull request head,
   then the parent branch's tombstone, then its remote-tracking ref — the
   tombstone rung before the ref rung, and a rung that faults stops the ladder
-  rather than falling through.
-  Rationale: the ladder's order is the strength of what each rung names. A
-  fetched head is the commit a pull request reports; a tombstone is the tip a
-  deletion observed, which is the artefact that survives the branch being
-  deleted and is why the command exists; a remote-tracking ref is what is left
-  when neither was ever made, and it is weaker because it moves whenever
-  somebody pushes. Reading the weakest first would answer a stronger question
-  with a weaker answer, which is the failure mode gate 1 exists to catch. A
-  rung that faults stops the ladder because "the tombstone would not open" and
-  "there is no tombstone" are different answers, and only the second one may
-  fall through: an unreadable ref is a repository that needs repair, and
-  answering around it would report a boundary the run could not actually
-  establish.
-  Date/Author: 2026-09-15, implementation agent, EP-M10.
+  rather than falling through. Rationale: the ladder's order is the strength of
+  what each rung names. A fetched head is the commit a pull request reports; a
+  tombstone is the tip a deletion observed, which is the artefact that survives
+  the branch being deleted and is why the command exists; a remote-tracking ref
+  is what is left when neither was ever made, and it is weaker because it moves
+  whenever somebody pushes. Reading the weakest first would answer a stronger
+  question with a weaker answer, which is the failure mode gate 1 exists to
+  catch. A rung that faults stops the ladder because "the tombstone would not
+  open" and "there is no tombstone" are different answers, and only the second
+  one may fall through: an unreadable ref is a repository that needs repair,
+  and answering around it would report a boundary the run could not actually
+  establish. Date/Author: 2026-09-15, implementation agent, EP-M10.
 - Decision: the pull request head is an evidence rung of its own
   (:data:`EvidenceKind.PULL_REQUEST_HEAD`, attested), proposing the head the
-  run fetched for the parent pull request it identified.
-  Rationale: the procedure names it as one of the two attested carriers, and
-  every layer below this one already expects it — ``may_establish`` reads "a
-  stack record or a pull request head names the boundary by a deliberate act",
-  ``wheresat_report`` reads a ``PULL_REQUEST_HEAD`` candidate for the
-  envelope's ``parentHead`` key, and ``git_wheresat.feature`` states the
-  scenario that establishes a boundary from it. It is the rung that answers
-  the case the milestone exists for, a parent squash-merged into the trunk by
-  a pull request nobody recorded a stack record for, and it is why
-  ``parent-merged`` can refuse: the head of a pull request still open is not a
-  boundary any replay should be computed from.
-  Date/Author: 2026-09-15, implementation agent, EP-M10.
+  run fetched for the parent pull request it identified. Rationale: the
+  procedure names it as one of the two attested carriers, and every layer below
+  this one already expects it — ``may_establish`` reads "a stack record or a
+  pull request head names the boundary by a deliberate act",
+  ``wheresat_report`` reads a ``PULL_REQUEST_HEAD`` candidate for the envelope's
+  ``parentHead`` key, and ``git_wheresat.feature`` states the scenario that
+  establishes a boundary from it. It is the rung that answers the case the
+  milestone exists for, a parent squash-merged into the trunk by a pull request
+  nobody recorded a stack record for, and it is why ``parent-merged`` can
+  refuse: the head of a pull request still open is not a boundary any replay
+  should be computed from. Date/Author: 2026-09-15, implementation agent,
+  EP-M10.
 - Decision: that rung answers only for a head the _run_ fetched, and only when
   a pull request is in hand to attribute it to. ``ParentHead.ref is None`` is
   the test, because the two heads the ladder recovers always carry the ref they
   were read from (a tombstone ref, a remote-tracking ref) while
-  ``wheresat.py:_head`` builds the fetched one with ``ref=None``. A
-  ref-backed head is left to the rungs that read refs, under their own kinds.
-  Rationale: offering it here as well would report one repository fact under
-  two kinds, and ``may_establish`` counts corroboration by _kind_ — the head a
-  ref named would then stand as two witnesses to one boundary when the ladder
-  recovered it, which is the miscount the kind-keyed rule exists to prevent. The
-  parent may be open, merged, or unidentified: withholding the candidate from a
-  run whose parent is still open would leave the ``parent-merged`` refusal to
-  no one, so the rung proposes and the gate refuses. The second guard is
-  defensive — the pipeline fetches no head for a run that identified no parent —
-  and is covered by ``tests/unit/test_wheresat_collect.py`` rather than through
-  a run, because the state is unreachable from the ladder.
-  Date/Author: 2026-09-15, implementation agent, EP-M10.
+  ``wheresat.py:_head`` builds the fetched one with ``ref=None``. A ref-backed
+  head is left to the rungs that read refs, under their own kinds. Rationale:
+  offering it here as well would report one repository fact under two kinds, and
+  ``may_establish`` counts corroboration by _kind_ — the head a ref named
+  would then stand as two witnesses to one boundary when the ladder recovered
+  it, which is the miscount the kind-keyed rule exists to prevent. The parent
+  may be open, merged, or unidentified: withholding the candidate from a run
+  whose parent is still open would leave the ``parent-merged`` refusal to no
+  one, so the rung proposes and the gate refuses. The second guard is defensive
+  — the pipeline fetches no head for a run that identified no parent — and is
+  covered by ``tests/unit/test_wheresat_collect.py`` rather than through a run,
+  because the state is unreachable from the ladder. Date/Author: 2026-09-15,
+  implementation agent, EP-M10.
 - Decision: ``heuristic_window`` is a field of :class:`BoundaryRequest`, and
-  the deep scan reads the target's history with ``history(target,
-  limit=window + 1)`` exactly once, comparing the newest ``window`` of the
-  commits it returns.
-  Rationale: the window is what the user asked for, so it belongs beside
-  ``deep`` and ``offline``, which are the other two inputs that change what the
-  run reads rather than how it renders what it read. Carrying it on the request
-  rather than on the context keeps the collection context about the ports and
-  the evidence a run already has, and makes the bound visible at the one place
-  a run is resolved rather than at the rung that happens to honour it. The
-  field has no default, so a construction site that forgets it is a type error
-  rather than a run that silently scans two hundred commits. One commit more
-  than the window is asked for because that is how a cut scan is told from a
-  complete one: a listing longer than the window proves a commit older than the
-  window exists, which is the caveat recorded two entries below.
-  Date/Author: 2026-09-15, implementation agent, EP-M10.
+  the deep scan reads the target's history with
+  ``history(target, limit=window + 1)`` exactly once, comparing the newest
+  ``window`` of the commits it returns. Rationale: the window is what the user
+  asked for, so it belongs beside ``deep`` and ``offline``, which are the other
+  two inputs that change what the run reads rather than how it renders what it
+  read. Carrying it on the request rather than on the context keeps the
+  collection context about the ports and the evidence a run already has, and
+  makes the bound visible at the one place a run is resolved rather than at the
+  rung that happens to honour it. The field has no default, so a construction
+  site that forgets it is a type error rather than a run that silently scans
+  two hundred commits. One commit more than the window is asked for because
+  that is how a cut scan is told from a complete one: a listing longer than the
+  window proves a commit older than the window exists, which is the caveat
+  recorded two entries below. Date/Author: 2026-09-15, implementation agent,
+  EP-M10.
 - Decision: ``--deep`` is split between two modules.
-  ``git_donkey/wheresat_deep.py`` owns the comparison entire — the two histories
-  read once, the index built from one of them, the two passes, the caveats the
-  bound forces, and the conversion of each pass's twins into candidates — and
-  ``wheresat_collect`` holds two thin rungs, ``_tree_identity_evidence`` and
-  ``_patch_identity_evidence``, that do nothing but hand
-  ``context.scan`` to ``tree_candidates`` or ``patch_candidates``. The
+  ``git_donkey/wheresat_deep.py`` owns the comparison entire — the two
+  histories read once, the index built from one of them, the two passes, the
+  caveats the bound forces, and the conversion of each pass's twins into
+  candidates — and ``wheresat_collect`` holds two thin rungs,
+  ``_tree_identity_evidence`` and ``_patch_identity_evidence``, that do nothing
+  but hand ``context.scan`` to ``tree_candidates`` or ``patch_candidates``. The
   comparison is the tree pass by whole-tree object ID and the cumulative-patch
   pass by the net change between a commit's fork point and the target on one
-  side and the change a windowed commit introduces on the other.
-  Rationale: ``wheresat_collect`` holds rungs that answer from one read each —
-  a record, a merge base, a reflog — and the deep scan is a different subject,
-  with a bound it has to state and a cost that is linear in that bound. Keeping
-  the comparison out of the collection module leaves that module's rungs the
-  shape its other rungs have, and lets the comparison be tested as the table of
-  two small histories it is rather than through a run's options. The candidate
-  half of the comparison lives with the comparison rather than with the rungs
-  that mount it, because which evidence kind a twin is and which commit it names
-  are decided by the pass that found it; a rung that built candidates would have
-  to know both, and the module split would be a file boundary rather than a
-  seam. Three details settle what the sketch left open. The commit either pass
-  names is the _child's_, because gate 4 asks whether the candidate is an
-  ancestor of the child and a target-side twin is not. The patch pass runs only
-  over the child commits the tree pass left unmatched, which is what the risk
-  entry's "cheap tree-identity pass first" buys: a tree match already answers
-  the question, and comparing net changes is the expensive half. And each twin
-  is claimed by the newest child commit that matches it, so a child history
-  that met and reverted the same change reports the commit that really landed
-  rather than both.
-  Date/Author: 2026-09-15, implementation agent, EP-M10.
+  side and the change a windowed commit introduces on the other. Rationale:
+  ``wheresat_collect`` holds rungs that answer from one read each — a record, a
+  merge base, a reflog — and the deep scan is a different subject, with a bound
+  it has to state and a cost that is linear in that bound. Keeping the
+  comparison out of the collection module leaves that module's rungs the shape
+  its other rungs have, and lets the comparison be tested as the table of two
+  small histories it is rather than through a run's options. The candidate half
+  of the comparison lives with the comparison rather than with the rungs that
+  mount it, because which evidence kind a twin is and which commit it names are
+  decided by the pass that found it; a rung that built candidates would have to
+  know both, and the module split would be a file boundary rather than a seam.
+  Three details settle what the sketch left open. The commit either pass names
+  is the _child's_, because gate 4 asks whether the candidate is an ancestor of
+  the child and a target-side twin is not. The patch pass runs only over the
+  child commits the tree pass left unmatched, which is what the risk entry's
+  "cheap tree-identity pass first" buys: a tree match already answers the
+  question, and comparing net changes is the expensive half. And each twin is
+  claimed by the newest child commit that matches it, so a child history that
+  met and reverted the same change reports the commit that really landed rather
+  than both. Date/Author: 2026-09-15, implementation agent, EP-M10.
 - Decision: the patch pass measures the child's change from
   ``merge_base(child_commit, target)`` — the target itself, never a
   ``target_before_window`` or any other commit inside the window — and measures
@@ -4020,87 +3906,82 @@ Stop and escalate rather than improvising when any of these is reached.
   Date/Author: 2026-09-15, implementation agent, EP-M10.
 - Decision: a windowed commit whose own change cannot be read is indexed under
   nothing rather than reported, and a window that reached the repository's root
-  commit is therefore a complete scan.
-  Rationale: the change pass asks every windowed commit what change it
-  introduces, and the root commit has no parent to introduce anything over, so
-  the question raises where the repository's own answer is that there is none.
-  The commit was already read by the tree pass, so the only twin lost is one no
-  child commit could claim through this pass, and reporting the refusal would
-  turn a complete scan — one that read the target's whole history, root
-  included — into a caveat claiming it had not. This is the case that made the
-  swallowing necessary rather than merely tidy: without it a scan of any
-  history short enough to reach its root abandons the change pass entirely and
-  reports the twins it had already found nowhere.
+  commit is therefore a complete scan. Rationale: the change pass asks every
+  windowed commit what change it introduces, and the root commit has no parent
+  to introduce anything over, so the question raises where the repository's own
+  answer is that there is none. The commit was already read by the tree pass,
+  so the only twin lost is one no child commit could claim through this pass,
+  and reporting the refusal would turn a complete scan — one that read the
+  target's whole history, root included — into a caveat claiming it had not.
+  This is the case that made the swallowing necessary rather than merely tidy:
+  without it a scan of any history short enough to reach its root abandons the
+  change pass entirely and reports the twins it had already found nowhere.
   Date/Author: 2026-09-15, implementation agent, EP-M10.
 - Decision: a deep scan the window cut short is reported as a warning naming
   the window, never as a fault, and no ``--deep`` run is ever less determinate
-  than the same run without it.
-  Rationale: inferred evidence can neither establish a boundary nor
-  corroborate one, so a question the deep scan could not answer is one the
-  verdict never rested on — the rule the policy already applies when an
-  inferred candidate's own question goes unanswered. Reporting it as a
-  collection fault would turn ``--deep`` into a semantics switch, which the
-  command surface forbids, and the warning channel is exactly what the run
+  than the same run without it. Rationale: inferred evidence can neither
+  establish a boundary nor corroborate one, so a question the deep scan could
+  not answer is one the verdict never rested on — the rule the policy already
+  applies when an inferred candidate's own question goes unanswered. Reporting
+  it as a collection fault would turn ``--deep`` into a semantics switch, which
+  the command surface forbids, and the warning channel is exactly what the run
   already has for a fact that must be stated and cannot change the answer: an
-  unreadable worktree is reported the same way, for the same reason. The
-  window is stated only when it cut the scan short, because a scan of the whole
-  history is complete and has nothing to warn about.
-  Date/Author: 2026-09-15, implementation agent, EP-M10.
+  unreadable worktree is reported the same way, for the same reason. The window
+  is stated only when it cut the scan short, because a scan of the whole
+  history is complete and has nothing to warn about. Date/Author: 2026-09-15,
+  implementation agent, EP-M10.
 - Decision: the parent's head and the ladder that recovers it move out of
-  ``wheresat_collect`` into ``git_donkey/wheresat_heads.py``, which owns
-  :class:`ParentHead`, ``parent_head``, and the three rungs — the head the run
+  ``wheresat_collect`` into ``git_donkey/wheresat_heads.py``, which owns :class:
+  `ParentHead`, ``parent_head``, and the three rungs — the head the run
   fetched, the tombstone ``git plonk`` left, and the parent branch's
-  remote-tracking ref.
-  Rationale: ``wheresat_collect`` grew past the eight-hundred-line module cap
-  once slice (d) mounted its two rungs, and the ladder is the one stretch of it
-  that is a subject of its own rather than a rung of the evidence ladder:
-  ``wheresat_parents`` answers _which_ pull request the child is stacked on, and
-  this module answers the question that follows it, _where that parent's tip
-  is_. The split is by seam rather than by line count — the rungs it moves are
-  read in the order the recovery procedure fixes, they share nothing with the
-  evidence rungs but the context they are read from, and the tombstone and
-  remote-tracking-ref rungs are tested on their own already. ``wheresat_heads``
-  imports neither ``wheresat_collect`` nor any rung of it, so the dependency
-  runs one way: a collection rung may reach for a parent's head, and the parent's
-  head knows nothing about the collection. ``parent_branch`` is promoted to a
-  public name for the same reason — it is the question both modules ask of a
-  record, and a private name imported across a module boundary is a seam drawn
-  in the wrong place.
+  remote-tracking ref. Rationale: ``wheresat_collect`` grew past the
+  eight-hundred-line module cap once slice (d) mounted its two rungs, and the
+  ladder is the one stretch of it that is a subject of its own rather than a
+  rung of the evidence ladder: ``wheresat_parents`` answers _which_ pull
+  request the child is stacked on, and this module answers the question that
+  follows it, _where that parent's tip is_. The split is by seam rather than by
+  line count — the rungs it moves are read in the order the recovery procedure
+  fixes, they share nothing with the evidence rungs but the context they are
+  read from, and the tombstone and remote-tracking-ref rungs are tested on
+  their own already. ``wheresat_heads`` imports neither ``wheresat_collect``
+  nor any rung of it, so the dependency runs one way: a collection rung may
+  reach for a parent's head, and the parent's head knows nothing about the
+  collection. ``parent_branch`` is promoted to a public name for the same
+  reason — it is the question both modules ask of a record, and a private name
+  imported across a module boundary is a seam drawn in the wrong place.
   Date/Author: 2026-09-15, implementation agent, EP-M10.
 - Decision: a search the run's own bound stopped short is reported as
   ``search_incomplete`` rather than ``github_api_error``. Both refusals — a
   history longer than ``--limit`` allows the walk to examine, and a page the
   adapter truncated at ``ASSOCIATION_SEARCH_LIMIT`` — are the run's bounds
-  refusing, and the forge answered every request it was given. Recording them
-  as ``github_api_error`` would point an operator at GitHub for a condition
-  their own option created, and would hide the one label that says the search
-  never ran.
-  Rationale: ``shallow_history`` was the nearest existing label and is the
+  refusing, and the forge answered every request it was given. Recording them as
+  ``github_api_error`` would point an operator at GitHub for a condition their
+  own option created, and would hide the one label that says the search never
+  ran. Rationale: ``shallow_history`` was the nearest existing label and is the
   wrong one — it reports a property of the clone, whose remedy is a fetch,
   where this reports a bound on the search, whose remedy is ``--parent`` or a
   larger ``--limit``. Collapsing them would make the label unable to tell an
   operator which of the two they are looking at. The refusals that _are_
   transport failures — opening the forge, reading a page, reading a payload,
-  reading a stack — keep ``github_api_error``.
-  Date/Author: 2026-09-15, implementation agent, EP-M10.
+  reading a stack — keep ``github_api_error``. Date/Author: 2026-09-15,
+  implementation agent, EP-M10.
 - Decision: scenario 3 of the behavioural feature runs with `--deep`, and
   scenario 4 is built on the rewritten-parent shape with a child that restores
-  the incoming content, run with `--deep` and no `--parent`.
-  Rationale: the two scenarios assert behaviours only those shapes reach, and
-  both were measured before being written down. Scenario 3's `Then` names
-  `parent-history-intact`, and the gate can only be reached by a commit that
-  some rung proposes: with no record and no surviving ref, the historical tip
-  is proposed by the deep tree pass alone, so the default run refuses on other
-  grounds (measured: gates 4 and 7 against the rewritten head and the derived
-  merge base). Scenario 4 needs every inferred candidate to clear every
-  applicable gate before `_twinned_commits` will state the distinction, which
-  means the parent's gates must be out of scope and no candidate may be the
-  child's tip: restoring the incoming content puts a _second_ commit at the
-  landed tree with a commit above it, so both inferred candidates stand.
-  The alternative — leaving the plan as written and testing something else —
-  would have made the feature file a description of a repository that cannot
-  exist.
-  Date/Author: 2026-09-15, implementation agent, EP-M10.
+  the incoming content, run with `--deep` and no `--parent`. Rationale: the two
+  scenarios assert behaviours only those shapes reach, and both were measured
+  before being written down. Scenario 3's `Then` names `parent-history-intact`,
+  and the gate can only be reached by a commit that some rung proposes: with no
+  record and no surviving ref, the historical tip is proposed by the deep tree
+  pass alone, so the default run refuses on other grounds (measured: gates 4
+  and 7 against the rewritten head and the derived merge base). Scenario 4
+  needs every inferred candidate to clear every applicable gate before
+  `_twinned_commits` will state the distinction, which means the parent's gates
+  must be out of scope and no candidate may be the child's tip: restoring the
+  incoming content puts a _second_ commit at the landed tree with a commit
+  above it, so both inferred candidates stand. The alternative — leaving the
+  plan as written and testing something else — would have made the feature file
+  a description of a repository that cannot exist. Date/Author: 2026-09-15,
+  implementation agent, EP-M10.
 - Decision: two amendments to the behavioural specification's text, taken from
   the measurements above and applied to the feature file it introduced.
   Rationale: scenario 3's `When` gains "with deep scanning enabled" (the
@@ -4110,55 +3991,54 @@ Stop and escalate rather than improvising when any of these is reached.
   true of a repository where the parent branch was rebased and of no other:
   without the rewrite the derived tier names the boundary itself and
   establishes it. Every other scenario, `Given`, `Then`, and exit status in the
-  specification is as planned and as measured.
-  Date/Author: 2026-09-15, implementation agent, EP-M10.
+  specification is as planned and as measured. Date/Author: 2026-09-15,
+  implementation agent, EP-M10.
 - Decision: four scenarios name the parent pull request in their `When` —
   "Established by pull request head", "Refusal after a rewritten parent", "The
   parent pull request was opened from a fork", and "The run leaves the
-  repository unchanged" — where the sketch ran the bare command.
-  Rationale: each of the four turns on a head the run can only know by being
-  told which pull request to ask about. Two assert what the head establishes —
-  the ancestry that names the boundary, and the `parent-history-intact` gate
-  that refuses the historical tip once `--deep` proposes it — the fork scenario
+  repository unchanged" — where the sketch ran the bare command. Rationale:
+  each of the four turns on a head the run can only know by being told which
+  pull request to ask about. Two assert what the head establishes — the
+  ancestry that names the boundary, and the `parent-history-intact` gate that
+  refuses the historical tip once `--deep` proposes it — the fork scenario
   asserts where the head was fetched from, and the last one measures the
   evidence a fetch writes: with no `--parent` the run writes no ref at all, so
   "the only new refs are under the evidence namespace" would hold over an empty
   set and measure nothing. Naming the pull request is also what a user of the
-  GitHub rung actually types, which is what a user journey is for.
-  Date/Author: 2026-09-15, implementation agent, EP-M10.
+  GitHub rung actually types, which is what a user journey is for. Date/Author:
+  2026-09-15, implementation agent, EP-M10.
 - Decision: a shared record is read as a claim and never resolved, so a quoted
   record is read rather than skipped and a body that supports several readings
-  is reported as every one of them.
-  Rationale: both rules run the same way — towards handing the person who can
-  settle a disagreement the whole of it. Markdown gives no reliable way to tell
-  a decoration from a citation, so treating `>` as "quoted, therefore skipped"
-  would silently drop a record whose author quoted it as a block, and the cost
-  of reading one claim too many is bounded: the record is a candidate the run
-  validates through the same gates as every other, so a claim that is wrong is
-  refused by the repository rather than believed. The alternative for the
-  several case — pick the first, the newest, or the one that resolves — is the
-  reading ADR-005 forbids one level up, because presenting one of two
-  disagreeing claims as the claim is what makes a wrong boundary look attested.
-  The spec block for the module was amended with both rules rather than left
-  stating the sketch's, and the one place reporting more has a price is bounded
-  too: the wiring slice proposes no candidate from a body with several
-  readings, because two claims are not one this run can report.
-  Date/Author: 2026-09-15, implementation agent, EP-M10.
+  is reported as every one of them. Rationale: both rules run the same way —
+  towards handing the person who can settle a disagreement the whole of it.
+  Markdown gives no reliable way to tell a decoration from a citation, so
+  treating `>` as "quoted, therefore skipped" would silently drop a record
+  whose author quoted it as a block, and the cost of reading one claim too many
+  is bounded: the record is a candidate the run validates through the same
+  gates as every other, so a claim that is wrong is refused by the repository
+  rather than believed. The alternative for the several case — pick the first,
+  the newest, or the one that resolves — is the reading ADR-005 forbids one
+  level up, because presenting one of two disagreeing claims as the claim is
+  what makes a wrong boundary look attested. The spec block for the module was
+  amended with both rules rather than left stating the sketch's, and the one
+  place reporting more has a price is bounded too: the wiring slice proposes no
+  candidate from a body with several readings, because two claims are not one
+  this run can report. Date/Author: 2026-09-15, implementation agent, EP-M10.
 - Decision: the GitHub port keeps `pull_request_body` even though no production
-  path reaches it in this milestone.
-  Rationale: the method is the one question the shared-record rung puts to the
-  forge — the record travels in a pull request body, so reading the body is
-  that rung's whole input — and it is declared with the rest of the port
-  because the test doubles and the recorded cassettes are written against one
-  declaration: a method added when the rung lands would change every double
-  after those recordings were made. The dead-code gate reports no finding for
-  it, measured rather than assumed (`lint`'s skylos stage, log
+  path reaches it in this milestone. Rationale: the method is the one question
+  the shared-record rung puts to the forge — the record travels in a pull
+  request body, so reading the body is that rung's whole input — and it is
+  declared with the rest of the port because the test doubles and the recorded
+  cassettes are written against one declaration: a method added when the rung
+  lands would change every double after those recordings were made. The
+  dead-code gate reports no finding for it, measured rather than assumed
+  (`lint`'s skylos stage, log
   `/tmp/lint-git-donkey-git-wheresat-sub-command-133.out`), and the API
   implementation's reading of a body is covered where it is decided, by the
   fault test that asks it for one. The cost is one Protocol method and one
   implementation for a slice the milestone already owes, and the alternative is
-  a double that would have had it anyway.
-  Date/Author: 2026-09-15, implementation agent, EP-M10.
+  a double that would have had it anyway. Date/Author: 2026-09-15,
+  implementation agent, EP-M10.
 - Decision: `requests` carries an upper bound of `<3.0` in `pyproject.toml`.
   Rationale: the package now imports `requests` directly, and the module that
   does reaches GitHub through `github3.session`'s `Session` so that vcrpy
@@ -4166,48 +4046,45 @@ Stop and escalate rather than improvising when any of these is reached.
   change what the recorded cassettes prove, and the suite's rule is that no
   test makes live traffic. A bound below the next major turns that from a
   review comment into a resolution failure, and it costs one line of the
-  manifest, mirrored by `uv lock`.
-  Date/Author: 2026-09-15, implementation agent, EP-M10.
+  manifest, mirrored by `uv lock`. Date/Author: 2026-09-15, implementation
+  agent, EP-M10.
 - Decision: the shared record is parsed once, by the ladder, and the reading is
   carried on `ParentIdentification` into `CollectionContext` rather than read
-  again by the collection phase.
-  Rationale: two phases need the same claim — the ladder, for a parent the body
-  may name, and collection, for the boundary it proposes — and two reads of one
-  body are two chances to disagree, with nothing in the run that could notice.
-  The alternative of handing the body to the collection rung would have put a
-  forge in a phase that has none, and the alternative of parsing it in both
-  places would have made "the claim" a value neither phase owns. The cost is
-  one field on each of two value types and the discipline that the ladder is
-  the only reader, which the module docstring states where the next reader will
-  look. The reading is also what makes the rung answerable without a forge: a
-  run that identified its parent and then lost the network still reports the
-  boundary the body named, which a re-read could not.
-  Date/Author: 2026-09-15, implementation agent, EP-M10.
+  again by the collection phase. Rationale: two phases need the same claim —
+  the ladder, for a parent the body may name, and collection, for the boundary
+  it proposes — and two reads of one body are two chances to disagree, with
+  nothing in the run that could notice. The alternative of handing the body to
+  the collection rung would have put a forge in a phase that has none, and the
+  alternative of parsing it in both places would have made "the claim" a value
+  neither phase owns. The cost is one field on each of two value types and the
+  discipline that the ladder is the only reader, which the module docstring
+  states where the next reader will look. The reading is also what makes the
+  rung answerable without a forge: a run that identified its parent and then
+  lost the network still reports the boundary the body named, which a re-read
+  could not. Date/Author: 2026-09-15, implementation agent, EP-M10.
 - Decision: `LadderReads(graph, records, opener)` is the one keyword
   `identify_parent` takes, and the run's decision not to ask the forge moved up
-  into `identify_parent` beside it.
-  Rationale: both were forced by the house limits rather than chosen. The new
-  record read took `_searched` to five parameters and its skip branch to seven
-  returns, and bundling the three reads is what let one keyword absorb the
-  first while the skip moved up to buy back the return. The move is worth more
-  than the limit it satisfies: deciding the skip before any rung is walked is
-  what makes "``--offline`` reads no body at all" a property of the walk rather
-  than of one branch inside it, and narrowing the opener to a callable is what
-  lets every rung below treat the forge as present. A rung that could ask
-  whether a forge exists would be a rung that could answer differently from the
-  run's own decision.
-  Date/Author: 2026-09-15, implementation agent, EP-M10.
+  into `identify_parent` beside it. Rationale: both were forced by the house
+  limits rather than chosen. The new record read took `_searched` to five
+  parameters and its skip branch to seven returns, and bundling the three reads
+  is what let one keyword absorb the first while the skip moved up to buy back
+  the return. The move is worth more than the limit it satisfies: deciding the
+  skip before any rung is walked is what makes "``--offline`` reads no body at
+  all" a property of the walk rather than of one branch inside it, and
+  narrowing the opener to a callable is what lets every rung below treat the
+  forge as present. A rung that could ask whether a forge exists would be a
+  rung that could answer differently from the run's own decision. Date/Author:
+  2026-09-15, implementation agent, EP-M10.
 - Decision: the two refusals of a shared record are reported under the existing
-  `stack_record_malformed` kind, and no new error kind was added.
-  Rationale: `observability.ErrorKind` is a closed vocabulary and a new member
-  is a change to what every other operation's reports mean, so the question is
-  whether an operator would act differently. They would not: a body whose
-  record cannot be read and a body whose record supports several readings are
-  both "the record is not usable as written", and the reason carries which of
-  the two it is, with every reading named for the ambiguous case. The label
-  also keeps the two forms of record — the clone's and the body's — reporting
-  the same kind, which is what lets a report be read without knowing which form
-  the child used.
+  `stack_record_malformed` kind, and no new error kind was added. Rationale:
+  `observability.ErrorKind` is a closed vocabulary and a new member is a change
+  to what every other operation's reports mean, so the question is whether an
+  operator would act differently. They would not: a body whose record cannot be
+  read and a body whose record supports several readings are both "the record
+  is not usable as written", and the reason carries which of the two it is,
+  with every reading named for the ambiguous case. The label also keeps the two
+  forms of record — the clone's and the body's — reporting the same kind, which
+  is what lets a report be read without knowing which form the child used.
   Date/Author: 2026-09-15, implementation agent, EP-M10.
 - Decision: the shared record is second in `SOURCES` while the ladder asks it
   fourth, and the two orders are not the same order of the same facts.
@@ -4220,88 +4097,84 @@ Stop and escalate rather than improvising when any of these is reached.
   question without interpretation. Neither order can be derived from the other,
   which is why both are stated where they are held — the ladder's in its module
   docstring, collection's in the `SOURCES` note — rather than one of them being
-  treated as the authority for the other.
-  Date/Author: 2026-09-15, implementation agent, EP-M10.
+  treated as the authority for the other. Date/Author: 2026-09-15,
+  implementation agent, EP-M10.
 - Decision: the absent shared reading is a module-level singleton
   (`_NO_SHARED_RECORD`) rather than a default constructed where it is used.
   Rationale: the house rules forbid a call in a default argument
   (`function-call-in-default-argument`), and the value appears twice as a
-  default — once on the `ParentIdentification` field and once on
-  `_observed`'s keyword — so a singleton is what lets both spell the same
-  reading rather than two that compare equal. It is named for what it claims
-  rather than for the type, because `SharedRecordAbsent()` is what the parser
-  returns for a body that claimed nothing and the same value is what a walk
-  that read no body hands on: the two are one reading, and a run cannot act on
-  either.
+  default — once on the `ParentIdentification` field and once on `_observed`'s
+  keyword — so a singleton is what lets both spell the same reading rather than
+  two that compare equal. It is named for what it claims rather than for the
+  type, because `SharedRecordAbsent()` is what the parser returns for a body
+  that claimed nothing and the same value is what a walk that read no body
+  hands on: the two are one reading, and a run cannot act on either.
   Date/Author: 2026-09-15, implementation agent, EP-M10.
 - Decision: the ladder's suite is two modules, and the doubles and builders it
-  drives the ladder with are a third that pytest does not collect.
-  Rationale: `tests/unit/test_wheresat_parents.py` exceeds what CodeScene
-  scores as one file once the eighth rung's tests are in it, and the
-  biomarker it trips is cohesion rather than length once the fixtures are
-  carried out — a large module of independent tests is scored as one
-  component per test, and no arrangement of imports changes that. The seam
-  the split follows is the one the suite's own docstring already drew: the
-  rungs that read the forge are stated in `test_wheresat_parents.py`, and the
-  two that read what the child itself carries are stated beside them in
-  `test_wheresat_parents_child.py`. The alternative of growing a helper to
-  join the components would have been a change to the tests made for the
-  measurement, and the alternative of dropping docstrings to shrink the
-  module would have removed the reason each test exists, so the split is the
-  one that leaves every test's text and assertions as they were. The third
-  module carries public names and no `test_` prefix, the shape
-  `tests/unit/wheresat_helpers.py` and `tests/unit/stack_store_helpers.py`
-  already have, so that it is read as what it is: a module of doubles whose
-  own checks raise rather than assert, because nothing collects it.
-  Date/Author: 2026-09-15, implementation agent, EP-M10.
+  drives the ladder with are a third that pytest does not collect. Rationale:
+  `tests/unit/test_wheresat_parents.py` exceeds what CodeScene scores as one
+  file once the eighth rung's tests are in it, and the biomarker it trips is
+  cohesion rather than length once the fixtures are carried out — a large
+  module of independent tests is scored as one component per test, and no
+  arrangement of imports changes that. The seam the split follows is the one
+  the suite's own docstring already drew: the rungs that read the forge are
+  stated in `test_wheresat_parents.py`, and the two that read what the child
+  itself carries are stated beside them in `test_wheresat_parents_child.py`.
+  The alternative of growing a helper to join the components would have been a
+  change to the tests made for the measurement, and the alternative of dropping
+  docstrings to shrink the module would have removed the reason each test
+  exists, so the split is the one that leaves every test's text and assertions
+  as they were. The third module carries public names and no `test_` prefix,
+  the shape `tests/unit/wheresat_helpers.py` and
+  `tests/unit/stack_store_helpers.py` already have, so that it is read as what
+  it is: a module of doubles whose own checks raise rather than assert, because
+  nothing collects it. Date/Author: 2026-09-15, implementation agent, EP-M10.
 - Decision: resolving the run's question from its options and its repository
-  is `wheresat._request`, a function of its own, rather than the opening half
-  of `_session`.
-  Rationale: `_session` had reached seventy-one lines, which is a function a
-  reader has to hold in two hands, and the shared record added a value to the
-  set it hands on. The seam is real rather than numeric: the options and the
-  repository decide _what_ the run asks — the branch, the target, and the tip
-  as the repository has them — and the session, the walk, and the report are
-  what it does with the answer. `_request` also names its refusal in one
-  place, `WheresatUsageError`, where before the two validators' failures and
-  the resolution's were read in one body. Nothing about the run changes: the
-  same values are read, in the same order, from the same ports, which is what
-  the read-only suite's matrix measures.
-  Date/Author: 2026-09-15, implementation agent, EP-M10.
+  is `wheresat._request`, a function of its own, rather than the opening half of
+  `_session`. Rationale: `_session` had reached seventy-one lines, which is a
+  function a reader has to hold in two hands, and the shared record added a
+  value to the set it hands on. The seam is real rather than numeric: the
+  options and the repository decide _what_ the run asks — the branch, the
+  target, and the tip as the repository has them — and the session, the walk,
+  and the report are what it does with the answer. `_request` also names its
+  refusal in one place, `WheresatUsageError`, where before the two validators'
+  failures and the resolution's were read in one body. Nothing about the run
+  changes: the same values are read, in the same order, from the same ports,
+  which is what the read-only suite's matrix measures. Date/Author: 2026-09-15,
+  implementation agent, EP-M10.
 - Decision: the two range listings in `wheresat_facts` are put by one
   function, `_range_of`, which takes the history to subtract as a keyword.
-  Rationale: gate 5 and gate 7 ask the same question of the same range, one
-  of them with the parent head's history removed, and the two call sites had
-  the same four steps between them — ask, check the fault, record the reason,
-  build the `CommitRange` — written twice. The keyword is what makes the
-  second question the first question with one operand changed rather than a
-  second function, and a range that cannot be listed returns no commits
-  beside its reason so that a caller cannot record an empty listing as an
-  answer. The module's mean cyclomatic complexity fell below the gate's
-  threshold as a consequence, which is the direction the extraction moves it
-  rather than the reason for it: the code that was duplicated was a
-  computation, and the four steps are now the one function that owns them.
-  Date/Author: 2026-09-15, implementation agent, EP-M10.
+  Rationale: gate 5 and gate 7 ask the same question of the same range, one of
+  them with the parent head's history removed, and the two call sites had the
+  same four steps between them — ask, check the fault, record the reason, build
+  the `CommitRange` — written twice. The keyword is what makes the second
+  question the first question with one operand changed rather than a second
+  function, and a range that cannot be listed returns no commits beside its
+  reason so that a caller cannot record an empty listing as an answer. The
+  module's mean cyclomatic complexity fell below the gate's threshold as a
+  consequence, which is the direction the extraction moves it rather than the
+  reason for it: the code that was duplicated was a computation, and the four
+  steps are now the one function that owns them. Date/Author: 2026-09-15,
+  implementation agent, EP-M10.
 
 ## Outcomes & retrospective
 
 To be completed at each milestone boundary and at completion. Before setting
 the status to `COMPLETE`, reconcile every implementation discovery against
-`docs/squash-restack-boundary-recovery.md` and
-`docs/stack-records.md`, and the two architectural decision records: a
-discovery that
-falsifies a stated assumption requires updating that document and re-checking
-every trace link in `Conformance basis`, not a quiet amendment here.
+`docs/squash-restack-boundary-recovery.md` and `docs/stack-records.md`, and the
+two architectural decision records: a discovery that falsifies a stated
+assumption requires updating that document and re-checking every trace link in
+`Conformance basis`, not a quiet amendment here.
 
 Follow-up work this plan deliberately leaves undone, in priority order:
 
 1. Cross-clone recovery. The stack record is local: neither
-   `refs/stack-bases/<branch>` nor `branch.<branch>.stack*` travels to
-   another clone. Pushing the anchor ref to the remote is a cheap,
-   machine-validated alternative to the shared record in a pull request body,
-   and would remove a whole evidence rung. It is out of scope here because it
-   introduces a push, and every command in this plan is either read-only or
-   writes only local state.
+   `refs/stack-bases/<branch>` nor `branch.<branch>.stack*` travels to another
+   clone. Pushing the anchor ref to the remote is a cheap, machine-validated
+   alternative to the shared record in a pull request body, and would remove a
+   whole evidence rung. It is out of scope here because it introduces a push,
+   and every command in this plan is either read-only or writes only local
+   state.
 2. Preserving superseded parent incarnations in a tombstone, if losing
    fork-point recovery on deleted branches turns out to matter.
 3. Revisit commit-message trailers if the stack record proves insufficient
@@ -4313,33 +4186,32 @@ Follow-up work this plan deliberately leaves undone, in priority order:
 
 Assume no prior knowledge of this repository.
 
-`git-donkey` is a Python package that installs a family of Git subcommands.
-Git resolves `git <name>` by looking for an executable called `git-<name>` on
+`git-donkey` is a Python package that installs a family of Git subcommands. Git
+resolves `git <name>` by looking for an executable called `git-<name>` on
 `PATH`, so each subcommand is a console script declared in `pyproject.toml`
-under `[project.scripts]`. There is no shim generator. The existing scripts
-are `git-donkey`, `git-track`, `git-fafo`, `git-plonk`,
-`git-donkey-template`, `git-incoming`, `git-in`, `git-outgoing`, and
-`git-out`, each pointing at a function in `git_donkey/cli.py`.
+under `[project.scripts]`. There is no shim generator. The existing scripts are
+`git-donkey`, `git-track`, `git-fafo`, `git-plonk`, `git-donkey-template`,
+`git-incoming`, `git-in`, `git-outgoing`, and `git-out`, each pointing at a
+function in `git_donkey/cli.py`.
 
 `git_donkey/cli.py` is the console-script boundary and owns every
 [Cyclopts](https://cyclopts.readthedocs.io/) `App`. The idiom, visible at
-`git_donkey/cli.py:266-294` for `git plonk`: construct `App(name=...,
-help=...)` at module level, decorate one function with `@app.default`, and
-have that function do nothing but call a `run_git_*` function in a workflow
-module and `raise SystemExit(<returned int>)`. A plain
+`git_donkey/cli.py:266-294` for `git plonk`: construct
+`App(name=..., help=...)` at module level, decorate one function with
+`@app.default`, and have that function do nothing but call a `run_git_*`
+function in a workflow module and `raise SystemExit(<returned int>)`. A plain
 `def git_<name>() -> None: _app()` function is the console-script target.
 
 Each command is decomposed into several modules, because
 `docs/developers-guide.md:608-610` records that the split "runs along the
 production boundaries each module verifies and keeps every module below
-CodeScene's Low Cohesion threshold of four". `git plonk` is the exemplar,
-split into `git_donkey/plonk.py` (orchestration plus Git adapters),
+CodeScene's Low Cohesion threshold of four". `git plonk` is the exemplar, split
+into `git_donkey/plonk.py` (orchestration plus Git adapters),
 `git_donkey/plonk_policy.py` (pure policy), `git_donkey/plonk_records.py`
 (shared value types), `git_donkey/plonk_selection.py` (pure selection), and
 `git_donkey/plonk_summary.py` (pure rendering) — 1,122 lines in total.
 `git incoming`/`git outgoing` follows the same shape with
-`git_donkey/incoming_outgoing.py` and
-`git_donkey/incoming_outgoing_policy.py`.
+`git_donkey/incoming_outgoing.py` and `git_donkey/incoming_outgoing_policy.py`.
 
 The pure modules state their rule in the module docstring — for example
 `git_donkey/plonk_policy.py:3` says "This module contains no GitPython,
@@ -4350,21 +4222,22 @@ dataclass implementing it over GitPython. `_ComparisonAdapter` and
 closest precedent for the adapters this plan needs.
 
 Shared Git helpers live in `git_donkey/helpers.py`: `_find_repo(prefix)`
-locates the repository from the working directory, `_fetch_remote(repo,
-remote, prefix)` fetches a remote, `_first_remote_name(repo, prefix)` returns
-the principal remote (by convention, `repo.remotes[0]`), `_ref_exists(repo,
-ref)` checks a ref with `git show-ref --verify --quiet`, and `_die(prefix,
-msg, code=2, *, emoji=None)` prints to standard error and raises
-`SystemExit`. There is no custom exception hierarchy; `_die` is the
-convention. Trunk discovery lives in `git_donkey/remote_default.py`:
-`principal_remote(repo, prefix)`, `discover_default_branch(repo, remote,
-prefix)` — which queries `git ls-remote --symref <remote> HEAD` rather than
-trusting the possibly stale local `refs/remotes/<remote>/HEAD` — and
+locates the repository from the working directory,
+`_fetch_remote(repo, remote, prefix)` fetches a remote,
+`_first_remote_name(repo, prefix)` returns the principal remote (by convention,
+`repo.remotes[0]`), `_ref_exists(repo, ref)` checks a ref with
+`git show-ref --verify --quiet`, and `_die(prefix, msg, code=2, *, emoji=None)`
+prints to standard error and raises `SystemExit`. There is no custom exception
+hierarchy; `_die` is the convention. Trunk discovery lives in
+`git_donkey/remote_default.py`: `principal_remote(repo, prefix)`,
+`discover_default_branch(repo, remote, prefix)` — which queries
+`git ls-remote --symref <remote> HEAD` rather than trusting the possibly stale
+local `refs/remotes/<remote>/HEAD` — and
 `fetch_default_branch_ref(repo, remote, branch, prefix)`.
 
-There is **no existing helper** anywhere in `git_donkey/` for `git
-merge-base`, `git for-each-ref`, reading `git config`, or reading a reflog.
-This change introduces the first of each, in `git_donkey/stack_store.py` and
+There is **no existing helper** anywhere in `git_donkey/` for `git merge-base`,
+`git for-each-ref`, reading `git config`, or reading a reflog. This change
+introduces the first of each, in `git_donkey/stack_store.py` and
 `git_donkey/wheresat_graph.py`.
 
 Two existing commands change, in narrowly scoped ways.
@@ -4372,67 +4245,68 @@ Two existing commands change, in narrowly scoped ways.
 `git donkey` creates a worktree and branch in
 `git_donkey/donkey_worktrees.py::_add_worktree_for_new_branch`. At lines
 184-192 it resolves and freezes the base commit —
-`start_point = context.repo_home.commit(request.base_branch).hexsha` — and
-then calls `git worktree add --no-track -b <branch> <path> <start_point>`.
-The comment there explains the `--no-track`: it stops a new feature branch
-tracking the remote default branch when `branch.autoSetupMerge` is enabled.
-That decision stays. The frozen `start_point` is exactly the stack record's
-`base`, so recording it costs no extra Git call. Trunk resolution is already
-available through `git_donkey/remote_default.py`, which `git donkey` and
-`git plonk` share.
+`start_point = context.repo_home.commit(request.base_branch).hexsha` — and then
+calls `git worktree add --no-track -b <branch> <path> <start_point>`. The
+comment there explains the `--no-track`: it stops a new feature branch tracking
+the remote default branch when `branch.autoSetupMerge` is enabled. That
+decision stays. The frozen `start_point` is exactly the stack record's `base`,
+so recording it costs no extra Git call. Trunk resolution is already available
+through `git_donkey/remote_default.py`, which `git donkey` and `git plonk`
+share.
 
 `git plonk` cleans up completed worktrees.
 `git_donkey/plonk.py::_GitWorktreeAdapter.delete_branch` (line 160) runs
-`git branch -D` — **forced**, so it always succeeds when the branch exists;
-the "deliberately unforced" comment elsewhere in that module applies to
-worktree removal, not branch deletion. Results flow through the frozen
-`_PlonkResult` in `git_donkey/plonk_records.py` and are rendered by the pure
+`git branch -D` — **forced**, so it always succeeds when the branch exists; the
+"deliberately unforced" comment elsewhere in that module applies to worktree
+removal, not branch deletion. Results flow through the frozen `_PlonkResult` in
+`git_donkey/plonk_records.py` and are rendered by the pure
 `git_donkey/plonk_summary.py`, with dry-run handling driven by
-`_PlonkResult.is_dry_run`. Every mutation in that command is already guarded
-by `if not dry_run:`, so the new record operations follow the same shape.
+`_PlonkResult.is_dry_run`. Every mutation in that command is already guarded by
+`if not dry_run:`, so the new record operations follow the same shape.
 
-The key fact that shapes the whole record design, measured rather than
-assumed: `git branch -D` removes the entire `branch.<name>` configuration
-section, custom keys included, while `git branch -m` carries it. See
+The key fact that shapes the whole record design, measured rather than assumed:
+`git branch -D` removes the entire `branch.<name>` configuration section,
+custom keys included, while `git branch -m` carries it. See
 `Surprises & discoveries`.
 
-`git_donkey/observability.py` defines a closed vocabulary of bounded
-workflow records: `type Operation = typ.Literal[...]`, `type Outcome =
-typ.Literal[...]`, and label types such as `ErrorKind`. Every other command
-feeds it, `tests/observability_helpers.py` holds the recording recorder, and
-the root `conftest.py` installs it through the `recording_recorder` fixture.
-`docs/developers-guide.md:343-372` documents the convention.
+`git_donkey/observability.py` defines a closed vocabulary of bounded workflow
+records: `type Operation = typ.Literal[...]`,
+`type Outcome = typ.Literal[...]`, and label types such as `ErrorKind`. Every
+other command feeds it, `tests/observability_helpers.py` holds the recording
+recorder, and the root `conftest.py` installs it through the
+`recording_recorder` fixture. `docs/developers-guide.md:343-372` documents the
+convention.
 
 GitHub access already exists in `git_donkey/fafo_github.py`. It uses
 `github3.py` (`github3.login(token=...)`) with a token taken from
 `GITHUB_TOKEN` or `GH_TOKEN`, then a cached credentials file, then an
-interactive OAuth device flow through `loctocat`. Two behaviours in that
-module must **not** be inherited by this command:
-`_ensure_interactive` (`git_donkey/fafo_github.py:84-93`) calls
+interactive OAuth device flow through `loctocat`. Two behaviours in that module
+must **not** be inherited by this command: `_ensure_interactive`
+(`git_donkey/fafo_github.py:84-93`) calls
 `helpers._die(_GIT_FAFO_PREFIX, ..., 1)` when there is no terminal, and
-`_device_flow_token` (`:96-121`) blocks in `loctocat.poll()` when there is
-one. The `gh` CLI is not invoked anywhere in this project, and only
-single-object GitHub calls are made today; no paginated endpoint is used yet.
+`_device_flow_token` (`:96-121`) blocks in `loctocat.poll()` when there is one.
+The `gh` CLI is not invoked anywhere in this project, and only single-object
+GitHub calls are made today; no paginated endpoint is used yet.
 
 Output is plain `print()` to standard output and `helpers._eprint()` to
-standard error. There is no `rich` dependency and **no machine-readable
-output mode anywhere in the CLI surface today**; `--json` is new ground.
+standard error. There is no `rich` dependency and **no machine-readable output
+mode anywhere in the CLI surface today**; `--json` is new ground.
 
-Tests live in two trees. `tests/unit/` holds fast tests over pure modules,
-CLI parsing, and repository contracts. `tests/integration/` holds end-to-end
-tests that build real temporary repositories, with pytest-bdd feature files
-in `tests/integration/features/`. Binding is `scenarios("features/<file>")`
-at the bottom of a `test_*_bdd.py` module; steps live in that module and use
-`target_fixture=` to thread a scenario dataclass through Given, When, and
-Then. Steps shared between two BDD modules are hoisted into
-`tests/integration/conftest.py`, where — because the Ruff `assert` exemption
-in `pyproject.toml:123-128` covers only `**/test_*.py` and `tests/steps/*.py`
-— they must use `pytest.fail(...)` rather than a bare `assert`.
+Tests live in two trees. `tests/unit/` holds fast tests over pure modules, CLI
+parsing, and repository contracts. `tests/integration/` holds end-to-end tests
+that build real temporary repositories, with pytest-bdd feature files in
+`tests/integration/features/`. Binding is `scenarios("features/<file>")` at the
+bottom of a `test_*_bdd.py` module; steps live in that module and use
+`target_fixture=` to thread a scenario dataclass through Given, When, and Then.
+Steps shared between two BDD modules are hoisted into
+`tests/integration/conftest.py`, where — because the Ruff `assert` exemption in
+`pyproject.toml:123-128` covers only `**/test_*.py` and `tests/steps/*.py` —
+they must use `pytest.fail(...)` rather than a bare `assert`.
 
 Repository builders are `tests/git_repo_helpers.py::seed_repo`,
 `::configure_repo`, `::repo_with_remote_default`, and
-`tests/integration/conftest.py::_setup_repo`, which creates a bare remote
-plus a clone with a seeded `main`.
+`tests/integration/conftest.py::_setup_repo`, which creates a bare remote plus
+a clone with a seeded `main`.
 
 Three test libraries matter. `syrupy` stores snapshots as
 `__snapshots__/<module>.ambr`; the `ambrleaks` step in `make lint` fails the
@@ -4468,9 +4342,9 @@ Taken from `docs/squash-restack-boundary-recovery.md`, which EP-M1 writes.
   commit reachable. Written at birth by `git donkey`, refreshed by
   `git wheresat --record`, and converted to a tombstone by `git plonk`.
 - **Tombstone**: `refs/stack-tombstones/<branch>`, naming the tip a branch
-  had when it was deleted. It preserves the tip, not the reflog, so it
-  rescues the `parent-history-intact` gate and the merge-base rung but not
-  fork-point recovery.
+  had when it was deleted. It preserves the tip, not the reflog, so it rescues
+  the `parent-history-intact` gate and the merge-base rung but not fork-point
+  recovery.
 - **Shared record**: the same information written in prose into a pull
   request body, for recovery from another clone.
 - **Evidence tier**: how much weight a candidate boundary carries.
@@ -4491,33 +4365,31 @@ M-----S-----T               target
 There is no Terms of Reference document and no roadmap document in this
 repository. The upstream artefact for this work is the boundary-recovery
 procedure supplied with the task, which EP-M1 commits as
-`docs/squash-restack-boundary-recovery.md` so that later readers have the
-same source. Requirement identifiers below refer to sections of that
-document.
+`docs/squash-restack-boundary-recovery.md` so that later readers have the same
+source. Requirement identifiers below refer to sections of that document.
 
-Governing repository standards: `AGENTS.md` (code style, test-first
-delivery, quality gates, commit discipline),
-`docs/documentation-style-guide.md` (prose, headings, ADR format, Mermaid),
-`docs/developers-guide.md` (module boundaries, test infrastructure, cassette
-policy, observability, manual pages), `docs/manpages-design.md` (manual-page
-build contract), and `docs/adr-003-python-lint-architecture.md` (lint
-tiering).
+Governing repository standards: `AGENTS.md` (code style, test-first delivery,
+quality gates, commit discipline), `docs/documentation-style-guide.md` (prose,
+headings, ADR format, Mermaid), `docs/developers-guide.md` (module boundaries,
+test infrastructure, cassette policy, observability, manual pages),
+`docs/manpages-design.md` (manual-page build contract), and
+`docs/adr-003-python-lint-architecture.md` (lint tiering).
 
 New upstream artefacts this plan creates, in EP-M1:
 
 - `docs/stack-records.md` — the shared contract between `git donkey`,
   `git plonk`, and `git wheresat`: the record format and its version, the
   configuration keys and the anchor ref, which artefact is authoritative for
-  what, the birth-refresh-tombstone lifecycle, the namespace subset
-  invariant, the retention policy, and a `## Verification contract` section
-  naming the tests that pin each rule. This is the document a future
-  fourth command would read before touching a record.
+  what, the birth-refresh-tombstone lifecycle, the namespace subset invariant,
+  the retention policy, and a `## Verification contract` section naming the
+  tests that pin each rule. This is the document a future fourth command would
+  read before touching a record.
 - `docs/squash-restack-boundary-recovery.md` — the `git wheresat` design
   document: the graph and the three identities, the evidence model and its
   tiers, the eight gates with their decision procedures, the shared-record
-  format, the degraded-mode table, and the limits of fork-point and of
-  content comparison. It references `docs/stack-records.md` for the record
-  rather than restating it.
+  format, the degraded-mode table, and the limits of fork-point and of content
+  comparison. It references `docs/stack-records.md` for the record rather than
+  restating it.
 - `docs/adr-004-shared-stack-records.md` — the decision record for the
   contract: why one artefact across three commands, why configuration is
   authoritative and the ref is an anchor, why `git plonk` owns the end of the
@@ -4526,8 +4398,8 @@ New upstream artefacts this plan creates, in EP-M1:
 - `docs/adr-005-squash-restack-evidence-precedence.md` — the decision record
   for the evidence model: why evidence is tiered rather than merged, why
   inferred evidence can never establish a boundary, why a lone derived
-  candidate cannot either, why refusal is an outcome rather than an error,
-  why four exit codes, and why commit-message trailers were rejected.
+  candidate cannot either, why refusal is an outcome rather than an error, why
+  four exit codes, and why commit-message trailers were rejected.
 
 Trace links:
 
@@ -4553,63 +4425,61 @@ Seven of these links were written with planned test names that the
 implementation never used — `test_record_round_trip`,
 `test_identities_never_conflated`, `test_birth_record_is_attested`,
 `test_landed_must_reach_target`, `test_inferred_never_establishes`,
-`test_repository_unchanged`, `test_derived_needs_corroboration` — and one
-named a scenario the command's feature file does not hold yet. They are
-repointed at the tests that pin each requirement in the tree as it stands:
-`test_parent_values_round_trip_through_render_and_parse` is the record's
-round trip, `test_assess_reports_the_boundary_the_evidence_names` keeps the
-boundary apart from the child's tip, the record-precedence test reads the
-attested record, the parameterized gate test covers
-`landed-reachable-from-target` for every gate, the properties test is INV-2
-generalized, the read-only matrix is INV-1, the two-derived-source test is
-the fork-point rule, and the refusal test is refusal-as-outcome. A row names
-one representative test rather than an exhaustive set: a row naming a test
-that does not exist is a broken trace rather than a plan for one. The
-`REQ-*` identifiers are local to this plan — no other document in the
-repository defines or uses them — so a row reads left to right as the
-requirement, the design section that explains it, the milestone that lands
-it, and a test that would fail if it regressed. The last three rows name
-artefacts that EP-M9 and EP-M10 still owe; they become checkable as those
+`test_repository_unchanged`, `test_derived_needs_corroboration` — and one named
+a scenario the command's feature file does not hold yet. They are repointed at
+the tests that pin each requirement in the tree as it stands:
+`test_parent_values_round_trip_through_render_and_parse` is the record's round
+trip, `test_assess_reports_the_boundary_the_evidence_names` keeps the boundary
+apart from the child's tip, the record-precedence test reads the attested
+record, the parameterized gate test covers `landed-reachable-from-target` for
+every gate, the properties test is INV-2 generalized, the read-only matrix is
+INV-1, the two-derived-source test is the fork-point rule, and the refusal test
+is refusal-as-outcome. A row names one representative test rather than an
+exhaustive set: a row naming a test that does not exist is a broken trace
+rather than a plan for one. The `REQ-*` identifiers are local to this plan — no
+other document in the repository defines or uses them — so a row reads left to
+right as the requirement, the design section that explains it, the milestone
+that lands it, and a test that would fail if it regressed. The last three rows
+name artefacts that EP-M9 and EP-M10 still owe; they become checkable as those
 milestones land.
 
 ## Verification plan
 
 The interesting correctness of this command is concentrated in one pure
-function — the assessment that turns collected evidence into a result — and
-in two cross-cutting safety properties. Everything else is ordinary
-integration work. The implementation structure is chosen to put those
-obligations where they can be checked cheaply: the assessment is a pure
-function over frozen value types with no Git or network access, every
-mutating capability is confined to one object that is not constructed on the
-default path, and the graph questions the assessment depends on are supplied
-as a closed data record rather than as a live adapter handle.
+function — the assessment that turns collected evidence into a result — and in
+two cross-cutting safety properties. Everything else is ordinary integration
+work. The implementation structure is chosen to put those obligations where
+they can be checked cheaply: the assessment is a pure function over frozen
+value types with no Git or network access, every mutating capability is
+confined to one object that is not constructed on the default path, and the
+graph questions the assessment depends on are supplied as a closed data record
+rather than as a live adapter handle.
 
 ### Non-trivial axioms
 
-These are assumed, not verified. Each is a documented external interface.
-Where a claim was measured in this working tree, the measurement is recorded.
+These are assumed, not verified. Each is a documented external interface. Where
+a claim was measured in this working tree, the measurement is recorded.
 
 - AXIOM-1: `git merge-base --is-ancestor A B` exits `0` when `A` is an
   ancestor of `B` and `1` when it is not. Any other status means the question
-  could not be answered. Measured on Git 2.52.0 in this worktree: `0`, `1`,
-  and `128` for a nonexistent object ID. The adapter must therefore treat
-  "not 0 and not 1" as indeterminate rather than matching a specific code.
-  Source: [git-merge-base](https://git-scm.com/docs/git-merge-base).
+  could not be answered. Measured on Git 2.52.0 in this worktree: `0`, `1`, and
+  `128` for a nonexistent object ID. The adapter must therefore treat "not 0
+  and not 1" as indeterminate rather than matching a specific code. Source:
+  [git-merge-base](https://git-scm.com/docs/git-merge-base).
 - AXIOM-2: `git merge-base --all` lists every best common ancestor, and
-  `--fork-point` consults the reflog of the named ref and can therefore
-  return nothing, or a different answer, once that reflog expires or the ref
-  is deleted.
-  Source: [git-merge-base](https://git-scm.com/docs/git-merge-base).
+  `--fork-point` consults the reflog of the named ref and can therefore return
+  nothing, or a different answer, once that reflog expires or the ref is
+  deleted. Source: [git-merge-base](https://git-scm.com/docs/git-merge-base).
 - AXIOM-3: `git patch-id` ignores all whitespace within a patch, so distinct
   changes can share one identifier. `--stable` is **not** the default; it
   applies only when `patchid.stable` is set to true, so the adapter passes it
   explicitly to make results comparable across machines. Verified against
-  `git patch-id --help` on Git 2.52.0.
-  Source: [git-patch-id](https://git-scm.com/docs/git-patch-id).
+  `git patch-id --help` on Git 2.52.0. Source:
+  [git-patch-id](https://git-scm.com/docs/git-patch-id).
 - AXIOM-4: `git update-ref` with an expected-old object ID fails rather than
   overwriting when the current value differs, and an empty expected-old value
-  means "must not already exist".
-  Source: [git-update-ref](https://git-scm.com/docs/git-update-ref).
+  means "must not already exist". Source:
+  [git-update-ref](https://git-scm.com/docs/git-update-ref).
 - AXIOM-5: `git fetch --no-write-fetch-head` does not update `FETCH_HEAD`,
   and a refspec with an explicit destination writes only that destination.
   Source: [git-fetch](https://git-scm.com/docs/git-fetch).
@@ -4618,33 +4488,32 @@ Where a claim was measured in this working tree, the measurement is recorded.
   `merged_at` is non-null only for a merged pull request. Before merge, the
   same field may name a synthetic test-merge commit. A single-parent
   integration commit alone does not distinguish a squash merge from a rebase
-  merge.
-  Source: [GitHub REST: pulls](https://docs.github.com/en/rest/pulls/pulls).
+  merge. Source:
+  [GitHub REST: pulls](https://docs.github.com/en/rest/pulls/pulls).
 - AXIOM-7: `refs/pull/<n>/head` names the pull request's head commit and
   `refs/pull/<n>/merge` names a synthetic merge; the head ref survives branch
-  deletion but does not preserve superseded force-pushed incarnations.
-  Source: [Checking out pull requests
-  locally](https://docs.github.com/en/pull-requests/how-tos/review-pull-requests/checking-out-pull-requests-locally).
+  deletion but does not preserve superseded force-pushed incarnations. Source:
+  [Checking out pull requests locally](https://docs.github.com/en/pull-requests/how-tos/review-pull-requests/checking-out-pull-requests-locally).
 - AXIOM-8: `github3.py` 4.0.1 maps the pull request payload faithfully for
   the fields it models, and `GitHubCore.as_dict()` returns the raw payload so
-  unmodelled fields such as `stack` remain reachable. Library internals are
-  not verified; EP-M10 instead verifies the repository-owned mapping against a
+  unmodelled fields such as `stack` remain reachable. Library internals are not
+  verified; EP-M10 instead verifies the repository-owned mapping against a
   recorded cassette carrying every field the code reads.
 - AXIOM-9: a force-pushed pull request head may be unreachable on the server,
   and `git gc` may prune a local object that no ref reaches. Absence of a
   historical incarnation is not evidence that it never existed.
 - AXIOM-11: `git branch -D <name>` deletes the entire `branch.<name>`
-  configuration section, including keys Git does not define, and `git branch
-  -m <old> <new>` renames that section, carrying those keys, without touching
-  any ref outside `refs/heads`. Measured on Git 2.52.0 in a scratch
-  repository on 2026-09-14.
-  Source: [git-branch](https://git-scm.com/docs/git-branch).
+  configuration section, including keys Git does not define, and
+  `git branch -m <old> <new>` renames that section, carrying those keys,
+  without touching any ref outside `refs/heads`. Measured on Git 2.52.0 in a
+  scratch repository on 2026-09-14. Source:
+  [git-branch](https://git-scm.com/docs/git-branch).
 - AXIOM-12: a Git reference and a reference directory cannot share a path, so
   `refs/x/a` and `refs/x/a/b` cannot both exist. Measured: with
   `refs/stack-bases/alpha` present, creating `refs/stack-bases/alpha/beta`
   fails with "cannot lock ref". Git enforces the same rule on `refs/heads`,
-  which is why branches `alpha` and `alpha/beta` cannot coexist either.
-  Source: [git-check-ref-format](https://git-scm.com/docs/git-check-ref-format).
+  which is why branches `alpha` and `alpha/beta` cannot coexist either. Source:
+  [git-check-ref-format](https://git-scm.com/docs/git-check-ref-format).
 - AXIOM-13: Git configuration variable names are case-insensitive and are
   returned lower-cased. Measured: `branch.feat.stackParent` reads back as
   `branch.feat.stackparent`. The reader must therefore be case-insensitive.
@@ -4659,35 +4528,35 @@ Where a claim was measured in this working tree, the measurement is recorded.
   names the stack and the pull request's 1-based position in it but _not_ the
   pull request below, so the neighbour is read from the stack's own
   `pull_requests` list at `[position - 2]`. See the Progress entry for the
-  measurements.
-  Source: [About stacked pull
-  requests](https://docs.github.com/en/pull-requests/get-started/about-stacked-prs)
-  and [REST API endpoints for stacked pull
-  requests](https://docs.github.com/en/rest/pulls/stacks).
+  measurements. Source:
+  [About stacked pull requests](https://docs.github.com/en/pull-requests/get-started/about-stacked-prs)
+  and
+  [REST API endpoints for stacked pull requests](https://docs.github.com/en/rest/pulls/stacks).
 
 ### Gate semantics
 
 A gate is a named question with a specified decision procedure and three
-possible outcomes. Every gate returns `INDETERMINATE` rather than `FAILED`
-when its inputs are unavailable. `C` denotes the candidate boundary.
+possible outcomes. Every gate returns `INDETERMINATE` rather than `FAILED` when
+its inputs are unavailable. `C` denotes the candidate boundary.
 
 1. `parent-identity-matches` — the parent pull request used is the one
-   requested or derived, and the head ref was fetched from the repository
-   named by the pull request's own `head.repo.full_name`. `FAILED` when
-   either differs. `INDETERMINATE` when no parent identity is known.
+   requested or derived, and the head ref was fetched from the repository named
+   by the pull request's own `head.repo.full_name`. `FAILED` when either
+   differs. `INDETERMINATE` when no parent identity is known.
 2. `parent-merged` — the pull request reports `merged` true and a non-null
    `merged_at`. `FAILED` when it is open or closed-unmerged.
-3. `landed-reachable-from-target` — `git merge-base --is-ancestor LANDED
-   TARGET` returns ancestor. `FAILED` when it returns non-ancestor.
-4. `boundary-is-ancestor-of-child` — `git merge-base --is-ancestor C
-   child_tip` returns ancestor. `FAILED` when it returns non-ancestor.
+3. `landed-reachable-from-target` —
+   `git merge-base --is-ancestor LANDED TARGET` returns ancestor. `FAILED` when
+   it returns non-ancestor.
+4. `boundary-is-ancestor-of-child` — `git merge-base --is-ancestor C child_tip`
+   returns ancestor. `FAILED` when it returns non-ancestor.
 5. `replay-range-non-empty` — `git rev-list --count C..child_tip` is greater
    than zero. `FAILED` at zero, which means the child has no work to replay.
 6. `parent-history-intact` — `PARENT_HEAD` is known, its object is present,
    and `git merge-base --is-ancestor C PARENT_HEAD` returns ancestor, so the
    candidate lies on the parent's own history rather than on the trunk.
-   `FAILED` otherwise. This is the gate that catches the rewritten-parent
-   case, where `git merge-base --all` returns an earlier trunk commit.
+   `FAILED` otherwise. This is the gate that catches the rewritten-parent case,
+   where `git merge-base --all` returns an earlier trunk commit.
    `INDETERMINATE` when `PARENT_HEAD` cannot be recovered. `PARENT_HEAD` is
    sought in this order: the fetched pull request head, then
    `refs/stack-tombstones/<parent>` written by `git plonk`, then the parent's
@@ -4701,15 +4570,14 @@ when its inputs are unavailable. `C` denotes the candidate boundary.
    `git diff C child_tip | git patch-id --stable` comparison. `FAILED` when
    either check finds landed work inside the proposed replay range.
    `INDETERMINATE` when `PARENT_HEAD` or `LANDED` is unknown. This gate is
-   named for what it can actually check: it cannot prove the suffix is
-   _only_ child work, and AXIOM-3 means its patch comparison is not
-   injective. That limitation is why it is one gate among eight rather than
-   the whole answer.
+   named for what it can actually check: it cannot prove the suffix is _only_
+   child work, and AXIOM-3 means its patch comparison is not injective. That
+   limitation is why it is one gate among eight rather than the whole answer.
 8. `record-not-superseded` — applies only to a stack-record candidate. The
-   recorded child tip (`branch.<b>.stackBaseRecordedFrom`) is still an
-   ancestor of the current child tip, and no parent integration newer than
-   the record is visible. `FAILED` demotes the record from `ATTESTED` to
-   `DERIVED` and records the reason; it does not by itself refuse.
+   recorded child tip (`branch.<b>.stackBaseRecordedFrom`) is still an ancestor
+   of the current child tip, and no parent integration newer than the record is
+   visible. `FAILED` demotes the record from `ATTESTED` to `DERIVED` and
+   records the reason; it does not by itself refuse.
 
 An `Established` result requires every applicable gate to return `PASSED`, and
 a gate is applicable when the run set out to use the gate's subject. This is a
@@ -4737,7 +4605,7 @@ its `FAILED` moves that candidate from `ATTESTED` to `DERIVED`, where the
 corroboration rule of INV-2b decides whether it can still establish.
 
 Amendment (2026-09-14, EP-M6): this paragraph first read "gates 1, 2, 3, 6, and
-7 are not applicable ... they are recorded as `INDETERMINATE` and the result
+7 are not applicable … they are recorded as `INDETERMINATE` and the result
 cannot be `Established`", which made EP-M8's acceptance evidence — a branch
 whose parent was plonked, answered from the record and the tombstone with exit
 `0` — unreachable, because a run with no forge evidence could then never
@@ -4746,208 +4614,181 @@ requirements hold at once. See the Decision log.
 
 ### Invariants and lemmas
 
-**INV-1 — read-only by construction.**
-Obligation: a `git wheresat` invocation without `--record` leaves `HEAD`, the
-index, the working tree, `FETCH_HEAD`, all branches, all tags, all
-remote-tracking refs, all stash entries, and all local configuration
-byte-identical. The only permitted difference is the creation of refs under
-`refs/wheresat/`.
-Method: parameterized test over an explicit matrix of argument vectors,
-executed against a real temporary repository.
-Rationale: this is the command's headline promise. It spans the whole
-process, so it needs a real repository. It is a parameterized matrix rather
-than a Hypothesis property because the domain is a finite set of flag
+**INV-1 — read-only by construction.** Obligation: a `git wheresat` invocation
+without `--record` leaves `HEAD`, the index, the working tree, `FETCH_HEAD`,
+all branches, all tags, all remote-tracking refs, all stash entries, and all
+local configuration byte-identical. The only permitted difference is the
+creation of refs under `refs/wheresat/`. Method: parameterized test over an
+explicit matrix of argument vectors, executed against a real temporary
+repository. Rationale: this is the command's headline promise. It spans the
+whole process, so it needs a real repository. It is a parameterized matrix
+rather than a Hypothesis property because the domain is a finite set of flag
 combinations and because each example costs roughly 150-250 ms — straddling
 Hypothesis's 200 ms default deadline under a 30-second pytest timeout with
 `-n auto`, which would make the first genuine counterexample arrive as a
-timeout during shrinking rather than as a minimal failing case.
-Domain: at least eight vectors covering the default, `--no-fetch`,
-`--offline`, `--deep`, `--json`, `--branch` with a valid and an invalid
-value, `--onto` with an unresolvable revision, and `--op-id` with hostile
-values (`../`, a leading `-`, an embedded `:`, an embedded newline).
-Artefact: `tests/integration/test_wheresat_read_only.py`, marked
-`@pytest.mark.timeout(120)`.
-Evidence: a snapshot of `git for-each-ref
---format='%(refname) %(objectname)'`, `git status --porcelain=v2 --branch`,
-`git stash list`, `git config --local --list`, and a digest of every tracked
-file, compared before and after. Before implementation the test fails because
-the module does not exist.
-Non-vacuity: assert that at least one vector reached the fetch path and at
-least one reached an error path, by inspecting the recorded observations. The
-negative control is a deliberately mutating writer, injected in a companion
-test, which must make the comparison fail — proving the snapshot is
-sensitive.
+timeout during shrinking rather than as a minimal failing case. Domain: at
+least eight vectors covering the default, `--no-fetch`, `--offline`, `--deep`,
+`--json`, `--branch` with a valid and an invalid value, `--onto` with an
+unresolvable revision, and `--op-id` with hostile values (`../`, a leading `-`,
+an embedded `:`, an embedded newline). Artefact:
+`tests/integration/test_wheresat_read_only.py`, marked
+`@pytest.mark.timeout(120)`. Evidence: a snapshot of
+`git for-each-ref --format='%(refname) %(objectname)'`,
+`git status --porcelain=v2 --branch`, `git stash list`,
+`git config --local --list`, and a digest of every tracked file, compared
+before and after. Before implementation the test fails because the module does
+not exist. Non-vacuity: assert that at least one vector reached the fetch path
+and at least one reached an error path, by inspecting the recorded
+observations. The negative control is a deliberately mutating writer, injected
+in a companion test, which must make the comparison fail — proving the snapshot
+is sensitive.
 
-**INV-2 — inferred evidence never establishes a boundary.**
-Obligation: `Established.support` cannot contain an `InferredCandidate`, and
-`assess` never returns `Established` when every candidate is inferred.
-Method: the type system first — `Established.support` is typed
-`tuple[AttestedCandidate | DerivedCandidate, ...]`, so Pyright and `ty`
-reject the illegal construction — plus a Hypothesis property test over
-generated candidate sets.
-Rationale: the procedure is explicit that patch and tree comparisons are
-forensic evidence rather than an oracle. Making the illegal state
-unrepresentable means a regression is a type error; the property test then
-guards the selection logic that chooses what goes into `support`.
-Domain: sets of one to thirty-two candidates with generated tiers, commit
-identifiers, and supporting and contradicting statements. Thirty-two is the
-production cap on the candidate set, so the tested domain matches the real
-one.
-Artefact: `tests/unit/test_wheresat_properties.py`.
-Evidence: `uv run pytest tests/unit/test_wheresat_properties.py -q`. Fails
-before implementation because `assess` does not exist.
-Non-vacuity: classify generated cases into all-inferred, mixed, and
-no-inferred, and require each class to occur. The negative control is a
-mutant `assess` returning `Established` with `candidates[0]` whenever the
-list is non-empty; the property must reject it.
+**INV-2 — inferred evidence never establishes a boundary.** Obligation:
+`Established.support` cannot contain an `InferredCandidate`, and `assess` never
+returns `Established` when every candidate is inferred. Method: the type system
+first — `Established.support` is typed
+`tuple[AttestedCandidate | DerivedCandidate, ...]`, so Pyright and `ty` reject
+the illegal construction — plus a Hypothesis property test over generated
+candidate sets. Rationale: the procedure is explicit that patch and tree
+comparisons are forensic evidence rather than an oracle. Making the illegal
+state unrepresentable means a regression is a type error; the property test
+then guards the selection logic that chooses what goes into `support`. Domain:
+sets of one to thirty-two candidates with generated tiers, commit identifiers,
+and supporting and contradicting statements. Thirty-two is the production cap
+on the candidate set, so the tested domain matches the real one. Artefact:
+`tests/unit/test_wheresat_properties.py`. Evidence:
+`uv run pytest tests/unit/test_wheresat_properties.py -q`. Fails before
+implementation because `assess` does not exist. Non-vacuity: classify generated
+cases into all-inferred, mixed, and no-inferred, and require each class to
+occur. The negative control is a mutant `assess` returning `Established` with
+`candidates[0]` whenever the list is non-empty; the property must reject it.
 
-**INV-2b — a lone derived candidate never establishes a boundary.**
-Obligation: `assess` returns `Established` only when `support` contains at
-least one `AttestedCandidate`, or at least two candidates from independent
-sources naming the same commit.
-Method: Hypothesis property test, same domain as INV-2.
+**INV-2b — a lone derived candidate never establishes a boundary.** Obligation:
+`assess` returns `Established` only when `support` contains at least one
+`AttestedCandidate`, or at least two candidates from independent sources naming
+the same commit. Method: Hypothesis property test, same domain as INV-2.
 Rationale: `Risks` rates fork-point surprise as the highest-likelihood hazard
-in this design, and AXIOM-2 says fork-point answers change as reflogs expire.
-A binary heuristic/non-heuristic split would have let a lone fork-point
-candidate establish a boundary, aiming the safety net at the wrong risk.
-Domain: as INV-2, with source identity generated so "independent" is
-checkable.
-Artefact: `tests/unit/test_wheresat_properties.py`.
-Evidence: as INV-2.
-Non-vacuity: require generated cases with exactly one derived candidate, with
-two agreeing derived candidates from the same source, and with two agreeing
-derived candidates from different sources; the first two must not establish
-and the third must be able to. The negative control is a mutant that counts
-two candidates from one source as corroboration.
+in this design, and AXIOM-2 says fork-point answers change as reflogs expire. A
+binary heuristic/non-heuristic split would have let a lone fork-point candidate
+establish a boundary, aiming the safety net at the wrong risk. Domain: as
+INV-2, with source identity generated so "independent" is checkable. Artefact:
+`tests/unit/test_wheresat_properties.py`. Evidence: as INV-2. Non-vacuity:
+require generated cases with exactly one derived candidate, with two agreeing
+derived candidates from the same source, and with two agreeing derived
+candidates from different sources; the first two must not establish and the
+third must be able to. The negative control is a mutant that counts two
+candidates from one source as corroboration.
 
-**INV-3 — order independence.**
-Obligation: `assess` returns the same result for any permutation of its
-candidate sequence, apart from the ordering of the reported candidate list.
-Method: Hypothesis property test.
-Rationale: "do not choose the first result" is only enforceable if the answer
-cannot depend on position. Permutation invariance is the exact formal
-statement of that requirement.
-Domain: as INV-2, with a generated permutation applied.
-Artefact: `tests/unit/test_wheresat_properties.py`.
-Evidence: as INV-2.
-Non-vacuity: require generated cases with at least two distinct candidates.
-The negative control is the same `candidates[0]` mutant, which must fail for
-some permutation.
+**INV-3 — order independence.** Obligation: `assess` returns the same result
+for any permutation of its candidate sequence, apart from the ordering of the
+reported candidate list. Method: Hypothesis property test. Rationale: "do not
+choose the first result" is only enforceable if the answer cannot depend on
+position. Permutation invariance is the exact formal statement of that
+requirement. Domain: as INV-2, with a generated permutation applied. Artefact:
+`tests/unit/test_wheresat_properties.py`. Evidence: as INV-2. Non-vacuity:
+require generated cases with at least two distinct candidates. The negative
+control is the same `candidates[0]` mutant, which must fail for some
+permutation.
 
-**INV-4 — the result is the conjunction of the applicable gates.**
-Obligation: the result is `Established` if and only if every applicable gate
-returned `PASSED`; any `FAILED` gate yields `Unresolved`; any
-`INDETERMINATE` gate yields `Indeterminate` and no claim about ancestry.
-Method: parameterized test over the explicit truth table for the eight named
-gates, plus a Hypothesis property over generated gate vectors.
-Rationale: the gate set is finite and each row has distinct meaning, so
-enumeration is readable; the property guards against a ninth gate being added
-without being wired into the conjunction.
-Domain: the truth table, and generated vectors over `GateOutcome`.
-Artefact: `tests/unit/test_wheresat_policy.py` and
-`tests/unit/test_wheresat_properties.py`.
-Evidence: both suites fail before `assess` exists.
-Non-vacuity: the table must include one all-passed row — a witness that
-`Established` is reachable at all — and one row per gate in which that gate
-alone fails. Additionally, **each gate must have at least one test against a
-real repository or a recorded cassette in which that gate alone returns
-`FAILED`**, so a gate implemented as an unconditional `PASSED` is caught. The
-negative control is a mutant that ignores one named gate; the isolating row
-and the isolating repository test must both fail.
+**INV-4 — the result is the conjunction of the applicable gates.** Obligation:
+the result is `Established` if and only if every applicable gate returned
+`PASSED`; any `FAILED` gate yields `Unresolved`; any `INDETERMINATE` gate yields
+`Indeterminate` and no claim about ancestry. Method: parameterized test over
+the explicit truth table for the eight named gates, plus a Hypothesis property
+over generated gate vectors. Rationale: the gate set is finite and each row has
+distinct meaning, so enumeration is readable; the property guards against a
+ninth gate being added without being wired into the conjunction. Domain: the
+truth table, and generated vectors over `GateOutcome`. Artefact:
+`tests/unit/test_wheresat_policy.py` and
+`tests/unit/test_wheresat_properties.py`. Evidence: both suites fail before
+`assess` exists. Non-vacuity: the table must include one all-passed row — a
+witness that `Established` is reachable at all — and one row per gate in which
+that gate alone fails. Additionally, **each gate must have at least one test
+against a real repository or a recorded cassette in which that gate alone
+returns `FAILED`**, so a gate implemented as an unconditional `PASSED` is
+caught. The negative control is a mutant that ignores one named gate; the
+isolating row and the isolating repository test must both fail.
 
-**INV-5 — an error is not a negative answer.**
-Obligation: when the Git adapter or the GitHub adapter raises, the
-corresponding gate outcome is `INDETERMINATE`, the result is `Indeterminate`,
-the exit code is `3`, and the run does not fall through to a lower evidence
-tier. The report never states that the boundary is not an ancestor.
-Method: parameterized test with faulting adapter stubs, plus one behavioural
-scenario over a genuinely shallow clone.
+**INV-5 — an error is not a negative answer.** Obligation: when the Git adapter
+or the GitHub adapter raises, the corresponding gate outcome is
+`INDETERMINATE`, the result is `Indeterminate`, the exit code is `3`, and the
+run does not fall through to a lower evidence tier. The report never states
+that the boundary is not an ancestor. Method: parameterized test with faulting
+adapter stubs, plus one behavioural scenario over a genuinely shallow clone.
 Rationale: conflating "cannot tell" with "no" is the specific failure the
 procedure warns about, and it is invisible in happy-path testing. The GitHub
 side is the more dangerous one: a 404 from a token that has lost `repo` scope
 on a private repository is indistinguishable from "that pull request does not
 exist", and reading it as the latter lets a credentials problem become a
-confident wrong answer.
-Domain: each `WheresatGraph` method faulted in turn; and for
-`WheresatGitHub`, one case each for HTTP 401, 403 rate-limited with
+confident wrong answer. Domain: each `WheresatGraph` method faulted in turn;
+and for `WheresatGitHub`, one case each for HTTP 401, 403 rate-limited with
 `Retry-After`, 403 forbidden, 404, 500, a connection timeout, and a DNS
-failure.
-Artefact: `tests/unit/test_wheresat_policy.py`,
+failure. Artefact: `tests/unit/test_wheresat_policy.py`,
 `tests/unit/test_wheresat_github_faults.py`, and
-`tests/integration/features/git_wheresat.feature`.
-Evidence: the scenario "Shallow history cannot answer the ancestry
-question", and for the rate-limit case a recorded cassette carrying a 403
-body with `Retry-After` and `X-RateLimit-Reset`.
-Non-vacuity: assert the exit code is `3`, that the rendered report does not
-contain the "not an ancestor" phrasing, and that no lower-tier evidence was
-collected after the fault — so a mutant that returns the right code with the
-wrong message, or that quietly continues, still fails.
+`tests/integration/features/git_wheresat.feature`. Evidence: the scenario
+"Shallow history cannot answer the ancestry question", and for the rate-limit
+case a recorded cassette carrying a 403 body with `Retry-After` and
+`X-RateLimit-Reset`. Non-vacuity: assert the exit code is `3`, that the
+rendered report does not contain the "not an ancestor" phrasing, and that no
+lower-tier evidence was collected after the fault — so a mutant that returns
+the right code with the wrong message, or that quietly continues, still fails.
 
-**INV-6 — the boundary partitions the child history.**
-Obligation: for an `Established` result, the reported included commits are
-exactly those reachable from `child_tip` and not from `OLD_BASE`; included
-and excluded are disjoint; and their union is the set reachable from
-`child_tip`.
-Method: two complementary artefacts. A Hypothesis property over generated
-`GraphFacts` **data** — synthetic directed acyclic graphs, no repository
-built — and a parameterized test over six real repository shapes.
-Rationale: the property ranges over graph shape, so generation beats
-enumeration; but building a real repository per generated example is too
-expensive for Hypothesis's defaults, so the generated half operates on data
-and the real half is a finite, readable matrix.
-Domain: generated graphs of up to twenty nodes; and the shapes linear,
-forked-then-linear, advanced parent, rewritten parent, empty replay range,
-and a criss-cross merge producing multiple merge bases.
-Artefact: `tests/unit/test_wheresat_properties.py` and
-`tests/integration/test_wheresat_ranges.py`.
-Evidence: compare against `git rev-list OLD_BASE..child_tip` computed
-independently.
-Non-vacuity: classify generated graphs so linear and forked shapes both
-occur, and require at least one case with a non-empty excluded set. A mutant
-using an inclusive range must be rejected.
+**INV-6 — the boundary partitions the child history.** Obligation: for an
+`Established` result, the reported included commits are exactly those reachable
+from `child_tip` and not from `OLD_BASE`; included and excluded are disjoint;
+and their union is the set reachable from `child_tip`. Method: two
+complementary artefacts. A Hypothesis property over generated `GraphFacts`
+**data** — synthetic directed acyclic graphs, no repository built — and a
+parameterized test over six real repository shapes. Rationale: the property
+ranges over graph shape, so generation beats enumeration; but building a real
+repository per generated example is too expensive for Hypothesis's defaults, so
+the generated half operates on data and the real half is a finite, readable
+matrix. Domain: generated graphs of up to twenty nodes; and the shapes linear,
+forked-then-linear, advanced parent, rewritten parent, empty replay range, and
+a criss-cross merge producing multiple merge bases. Artefact:
+`tests/unit/test_wheresat_properties.py` and
+`tests/integration/test_wheresat_ranges.py`. Evidence: compare against
+`git rev-list OLD_BASE..child_tip` computed independently. Non-vacuity:
+classify generated graphs so linear and forked shapes both occur, and require
+at least one case with a non-empty excluded set. A mutant using an inclusive
+range must be rejected.
 
 **INV-7 — record writes are create-only unless an expected old value is
-supplied.**
-Obligation: `--record` creates `refs/stack-bases/<branch>` only when it does
-not exist; when it does exist, the write fails unless `--expected-old`
-matches the current value exactly. A record is refreshed only when the
-result was `Established` from attested evidence.
-Method: parameterized tests over the existing, expected, and new triple, plus
-a property that no `(existing, expected)` pair with `existing != expected`
-ever changes the ref.
+supplied.** Obligation: `--record` creates `refs/stack-bases/<branch>` only
+when it does not exist; when it does exist, the write fails unless
+`--expected-old` matches the current value exactly. A record is refreshed only
+when the result was `Established` from attested evidence. Method: parameterized
+tests over the existing, expected, and new triple, plus a property that no
+`(existing, expected)` pair with `existing != expected` ever changes the ref.
 Rationale: the procedure requires an existing record be reviewed and updated
-with an expected-old object ID, never silently overwritten. All three
-commands write through `stack_store`, so this is checked once for all of
-them.
-Domain: ref absent; present with matching expectation; present with
-mismatched expectation; present with no expectation; and a run whose result
-was `Unresolved`.
-Artefact: `tests/integration/test_wheresat_record.py`.
-Evidence: the ref value after each case, read with `git rev-parse`.
-Non-vacuity: include the case that legitimately updates the ref, so the test
-distinguishes "always refuses" from "refuses correctly". The negative control
-is a mutant that omits the expected-old argument.
+with an expected-old object ID, never silently overwritten. All three commands
+write through `stack_store`, so this is checked once for all of them. Domain:
+ref absent; present with matching expectation; present with mismatched
+expectation; present with no expectation; and a run whose result was
+`Unresolved`. Artefact: `tests/integration/test_wheresat_record.py`. Evidence:
+the ref value after each case, read with `git rev-parse`. Non-vacuity: include
+the case that legitimately updates the ref, so the test distinguishes "always
+refuses" from "refuses correctly". The negative control is a mutant that omits
+the expected-old argument.
 
-**INV-8 — a reported boundary is durable.**
-Obligation: when the result is `Established`, the boundary commit is
-reachable from at least one ref that survives the process. If it is reachable
-only through a per-run evidence ref, the run retains
-`refs/wheresat/boundary/<branch>` and the report names it.
+**INV-8 — a reported boundary is durable.** Obligation: when the result is
+`Established`, the boundary commit is reachable from at least one ref that
+survives the process. If it is reachable only through a per-run evidence ref,
+the run retains `refs/wheresat/boundary/<branch>` and the report names it.
 Method: parameterized test over two cases — boundary already reachable from a
-branch, and boundary reachable only from the fetched evidence ref.
-Rationale: without this, a successful run can hand the user an answer that
-`git gc --prune=now` invalidates minutes later, turning a correct boundary
-into `fatal: invalid upstream`. The evidence refs are not scratch; they are
-load-bearing for the answer's continued existence. Where a stack record
-exists, its anchor ref `refs/stack-bases/<branch>` already discharges this —
-which is the second reason the record is a ref and not configuration alone.
-Domain: the two cases above, each followed by deleting every per-run evidence
-namespace and running `git gc --prune=now`.
-Artefact: `tests/integration/test_wheresat_durability.py`, marked
-`@pytest.mark.timeout(120)`.
-Evidence: `git rev-parse --verify <boundary>^{commit}` still succeeds after
-the garbage collection, and the report names the retained ref in the second
-case.
+branch, and boundary reachable only from the fetched evidence ref. Rationale:
+without this, a successful run can hand the user an answer that
+`git gc --prune=now` invalidates minutes later, turning a correct boundary into
+`fatal: invalid upstream`. The evidence refs are not scratch; they are
+load-bearing for the answer's continued existence. Where a stack record exists,
+its anchor ref `refs/stack-bases/<branch>` already discharges this — which is
+the second reason the record is a ref and not configuration alone. Domain: the
+two cases above, each followed by deleting every per-run evidence namespace and
+running `git gc --prune=now`. Artefact:
+`tests/integration/test_wheresat_durability.py`, marked
+`@pytest.mark.timeout(120)`. Evidence:
+`git rev-parse --verify <boundary>^{commit}` still succeeds after the garbage
+collection, and the report names the retained ref in the second case.
 Non-vacuity: the first case must genuinely not retain a ref, so the test can
 tell "always retains" from "retains when needed". The negative control is a
 mutant that never retains, which the second case must reject.
@@ -4956,91 +4797,82 @@ mutant that never retains, which the second case must reject.
 Obligation: after any `git donkey` or `git plonk` run, every
 `refs/stack-bases/<b>` has a corresponding `refs/heads/<b>`. A record found
 without its branch is reported as orphaned and is never used as evidence.
-Method: a parameterized test over the lifecycle operations, plus a
-behavioural scenario for the orphan created outside plonk.
-Rationale: AXIOM-12 says the flat namespace has real directory/file
-collisions, and the only thing standing between this design and one is that
-`refs/heads` already forbids the same collision. That guarantee transfers
-only while the subset holds, so the subset is the invariant, not the absence
-of collisions.
-Domain: create, rename, delete through plonk, delete through plain
-`git branch -d`, and a pre-existing orphan.
+Method: a parameterized test over the lifecycle operations, plus a behavioural
+scenario for the orphan created outside plonk. Rationale: AXIOM-12 says the
+flat namespace has real directory/file collisions, and the only thing standing
+between this design and one is that `refs/heads` already forbids the same
+collision. That guarantee transfers only while the subset holds, so the subset
+is the invariant, not the absence of collisions. Domain: create, rename, delete
+through plonk, delete through plain `git branch -d`, and a pre-existing orphan.
 Artefact: `tests/unit/test_stack_store.py` and
-`tests/integration/features/git_plonk_stack.feature`.
-Evidence: `git for-each-ref refs/stack-bases/` compared against
-`git for-each-ref refs/heads/` after each operation.
-Non-vacuity: the plain `git branch -d` case must genuinely produce an orphan
-before the sweep runs, so the test distinguishes "never orphans" from
-"sweeps orphans". The negative control is a plonk that deletes the branch
-without removing the record; INV-9 must reject it.
+`tests/integration/features/git_plonk_stack.feature`. Evidence:
+`git for-each-ref refs/stack-bases/` compared against
+`git for-each-ref refs/heads/` after each operation. Non-vacuity: the plain
+`git branch -d` case must genuinely produce an orphan before the sweep runs, so
+the test distinguishes "never orphans" from "sweeps orphans". The negative
+control is a plonk that deletes the branch without removing the record; INV-9
+must reject it.
 
 **INV-10 — the record lifecycle is a total, single-owner state machine.**
-Obligation: for any branch, exactly one of these holds at any time — no
-record, a live record, or a tombstone. No operation produces a live record
-and a tombstone for the same branch, and no operation leaves a partially
-written record (a ref with no configuration, or configuration with a
-disagreeing ref) without reporting it as malformed.
-Method: a Hypothesis state-machine test (`RuleBasedStateMachine`) over the
-operations create, refresh, rename, delete-via-plonk, delete-via-git, sweep,
-and prune, checked against a real temporary repository.
-Rationale: this is the one place in the plan where operation _history_
-determines correctness rather than a single input, and three commands write
-to the artefact. That is exactly the case a stateful property test exists
-for, and enumerating the interleavings by hand would miss the ones that
-matter.
-Domain: sequences of up to twelve operations over up to three branches,
-including nested branch names.
-Artefact: `tests/integration/test_stack_record_lifecycle.py`, marked
+Obligation: for any branch, exactly one of these holds at any time — no record,
+a live record, or a tombstone. No operation produces a live record and a
+tombstone for the same branch, and no operation leaves a partially written
+record (a ref with no configuration, or configuration with a disagreeing ref)
+without reporting it as malformed. Method: a Hypothesis state-machine test
+(`RuleBasedStateMachine`) over the operations create, refresh, rename,
+delete-via-plonk, delete-via-git, sweep, and prune, checked against a real
+temporary repository. Rationale: this is the one place in the plan where
+operation _history_ determines correctness rather than a single input, and
+three commands write to the artefact. That is exactly the case a stateful
+property test exists for, and enumerating the interleavings by hand would miss
+the ones that matter. Domain: sequences of up to twelve operations over up to
+three branches, including nested branch names. Artefact:
+`tests/integration/test_stack_record_lifecycle.py`, marked
 `@pytest.mark.timeout(120)` and run under the registered Hypothesis profile.
-Evidence: after every step, the store's own reconciliation reports a
-consistent state, and INV-9 still holds.
-Non-vacuity: classify generated sequences so that at least one reaches a
-tombstone, one reaches a refresh, and one reaches an orphan; require each
-class. The negative control is a store whose delete path writes the tombstone
-but does not remove the live record, which the "exactly one of" check must
-reject.
+Evidence: after every step, the store's own reconciliation reports a consistent
+state, and INV-9 still holds. Non-vacuity: classify generated sequences so that
+at least one reaches a tombstone, one reaches a refresh, and one reaches an
+orphan; require each class. The negative control is a store whose delete path
+writes the tombstone but does not remove the live record, which the "exactly
+one of" check must reject.
 
-**INV-11 — a record means the branch is stacked.**
-Obligation: `git donkey` writes a stack record when the resolved base is not
-the trunk, and writes none when it is.
-Method: parameterized test over base selections, plus two behavioural
-scenarios.
-Rationale: the alternative failure — a record on every branch — makes
-`git wheresat` offer a boundary for branches that never had a parent, which
-is the confidently-wrong-answer mode arriving through the front door.
-Domain: base is the advertised default branch; base is a local branch that is
-not the trunk; base is `.`; base is an explicit commit; base is a remote
-default that differs from the local branch name.
-Artefact: `tests/unit/test_donkey_stack_records.py` and
-`tests/integration/features/git_donkey_stack.feature`.
-Evidence: the presence or absence of `branch.<new>.stackParent` after each
-run.
-Non-vacuity: both outcomes must occur across the matrix, so the test
-distinguishes "never records" from "records correctly". The negative control
-is a donkey that records unconditionally.
+**INV-11 — a record means the branch is stacked.** Obligation: `git donkey`
+writes a stack record when the resolved base is not the trunk, and writes none
+when it is. Method: parameterized test over base selections, plus two
+behavioural scenarios. Rationale: the alternative failure — a record on every
+branch — makes `git wheresat` offer a boundary for branches that never had a
+parent, which is the confidently-wrong-answer mode arriving through the front
+door. Domain: base is the advertised default branch; base is a local branch
+that is not the trunk; base is `.`; base is an explicit commit; base is a
+remote default that differs from the local branch name. Artefact:
+`tests/unit/test_donkey_stack_records.py` and
+`tests/integration/features/git_donkey_stack.feature`. Evidence: the presence
+or absence of `branch.<new>.stackParent` after each run. Non-vacuity: both
+outcomes must occur across the matrix, so the test distinguishes "never
+records" from "records correctly". The negative control is a donkey that
+records unconditionally.
 
-**LEM-1 — pull request head ancestry supports the boundary.**
-Statement: if the fetched `PARENT_HEAD` is an ancestor of `child_tip`, and
-gates 1, 2, 3, 5, 6, and 7 all pass, then `OLD_BASE = PARENT_HEAD` is sound.
-This is the common case named in the procedure. It is a lemma rather than an
-axiom because it depends on those gates holding; it is discharged by INV-4's
-truth table together with the behavioural scenario for that path. The
-residual gap is explicit: ancestry alone does not prove the suffix contains
-only child work, which is why gate 7 is separate and why gate 7's own
-limitation is stated in `Gate semantics` rather than hidden.
+**LEM-1 — pull request head ancestry supports the boundary.** Statement: if the
+fetched `PARENT_HEAD` is an ancestor of `child_tip`, and gates 1, 2, 3, 5, 6,
+and 7 all pass, then `OLD_BASE = PARENT_HEAD` is sound. This is the common case
+named in the procedure. It is a lemma rather than an axiom because it depends
+on those gates holding; it is discharged by INV-4's truth table together with
+the behavioural scenario for that path. The residual gap is explicit: ancestry
+alone does not prove the suffix contains only child work, which is why gate 7
+is separate and why gate 7's own limitation is stated in `Gate semantics`
+rather than hidden.
 
-**LEM-2 — a unique merge base is a candidate, not a conclusion.**
-Statement: when the parent advanced linearly after the child forked, a unique
-result from `git merge-base --all PARENT_HEAD child_tip` may be the inherited
-boundary, but only with `parent-history-intact` passing and a second
-independent candidate agreeing.
-Discharged by gate 6, by the `DERIVED`-tier corroboration rule (INV-2b), and
-by the behavioural scenario "Refusal after a rewritten parent", which
-exercises the case where the unique merge base is an earlier trunk commit and
-must be refused. Residual gap: the intactness check relies on surviving refs
-and reflogs; when those are gone the command refuses, which is the intended
-behaviour rather than a verification hole. `git plonk --hard` is the most
-likely cause of them being gone, which is why EP-M4 makes tombstoning
+**LEM-2 — a unique merge base is a candidate, not a conclusion.** Statement:
+when the parent advanced linearly after the child forked, a unique result from
+`git merge-base --all PARENT_HEAD child_tip` may be the inherited boundary, but
+only with `parent-history-intact` passing and a second independent candidate
+agreeing. Discharged by gate 6, by the `DERIVED`-tier corroboration rule
+(INV-2b), and by the behavioural scenario "Refusal after a rewritten parent",
+which exercises the case where the unique merge base is an earlier trunk commit
+and must be refused. Residual gap: the intactness check relies on surviving
+refs and reflogs; when those are gone the command refuses, which is the
+intended behaviour rather than a verification hole. `git plonk --hard` is the
+most likely cause of them being gone, which is why EP-M4 makes tombstoning
 required.
 
 ### Residual gaps
@@ -5048,37 +4880,36 @@ required.
 No formal proof or model check is proposed. The state space is small and
 finite, the properties above are total over their generated domains, and the
 remaining risk is concentrated in external-interface assumptions that a proof
-could not discharge. Two gaps are accepted explicitly: gate 7 cannot prove
-the replay range is _only_ child work, and AXIOM-3 means content comparison
-is not injective. Both are why the command refuses rather than guesses when
-they are the only evidence left. If a future change introduces concurrent
-evidence collection within one process, or a retry protocol, that is the
-point to reconsider a state-machine model.
+could not discharge. Two gaps are accepted explicitly: gate 7 cannot prove the
+replay range is _only_ child work, and AXIOM-3 means content comparison is not
+injective. Both are why the command refuses rather than guesses when they are
+the only evidence left. If a future change introduces concurrent evidence
+collection within one process, or a retry protocol, that is the point to
+reconsider a state-machine model.
 
 ## Plan of work
 
-The work proceeds specification first, then hardest fixture first, then
-inside out: pure value types and assessment, then the two Git ports, then
-collection, rendering, and the command line for local evidence only, then
-record refreshing, then GitHub. Each stage ends with validation, and no
-stage begins
+The work proceeds specification first, then hardest fixture first, then inside
+out: pure value types and assessment, then the two Git ports, then collection,
+rendering, and the command line for local evidence only, then record
+refreshing, then GitHub. Each stage ends with validation, and no stage begins
 until the previous stage's validation passes.
 
 Red-Green-Refactor applies **within each milestone**, not across the whole
-plan. Author a milestone's tests at that milestone's start, watch them fail
-for the intended reason, make them pass, then clean up. Do not attempt to
-write every test in the plan before any production code exists; a week spent
-entirely red is how test suites get deleted. Strict expected-failure markers
-are not used: the red stage is proven by running the test and recording the
-failure, and `Quality criteria` forbids an expected failure surviving into
-the finished work anyway.
+plan. Author a milestone's tests at that milestone's start, watch them fail for
+the intended reason, make them pass, then clean up. Do not attempt to write
+every test in the plan before any production code exists; a week spent entirely
+red is how test suites get deleted. Strict expected-failure markers are not
+used: the red stage is proven by running the test and recording the failure, and
+`Quality criteria` forbids an expected failure surviving into the finished
+work anyway.
 
-The flow the finished command implements is shown below. The diagram reads
-top to bottom: inputs are resolved, the parent's identity is established from
-the strongest available source, boundary candidates are collected in tier
-order, every candidate passes through the same gate set, and only a candidate
-whose evidence tier permits establishment and which clears every applicable
-gate produces a proposed rebase command.
+The flow the finished command implements is shown below. The diagram reads top
+to bottom: inputs are resolved, the parent's identity is established from the
+strongest available source, boundary candidates are collected in tier order,
+every candidate passes through the same gate set, and only a candidate whose
+evidence tier permits establishment and which clears every applicable gate
+produces a proposed rebase command.
 
 ```mermaid
 flowchart TD
@@ -5113,37 +4944,36 @@ _Figure 1: parent identification, tiered evidence collection, and gate
 evaluation in `git wheresat`._
 
 **Stage A — specify.** Write `docs/stack-records.md`,
-`docs/squash-restack-boundary-recovery.md`, and the two architectural
-decision records. No code. This stage ends when the record format and
-lifecycle, the eight gates, the three evidence tiers, and the four exit codes
-are written down and internally consistent.
+`docs/squash-restack-boundary-recovery.md`, and the two architectural decision
+records. No code. This stage ends when the record format and lifecycle, the
+eight gates, the three evidence tiers, and the four exit codes are written down
+and internally consistent.
 
 **Stage B — build the shared contract.** `git_donkey/stack_records.py` and
-`git_donkey/stack_store.py`, with the lifecycle state machine under test
-before any command uses them.
+`git_donkey/stack_store.py`, with the lifecycle state machine under test before
+any command uses them.
 
 **Stage C — wire the two existing commands.** `git donkey` writes records at
 birth; `git plonk` tombstones, sweeps, prunes, and reports. Each is
-independently valuable and independently reviewable, and together they mean
-the forensic ladder is built for a shrinking population rather than a growing
-one.
+independently valuable and independently reviewable, and together they mean the
+forensic ladder is built for a shrinking population rather than a growing one.
 
-**Stage D — build the hard fixtures.** Extend `tests/git_repo_helpers.py`
-with the three scenario builders the rest of the plan rests on. The
-rewritten-parent fixture comes first, because it is the case the refusal path
-exists for and the one with no existing precedent in this repository.
+**Stage D — build the hard fixtures.** Extend `tests/git_repo_helpers.py` with
+the three scenario builders the rest of the plan rests on. The rewritten-parent
+fixture comes first, because it is the case the refusal path exists for and the
+one with no existing precedent in this repository.
 
 **Stage E — `git wheresat` core.** Value types, gates, assessment, then the
 read-only graph port and the separate writing port. Tests first, milestone by
 milestone.
 
 **Stage F — `git wheresat` command.** Collection, rendering, and the command
-line, answering from local evidence and saying so honestly when it cannot.
-Then `--record`, then the GitHub surface.
+line, answering from local evidence and saying so honestly when it cannot. Then
+`--record`, then the GitHub surface.
 
 **Stage G — refactor and validate widely.** Split any module approaching the
-800-line Pylint cap or the CodeScene cohesion threshold, run `cs check` on
-each new file and `cs delta origin/main`, and run the full gate set.
+800-line Pylint cap or the CodeScene cohesion threshold, run `cs check` on each
+new file and `cs delta origin/main`, and run the full gate set.
 
 ## Milestones and plateaus
 
@@ -5154,69 +4984,62 @@ release tag, and has no external consumer, so interfaces and their callers
 change together. Every milestone's compatibility decision is therefore "none
 required", with one genuine exception recorded at EP-M3.
 
-**EP-M1 — the specification.**
-Outcome: `docs/stack-records.md`,
+**EP-M1 — the specification.** Outcome: `docs/stack-records.md`,
 `docs/squash-restack-boundary-recovery.md`,
 `docs/adr-004-shared-stack-records.md`, and
-`docs/adr-005-squash-restack-evidence-precedence.md` exist and are linked
-from `docs/contents.md`. No code.
-Requirements: establishes every `REQ-*` identifier this plan traces to.
-Acceptance evidence: `make markdownlint` and `make nixie` pass; each design
-document's `## Verification contract` section names every test this plan will
-create; both ADRs follow the template at
-`docs/documentation-style-guide.md:267-316`.
-Conformance check: the record format, the lifecycle, the eight gates, the
-three tiers, and the four exit codes in the documents match this plan
-exactly. Any divergence is resolved here, not later.
-Recovery: documentation only; revert the commit.
-Remaining gaps: everything else.
+`docs/adr-005-squash-restack-evidence-precedence.md` exist and are linked from
+`docs/contents.md`. No code. Requirements: establishes every `REQ-*` identifier
+this plan traces to. Acceptance evidence: `make markdownlint` and `make nixie`
+pass; each design document's `## Verification contract` section names every
+test this plan will create; both ADRs follow the template at
+`docs/documentation-style-guide.md:267-316`. Conformance check: the record
+format, the lifecycle, the eight gates, the three tiers, and the four exit
+codes in the documents match this plan exactly. Any divergence is resolved
+here, not later. Recovery: documentation only; revert the commit. Remaining
+gaps: everything else.
 
-**EP-M2 — the shared contract.**
-Outcome: `git_donkey/stack_records.py` holds the format, the key names, the
-ref-path derivation, the reconciliation rule, and the lifecycle decisions as
-pure functions. `git_donkey/stack_store.py` holds the only code that reads or
-writes a record over GitPython, behind a read protocol and a write protocol.
-No command used them at the point this milestone landed; EP-M3's `git donkey`
-is their first consumer.
-Requirements: REQ-record-format.
-Acceptance evidence: `uv run pytest tests/unit/test_stack_records.py
+**EP-M2 — the shared contract.** Outcome: `git_donkey/stack_records.py` holds
+the format, the key names, the ref-path derivation, the reconciliation rule,
+and the lifecycle decisions as pure functions. `git_donkey/stack_store.py`
+holds the only code that reads or writes a record over GitPython, behind a read
+protocol and a write protocol. No command used them at the point this milestone
+landed; EP-M3's `git donkey` is their first consumer. Requirements:
+REQ-record-format. Acceptance evidence:
+`uv run pytest tests/unit/test_stack_records.py
 tests/unit/test_stack_store.py
-tests/integration/test_stack_record_lifecycle.py -q` passes, having failed
-first; INV-10's state machine reaches a tombstone, a refresh, and an orphan —
-reached by its `start` rule rather than by its generated steps, for the reason
-recorded under Surprises — and asserts that it reached them.
-Conformance check: `stack_records` imports nothing else from `git_donkey`
-at all — it is the bottom of the dependency order; the store is the only
-module that writes; the record is versioned from the first commit.
+tests/integration/test_stack_record_lifecycle.py -q`
+passes, having failed first; INV-10's state machine reaches a tombstone, a
+refresh, and an orphan — reached by its `start` rule rather than by its
+generated steps, for the reason recorded under Surprises — and asserts that it
+reached them. Conformance check: `stack_records` imports nothing else from
+`git_donkey` at all — it is the bottom of the dependency order; the store is
+the only module that writes; the record is versioned from the first commit.
 Recovery: revert; EP-M3 and EP-M4 are the only consumers, and a revert takes
-them with it.
-Remaining gaps: no command reads a record (EP-M3 writes one; EP-M6 reads
-one). Two constants the sketch below names are deferred to their first
-consumer, for the dead-code reason recorded under Surprises:
+them with it. Remaining gaps: no command reads a record (EP-M3 writes one;
+EP-M6 reads one). Two constants the sketch below names are deferred to their
+first consumer, for the dead-code reason recorded under Surprises:
 `EVIDENCE_REFRESHED` to EP-M9 and `DEFAULT_TOMBSTONE_EXPIRE` to EP-M4, which
-also validates the configured expiration before it reaches `prune`. Until
-then the lifecycle tests spell those two values locally, so the store is
-exercised against the values the commands will pass rather than against the
-constants they will import.
+also validates the configured expiration before it reaches `prune`. Until then
+the lifecycle tests spell those two values locally, so the store is exercised
+against the values the commands will pass rather than against the constants
+they will import.
 
-**EP-M3 — `git donkey` records at birth. Shippable on its own.**
-Outcome: when `git donkey` creates a branch from a base that is not the
-trunk, it writes the stack record through `stack_store`, from the same frozen
-start point the worktree is created at. `docs/users-guide.md` gained a
-`### Stack records at branch birth` subsection explaining what is recorded
-and why, `docs/developers-guide.md` gained the `stack_record_write`
-observability entry and the timed-span mention, and
-`docs/v0-2-0-migration-guide.md` gained `### Stack records for new branches`
-with the new local state and the removal recipe. `docs/stack-records.md`
-received a clarification rather than a change: `stackParent` stores the base
-ref _as the caller selected it_, so the stored value for an implicit base is
-the remote-tracking ref `refs/remotes/<remote>/<default>`, not the bare branch
-name. The plan's milestone text also named a "module-boundaries entry" in the
-developers' guide; that entry belongs to the module it describes and is not
-needed to explain the behaviour, so the observability entry stands in its
-place.
-Requirements: REQ-record-birth, REQ-record-trunk.
-Acceptance evidence:
+**EP-M3 — `git donkey` records at birth. Shippable on its own.** Outcome: when
+`git donkey` creates a branch from a base that is not the trunk, it writes the
+stack record through `stack_store`, from the same frozen start point the
+worktree is created at. `docs/users-guide.md` gained a
+`### Stack records at branch birth` subsection explaining what is recorded and
+why, `docs/developers-guide.md` gained the `stack_record_write` observability
+entry and the timed-span mention, and `docs/v0-2-0-migration-guide.md` gained
+`### Stack records for new branches` with the new local state and the removal
+recipe. `docs/stack-records.md` received a clarification rather than a change:
+`stackParent` stores the base ref _as the caller selected it_, so the stored
+value for an implicit base is the remote-tracking ref
+`refs/remotes/<remote>/<default>`, not the bare branch name. The plan's
+milestone text also named a "module-boundaries entry" in the developers' guide;
+that entry belongs to the module it describes and is not needed to explain the
+behaviour, so the observability entry stands in its place. Requirements:
+REQ-record-birth, REQ-record-trunk. Acceptance evidence:
 `tests/integration/features/git_donkey_stack.feature` passes four scenarios
 covering both directions of INV-11 by three routes: a branch from an advanced
 feature branch is recorded; a branch from the named trunk is not; and a branch
@@ -5225,128 +5048,113 @@ resolves to the same remote-tracking ref the decision compares against.
 Requirements on the stored artefacts — `branch.<new>.stackParent` and
 `refs/stack-bases/<new>`, the anchor naming the parent's former tip, and the
 recorded boundary equalling the frozen commit — are asserted separately from
-the branch-tracking non-regression, which reads the branch's configuration
-back and checks nothing in it names `branch`, `remote`, or `merge`.
-Conformance check: the `--no-track` decision at
-`git_donkey/donkey_worktrees.py:184-192` is unchanged, and no existing
-`git donkey` behavioural scenario needed modification; the observability
-vocabulary additions match those listed in `Interfaces and dependencies`.
-Recovery: revert; records already written are inert and are swept by EP-M4
-or removed with `git update-ref -d` and `git config --local --unset`.
-Remaining gaps: nothing reads the record; nothing cleans it up. The
-documentation states both, so a reader is not left expecting a command that
-does not exist yet.
-Compatibility decision: **one genuine case**. Branches created before this
-milestone have no record, and branches created after it do. Both must be
-readable forever, so the record is versioned from EP-M2 and every reader
-treats "absent" as a first-class state rather than an error. This is a
-persisted-format concern, not a source-API one; no shim is introduced.
+the branch-tracking non-regression, which reads the branch's configuration back
+and checks nothing in it names `branch`, `remote`, or `merge`. Conformance
+check: the `--no-track` decision at `git_donkey/donkey_worktrees.py:184-192` is
+unchanged, and no existing `git donkey` behavioural scenario needed
+modification; the observability vocabulary additions match those listed in
+`Interfaces and dependencies`. Recovery: revert; records already written are
+inert and are swept by EP-M4 or removed with `git update-ref -d` and
+`git config --local --unset`. Remaining gaps: nothing reads the record; nothing
+cleans it up. The documentation states both, so a reader is not left expecting
+a command that does not exist yet. Compatibility decision: **one genuine
+case**. Branches created before this milestone have no record, and branches
+created after it do. Both must be readable forever, so the record is versioned
+from EP-M2 and every reader treats "absent" as a first-class state rather than
+an error. This is a persisted-format concern, not a source-API one; no shim is
+introduced.
 
 **EP-M4 — `git plonk` owns the end of the lifecycle. Shippable on its own.**
 Outcome: before deleting a branch, `git plonk` converts that branch's record
-into `refs/stack-tombstones/<branch>` and removes the live record. On every
-run it sweeps records orphaned by a plain `git branch -d` and prunes
-tombstones older than `stack.tombstoneExpire` (default 90 days). The summary
-names each action, dry runs report them without performing them, and
-`docs/plonk-cleanup-policy.md` and `docs/users-guide.md` record the
-behaviour — including the honest limitation that a tombstone preserves the
-tip, not the reflog, so fork-point recovery is still lost, and the second
-limitation EP-M2 measured: a branch deleted through plain Git leaves an anchor
-and no record, so the sweep clears that orphan but has no tip to preserve for
-it. The summary must distinguish the orphan it rescued from the one it could
-not, because reporting them alike would claim a rescue that did not happen.
-Requirements: REQ-record-death, REQ-record-sweep.
-Acceptance evidence:
+into `refs/stack-tombstones/<branch>` and removes the live record. On every run
+it sweeps records orphaned by a plain `git branch -d` and prunes tombstones
+older than `stack.tombstoneExpire` (default 90 days). The summary names each
+action, dry runs report them without performing them, and
+`docs/plonk-cleanup-policy.md` and `docs/users-guide.md` record the behaviour —
+including the honest limitation that a tombstone preserves the tip, not the
+reflog, so fork-point recovery is still lost, and the second limitation EP-M2
+measured: a branch deleted through plain Git leaves an anchor and no record, so
+the sweep clears that orphan but has no tip to preserve for it. The summary
+must distinguish the orphan it rescued from the one it could not, because
+reporting them alike would claim a rescue that did not happen. Requirements:
+REQ-record-death, REQ-record-sweep. Acceptance evidence:
 `tests/integration/features/git_plonk_stack.feature` passes; after
 `git plonk --hard` removes a parent worktree and deletes its branch,
 `refs/stack-tombstones/<parent>` names the tip the branch had, and
-`refs/stack-bases/<parent>` is gone. INV-9 holds after every mode.
-Conformance check: no change to which worktrees plonk removes or which
-branches it deletes — only to what it records and reports; the existing plonk
-behavioural suites pass unmodified.
-Recovery: revert; tombstones are inert refs.
-Remaining gaps: nothing reads records or tombstones yet. The configured
-`stack.tombstoneExpire` is unvalidated: `prune()` refuses an empty value and
-one Git reports no cutoff for, but Git's own date grammar reads an unparsable
-expression as _now_, which under `timestamp < cutoff` would prune every
-tombstone on the machine. EP-M4 must validate the configured value before it
-reaches `prune`, and must report the value it used, so a typo cannot silently
-discard the fleet's tombstones.
+`refs/stack-bases/<parent>` is gone. INV-9 holds after every mode. Conformance
+check: no change to which worktrees plonk removes or which branches it deletes
+— only to what it records and reports; the existing plonk behavioural suites
+pass unmodified. Recovery: revert; tombstones are inert refs. Remaining gaps:
+nothing reads records or tombstones yet. The configured `stack.tombstoneExpire`
+is unvalidated: `prune()` refuses an empty value and one Git reports no cutoff
+for, but Git's own date grammar reads an unparsable expression as _now_, which
+under `timestamp < cutoff` would prune every tombstone on the machine. EP-M4
+must validate the configured value before it reaches `prune`, and must report
+the value it used, so a typo cannot silently discard the fleet's tombstones.
 
-**EP-M5 — the hard fixtures.**
-Outcome: `tests/git_repo_helpers.py` gains `squash_merged_stack()`,
-`advanced_parent_stack()`, and `rewritten_parent_stack()`, each returning a
-`StackFixture` naming `child_tip`, `parent_head`, `inherited_head`, `landed`,
-`target`, and the `expected_old_base` (or `None` where the boundary is
-genuinely unrecoverable). `tests/unit/test_git_repo_helpers.py` proves each
-builder produces the ancestry it claims, and the same module gains the
-`is_ancestor()` and `merge_bases()` readers the later suites ask their
-questions with.
-Requirements: de-risks REQ-refusal and REQ-fork-point.
-Acceptance evidence: for `rewritten_parent_stack()`,
-`git merge-base --all parent_head child_tip` returns the trunk commit both
-branches came from — a commit that is an ancestor of `parent_head` and is
-therefore not refused by any ancestry question — the child still reaches the
-head it was cut from, and the range from that merge base holds the parent's own
-inherited work while the range excluding `inherited_head` does not. The
-assertions proving those facts are the milestone. (The acceptance as first
-written asked for a merge base that is **not** an ancestor of `parent_head`,
-which no merge base can be; the amendment is recorded in the Decision log and
-the design detail it exposes under Surprises.)
-Conformance check: builders live with the existing shared builders and
-configure a local commit identity, so tests never read the runner's global
-Git configuration.
-Recovery: test-only; revert.
-Remaining gaps: no `git wheresat` code.
+**EP-M5 — the hard fixtures.** Outcome: `tests/git_repo_helpers.py` gains
+`squash_merged_stack()`, `advanced_parent_stack()`, and
+`rewritten_parent_stack()`, each returning a `StackFixture` naming `child_tip`,
+`parent_head`, `inherited_head`, `landed`, `target`, and the
+`expected_old_base` (or `None` where the boundary is genuinely unrecoverable).
+`tests/unit/test_git_repo_helpers.py` proves each builder produces the ancestry
+it claims, and the same module gains the `is_ancestor()` and `merge_bases()`
+readers the later suites ask their questions with. Requirements: de-risks
+REQ-refusal and REQ-fork-point. Acceptance evidence: for
+`rewritten_parent_stack()`, `git merge-base --all parent_head child_tip`
+returns the trunk commit both branches came from — a commit that is an ancestor
+of `parent_head` and is therefore not refused by any ancestry question — the
+child still reaches the head it was cut from, and the range from that merge
+base holds the parent's own inherited work while the range excluding
+`inherited_head` does not. The assertions proving those facts are the
+milestone. (The acceptance as first written asked for a merge base that is
+**not** an ancestor of `parent_head`, which no merge base can be; the amendment
+is recorded in the Decision log and the design detail it exposes under
+Surprises.) Conformance check: builders live with the existing shared builders
+and configure a local commit identity, so tests never read the runner's global
+Git configuration. Recovery: test-only; revert. Remaining gaps: no
+`git wheresat` code.
 
-**EP-M6 — `git wheresat` pure core.**
-Outcome: `git_donkey/wheresat_records.py` and
-`git_donkey/wheresat_policy.py` exist, with no Git, filesystem, network, or
-process access. The unit, parameterized, and property suites for INV-2,
-INV-2b, INV-3, INV-4, and INV-6's generated half pass. Record parsing is
-imported from `stack_records`, not reimplemented.
-Requirements: REQ-identities, REQ-record-read, REQ-patch-caveat,
-REQ-integration.
-Acceptance evidence: `uv run pytest tests/unit/test_wheresat_policy.py
+**EP-M6 — `git wheresat` pure core.** Outcome: `git_donkey/wheresat_records.py`
+and `git_donkey/wheresat_policy.py` exist, with no Git, filesystem, network, or
+process access. The unit, parameterized, and property suites for INV-2, INV-2b,
+INV-3, INV-4, and INV-6's generated half pass. Record parsing is imported from
+`stack_records`, not reimplemented. Requirements: REQ-identities,
+REQ-record-read, REQ-patch-caveat, REQ-integration. Acceptance evidence:
+`uv run pytest tests/unit/test_wheresat_policy.py
 tests/unit/test_wheresat_gates.py tests/unit/test_wheresat_properties.py -q`
 passes, each suite having failed first. The gate table's tests live in their
-own module after the 800-line split recorded in the Decision log. `uv run ty
-check` rejects a deliberately added
+own module after the 800-line split recorded in the Decision log.
+`uv run ty check` rejects a deliberately added
 `Established(support=(InferredCandidate(...),))` — the type-level half of
-INV-2.
-Conformance check: both modules' docstrings state the purity rule; no
+INV-2. Conformance check: both modules' docstrings state the purity rule; no
 dependency added; `wheresat_records` imports only `stack_records`, and the
-dependency runs one way.
-Slicing: this milestone lands in the same commit as EP-M7 and EP-M8, because
-the dead-code gate refuses a module no console script reaches. Its acceptance
-evidence is reported here and is unaffected. See the Decision log and the
-measurement under Surprises.
-Recovery: revert the plateau commit; the modules are reached only from the
-`git wheresat` console script it also adds.
-Remaining gaps: no GitHub, no `--record`.
+dependency runs one way. Slicing: this milestone lands in the same commit as
+EP-M7 and EP-M8, because the dead-code gate refuses a module no console script
+reaches. Its acceptance evidence is reported here and is unaffected. See the
+Decision log and the measurement under Surprises. Recovery: revert the plateau
+commit; the modules are reached only from the `git wheresat` console script it
+also adds. Remaining gaps: no GitHub, no `--record`.
 
-**EP-M7 — the two `git wheresat` Git ports.**
-Outcome: `git_donkey/wheresat_graph.py` defines the read-only
-`WheresatGraph` protocol and its GitPython implementation;
-`git_donkey/wheresat_refs.py` defines `WheresatRefWriter`, the only object in
-the command that can write, and it delegates record writes to `stack_store`.
-`tests/integration/test_wheresat_read_only.py`, `test_wheresat_ranges.py`,
-and `test_wheresat_durability.py` pass, discharging INV-1, INV-6's real half,
-and INV-8.
-Requirements: REQ-read-only.
-Acceptance evidence: the read-only matrix passes and its companion negative
-control — the deliberately mutating writer — fails as intended.
-Conformance check: no module other than `wheresat_refs` and `stack_store` can
-write; the evidence namespace and the record namespace are the only ref
-prefixes written; `--op-id` values are validated before reaching either port.
-Slicing: lands in the same commit as EP-M6 and EP-M8. See the Decision log.
-Recovery: revert the plateau commit.
-Remaining gaps: no GitHub, no `--record`.
+**EP-M7 — the two `git wheresat` Git ports.** Outcome:
+`git_donkey/wheresat_graph.py` defines the read-only `WheresatGraph` protocol
+and its GitPython implementation; `git_donkey/wheresat_refs.py` defines
+`WheresatRefWriter`, the only object in the command that can write, and it
+delegates record writes to `stack_store`.
+`tests/integration/test_wheresat_read_only.py`, `test_wheresat_ranges.py`, and
+`test_wheresat_durability.py` pass, discharging INV-1, INV-6's real half, and
+INV-8. Requirements: REQ-read-only. Acceptance evidence: the read-only matrix
+passes and its companion negative control — the deliberately mutating writer —
+fails as intended. Conformance check: no module other than `wheresat_refs` and
+`stack_store` can write; the evidence namespace and the record namespace are
+the only ref prefixes written; `--op-id` values are validated before reaching
+either port. Slicing: lands in the same commit as EP-M6 and EP-M8. See the
+Decision log. Recovery: revert the plateau commit. Remaining gaps: no GitHub, no
+`--record`.
 
 **EP-M8 — collection, rendering, and the command line, local evidence only.
-Shippable plateau.**
-Outcome: `git_donkey/wheresat_collect.py` owns the ordered evidence
-pipeline; `git_donkey/wheresat_report.py` renders the text report;
+Shippable plateau.** Outcome: `git_donkey/wheresat_collect.py` owns the ordered
+evidence pipeline; `git_donkey/wheresat_report.py` renders the text report;
 `git_donkey/wheresat.py` exposes `run_git_wheresat(...) -> int` and records
 observations; `git_donkey/cli.py` gains `_wheresat_app` and `git_wheresat()`;
 `pyproject.toml` gains the console script, the `rst2man` line, and the
@@ -5362,103 +5170,95 @@ no milestone's acceptance evidence had claimed it, so EP-M8 is where it lands
 (see Surprises). The versioned `--json` envelope also lands here rather than in
 EP-M10, which the first draft had reserved it for; EP-M8's remaining gaps are
 amended to match, and the milestone's outcome sentence above is the record.
-Requirements: REQ-refusal, REQ-fork-point.
-Acceptance evidence: `git wheresat --help` prints the synopsis;
-`tests/unit/test_manpage_sources.py` passes; snapshot tests cover the
-established, unresolved, and indeterminate text reports; running the command
-on a branch created by `git donkey` in EP-M3, after its parent was plonked in
-EP-M4, exits `0` and prints the boundary from the record and the tombstone.
-That end-to-end path is the proof the three commands interoperate. The warning
-is pinned as rendered on every verdict and as changing no exit status
-(`tests/unit/test_wheresat_report.py`,
-`tests/integration/test_wheresat_read_only.py`).
-Conformance check: a new console script is introduced, which is intended; no
-existing signature changed.
+Requirements: REQ-refusal, REQ-fork-point. Acceptance evidence:
+`git wheresat --help` prints the synopsis; `tests/unit/test_manpage_sources.py`
+passes; snapshot tests cover the established, unresolved, and indeterminate
+text reports; running the command on a branch created by `git donkey` in EP-M3,
+after its parent was plonked in EP-M4, exits `0` and prints the boundary from
+the record and the tombstone. That end-to-end path is the proof the three
+commands interoperate. The warning is pinned as rendered on every verdict and
+as changing no exit status (`tests/unit/test_wheresat_report.py`,
+`tests/integration/test_wheresat_read_only.py`). Conformance check: a new
+console script is introduced, which is intended; no existing signature changed.
 Slicing: lands in the same commit as EP-M6 and EP-M7, which is what makes every
-symbol in them live. See the Decision log.
-Recovery: revert the plateau commit; `uv sync` clears an installed
-`git-wheresat` shim.
-Remaining gaps: records cannot be refreshed; no GitHub evidence; the forge and
-deep-comparison options are accepted and documented as having no effect yet; no
-behavioural suite for the forensic paths.
+symbol in them live. See the Decision log. Recovery: revert the plateau commit;
+`uv sync` clears an installed `git-wheresat` shim. Remaining gaps: records
+cannot be refreshed; no GitHub evidence; the forge and deep-comparison options
+are accepted and documented as having no effect yet; no behavioural suite for
+the forensic paths.
 
-**EP-M9 — refreshing the record.**
-Outcome: `--record` and `--expected-old` refresh the shared record through
-`stack_store`, with the create-only and expected-old semantics of INV-7, and
-write nothing else. The users' guide explains when to refresh, and why a
-birth record goes stale after a later parent integration.
-Requirements: REQ-record-refresh.
-Acceptance evidence: `tests/integration/test_wheresat_record.py` passes all
-thirteen tests that state INV-7 — the five cases, the property over the space of
-pairs those cases are examples of, and four that keep the five from passing
-vacuously. What each one holds is under the Progress entry; that the suite
-states the invariant as a property rather than as a matrix is the part worth
-repeating here.
-Conformance check: INV-1's matrix still passes unchanged, and a separate
-assertion counts the writer's constructions across two runs, proving that a run
-asked for no write builds none and the run asked for one builds exactly one.
-Recovery: revert; a refreshed record is restored from its ref reflog.
-Remaining gaps: no GitHub evidence.
-As built: the refresh is the only record write the command has, and a record is
-never created — what creates one is `git donkey` at branch birth, where the
-parent is known because the user named the base. So the create-only half of
-INV-7 is the anchor ref's, and a run on a branch with no record reports that it
-has none to refresh. `_expected_old` refuses all three wrong pairings rather
-than only the mismatched one: an anchor that exists with no expectation, an
-expectation with no anchor, and an expectation naming a commit the anchor does
-not hold, each a usage error with status 2. The two states that leave nothing to
-write report different warnings, because they are different facts: no boundary
-was established, or a boundary was established from derived evidence and only an
-attested claim is written back. Both are observed as a write that was rejected,
-not as a failure of writing.
-The boundary cannot move at this milestone, and the milestone says so rather
-than leaving the users' guide to imply it: the local evidence path has exactly
-one attested source, the record's own claim, so the boundary a refresh writes is
-the boundary the record already names. What a refresh changes is the anchor, the
-tip the record was written from, and the evidence kind. The compare-and-swap is
-already the shape a moving boundary needs, which is why the anchor carries it
-rather than the configuration.
-The command's writing surface moved to `git_donkey/wheresat_writes.py`, and the
-usage error to `git_donkey/wheresat_errors.py`, so `wheresat.py` stays under the
-800-line module cap and the writer is built inside the method that needs it
-(see the Decision log).
-Delivered: `tests/integration/test_wheresat_record.py`, the amended
-`tests/integration/features/git_wheresat_record.feature` with its binder, the
-`anchor` read pinned in `tests/unit/test_stack_store_reads.py`, and the
-users'-guide and developers'-guide entries. See the Progress entry for the
+**EP-M9 — refreshing the record.** Outcome: `--record` and `--expected-old`
+refresh the shared record through `stack_store`, with the create-only and
+expected-old semantics of INV-7, and write nothing else. The users' guide
+explains when to refresh, and why a birth record goes stale after a later
+parent integration. Requirements: REQ-record-refresh. Acceptance evidence:
+`tests/integration/test_wheresat_record.py` passes all thirteen tests that
+state INV-7 — the five cases, the property over the space of pairs those cases
+are examples of, and four that keep the five from passing vacuously. What each
+one holds is under the Progress entry; that the suite states the invariant as a
+property rather than as a matrix is the part worth repeating here. Conformance
+check: INV-1's matrix still passes unchanged, and a separate assertion counts
+the writer's constructions across two runs, proving that a run asked for no
+write builds none and the run asked for one builds exactly one. Recovery:
+revert; a refreshed record is restored from its ref reflog. Remaining gaps: no
+GitHub evidence. As built: the refresh is the only record write the command
+has, and a record is never created — what creates one is `git donkey` at branch
+birth, where the parent is known because the user named the base. So the
+create-only half of INV-7 is the anchor ref's, and a run on a branch with no
+record reports that it has none to refresh. `_expected_old` refuses all three
+wrong pairings rather than only the mismatched one: an anchor that exists with
+no expectation, an expectation with no anchor, and an expectation naming a
+commit the anchor does not hold, each a usage error with status 2. The two
+states that leave nothing to write report different warnings, because they are
+different facts: no boundary was established, or a boundary was established
+from derived evidence and only an attested claim is written back. Both are
+observed as a write that was rejected, not as a failure of writing. The
+boundary cannot move at this milestone, and the milestone says so rather than
+leaving the users' guide to imply it: the local evidence path has exactly one
+attested source, the record's own claim, so the boundary a refresh writes is
+the boundary the record already names. What a refresh changes is the anchor,
+the tip the record was written from, and the evidence kind. The
+compare-and-swap is already the shape a moving boundary needs, which is why the
+anchor carries it rather than the configuration. The command's writing surface
+moved to `git_donkey/wheresat_writes.py`, and the usage error to
+`git_donkey/wheresat_errors.py`, so `wheresat.py` stays under the 800-line
+module cap and the writer is built inside the method that needs it (see the
+Decision log). Delivered: `tests/integration/test_wheresat_record.py`, the
+amended `tests/integration/features/git_wheresat_record.feature` with its
+binder, the `anchor` read pinned in `tests/unit/test_stack_store_reads.py`, and
+the users'-guide and developers'-guide entries. See the Progress entry for the
 counts and the Surprises for the two findings that shaped it.
 
 **EP-M10 — GitHub evidence, machine-readable output, and the behavioural
-suite.**
-Outcome: `git_donkey/wheresat_github.py` defines `WheresatGitHub` and its
-`github3.py` implementation, with its own token resolution that never
+suite.** Outcome: `git_donkey/wheresat_github.py` defines `WheresatGitHub` and
+its `github3.py` implementation, with its own token resolution that never
 prompts, and `run_git_wheresat` gains the `github` parameter the plateau left
 out; the envelope `--json` emits on every exit code already landed with EP-M8,
 so what remains here for it is the developers' guide's output convention and
-the cassette-recording procedure. Cassettes
-recorded against real GitHub traffic cover a merged squash pull request, an
-open pull request, a rate-limited response, and one commit-to-pull-request
-association page. `tests/integration/features/git_wheresat.feature` and its
-binder module pass. `docs/developers-guide.md` gains the `--json` convention,
-the cassette-recording procedure, and the `stack`-field note;
+the cassette-recording procedure. Cassettes recorded against real GitHub
+traffic cover a merged squash pull request, an open pull request, a
+rate-limited response, and one commit-to-pull-request association page.
+`tests/integration/features/git_wheresat.feature` and its binder module pass.
+`docs/developers-guide.md` gains the `--json` convention, the
+cassette-recording procedure, and the `stack`-field note;
 `docs/v0-2-0-migration-guide.md` gains a new-commands entry. The report's
 proposed rebase plan is completed here too: the backup ref the envelope's
-`backupRef` key has been holding a place for, the statement of the child tip the
-answer was computed against, and the full object IDs the design review requires
-(see the EP-M9 Decision log entry on `backupRef` and the remaining gaps below).
-Requirements: REQ-parent-pr, REQ-pr-head.
-Acceptance evidence: `make test` passes with the cassettes replayed in `none`
-record mode, so any unrecorded request fails; `uv run pytest
-tests/unit/test_wheresat_github_faults.py -q` covers all seven error classes.
-Conformance check: no live network access in the suite; the `Authorization`
-header is filtered from every cassette; the association search is bounded and
-reports truncation; no cassette was hand-edited.
-Recovery: revert; cassettes are additive files.
-Remaining gaps: the report's rebase plan is completed here — the backup ref the
-``backupRef`` key has been holding a place for, the statement of the child tip
-the answer was computed against, and the full 40-character object IDs the design
-review requires, which the text rendering currently abbreviates while the
-envelope carries them (see the Decision log, EP-M9).
+`backupRef` key has been holding a place for, the statement of the child tip
+the answer was computed against, and the full object IDs the design review
+requires (see the EP-M9 Decision log entry on `backupRef` and the remaining
+gaps below). Requirements: REQ-parent-pr, REQ-pr-head. Acceptance evidence:
+`make test` passes with the cassettes replayed in `none` record mode, so any
+unrecorded request fails;
+`uv run pytest tests/unit/test_wheresat_github_faults.py -q` covers all seven
+error classes. Conformance check: no live network access in the suite; the
+`Authorization` header is filtered from every cassette; the association search
+is bounded and reports truncation; no cassette was hand-edited. Recovery:
+revert; cassettes are additive files. Remaining gaps: the report's rebase plan
+is completed here — the backup ref the ``backupRef`` key has been holding a
+place for, the statement of the child tip the answer was computed against, and
+the full 40-character object IDs the design review requires, which the text
+rendering currently abbreviates while the envelope carries them (see the
+Decision log, EP-M9).
 
 ## Concrete steps
 
@@ -5469,8 +5269,8 @@ cd "$(git rev-parse --show-toplevel)"
 ```
 
 Set the log prefix once per shell so gate output is captured per branch.
-Replace any `/` in the branch name, or `tee` will try to write into a
-directory that does not exist:
+Replace any `/` in the branch name, or `tee` will try to write into a directory
+that does not exist:
 
 ```shell
 BRANCH="$(git branch --show-current | tr '/' '-')"
@@ -5495,8 +5295,8 @@ Expected before implementation:
 ImportError: cannot import name 'wheresat_policy' from 'git_donkey'
 ```
 
-Run the full gate set before each commit, sequentially and never in
-parallel, so the build cache is used:
+Run the full gate set before each commit, sequentially and never in parallel,
+so the build cache is used:
 
 ```shell
 make check-fmt 2>&1 | tee "$(LOG check-fmt)"
@@ -5512,16 +5312,16 @@ make markdownlint 2>&1 | tee "$(LOG markdownlint)"
 make nixie        2>&1 | tee "$(LOG nixie)"
 ```
 
-Check code health on the new files before committing, because the pull
-request gate applies the same rules:
+Check code health on the new files before committing, because the pull request
+gate applies the same rules:
 
 ```shell
 cs check git_donkey/wheresat_policy.py
 cs delta origin/main
 ```
 
-Record a cassette in EP-M10. Do this once, against real traffic, and never
-edit the result by hand:
+Record a cassette in EP-M10. Do this once, against real traffic, and never edit
+the result by hand:
 
 ```shell
 env -u GH_TOKEN GITHUB_TOKEN="$(env -u GH_TOKEN gh auth token)" \
@@ -5711,16 +5511,16 @@ Feature: Preserve stack evidence through cleanup
     And the command exits with status 0
 ```
 
-The last scenario is the one that matters most: it is the end-to-end proof
-that `git donkey`, `git plonk`, and `git wheresat` interoperate through one
-artefact. It belongs to EP-M8, because that is when `git wheresat` can run,
-but its fixtures come from EP-M3 and EP-M4.
+The last scenario is the one that matters most: it is the end-to-end proof that
+`git donkey`, `git plonk`, and `git wheresat` interoperate through one
+artefact. It belongs to EP-M8, because that is when `git wheresat` can run, but
+its fixtures come from EP-M3 and EP-M4.
 
 `tests/integration/features/git_wheresat.feature`, cut deliberately to seven
-scenarios. Single-gate assertions such as "the pull request is still open"
-and "the integration commit is absent from the target" belong in
-parameterized policy tests against faulting stubs, not in user journeys; they
-are covered by INV-4's per-gate obligation instead.
+scenarios. Single-gate assertions such as "the pull request is still open" and
+"the integration commit is absent from the target" belong in parameterized
+policy tests against faulting stubs, not in user journeys; they are covered by
+INV-4's per-gate obligation instead.
 
 ```gherkin
 Feature: Locate the replay boundary for a squash-merged parent
@@ -5840,8 +5640,8 @@ they vary is whether that record is still reachable.
   rejected for the intended reason. Every gate has a test in which that gate
   alone fails against a real repository or a recorded cassette.
 - Lint and typecheck: `make check-fmt`, `make lint`, and `make typecheck`
-  pass. `interrogate --fail-under 100` means every new public symbol carries
-  a docstring.
+  pass. `interrogate --fail-under 100` means every new public symbol carries a
+  docstring.
 - Documentation: `make markdownlint` and `make nixie` pass; the users' guide
   section, developers' guide section, README bullet, migration-guide entry,
   design document, ADR, and manual page are present and cross-linked from
@@ -5852,8 +5652,8 @@ they vary is whether that record is still reachable.
 ### Quality method
 
 Run the four code gates sequentially before every code commit and the two
-Markdown gates before every documentation commit, capturing each with `tee`
-to `/tmp`. Delegate full gate runs to the `scrutineer` sub-agent rather than
+Markdown gates before every documentation commit, capturing each with `tee` to
+`/tmp`. Delegate full gate runs to the `scrutineer` sub-agent rather than
 running them inline, and read the cited log on failure instead of re-running
 the gate.
 
@@ -5864,17 +5664,16 @@ only temporary repositories under pytest's `tmp_path`.
 
 The command writes only refs under `refs/wheresat/`. Two of those are
 deliberate and durable: `refs/wheresat/parent-head/<owner>/<repo>/<number>`
-caches an immutable fetched pull request head, so a second run on the same
-pull request performs no fetch at all; and `refs/wheresat/boundary/<branch>`
-is retained only when INV-8 finds the established boundary is otherwise
+caches an immutable fetched pull request head, so a second run on the same pull
+request performs no fetch at all; and `refs/wheresat/boundary/<branch>` is
+retained only when INV-8 finds the established boundary is otherwise
 unreachable. Per-run namespaces under `refs/wheresat/op/<op-id>/` are deleted
 in a `finally` block.
 
 Do **not** sweep the whole namespace. Refs live in the common ref store, so
-every worktree of a checkout shares `refs/wheresat/`, and a global delete
-will destroy a sibling worktree's in-flight evidence mid-fetch, or the
-durable boundary ref another run is relying on. To clear stale per-run
-namespaces only:
+every worktree of a checkout shares `refs/wheresat/`, and a global delete will
+destroy a sibling worktree's in-flight evidence mid-fetch, or the durable
+boundary ref another run is relying on. To clear stale per-run namespaces only:
 
 ```shell
 git for-each-ref --format='%(refname) %(committerdate:unix)' \
@@ -5899,8 +5698,8 @@ abandoned, reverting its commits restores the previous plateau, because no
 later milestone depends on a partially applied earlier one.
 
 Note for anyone working in a `git-donkey` worktree: the shared stash stack
-means bare `git stash` and `git stash pop` are unsafe here. Set work aside
-with a temporary commit instead.
+means bare `git stash` and `git stash pop` are unsafe here. Set work aside with
+a temporary commit instead.
 
 ## Artefacts and notes
 
@@ -5914,8 +5713,8 @@ git rev-parse --verify --quiet "$DEST^{commit}" >/dev/null || \
 PARENT_HEAD="$(git rev-parse --verify "$DEST^{commit}")"
 ```
 
-The ancestry questions the gates ask, in plumbing form. Measured on Git
-2.52.0 in this worktree, `--is-ancestor` returns `0`, `1`, or `128`:
+The ancestry questions the gates ask, in plumbing form. Measured on Git 2.52.0
+in this worktree, `--is-ancestor` returns `0`, `1`, or `128`:
 
 ```shell
 git merge-base --is-ancestor "$PARENT_HEAD" "$CHILD_TIP"   # gate 4 source
@@ -5958,8 +5757,8 @@ git update-ref --create-reflog "refs/stack-bases/$BRANCH" "$OLD_BASE" ""
 The trailing empty string is the expected-old value, which makes that form
 create-only. An update supplies the current object ID instead.
 
-The shared record, for cross-clone recovery, written by a human into the
-child pull request body:
+The shared record, for cross-clone recovery, written by a human into the child
+pull request body:
 
 ```plaintext
 Stack parent: owner/repository#123
@@ -5970,18 +5769,18 @@ Replay boundary (exclusive): <full commit object ID>
 
 No new package dependency. Everything needed is already declared: `cyclopts`
 for the command line, `GitPython` for repository access, `github3.py` and
-`loctocat` for GitHub, and `pytest`, `pytest-bdd`, `hypothesis`, `syrupy`,
-and `vcrpy` for tests.
+`loctocat` for GitHub, and `pytest`, `pytest-bdd`, `hypothesis`, `syrupy`, and
+`vcrpy` for tests.
 
 House conventions that constrain the code, from `pyproject.toml` and
 `.pylintrc-df12.toml`: Ruff line length 88, McCabe complexity at most 8, at
 most 4 arguments, at most 10 locals, at most 2 boolean operators in an
 expression; Pylint module length at most 800 lines and at most 70 statements
-per function. Bare `from dataclasses import ...`, `from typing import ...`,
-and `from enum import ...` are banned — import the module and qualify. Use
-frozen, slotted dataclasses for value types, `enum.StrEnum` for closed
-vocabularies, `typing.Protocol` for adapter interfaces, and PEP 695 syntax
-for generics and type aliases.
+per function. Bare `from dataclasses import ...`, `from typing import ...`, and
+`from enum import ...` are banned — import the module and qualify. Use frozen,
+slotted dataclasses for value types, `enum.StrEnum` for closed vocabularies,
+`typing.Protocol` for adapter interfaces, and PEP 695 syntax for generics and
+type aliases.
 
 ### `git_donkey/stack_records.py`
 
@@ -6141,8 +5940,8 @@ def is_repository_slug(owner: str, separator: str, name: str) -> bool:
 
 ### `git_donkey/stack_store.py`
 
-The only module in the package that reads or writes a stack record. Split
-into a read protocol and a write protocol, so a caller that only reads —
+The only module in the package that reads or writes a stack record. Split into
+a read protocol and a write protocol, so a caller that only reads —
 `git wheresat` on its default path — never holds an object that can write.
 
 ```python
@@ -6238,10 +6037,10 @@ under `--record`.
 
 `git wheresat`'s value types. No Git, filesystem, network, or process access.
 Its only intra-package import is `git_donkey.stack_records`, for
-`PullRequestIdentity` and `StackRecord`; the dependency runs one way, from
-the command's types towards the shared contract, never back. Every type any
-other wheresat module exchanges is defined here, so no adapter's types leak
-into the policy.
+`PullRequestIdentity` and `StackRecord`; the dependency runs one way, from the
+command's types towards the shared contract, never back. Every type any other
+wheresat module exchanges is defined here, so no adapter's types leak into the
+policy.
 
 ```python
 class Ancestry(enum.StrEnum):
@@ -6429,9 +6228,9 @@ failure. That is the type-level half of INV-2.
 
 ### `git_donkey/wheresat_shared_record.py`
 
-Parsing and rendering of the shared-record block found in a pull request
-body. Pure. The local record's format lives in `stack_records`; this module
-owns only the cross-clone prose form.
+Parsing and rendering of the shared-record block found in a pull request body.
+Pure. The local record's format lives in `stack_records`; this module owns only
+the cross-clone prose form.
 
 ```python
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -6535,9 +6334,9 @@ def may_establish(support: typ.Sequence[Candidate]) -> bool:
 
 ### `git_donkey/wheresat_collect.py`
 
-The ordered evidence pipeline. Precedence is the order of a module-level
-tuple, so a unit test can assert it against the ADR rather than against the
-reading order of a long function.
+The ordered evidence pipeline. Precedence is the order of a module-level tuple,
+so a unit test can assert it against the ADR rather than against the reading
+order of a long function.
 
 ```python
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -6584,8 +6383,8 @@ MAX_CANDIDATES: typ.Final = 32
 
 ### `git_donkey/wheresat_graph.py`
 
-The read-only Git port and its GitPython implementation. Nothing in this
-module can write.
+The read-only Git port and its GitPython implementation. Nothing in this module
+can write.
 
 Two properties are the module's own rather than its callers'. A question Git
 could not answer is never handed back as a negative answer: a genuine _no_
@@ -6682,8 +6481,8 @@ can run.
 ### `git_donkey/wheresat_refs.py`
 
 The only writing capability in the command. `run_git_wheresat` constructs it
-when a fetch or a record write is required, and not otherwise, so the
-default path has no object that can write.
+when a fetch or a record write is required, and not otherwise, so the default
+path has no object that can write.
 
 ```python
 class WheresatRefWriter(typ.Protocol):
@@ -6705,13 +6504,13 @@ class WheresatRefWriter(typ.Protocol):
 ```
 
 The fetch is confined by its flags: `--no-prune`, `--no-tags`,
-`--no-write-fetch-head`, `--no-recurse-submodules`, and an unforced refspec,
-so nothing outside the destination ref changes and a destination that appeared
+`--no-write-fetch-head`, `--no-recurse-submodules`, and an unforced refspec, so
+nothing outside the destination ref changes and a destination that appeared
 between the cache check and the fetch is reported rather than replaced.
-`release` enumerates the leaves Git reports at a slash boundary under the
-run's namespace rather than deleting a prefix, and `retain_boundary` rewrites
-an existing boundary ref, because a branch's boundary is that branch's answer
-and a later run may establish a different one.
+`release` enumerates the leaves Git reports at a slash boundary under the run's
+namespace rather than deleting a prefix, and `retain_boundary` rewrites an
+existing boundary ref, because a branch's boundary is that branch's answer and
+a later run may establish a different one.
 
 `EvidenceRef` is a `typing.NewType` over `str` — a plain assignment, not a
 `type` alias statement, because `NewType` must be assigned — constructed only
@@ -6742,8 +6541,8 @@ def parent_head_ref(identity: PullRequestIdentity) -> EvidenceRef:
 
 The GitHub port and its `github3.py` implementation, with its own token
 resolution that reads `GITHUB_TOKEN`, `GH_TOKEN`, then the cached credentials
-file, and then **gives up** with exit code `2` — it never calls
-`loctocat` and never prompts.
+file, and then **gives up** with exit code `2` — it never calls `loctocat` and
+never prompts.
 
 ```python
 REQUEST_TIMEOUT_SECONDS: typ.Final = 10.0
@@ -6780,13 +6579,13 @@ class AssociationPage:
 ```
 
 `AssociationPage` carries `truncated: bool` and `commits_examined: int`, so a
-bounded search reports truncation rather than silently narrowing. Exceeding
-the limit is a hard stop advising `--parent`, not a quiet partial answer.
+bounded search reports truncation rather than silently narrowing. Exceeding the
+limit is a hard stop advising `--parent`, not a quiet partial answer.
 
 `stack_parent` reads `pull_request.as_dict().get("stack")`, because
 `github3.py` 4.0.1 does not model the field, and falls back to
-`GET /repos/{owner}/{repo}/stacks` through the library's `requests.Session`
-so vcrpy still intercepts it.
+`GET /repos/{owner}/{repo}/stacks` through the library's `requests.Session` so
+vcrpy still intercepts it.
 
 ### `git_donkey/wheresat_payload.py`
 
@@ -6920,23 +6719,23 @@ rather than the range's size:
 
 `gates` carries one object per candidate and gate, not one per gate: each
 candidate is checked against the same questions, and the envelope reports the
-conjunction that was actually evaluated (see the Surprises). `rebaseCommand`
-and `backupRef` are the replay plan the text report prints, in the same full
+conjunction that was actually evaluated (see the Surprises). `rebaseCommand` and
+`backupRef` are the replay plan the text report prints, in the same full
 object IDs and read from the same helpers, so a consumer that performs the
 backup and the replay itself is sent to the same ref and the same command a
 reader of the report is. A run that established no boundary proposes no replay:
-it reports `rebaseCommand` and `backupRef` as `null`, and both keys are declared
-in the empty payload too, so the key set is one shape whichever path the run
-took. `landed` stays `null` until an assessment carries the parent's landed
-commit, which none does yet.
+it reports `rebaseCommand` and `backupRef` as `null`, and both keys are
+declared in the empty payload too, so the key set is one shape whichever path
+the run took. `landed` stays `null` until an assessment carries the parent's
+landed commit, which none does yet.
 
 Contract rules, to be written into `docs/developers-guide.md`: a key may be
 added in a later minor revision, but never removed or retyped without
-incrementing the schema string; `verdict` is one of `established`,
-`unresolved`, `indeterminate`, or `error`; and an object is emitted on
-**every** exit code, including `2`, so a consumer never receives unparsable
-output. When `--json` is set, the command must not route failures through
-`helpers._die`, which prints prose.
+incrementing the schema string; `verdict` is one of `established`, `unresolved`,
+`indeterminate`, or `error`; and an object is emitted on **every** exit code,
+including `2`, so a consumer never receives unparsable output. When `--json` is
+set, the command must not route failures through `helpers._die`, which prints
+prose.
 
 ### `git_donkey/wheresat.py`
 
@@ -6979,8 +6778,8 @@ class WheresatOptions:
 
 `WheresatOptions` is a frozen dataclass flattened onto the command line with
 `typ.Annotated[WheresatOptions, Parameter(name="*")]`, following the
-`_PullOptions` precedent at `git_donkey/cli.py:32-63`. Injecting the two
-ports keeps the argument count within the Ruff limit of four and lets tests
+`_PullOptions` precedent at `git_donkey/cli.py:32-63`. Injecting the two ports
+keeps the argument count within the Ruff limit of four and lets tests
 substitute faulting or recording doubles.
 
 The command warns, without failing, when a rebase or merge is already in
@@ -6999,54 +6798,51 @@ git wheresat [--branch NAME] [--onto REV] [--parent OWNER/REPO#N]
 - `--branch NAME` — the child branch. Defaults to the current branch.
 - `--onto REV` — the replay target. Defaults to the principal remote's
   advertised default branch, via
-  `git_donkey.remote_default.discover_default_branch`, captured immediately
-  as an immutable object ID and echoed in the report.
+  `git_donkey.remote_default.discover_default_branch`, captured immediately as
+  an immutable object ID and echoed in the report.
 - `--parent OWNER/REPO#N` — the parent pull request. Overrides discovery, and
-  is required when the bounded association search would otherwise be
-  exceeded.
+  is required when the bounded association search would otherwise be exceeded.
 - `--remote NAME` — the remote holding the child. Defaults to the principal
-  remote. The parent's head is fetched from the pull request's own
-  repository, not from this remote.
+  remote. The parent's head is fetched from the pull request's own repository,
+  not from this remote.
 - `--limit N` — commits examined by the commit-to-pull-request association
-  search. Default 20. Exceeding it is a hard stop advising `--parent`, never
-  a silent truncation: the search refuses with the `search_incomplete` kind,
+  search. Default 20. Exceeding it is a hard stop advising `--parent`, never a
+  silent truncation: the search refuses with the `search_incomplete` kind,
   which forces an indeterminate result and exit `3`.
 - `--heuristic-window N` — trunk commits scanned when `--deep` is set.
-  Default 200, measured backwards from the target. The report states the
-  window scanned so a partial scan never reads as a complete one.
+  Default 200, measured backwards from the target. The report states the window
+  scanned so a partial scan never reads as a complete one.
 - `--no-fetch` — perform no Git transport. GitHub queries still run.
 - `--offline` — perform no network access of any kind. The stack record plus
   local ancestry must suffice; otherwise the command refuses with exit `1`,
-  because a question the run never put is not one the forge failed to answer.
-  A run that was told to consult a named parent is the exception: the gates
-  about that parent are applicable and cannot be judged, so it exits `3`.
-  This is the fast path: it should complete in well under a second with no
-  round trips.
+  because a question the run never put is not one the forge failed to answer. A
+  run that was told to consult a named parent is the exception: the gates about
+  that parent are applicable and cannot be judged, so it exits `3`. This is the
+  fast path: it should complete in well under a second with no round trips.
 - `--deep` — also derive tree-identity and cumulative-patch-identity
   candidates. This is a **cost control, not a semantics switch**: inferred
   evidence can never establish a boundary, so `--deep` can add candidates to
-  the report but can never change the verdict. It is off by default because
-  the scan is linear in `--heuristic-window`.
+  the report but can never change the verdict. It is off by default because the
+  scan is linear in `--heuristic-window`.
 - `--explain` — render the full gate table even on the established path. The
   table is always rendered on the unresolved and indeterminate paths.
 - `--json` — emit the versioned envelope on standard output for every exit
   code.
 - `--op-id ID` — name the per-run evidence namespace. A test seam; the
-  default is a `uuid4`. Validated against
-  `^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$` and then against Git's own ref rules —
-  the value reaches a ref, so `a..b`, `a.`, and `a.lock` are refused with the
-  same reason text a branch name would draw.
+  default is a `uuid4`. Validated against `^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`
+  and then against Git's own ref rules — the value reaches a ref, so `a..b`,
+  `a.`, and `a.lock` are refused with the same reason text a branch name would
+  draw.
 - `--record` — refresh the stack record. The only write outside the evidence
-  namespace. Refuses unless the result was established from attested
-  evidence.
+  namespace. Refuses unless the result was established from attested evidence.
 - `--expected-old OID` — required to update an existing record.
 
 Exit codes: `0` established; `1` the boundary could not be established from
 complete evidence, which is a legitimate result and not a malfunction; `2` a
-usage, configuration, or credential error; `3` indeterminate — the
-repository or the forge could not answer, and the environment needs repair.
-The departure from the three-code convention used by `git incoming` and
-`git outgoing` is deliberate and recorded in `Decision log`.
+usage, configuration, or credential error; `3` indeterminate — the repository
+or the forge could not answer, and the environment needs repair. The departure
+from the three-code convention used by `git incoming` and `git outgoing` is
+deliberate and recorded in `Decision log`.
 
 ### Observability additions
 
@@ -7055,19 +6851,19 @@ Add to `git_donkey/observability.py`, and to no other `typing.Literal`:
 - `Operation`: `parent_identification`, `evidence_collection`,
   `boundary_assessment`, `evidence_fetch`, `stack_record_write`,
   `stack_record_sweep`, `stack_record_prune`, `stack_record_entomb`. The last
-  four are shared: `git donkey` records the first, `git plonk` the other
-  three, and `git wheresat` the first again under `--record`.
+  four are shared: `git donkey` records the first, `git plonk` the other three,
+  and `git wheresat` the first again under `--record`.
 - `Outcome`: reuse `success`, `failure`, `started`, `selected`, `rejected`.
-- New label type `EvidenceTierLabel = typ.Literal["attested", "derived",
-  "inferred"]`.
-- New label type `WheresatVerdictLabel = typ.Literal["established",
-  "unresolved", "indeterminate"]`.
+- New label type
+  `EvidenceTierLabel = typ.Literal["attested", "derived", "inferred"]`.
+- New label type
+  `WheresatVerdictLabel = typ.Literal["established", "unresolved", "indeterminate"]`.
 - Add to `ErrorKind`: `github_api_error`, `shallow_history`,
-  `credential_unavailable`, `stack_record_malformed`,
-  `stack_record_conflict`, `search_incomplete`.
+  `credential_unavailable`, `stack_record_malformed`, `stack_record_conflict`,
+  `search_incomplete`.
 
-Budget roughly 200 production lines and 450 test lines for this, split
-across EP-M3, EP-M4, and EP-M8.
+Budget roughly 200 production lines and 450 test lines for this, split across
+EP-M3, EP-M4, and EP-M8.
 `tests/observability_helpers.py::declared_attribute_values()` derives the
 bounded vocabulary from these type aliases, so the additions are pinned
 automatically.
@@ -7077,9 +6873,8 @@ automatically.
 - `tests/conftest.py` gains a Hypothesis profile: `deadline=None`,
   `max_examples=50` by default and 500 under a `nightly` profile selected by
   `HYPOTHESIS_PROFILE`. Registered because the library default of
-  `deadline=200ms` is incompatible with any property that touches a
-  subprocess. Documented in `docs/developers-guide.md` under
-  `## Test infrastructure`.
+  `deadline=200ms` is incompatible with any property that touches a subprocess.
+  Documented in `docs/developers-guide.md` under `## Test infrastructure`.
 - Integration tests that build repositories carry
   `@pytest.mark.timeout(120)`, overriding the global `timeout = 30`.
 - `tests/git_repo_helpers.py` gains `advance()` and `commit_on()` in EP-M2,
@@ -7090,31 +6885,30 @@ automatically.
   in EP-M10, because the journeys and the content-clause tests both commit a
   file by path and neither should carry its own copy of that.
 - `tests/unit/test_wheresat_facts.py` builds the squash shape in real
-  repositories and pins what gate 7's content clause counts: a range of
-  nothing but no-ops names no twin, and a range that edits a file and puts it
-  back names the restoring commit rather than the no-op above it.
+  repositories and pins what gate 7's content clause counts: a range of nothing
+  but no-ops names no twin, and a range that edits a file and puts it back
+  names the restoring commit rather than the no-op above it.
 - `tests/integration/wheresat_scenarios.py` is the third helper module beside
   `wheresat_helpers.py`: the journeys the feature file is written against
   (`squashed`, `rewritten`, `restored`, `forked`, `grafted`), the
-  `ScriptedForge` that answers for one pull request, and `Journey` itself —
-  the checkout, the commits the journey is about, the forge, and the working
-  tree a run is made from. Like `wheresat_helpers.py` it defines no `test_`
-  functions, so its own checks raise `AssertionError` directly rather than
-  using `assert`, which the lint configuration permits only where pytest
-  collects.
+  `ScriptedForge` that answers for one pull request, and `Journey` itself — the
+  checkout, the commits the journey is about, the forge, and the working tree a
+  run is made from. Like `wheresat_helpers.py` it defines no `test_` functions,
+  so its own checks raise `AssertionError` directly rather than using `assert`,
+  which the lint configuration permits only where pytest collects.
 - `tests/integration/wheresat_helpers.py` resolves which of a scenario's two
-  working trees a run is made from in one place (`working_tree`), and runs
-  from one in another (`run_wheresat_at`, which drains the capture first so
-  the `git donkey` that built the fixture is not read as the run's output).
-  The binder and the read-only matrix share that one rule rather than each
-  carrying its own, and `Journey.run` is what a test over a journey calls.
+  working trees a run is made from in one place (`working_tree`), and runs from
+  one in another (`run_wheresat_at`, which drains the capture first so the
+  `git donkey` that built the fixture is not read as the run's output). The
+  binder and the read-only matrix share that one rule rather than each carrying
+  its own, and `Journey.run` is what a test over a journey calls.
 - `tests/integration/test_wheresat_bdd.py` binds the seven scenarios, and
-  `tests/integration/test_wheresat_read_only.py` asserts the paths `--deep`
-  and `--parent` control rather than only the promise they keep: a `--deep`
-  run collects evidence at the inferred tier where the default run collects
-  none, and a named parent is fetched and cached as evidence when a forge
-  answers, and reported `not_requested` when `--no-fetch` is given against a
-  cache that holds no head.
+  `tests/integration/test_wheresat_read_only.py` asserts the paths `--deep` and
+  `--parent` control rather than only the promise they keep: a `--deep` run
+  collects evidence at the inferred tier where the default run collects none,
+  and a named parent is fetched and cached as evidence when a forge answers,
+  and reported `not_requested` when `--no-fetch` is given against a cache that
+  holds no head.
 - New cassettes use `allow_playback_repeats=True` where one cassette serves
   several parameterized cases.
 - New syrupy snapshots use a `syrupy.matchers.path_type` matcher redacting
@@ -7128,26 +6922,26 @@ automatically.
 - `git_donkey/observability.py`: the vocabulary additions above.
 - `git_donkey/donkey_worktrees.py`: after the existing `git worktree add`
   at lines 184-192, call `stack_store.StackRecordWriter.create` when
-  `stack_records.should_record` says the resolved base is not the trunk.
-  The frozen `start_point` already computed on line 186 is the record's
-  `base`; nothing new needs resolving. Do not change the `--no-track`
-  decision — `branch.<name>.stack*` is a different key namespace from
+  `stack_records.should_record` says the resolved base is not the trunk. The
+  frozen `start_point` already computed on line 186 is the record's `base`;
+  nothing new needs resolving. Do not change the `--no-track` decision —
+  `branch.<name>.stack*` is a different key namespace from
   `branch.<name>.remote` and `.merge`, and AXIOM-11 confirms
   `git worktree add --no-track -b` writes no `branch.<name>` section at all.
 - `git_donkey/donkey.py`: pass the trunk already resolved for base selection
   into the record decision, so the trunk is not discovered twice.
 - `git_donkey/plonk.py`: in `_clean_completed_candidate`, call `entomb` before
   `adapter.delete_branch`, and do not delete the branch when `entomb` raises;
-  `_GitWorktreeAdapter.delete_branch` itself is unchanged (see Decision log
-  for why the call sits in the orchestration rather than in the adapter). In
+  `_GitWorktreeAdapter.delete_branch` itself is unchanged (see Decision log for
+  why the call sits in the orchestration rather than in the adapter). In
   `_run_completed_cleanup`, resolve and validate the configured expiry before
   the candidate loop, then sweep and prune, all guarded by the existing
   `dry_run` flag in the same way every other mutation is.
 - `git_donkey/plonk_records.py`: extend `_PlonkResult` with
   `entombed_branches`, `failed_entombments`, `swept_records`,
   `unrescuable_records`, and `pruned_tombstones`, each a `tuple[str, ...]`
-  following the existing `removed_branches` shape, plus `tombstone_expire:
-  str | None` so the summary can name the window it applied.
+  following the existing `removed_branches` shape, plus
+  `tombstone_expire: str | None` so the summary can name the window it applied.
 - `git_donkey/plonk_summary.py`: render the new tuples, using the existing
   "Planned" versus past-tense convention driven by `_PlonkResult.is_dry_run`,
   and splitting the swept records by whether a tip survived them.
@@ -7158,8 +6952,8 @@ automatically.
 - `docs/users-guide.md`: a `## git wheresat` section and a row in
   `## Command overview`; a paragraph in `## git donkey` explaining what a
   stacked branch records; and a paragraph in `## git plonk` explaining
-  tombstones, the sweep, the retention window, and the honest limitation that
-  a tombstone does not restore fork-point recovery.
+  tombstones, the sweep, the retention window, and the honest limitation that a
+  tombstone does not restore fork-point recovery.
 - `docs/plonk-cleanup-policy.md`: the record lifecycle plonk now owns, added
   to the existing decision flow and `## Verification contract`.
 - `docs/developers-guide.md`: a `## git-wheresat module boundaries` section,
@@ -7173,8 +6967,8 @@ automatically.
 
 - `docs/man/git-wheresat.rst` — following `docs/man/git-plonk.rst`, with
   `SYNOPSIS`, `DESCRIPTION` including the four-value exit-status list,
-  `OPTIONS`, `EXAMPLES`, and `SEE ALSO`. Every Cyclopts parameter must
-  appear, because `tests/unit/test_manpage_sources.py` cross-checks them.
+  `OPTIONS`, `EXAMPLES`, and `SEE ALSO`. Every Cyclopts parameter must appear,
+  because `tests/unit/test_manpage_sources.py` cross-checks them.
 - `docs/stack-records.md`, `docs/squash-restack-boundary-recovery.md`,
   `docs/adr-004-shared-stack-records.md`, and
   `docs/adr-005-squash-restack-evidence-precedence.md`, as described in
@@ -7191,12 +6985,12 @@ Repository documentation:
 - `docs/documentation-style-guide.md` — prose conventions, the ADR template
   at lines 267-316, Mermaid captioning, and the 80-column wrap.
 - `docs/developers-guide.md` — module boundaries per command, observability
-  at lines 343-372, test infrastructure and the cassette rule at lines
-  526-610, and the manual-page contract.
+  at lines 343-372, test infrastructure and the cassette rule at lines 526-610,
+  and the manual-page contract.
 - `docs/manpages-design.md` — how manual pages are built and installed.
 - `docs/plonk-cleanup-policy.md` and `docs/default-base-and-pull-modes.md` —
-  the two existing design documents, and the shape to copy: a captioned
-  Mermaid figure, a `## Decision` section, topic sections, then a
+  the two existing design documents, and the shape to copy: a captioned Mermaid
+  figure, a `## Decision` section, topic sections, then a
   `## Verification contract`.
 - `docs/users-guide.md` — the section shape for a command.
 - `.rules/python-00.md`, `.rules/python-typing.md`,
@@ -7220,10 +7014,9 @@ External references:
 - [GitHub REST: pulls](https://docs.github.com/en/rest/pulls/pulls) — merge
   state and `merge_commit_sha` semantics.
 - [GitHub REST: stacked pull
-  requests](https://docs.github.com/en/rest/pulls/stacks) and [About stacked
-  pull
-  requests](https://docs.github.com/en/pull-requests/get-started/about-stacked-prs)
-  — the native stack relationship and its same-repository limitation.
+  requests](https://docs.github.com/en/rest/pulls/stacks) and
+  [About stacked pull requests][about-stacked-prs] — the native stack
+  relationship and its same-repository limitation.
 - [GitHub REST:
   commits](https://docs.github.com/en/rest/commits/commits#list-pull-requests-associated-with-a-commit)
   — commit-to-pull-request association.
@@ -7231,28 +7024,30 @@ External references:
   locally](https://docs.github.com/en/pull-requests/how-tos/review-pull-requests/checking-out-pull-requests-locally)
   — recovering inactive pull request heads.
 
+[about-stacked-prs]: https://docs.github.com/en/pull-requests/get-started/about-stacked-prs
+
 Prior art, all of which makes the same bet in different ways — record the
 relationship rather than reconstruct it:
 
-- [git-machete](https://git-machete.readthedocs.io/) — `machete.squashMergeDetection`
-  offers `none`, `simple` (compare trees) and `exact` (compare patches), the
-  same ladder this command exposes under `--deep`, and documents `exact` as
-  having a significant performance impact on large repositories. Its
-  `machete.overrideForkPoint.<branch>.to` key is a stack record by another
-  name.
+- [git-machete](https://git-machete.readthedocs.io/) —
+  `machete.squashMergeDetection` offers `none`, `simple` (compare trees) and
+  `exact` (compare patches), the same ladder this command exposes under
+  `--deep`, and documents `exact` as having a significant performance impact on
+  large repositories. Its `machete.overrideForkPoint.<branch>.to` key is a
+  stack record by another name.
 - [github/gh-stack](https://github.com/github/gh-stack) — GitHub's own
-  extension stores stack metadata in `.git/gh-stack` and switches its rebase
-  to `--onto` when a lower pull request merges. It performs no forensics
-  because it never loses the parent.
+  extension stores stack metadata in `.git/gh-stack` and switches its rebase to
+  `--onto` when a lower pull request merges. It performs no forensics because
+  it never loses the parent.
 - [Graphite command reference](https://graphite.com/docs/command-reference) —
   explicit parent metadata, with `gt track` existing to repair it.
 - [git-branchless](https://github.com/arxanas/git-branchless) — a local event
-  log of rewrites, which is durable locally but does not survive a
-  server-side squash.
+  log of rewrites, which is durable locally but does not survive a server-side
+  squash.
 - [Gerrit Change-Id](https://gerrit-review.googlesource.com/Documentation/user-changeid.html)
   and [Jujutsu change IDs](http://docs.jj-vcs.dev/latest/glossary/) — the
-  strongest alternative, rejected in `Decision log`: a durable identity
-  carried in the object graph rather than derived from its shape.
+  strongest alternative, rejected in `Decision log`: a durable identity carried
+  in the object graph rather than derived from its shape.
 
 Agent skills to load:
 
@@ -7272,25 +7067,25 @@ Agent skills to load:
 
 ## Revision note
 
-2026-09-14, revision 3. The plan previously left the two most valuable
-changes as follow-ups: `git donkey` discarded the parent identity it already
-held, and `git plonk --hard` destroyed the evidence `git wheresat` depends
-on. A single shared **stack record** across all three commands is now a hard
-requirement rather than a follow-up. What that changed:
+2026-09-14, revision 3. The plan previously left the two most valuable changes
+as follow-ups: `git donkey` discarded the parent identity it already held, and
+`git plonk --hard` destroyed the evidence `git wheresat` depends on. A single
+shared **stack record** across all three commands is now a hard requirement
+rather than a follow-up. What that changed:
 
 - One format module (`git_donkey/stack_records.py`) and one store module
   (`git_donkey/stack_store.py`) own the artefact. No command parses a key,
   builds a ref path, or decides the lifecycle for itself.
 - Configuration holds the values and the ref is a reachability anchor,
-  because measurement showed `git branch -D` destroys the whole
-  `branch.<name>` section while `git branch -m` carries it and leaves the ref
-  behind. The split also discharges INV-8 where a record exists.
+  because measurement showed `git branch -D` destroys the whole `branch.<name>`
+  section while `git branch -m` carries it and leaves the ref behind. The split
+  also discharges INV-8 where a record exists.
 - `git plonk` owns the end of the lifecycle: tombstone before delete, sweep
   orphans, prune after 90 days, and report all three. `git donkey` owns the
   start, and records only when the base is not the trunk.
 - Three new invariants: the namespace subset (INV-9), the lifecycle state
-  machine (INV-10, a Hypothesis `RuleBasedStateMachine` because this is the
-  one place operation history determines correctness), and the record-means-
+  machine (INV-10, a Hypothesis `RuleBasedStateMachine` because this is the one
+  place operation history determines correctness), and the record-means-
   stacked rule (INV-11).
 - Three new measured axioms (AXIOM-11 to AXIOM-13) covering configuration
   deletion and renaming, directory/file ref collisions, and configuration key
@@ -7299,52 +7094,50 @@ requirement rather than a follow-up. What that changed:
   EP-M3 and EP-M4 each ship standalone value before `git wheresat` exists;
   EP-M8 is the plateau where the end-to-end interoperability scenario passes.
 - Scope tolerance raised to sixteen files and 1,800 lines, with the
-  continue-or-cut checkpoint moved to 1,200, because the change now spans
-  three commands.
+  continue-or-cut checkpoint moved to 1,200, because the change now spans three
+  commands.
 - Two design documents and two architectural decision records instead of one
   and one, so the shared contract has its own specification that a future
   fourth command can read.
 
-2026-09-14, revision 2. The first draft was reviewed by a six-lens expert
-panel before delivery. What changed, and why:
+2026-09-14, revision 2. The first draft was reviewed by a six-lens expert panel
+before delivery. What changed, and why:
 
 - The evidence model gained a third tier. The first draft split evidence into
-  heuristic and non-heuristic, which classified fork-point as establishing
-  even though `Risks` rated fork-point surprise as the design's
-  highest-likelihood hazard. `ATTESTED`, `DERIVED`, and `INFERRED` now match
-  the rule to the risk, with a corroboration requirement for derived
-  evidence (INV-2b).
+  heuristic and non-heuristic, which classified fork-point as establishing even
+  though `Risks` rated fork-point surprise as the design's highest-likelihood
+  hazard. `ATTESTED`, `DERIVED`, and `INFERRED` now match the rule to the risk,
+  with a corroboration requirement for derived evidence (INV-2b).
 - The result became a discriminated union and `UNSUPPORTED` was deleted. The
   first draft promised heuristics would be "structurally incapable" of
-  establishing a boundary and then implemented that as a frozen set and an
-  `if`; `Established.support` now cannot hold an inferred candidate by type.
+  establishing a boundary and then implemented that as a frozen set and an `if`;
+  `Established.support` now cannot hold an inferred candidate by type.
   `UNSUPPORTED` went because the draft never said when to choose it.
 - The Git port split in two. Read-only queries and ref writing are now
-  separate protocols in separate modules, so "read-only by default" is
-  enforced by the writing object not existing rather than by a test
-  generator's domain.
+  separate protocols in separate modules, so "read-only by default" is enforced
+  by the writing object not existing rather than by a test generator's domain.
 - The content comparison was wrong and is fixed. A squash is an N-to-1
-  relationship, so the first draft's per-commit `patch_identifiers` would
-  only ever have matched a single-commit parent. It is now a cumulative
-  comparison, with a cheap tree pass first.
+  relationship, so the first draft's per-commit `patch_identifiers` would only
+  ever have matched a single-commit parent. It is now a cumulative comparison,
+  with a cheap tree pass first.
 - All eight gates gained a specified decision procedure, and INV-4 gained a
   per-gate obligation to have a test in which that gate alone fails against a
   real repository — because a gate implemented as an unconditional `PASSED`
   would otherwise pass every truth table in the plan.
 - A fourth exit code was added for indeterminate, five undefined types were
   defined, `--op-id` gained a validation rule and a place in INV-1's domain,
-  the JSON output gained a versioned envelope and a rule to emit on every
-  exit code, and the local and shared record formats gained versions, a
+  the JSON output gained a versioned envelope and a rule to emit on every exit
+  code, and the local and shared record formats gained versions, a
   reconciliation rule, and a grammar.
 - Every unbounded operation gained a bound: `--limit`, `--heuristic-window`,
-  a reflog limit, a 32-candidate cap, render truncation, an HTTP timeout, and
-  a network budget.
+  a reflog limit, a 32-candidate cap, render truncation, an HTTP timeout, and a
+  network budget.
 - INV-1 and INV-6's repository-building halves became parameterized matrices,
-  because Hypothesis's 200 ms default deadline under a 30-second pytest
-  timeout would have turned the first real counterexample into a flake.
+  because Hypothesis's 200 ms default deadline under a 30-second pytest timeout
+  would have turned the first real counterexample into a flake.
 - Cassettes are now recorded, never authored;
-  `docs/developers-guide.md:557-558` forbids hand-editing a recording, and
-  the first draft proposed exactly that.
+  `docs/developers-guide.md:557-558` forbids hand-editing a recording, and the
+  first draft proposed exactly that.
 - Observability was added; the first draft omitted it entirely from a package
   where every other command records.
 - The output gained full object IDs, a backup ref, the target it was computed
@@ -7352,11 +7145,10 @@ panel before delivery. What changed, and why:
   confident wrong answer that the user cannot undo or re-check.
 - The milestones were resequenced: the specification is written first, the
   hardest fixture second, and the local record arrives before the GitHub
-  surface.
-  A deliberate release boundary was introduced, and `git plonk` tombstones
-  were added as a separable milestone, because `git plonk --hard` destroys
-  the very evidence this command depends on. Revision 3 resequenced the
-  milestones again and made the tombstones mandatory.
+  surface. A deliberate release boundary was introduced, and `git plonk`
+  tombstones were added as a separable milestone, because `git plonk --hard`
+  destroys the very evidence this command depends on. Revision 3 resequenced
+  the milestones again and made the tombstones mandatory.
 
 Implementation is under way: EP-M1 through EP-M9 are complete, and EP-M10, the
 GitHub evidence and `--json` plateau, is in progress on the

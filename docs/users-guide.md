@@ -107,17 +107,17 @@ Contributor build and validation details appear in the
 ## git donkey
 
 Create a linked worktree at `../{repo}.worktrees/{branch}`. When no base is
-specified, the command discovers the default branch advertised by the
-principal remote and creates the new branch from its fetched remote commit.
-The principal remote is the first configured remote, preserving the existing
-selection rule. The default branch need not be named `main`, and the remote
-need not be named `origin`.
+specified, the command discovers the default branch advertised by the principal
+remote and creates the new branch from its fetched remote commit. The principal
+remote is the first configured remote, preserving the existing selection rule.
+The default branch need not be named `main`, and the remote need not be named
+`origin`.
 
 The command fetches remote references but does not pull, rebase, or prompt to
 update a local base by default. Unpublished local commits and uncommitted
 changes in the primary checkout are not used as the implicit base. An
-unavailable remote default produces an error asking for an explicit base;
-the command never silently falls back to local `main`.
+unavailable remote default produces an error asking for an explicit base; the
+command never silently falls back to local `main`.
 
 A named base still selects that branch. `.` selects the branch checked out in
 the calling working directory, including when called from a linked worktree.
@@ -159,18 +159,18 @@ Options:
   new default behaviour. Fetching remote references still occurs.
 
 These three options are mutually exclusive. A declined prompt, or a
-non-interactive terminal, skips the update as before. A local-only base has
-no remote update to perform. An approved update runs only in the worktree
-holding the selected local base; if that branch is not checked out, the
-command fails rather than updating an unrelated primary-checkout branch.
+non-interactive terminal, skips the update as before. A local-only base has no
+remote update to perform. An approved update runs only in the worktree holding
+the selected local base; if that branch is not checked out, the command fails
+rather than updating an unrelated primary-checkout branch.
 
-With an omitted base, an enabled pull option may update the corresponding
-local default branch, but the new feature branch still starts at the remote
-commit. Supply the local base explicitly, or use `.`, to include local
-commits after an approved update.
+With an omitted base, an enabled pull option may update the corresponding local
+default branch, but the new feature branch still starts at the remote commit.
+Supply the local base explicitly, or use `.`, to include local commits after an
+approved update.
 
-The [default-base and pull-mode design](default-base-and-pull-modes.md)
-records the discovery, preservation, and verification contracts. The
+The [default-base and pull-mode design](default-base-and-pull-modes.md) records
+the discovery, preservation, and verification contracts. The
 [0.2.0 migration guide](v0-2-0-migration-guide.md) documents the behaviour
 changes for users upgrading from 0.1.0.
 
@@ -232,8 +232,8 @@ branch was created at, `stackBaseEvidence` is `stack-record-birth`, and
 `stackParent` names the base branch it was selected from as `v1:branch:<name>`.
 
 A branch created from the trunk is not recorded, whatever it is named. That is
-deliberate: a record would make it look stacked, and would offer a boundary
-for a branch that never had a parent.
+deliberate: a record would make it look stacked, and would offer a boundary for
+a branch that never had a parent.
 
 Writing the record changes nothing about tracking — the new branch is still
 created with `--no-track` and inherits nothing. The record is local to one
@@ -241,9 +241,8 @@ clone, because neither the configuration keys nor the anchor ref are pushed or
 fetched, and `git plonk` already turns it into a tombstone when it deletes the
 branch (see [`git plonk`](#git-plonk)); `git wheresat` treats it as boundary
 evidence. Its value today is that the boundary commit observed at birth is
-preserved rather than reconstructed by forensics.
-The [shared stack record](stack-records.md) design documents the full
-contract.
+preserved rather than reconstructed by forensics. The
+[shared stack record](stack-records.md) design documents the full contract.
 
 ## git track
 
@@ -312,8 +311,8 @@ commands, while `2` is git-donkey's own code for a command that could not run:
 - `1` means no matching commits were found.
 - `2` means the command could not run, such as when no upstream is configured
   and no explicit ref was provided, a configured upstream cannot be resolved,
-  or when the fetch or comparison failed, so automation never mistakes a
-  fetch failure for "no changes".
+  or when the fetch or comparison failed, so automation never mistakes a fetch
+  failure for "no changes".
 
 ## git fafo
 
@@ -400,8 +399,8 @@ branches named like `road-1-2-3a-4-short-title` match commits containing
 `(road.1.2.3a.4)` or `(road.1.2.3a.4.)`. Branches with unrecognized names or no
 matching trunk history marker are left alone.
 
-The trunk is the default branch the principal remote advertises, discovered
-with `git ls-remote --symref <remote> HEAD` and fetched explicitly, exactly as
+The trunk is the default branch the principal remote advertises, discovered with
+`git ls-remote --symref <remote> HEAD` and fetched explicitly, exactly as
 `git donkey` selects an implicit base. A stale `<remote>/HEAD` alias is never
 consulted, and there is no fallback to local `main`.
 
@@ -470,8 +469,8 @@ Skipped worktrees:
 A run in which every candidate is skipped reports the skips rather than
 claiming that no matching worktrees were found.
 
-Hard mode also owns the end of a stack record's life. A branch that `git donkey`
-created from another branch carries a
+Hard mode also owns the end of a stack record's life. A branch that
+`git donkey` created from another branch carries a
 [stack record](#stack-records-at-branch-birth), and deleting it would take the
 one statement about where it began with it. So before `git plonk --hard`
 deletes such a branch, it writes the branch's tip to the tombstone ref
@@ -487,12 +486,12 @@ branch. And a branch deleted through Git alone, by `git branch -D` rather than
 by `git plonk --hard`, takes its whole configuration section with it, leaving
 an anchor ref that names a base but no tip.
 
-That last case belongs to the sweep. Before a completed run touches a
-worktree, it clears the records of branches that no longer exist. A record
-that still parses becomes a tombstone naming the tip it recorded, and an
-orphan whose configuration went with the branch is cleared without inventing
-anything in its place. The summary keeps the two apart, because reporting them
-alike would claim a rescue that did not happen:
+That last case belongs to the sweep. Before a completed run touches a worktree,
+it clears the records of branches that no longer exist. A record that still
+parses becomes a tombstone naming the tip it recorded, and an orphan whose
+configuration went with the branch is cleared without inventing anything in its
+place. The summary keeps the two apart, because reporting them alike would
+claim a rescue that did not happen:
 
 ```text
 Entombed branches:
@@ -505,8 +504,8 @@ Pruned tombstones (older than 90.days.ago):
 - issue-050-stale
 ```
 
-Tombstones do not accumulate. Every completed run prunes the tombstones
-written before `stack.tombstoneExpire`, a Git date expression defaulting to
+Tombstones do not accumulate. Every completed run prunes the tombstones written
+before `stack.tombstoneExpire`, a Git date expression defaulting to
 `90.days.ago`, which is the same horizon as Git's own `gc.reflogExpire`. A
 value Git cannot parse stops the run before anything is touched, because Git
 reads an unparsable date as *now* and would prune every tombstone in the
@@ -540,12 +539,12 @@ refs under `refs/wheresat/`; a boundary that nothing else reaches is retained at
 
 It exits with one of four statuses:
 
-| Status | Meaning                                                                                                      |
-| ------ | ------------------------------------------------------------------------------------------------------------ |
-| `0`    | established: a boundary was found                                                                            |
-| `1`    | unresolved: the evidence refused a boundary, and the report says which check refused it                      |
-| `2`    | a usage, environment, or credential error                                                                    |
-| `3`    | indeterminate: the repository could not answer a question the procedure asked, so no answer is claimed       |
+| Status | Meaning                                                                                                |
+| ------ | ------------------------------------------------------------------------------------------------------ |
+| `0`    | established: a boundary was found                                                                      |
+| `1`    | unresolved: the evidence refused a boundary, and the report says which check refused it                |
+| `2`    | a usage, environment, or credential error                                                              |
+| `3`    | indeterminate: the repository could not answer a question the procedure asked, so no answer is claimed |
 
 *Table 1: the four exit statuses.*
 
@@ -591,10 +590,10 @@ Options:
 - `--expected-old` names the commit the record's anchor ref must hold for
   `--record` to replace it. It is required when the anchor ref exists — a write
   that names no expectation is refused with status 2 rather than replacing a
-  record the user did not read — and must not be given when it does not, because
-  re-creating a collected anchor replaces nothing. Git performs the same
-  comparison again at the write, so an anchor that moves in between is refused
-  rather than overwritten.
+  record the user did not read — and must not be given when it does not,
+  because re-creating a collected anchor replaces nothing. Git performs the
+  same comparison again at the write, so an anchor that moves in between is
+  refused rather than overwritten.
 
 Refresh a record when its anchor ref has been collected — the configuration
 still names the boundary, and the refresh writes the ref back — or when the
@@ -614,12 +613,12 @@ A record goes stale when the branch's own history is rewritten under it. Once
 the parent has been integrated and the branch restacked onto it, the tip the
 record was written from is no longer on the branch, so the record stops being a
 claim about where the branch came from: the run reads it as derived evidence,
-answers with the boundary the surviving history agrees on, and `--record` writes
-nothing back. Only an attested claim is written back, and the record's own claim
-is the only attested source the local path has, so a refresh restates the
-boundary the record already names — it re-anchors the commit and restates the
-tip the branch is at, so a later reader can tell the record was restated by a
-run rather than left as the claim written at birth. Moving a record to a new
+answers with the boundary the surviving history agrees on, and `--record`
+writes nothing back. Only an attested claim is written back, and the record's
+own claim is the only attested source the local path has, so a refresh restates
+the boundary the record already names — it re-anchors the commit and restates
+the tip the branch is at, so a later reader can tell the record was restated by
+a run rather than left as the claim written at birth. Moving a record to a new
 boundary needs an attested account of where the parent went, which local
 evidence cannot give.
 
@@ -633,18 +632,18 @@ cumulative-patch-identity candidates by comparing the child against the
 target's content; those are inferred evidence, so the option can add candidates
 to the report and can never change the verdict.
 
-Evidence is weighted in tiers: attested (the stack record `git donkey` wrote
-at the branch's birth, a refreshed record, a fetched parent pull request
-head), derived (the merge base, the fork point), and inferred (tree identity,
-patch identity). Only attested and derived evidence can establish a boundary;
+Evidence is weighted in tiers: attested (the stack record `git donkey` wrote at
+the branch's birth, a refreshed record, a fetched parent pull request head),
+derived (the merge base, the fork point), and inferred (tree identity, patch
+identity). Only attested and derived evidence can establish a boundary;
 inferred evidence is reported but never decides. `--explain` shows the tier of
 each line of evidence and the eight named checks.
 
-Warnings change neither the verdict nor the exit status. The run warns when
-the worktree holding the branch has uncommitted changes, and when a rebase,
-merge, cherry-pick, revert, or bisect is already in progress there. A
-worktree whose state cannot be read is warned about too, because a run that
-warned about nothing would be read as a run with nothing to warn about.
+Warnings change neither the verdict nor the exit status. The run warns when the
+worktree holding the branch has uncommitted changes, and when a rebase, merge,
+cherry-pick, revert, or bisect is already in progress there. A worktree whose
+state cannot be read is warned about too, because a run that warned about
+nothing would be read as a run with nothing to warn about.
 
 The two honest limits documented under [`git plonk`](#git-plonk) still bound
 fork-point recovery here: a tombstone preserves a deleted branch's tip and not
@@ -673,26 +672,26 @@ resolve the ambiguity.
 ## Agent skill
 
 The [worktree-management skill](../skill/git-donkey-worktrees/SKILL.md) is
-written for coding agents, and their operators, that create, reuse, and
-retire linked worktrees with `git donkey` and `git plonk`. It is not needed
-for ordinary editing in a checkout already selected for a task.
+written for coding agents, and their operators, that create, reuse, and retire
+linked worktrees with `git donkey` and `git plonk`. It is not needed for
+ordinary editing in a checkout already selected for a task.
 
 ### Prerequisites
 
 The skill requires Git plus `git-donkey` and `git-plonk` on `PATH`. It expects
 `git donkey` to support remote-default bases, `--no-pull`, `--pull-ff`, and
 `--pull-rebase`, and `git plonk` to support `--soft`, `--hard`, and
-`--dry-run`, whose help text describes skipping worktrees that hold
-uncommitted or untracked files rather than forcing their removal, as older
-releases did. The skill tells the agent to check `git donkey --help` and
-`git plonk --help` before relying on these behaviours.
+`--dry-run`, whose help text describes skipping worktrees that hold uncommitted
+or untracked files rather than forcing their removal, as older releases did.
+The skill tells the agent to check `git donkey --help` and `git plonk --help`
+before relying on these behaviours.
 
 ### When it activates
 
-The skill applies to creating an isolated branch checkout, locating or
-reusing an existing worktree, preparing a stacked branch, retiring completed
-worktrees, or explicitly cleaning generated directories. It does not apply to
-ordinary editing, committing, or pull-request review.
+The skill applies to creating an isolated branch checkout, locating or reusing
+an existing worktree, preparing a stacked branch, retiring completed worktrees,
+or explicitly cleaning generated directories. It does not apply to ordinary
+editing, committing, or pull-request review.
 
 ### Installation
 

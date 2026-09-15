@@ -1,10 +1,21 @@
 [project]
 name = "git-donkey"
-version = "0.1.0"
-description = "git-donkey package"
+version = "0.2.0"
+description = "Git subcommands for branch-based development with linked worktrees"
 readme = "README.md"
 requires-python = ">=3.13"
 license = { text = "ISC" }
+keywords = ["git", "worktree", "cli", "developer-tools"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: ISC License (ISCL)",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Version Control :: Git",
+]
 dependencies = [
     "GitPython>=3.1.45",
     "cyclopts>=4.21.0",
@@ -15,6 +26,11 @@ dependencies = [
     "python-slugify>=8.0.0",
     "requests>=2.32.0,<3.0",
 ]
+
+[project.urls]
+Homepage = "https://df12.studio"
+Repository = "https://github.com/leynos/git-donkey"
+Issues = "https://github.com/leynos/git-donkey/issues"
 
 [project.scripts]
 git-donkey = "git_donkey.cli:git_donkey"
@@ -39,11 +55,11 @@ dev = [
     "pytest-xdist",
     "interrogate>=1.7.0",
     "pytest-bdd>=8.1.0,<9",
-    "syrupy>=5.5.3,<6",
+    "syrupy>=5.5.3,<7",
     "pylint>=4.0,<5",
-    "packaging>=25.0,<26",
+    "packaging>=25.0,<27",
     "df12-python-lints @ git+https://github.com/leynos/df12-python-lints@v0.2.0",
-    "vcrpy>=7.0.0,<8",
+    "vcrpy>=7.0.0,<9",
 ]
 
 [tool.ruff]
@@ -419,7 +435,7 @@ names = []
 "render_shared_record" = "Called only from the shared-record suite, which pins the round trip parse_shared_record(render_shared_record(r)) == r and the exact two lines the guide tells a reader to paste. No console script emits a shared record: git donkey writes a record into the clone that made it, and git wheresat reads one a person pasted into a pull request body, so the renderer has no production caller by design"
 
 [build-system]
-requires = ["hatchling", "hatch-build-scripts>=1.0.0,<2", "docutils>=0.22.4,<0.23"]
+requires = ["hatchling", "hatch-build-scripts>=1.0.0,<2", "docutils>=0.22.4,<0.24"]
 build-backend = "hatchling.build"
 
 # Generate manuals in the isolated build environment, not at installation time.

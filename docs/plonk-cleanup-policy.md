@@ -5,9 +5,9 @@ before it looks at any worktree — check the configured tombstone window, sweep
 the records of branches that no longer exist, and prune the tombstones the
 window has reached. It then shows how the run decides whether a completed
 worktree is removed, and when it is left in place with a reason instead, then
-how a hard-mode branch is entombed before it is deleted and how one Git
-refuses to delete is reported separately under `Failed branch deletions:`; a
-branch whose entombment fails is kept, the worktree stays removed, the sweep
+how a hard-mode branch is entombed before it is deleted and how one Git refuses
+to delete is reported separately under `Failed branch deletions:`; a branch
+whose entombment fails is kept, the worktree stays removed, the sweep
 continues, and the run exits 1.
 
 ```mermaid
@@ -54,19 +54,19 @@ so a skipped worktree keeps its branch. There is no `--force`-style option in
 as `git worktree remove --force` followed by `git branch -D`.
 
 In hard mode, a local branch that Git refuses to delete does not stop the
-sweep. The worktree still counts as removed, and the branch is listed under
-its own `Failed branch deletions:` heading between the removal sections and
-the skip section. The sweep continues with the remaining candidates, and the
-run exits with status 1.
+sweep. The worktree still counts as removed, and the branch is listed under its
+own `Failed branch deletions:` heading between the removal sections and the
+skip section. The sweep continues with the remaining candidates, and the run
+exits with status 1.
 
 ## Cleanliness rule
 
 The preflight mirrors the check `git worktree remove` performs itself: a
 worktree with modified, staged, or untracked files is refused, while files
 matched by `.gitignore` are not counted, so ignored build output never protects
-a worktree. Sharing the rule with Git matters in both directions.
-Refusing exactly what Git refuses means a candidate is never planned for
-removal only to fail, and never left in place when Git would have removed it.
+a worktree. Sharing the rule with Git matters in both directions. Refusing
+exactly what Git refuses means a candidate is never planned for removal only to
+fail, and never left in place when Git would have removed it.
 
 A completed worktree whose directory is gone gets its own reason, because
 `uncommitted changes` would be inaccurate for it. The reasons are a fixed
@@ -78,8 +78,8 @@ vocabulary:
   also reported on stderr and logged.
 
 Skips keep the run's exit code at 0. A skip is a reported decision, not a
-failure of the command. A branch Git refuses to delete is reported as a
-failed deletion and the run exits 1, unlike a skip.
+failure of the command. A branch Git refuses to delete is reported as a failed
+deletion and the run exits 1, unlike a skip.
 
 ## Trunk discovery
 
@@ -101,11 +101,11 @@ both.
 
 `git donkey` writes a stack record when it creates a branch from another
 branch, and `git plonk` owns the end of that record's life: it is the command
-that deletes branches, so it is the command that can preserve what the
-deletion would otherwise take with it. Before a hard-mode branch is deleted,
-its tip is written to the tombstone ref `refs/stack-tombstones/<branch>` and
-the live record is then cleared — the four `branch.<name>.stack*` keys and
-the `refs/stack-bases/<branch>` anchor. The tombstone is written first and the
+that deletes branches, so it is the command that can preserve what the deletion
+would otherwise take with it. Before a hard-mode branch is deleted, its tip is
+written to the tombstone ref `refs/stack-tombstones/<branch>` and the live
+record is then cleared — the four `branch.<name>.stack*` keys and the
+`refs/stack-bases/<branch>` anchor. The tombstone is written first and the
 branch is deleted second, because the reverse order loses the tip outright: the
 branch's reflog and its whole `branch.<name>` configuration section go with the
 ref. A crash between the two steps therefore leaves a tombstone beside a live
@@ -122,8 +122,8 @@ that deletes the branch rewrites the tombstone with the tip that deletion
 observed, and a branch that is kept leaves a tombstone that expires on the
 usual horizon like any other.
 
-For the same reason, a branch whose entombment fails is not deleted at all.
-The tip is the one thing the deletion was about to make unrecoverable.
+For the same reason, a branch whose entombment fails is not deleted at all. The
+tip is the one thing the deletion was about to make unrecoverable.
 
 A tombstone preserves the tip, not the reflog, and that limit is real: a
 tombstone rescues the parent's identity and its boundary commit, but it does
@@ -131,22 +131,22 @@ not restore fork-point recovery, because `git merge-base --fork-point` reads a
 reflog that went with the branch.
 
 The sweep maintains the record-to-branch subset: the record namespace must
-never outlive the branch namespace, or a surviving
-`refs/stack-bases/<branch>` can block a ref that shares its path. It runs once
-per completed run, before the first worktree is removed, and never in soft
-mode, whose contract is to leave Git state untouched. Two kinds of orphan are
-found and they are not the same thing. A branch whose ref alone was removed —
+never outlive the branch namespace, or a surviving `refs/stack-bases/<branch>`
+can block a ref that shares its path. It runs once per completed run, before
+the first worktree is removed, and never in soft mode, whose contract is to
+leave Git state untouched. Two kinds of orphan are found and they are not the
+same thing. A branch whose ref alone was removed —
 `git update-ref -d refs/heads/<name>` — still has a record that parses, so the
-sweep converts it into a tombstone naming the tip it recorded. A branch
-deleted with plain `git branch -D` takes its configuration with it, leaving an
-anchor that names a base and no tip; the sweep clears that orphan without
-inventing a tombstone from the anchor, which would record the base as the tip
-and be confidently wrong about the very fact the tombstone exists to carry. An
-orphan whose tombstone already stands keeps the tombstone it has, because a
-tip observed before the deletion is never replaced by one recorded earlier.
+sweep converts it into a tombstone naming the tip it recorded. A branch deleted
+with plain `git branch -D` takes its configuration with it, leaving an anchor
+that names a base and no tip; the sweep clears that orphan without inventing a
+tombstone from the anchor, which would record the base as the tip and be
+confidently wrong about the very fact the tombstone exists to carry. An orphan
+whose tombstone already stands keeps the tombstone it has, because a tip
+observed before the deletion is never replaced by one recorded earlier.
 
-Tombstones do not accumulate. The window is `stack.tombstoneExpire`, a Git
-date expression defaulting to `90.days.ago`, the same horizon as Git's own
+Tombstones do not accumulate. The window is `stack.tombstoneExpire`, a Git date
+expression defaulting to `90.days.ago`, the same horizon as Git's own
 `gc.reflogExpire`. It is resolved and validated before the run touches
 anything, because Git reads a date expression it cannot parse as _now_, and a
 window of no length would prune every tombstone in the repository: an unusable
@@ -200,8 +200,8 @@ branch and exits 1, that a sweep reports the orphan whose tip it preserved
 apart from the one it cleared, that a prune reports the window it applied, and
 that an unusable window stops the run before any write. The store itself is
 exercised against real repositories, including the read half `git wheresat`
-shares, the refusal of an empty expiry, and the rule that a tombstone whose
-age cannot be read is kept. Behavioural tests in
+shares, the refusal of an empty expiry, and the rule that a tombstone whose age
+cannot be read is kept. Behavioural tests in
 `tests/integration/test_git_plonk_stack_bdd.py` run the command over real
 repositories and assert the artefacts a sweep leaves behind — the tombstone
 naming the tip the branch held, the anchor and record cleared with it, the

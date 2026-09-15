@@ -178,9 +178,9 @@ boundary under evaluation.
    boundary once another independent source agrees with it.
 
 An `Established` result requires every **applicable** gate to return `PASSED`.
-A gate whose subject the run never set out to use is not applicable and takes no
-part in that conjunction: a run asked only for local evidence never consults a
-parent pull request, so gates 1, 2, and 3 have nothing to answer and are
+A gate whose subject the run never set out to use is not applicable and takes
+no part in that conjunction: a run asked only for local evidence never consults
+a parent pull request, so gates 1, 2, and 3 have nothing to answer and are
 reported as not applicable. Gates 6 and 7 are the exception, and the split is
 deliberate: gates 1 to 3 ask about the parent's _pull request_, while 6 and 7
 ask about the parent's _history_, which a run can know without the forge. A
@@ -197,8 +197,7 @@ refusal but a reason to stop: the run reports `Indeterminate` and exits `3`,
 and falls through to no weaker evidence. The distinction is what the
 local-evidence path rests on. A stack record that must answer for itself
 establishes a boundary, while a parent the user explicitly named and the
-repository cannot resolve is a question left open rather than a negative
-answer.
+repository cannot resolve is a question left open rather than a negative answer.
 
 ## The shared record
 
