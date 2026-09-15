@@ -148,6 +148,37 @@ def _ancestry(
     return answers
 
 
+def _masked(commits: tuple[str, ...], draw: st.DrawFn) -> tuple[str, ...]:
+    """Draw which of ``commits`` a boolean mask keeps, in the order they are in.
+
+    Two properties draw a subset of a listing — the commits the parent's head
+    reaches, and the commits carrying the landed one's content — and both are
+    the same draw over the same listing, so the mask is drawn once here rather
+    than spelled twice with a chance of the two drifting apart.
+
+    Parameters
+    ----------
+    commits : tuple[str, ...]
+        Commits to draw a mask over, which may be empty.
+    draw : st.DrawFn
+        The example's own draw, so the mask is the example's choice.
+
+    Returns
+    -------
+    tuple[str, ...]
+        The commits the drawn mask keeps, in the order they were listed.
+
+    """
+    mask = draw(
+        st.lists(
+            st.booleans(),
+            min_size=len(commits),
+            max_size=len(commits),
+        )
+    )
+    return tuple(commit for commit, keep in zip(commits, mask, strict=True) if keep)
+
+
 def _without_some(
     contents: typ.Mapping[str, CommitRange],
     draw: st.DrawFn,
@@ -165,18 +196,7 @@ def _without_some(
     """
     kept = {}
     for key, listed in contents.items():
-        chosen = draw(
-            st.lists(
-                st.booleans(),
-                min_size=len(listed.commits),
-                max_size=len(listed.commits),
-            )
-        )
-        selected = zip(listed.commits, chosen, strict=True)
-        kept[key] = CommitRange(
-            tuple(one for one, keep in selected if keep),
-            listed.truncated,
-        )
+        kept[key] = CommitRange(_masked(listed.commits, draw), listed.truncated)
     return kept
 
 
@@ -201,15 +221,7 @@ def _twins(
         return {}
     compared = {}
     for key, listed in contents.items():
-        matched = draw(
-            st.lists(
-                st.booleans(),
-                min_size=len(listed.commits),
-                max_size=len(listed.commits),
-            )
-        )
-        selected = zip(listed.commits, matched, strict=True)
-        compared[key] = tuple(one for one, carries in selected if carries)
+        compared[key] = _masked(listed.commits, draw)
     return compared
 
 
