@@ -1474,6 +1474,78 @@ Stop and escalate rather than improvising when any of these is reached.
     calls. `run_wheresat_in` had reached five parameters, so it now delegates
     to the pair rather than carrying its own copy of the rule, and no test
     builds its own answer to "which working tree".
+  - Review round: `coderabbit review --agent --base origin/main` reports
+    `review_completed` with 19 findings over the tree at `cbd3797` (log
+    `/tmp/coderabbit-git-donkey-git-wheresat-sub-command-7.out`), taken on
+    2026-09-15 on the first attempt and without meeting a rate limit, so no
+    `vsleep` retry was needed. The 19 are 3 major, 10 minor, and 6 trivial, and
+    every one was actionable: all 19 are applied in this revision. The
+    reviewer's path list is an exact set match against
+    `git diff --name-only origin/main...HEAD` at that commit — 107 paths each
+    way — which is what says the review read the commit rather than the working
+    tree this round had already begun to rewrite, and why what follows is a
+    second revision of the same files rather than an answer to a moving target.
+  - The three major findings were the parts of this milestone a gate cannot
+    see, and two of them were mistakes made here rather than inherited. The
+    double that guards hard mode's ordering rule asked whether _anything_ had
+    been entombed rather than whether _this branch_ had, so a sweep that
+    silently dropped one branch's tombstone would have passed a test named for
+    the rule it broke; `EntombFirstAdapter.delete_branch` now names the branch,
+    and the new `ForgetfulStackStore` double — which accepts one branch's
+    tombstone and writes none — with
+    `test_hard_mode_refuses_a_branch_whose_own_tip_was_not_preserved` is what
+    makes the difference measurable rather than asserted. The reader that finds
+    the worktree holding a branch resolved a relative `gitdir:` target against
+    the _process's_ directory, so a linked worktree Git wrote with
+    `git worktree add --relative-paths` was read at a path that does not exist
+    and reported as an idle one; the target now resolves against the `.git`
+    entry's own directory, and `tests/unit/test_wheresat_worktrees.py` builds
+    exactly that shape from a repository the test fabricates (the Surprises
+    entry below records what GitPython does with the same path, which is why
+    that test commits through Git rather than through the ref API). The
+    developers' guide was missing a bullet for five modules this milestone
+    added; each now has one, and the section names the failure vocabulary, the
+    parent-head ladder, and the deep comparison among what the package holds.
+  - The remaining sixteen are one bound, one wording, and fourteen shapes. The
+    users' guide lost an ambiguous "however it is named" and one bullet that ran
+    past 80 columns; `pyproject.toml` gained an upper bound on `requests`
+    (`>=2.32.0,<3.0`, with the one-line `uv.lock` refresh that follows from it);
+    `_empty_payload` derives its two empty ranges from `_json_range` rather than
+    restating that function's keys; `wheresat_payload.associated` documents the
+    `WheresatGitHubError` it propagates; and three docstrings, three
+    annotations, and two assertion messages now say what the code does. The
+    first of the two worth naming is the fingerprint suite's stash edit, which
+    was aimed at the reading labelled `refs` — a reading a stash moves as a side
+    effect, because `git for-each-ref` lists `refs/stash` with the rest — so the
+    edit passed while leaving the reading built for it, `stashes`, measured by
+    nothing; that is the hole the control's own docstring says it exists to
+    close. The second is the end-to-end boundary assertion, which promised the
+    answer named the boundary "in full" while comparing against the abbreviation
+    the report prints. The -ise/-ize family was settled the way the repository
+    already spells it: `authorize` in the three files that carried the -ise
+    form, the one message in `fafo_github.py` included.
+  - The round adds one path the reviewed set does not contain —
+    `tests/unit/test_wheresat_worktrees.py` — because the review's subject was
+    the commit, and the regression that file pins was found while answering a
+    finding rather than by reading a file the reviewer had read. It is therefore
+    the one artefact here whose account is this plan's and not the reviewer's.
+  - Gate note: all eight gates ran green in one sequential pass over the tree
+    this entry commits — `build`, `check-fmt`, `lint`, `typecheck`, `test`,
+    `spelling`, `markdownlint`, and `nixie`, with `test` reporting `887 passed,
+    233 warnings` over 21 snapshots and `lint`'s seven stages all clean (ruff,
+    interrogate at 100%, pyscn, both pylint passes at 10.00, ambrleaks, and
+    skylos with no findings). `typos.toml` is byte-identical before and after
+    the spelling gate, so nothing was regenerated and nothing is committed as
+    generator output, and the untracked test file this round adds is collected
+    by that run, whose one case passes (logs
+    `/tmp/{build,check-fmt,lint,typecheck,test,spelling,markdownlint,nixie}-git-donkey-git-wheresat-sub-command-133.out`).
+    The three Markdown-reading gates were then re-run over this entry and the
+    two sections it adds to, which is what covers the prose below rather than
+    the pass above it. The first re-run was red on one `typos` finding this
+    prose introduced, because the entry named the -ise form it was describing;
+    the sentence now names the form without spelling it, and the second run
+    reports the tree clean (logs
+    `/tmp/{markdownlint,spelling,nixie}-git-donkey-git-wheresat-sub-command-135.out`).
 
 ## Surprises & discoveries
 
@@ -2334,6 +2406,52 @@ Stop and escalate rather than improvising when any of these is reached.
   tests happen to run in. The trap is worth stating because the cache is the
   point: the flag that stops a network call still answers from durable
   evidence, and only a cold cache separates the two.
+
+- Observation: GitPython's repository object cannot be asked about a linked
+  worktree whose Git directory Git recorded relative, and the mistake it makes
+  is the one the reader under test must not make.
+  Evidence: `git/repo/fun.py:80-96` `find_worktree_git_dir` returns the raw
+  `gitdir:` value; a per-worktree directory holds no `objects` and no `refs`,
+  so `git/repo/fun.py:57-77` `is_git_dir` refuses it and
+  `git/repo/base.py:271-277` falls through to `expand_path`, which
+  `git/util.py:525-537` finishes with `osp.abspath` — against the directory the
+  reading process happens to run in. Measured on GitPython 3.1.46 against a
+  worktree added with `--relative-paths`, whose `.git` entry reads
+  `gitdir: ../repo/.git/worktrees/linked`: `Repo(worktree).git_dir` returned a
+  path under the process's own directory that does not exist, and `repo.head`
+  raised `ValueError: Reference at 'HEAD' does not exist`, while
+  `repo.git.status()` and `repo.git.rev_parse('--absolute-git-dir')` were both
+  right, because GitPython runs real Git with `cwd` set to the working tree.
+  Impact: the production read is unaffected — `wheresat_worktrees` resolves a
+  relative target against the `.git` entry's own directory and asks Git for
+  everything else through `repo.git` — but test code must not touch `Repo.head`
+  on a linked worktree: `tests/unit/test_wheresat_worktrees.py` makes every
+  commit through `repo.git.add` and `repo.git.commit` and says why at the top
+  of the module, because the case it builds would otherwise fail for a reason
+  that has nothing to do with the rule it measures.
+- Observation: the shared-record grammar's two arguable rules settle towards
+  reporting more rather than towards choosing, and the sketch in this plan said
+  otherwise for both.
+  Evidence: the sketch had a line inside a block quote skipped as quoted
+  material; the grammar reads a quoted record and strips the quote, because
+  Markdown offers no reliable way to tell a decoration from a citation — the
+  same body may bullet, embolden, or quote a record — and because what the
+  parser returns is a candidate a run then validates, never an instruction it
+  obeys, so reading one claim too many costs a gate that refuses it while
+  skipping one costs the boundary the command exists to find. The sketch also
+  had the ambiguous case mean "two or more disagreeing occurrences"; the
+  grammar reports one reading per distinct pair of a named parent and a named
+  boundary, so a body naming two parents and one boundary yields two readings
+  rather than whichever one a resolver would have picked. The sketch under
+  `### git_donkey/wheresat_shared_record.py` was amended to say both, so the
+  plan does not state a rule the module refuses.
+  Impact: a run that reads a shared record has four results to handle rather
+  than two — absent, malformed, one reading, and several — and the several case
+  is a refusal that names the readings, not a choice between them. It also
+  decides what the wiring slice does with such a body: the run can read the
+  record and still not tell which reading it was, so no candidate is proposed
+  from it at all, because an attested claim that is two claims is not one this
+  run can report as a boundary.
 
 ## Decision log
 
@@ -3594,6 +3712,48 @@ Stop and escalate rather than improvising when any of these is reached.
   "the only new refs are under the evidence namespace" would hold over an empty
   set and measure nothing. Naming the pull request is also what a user of the
   GitHub rung actually types, which is what a user journey is for.
+  Date/Author: 2026-09-15, implementation agent, EP-M10.
+- Decision: a shared record is read as a claim and never resolved, so a quoted
+  record is read rather than skipped and a body that supports several readings
+  is reported as every one of them.
+  Rationale: both rules run the same way — towards handing the person who can
+  settle a disagreement the whole of it. Markdown gives no reliable way to tell
+  a decoration from a citation, so treating `>` as "quoted, therefore skipped"
+  would silently drop a record whose author quoted it as a block, and the cost
+  of reading one claim too many is bounded: the record is a candidate the run
+  validates through the same gates as every other, so a claim that is wrong is
+  refused by the repository rather than believed. The alternative for the
+  several case — pick the first, the newest, or the one that resolves — is the
+  reading ADR-005 forbids one level up, because presenting one of two
+  disagreeing claims as the claim is what makes a wrong boundary look attested.
+  The spec block for the module was amended with both rules rather than left
+  stating the sketch's, and the one place reporting more has a price is bounded
+  too: the wiring slice proposes no candidate from a body with several
+  readings, because two claims are not one this run can report.
+  Date/Author: 2026-09-15, implementation agent, EP-M10.
+- Decision: the GitHub port keeps `pull_request_body` even though no production
+  path reaches it in this milestone.
+  Rationale: the method is the one question the shared-record rung puts to the
+  forge — the record travels in a pull request body, so reading the body is
+  that rung's whole input — and it is declared with the rest of the port
+  because the test doubles and the recorded cassettes are written against one
+  declaration: a method added when the rung lands would change every double
+  after those recordings were made. The dead-code gate reports no finding for
+  it, measured rather than assumed (`lint`'s skylos stage, log
+  `/tmp/lint-git-donkey-git-wheresat-sub-command-133.out`), and the API
+  implementation's reading of a body is covered where it is decided, by the
+  fault test that asks it for one. The cost is one Protocol method and one
+  implementation for a slice the milestone already owes, and the alternative is
+  a double that would have had it anyway.
+  Date/Author: 2026-09-15, implementation agent, EP-M10.
+- Decision: `requests` carries an upper bound of `<3.0` in `pyproject.toml`.
+  Rationale: the package now imports `requests` directly, and the module that
+  does reaches GitHub through `github3.session`'s `Session` so that vcrpy
+  intercepts it — a major version that changed that session surface would
+  change what the recorded cassettes prove, and the suite's rule is that no
+  test makes live traffic. A bound below the next major turns that from a
+  review comment into a resolution failure, and it costs one line of the
+  manifest, mirrored by `uv lock`.
   Date/Author: 2026-09-15, implementation agent, EP-M10.
 
 ## Outcomes & retrospective
@@ -5763,7 +5923,7 @@ class SharedRecordMalformed:
 
 @dataclasses.dataclass(frozen=True, slots=True)
 class SharedRecordAmbiguous:
-    """Two or more disagreeing occurrences; never silently resolved."""
+    """Every reading the body supports; never silently resolved."""
 
     records: tuple[SharedRecord, ...]
 
@@ -5777,11 +5937,14 @@ def parse_shared_record(body: str) -> SharedRecordResult:
     """Extract a stack parent and replay boundary from a pull request body.
 
     The grammar is anchored per line and tolerates leading `-`, `*`, `>`, and
-    `**` decoration. Object IDs must be full 40 or 64 hexadecimal characters;
+    `**` decoration, so a record the body quotes as a block is read like any
+    other claim. Object IDs must be full 40 or 64 hexadecimal characters;
     abbreviations are rejected rather than resolved. Lines inside fenced code
-    blocks and block quotes are skipped. Exactly one occurrence of each field
-    is required; two disagreeing occurrences yield `SharedRecordAmbiguous`
-    rather than a silent choice.
+    blocks are skipped, because text in a fence is quoted material rather than
+    the claim the body's author is making. Exactly one occurrence of each field
+    is required; a body that supports several readings yields
+    `SharedRecordAmbiguous` carrying every one of them rather than a silent
+    choice.
     """
 
 
