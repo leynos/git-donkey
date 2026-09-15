@@ -1,10 +1,11 @@
 """The rungs ``git wheresat`` asks for a boundary, in the procedure's order.
 
 Each rung of the evidence ladder is a question that names a commit: the stack
-record ``git donkey`` wrote, a merge base, a surviving fork point. A rung
-returns the candidates it found; a rung that could not answer at all returns a
-*fault*, because "there is no evidence here" and "this question went
-unanswered" are different answers and only one of them is a refusal (INV-5).
+record ``git donkey`` wrote, the head of the parent pull request the run
+identified, a merge base, a surviving fork point. A rung returns the candidates
+it found; a rung that could not answer at all returns a *fault*, because "there
+is no evidence here" and "this question went unanswered" are different answers
+and only one of them is a refusal (INV-5).
 
 What one rung cannot answer another can. A branch with no record still has a
 merge base; a parent branch that was deleted still has the tombstone ``git
@@ -49,6 +50,7 @@ from git_donkey import (
     stack_store,
     wheresat_deep,
     wheresat_heads,
+    wheresat_payload,
 )
 from git_donkey.wheresat_errors import ShallowHistoryError, WheresatGraphError
 from git_donkey.wheresat_records import (
@@ -239,6 +241,47 @@ def _record_evidence(context: CollectionContext) -> CollectionResult:
     return CollectionResult()
 
 
+def _pull_request_head_evidence(context: CollectionContext) -> CollectionResult:
+    """Return the head the run fetched for the parent pull request it identified.
+
+    A pull request's head is attested evidence: the pull request names the
+    commit by a deliberate act, which is what lets one candidate of this kind
+    carry a boundary on its own. The rung answers only when the run fetched the
+    head itself. A head that came back as a bare object ID is the one this run
+    put in hand, because the ladder's other rungs each name the ref they read;
+    a head the ladder recovered is read by the rungs that answer for a ref,
+    under the kind each of them is, and offering it here as well would report
+    one repository fact under two kinds.
+
+    The parent being still open is no reason to withhold the candidate: a head
+    that is not a boundary any replay should be computed from is exactly what
+    the parent-merged gate exists to refuse, and a rung that answered around it
+    would leave that refusal to no one.
+
+    Returns
+    -------
+    CollectionResult
+        The candidate the fetched head names, or nothing at all when the run
+        identified no parent, fetched no head, or recovered one the weaker way.
+
+    """
+    parent = context.parent
+    head = context.parent_head
+    if parent is None or head is None:
+        return CollectionResult()
+    if head.ref is not None:
+        return CollectionResult()
+    return CollectionResult(
+        candidates=(
+            candidate_for(
+                head.commit,
+                EvidenceKind.PULL_REQUEST_HEAD,
+                source=f"the head of {wheresat_payload.identity_text(parent.identity)}",
+            ),
+        )
+    )
+
+
 def _merge_base_evidence(context: CollectionContext) -> CollectionResult:
     """Return the best common ancestors of the child, target, and parent head.
 
@@ -350,6 +393,7 @@ def _patch_identity_evidence(context: CollectionContext) -> CollectionResult:
 
 SOURCES: typ.Final[tuple[tuple[EvidenceKind, EvidenceSource], ...]] = (
     (EvidenceKind.STACK_RECORD_BIRTH, _record_evidence),
+    (EvidenceKind.PULL_REQUEST_HEAD, _pull_request_head_evidence),
     (EvidenceKind.MERGE_BASE, _merge_base_evidence),
     (EvidenceKind.FORK_POINT, _fork_point_evidence),
     (EvidenceKind.TREE_IDENTITY, _tree_identity_evidence),
@@ -361,12 +405,20 @@ The kind beside each rung is what its observation is labelled with, so the
 evidence tier a rung's answer is recorded under comes from one declaration
 rather than from each rung's memory of what it reads.
 
+The pull request head is second because a forge naming a commit is scarce: a
+stack record names a boundary for a stack that was recorded, and a pull request
+head names one for a parent merged by a pull request nobody recorded, which is
+the case this ladder exists to answer. It reads the head the run fetched rather
+than the forge, so it can answer with the forge out of reach — offline, or rate
+limited — and it is silent for a head the ladder recovered by a ref, which the
+rungs below answer for under their own kinds.
+
 The two comparisons of a ``--deep`` run are here because they need nothing but
 the graph, and they are last because what content comparison finds is inferred
 evidence and the ladder is ordered by the authority of what it reads. The
 ladder's remaining rungs arrive with the evidence they read rather than early
-and silent: the shared record and the pull request head need a forge to read,
-and this version reads no forge. A rung that cannot run is absent from this
+and silent: the shared record needs a forge to read, and this version reads no
+forge. A rung that cannot run is absent from this
 tuple, so the pipeline holds no branch that runs a question it cannot answer —
 and a run that did not ask for the comparison has it dropped from the list it
 reads, by :func:`_asked_for`, rather than left in place to answer nothing.

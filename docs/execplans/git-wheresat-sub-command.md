@@ -1400,6 +1400,33 @@ Stop and escalate rather than improvising when any of these is reached.
     both recordings: `grep -c -i '^ *authorization:'` prints `0` for each, and
     neither holds a `Set-Cookie`, a token prefix, or any other credential
     material, nor was either edited by hand.
+  - Slice (g) is begun, and its first piece is landed: the
+    `PULL_REQUEST_HEAD` rung exists in `git_donkey/wheresat_collect.py` and is
+    the second entry of `SOURCES`. It reads the context and nothing else —
+    `context.parent` for the identity to label the candidate with and
+    `context.parent_head` for the commit — so it answers with no forge, no
+    repository, and no network in reach, which is what the Decision entry above
+    records. It reads as two guards rather than one disjunction because they
+    are two different reasons to say nothing: no pull request with a head in
+    hand, and a head that arrived with a ref and therefore belongs to the rungs
+    that answer for refs. `tests/unit/test_wheresat_collect.py` pins the four
+    cases, and each of the three that can be made to fail was measured failing
+    before it was believed: with the `head.ref` guard deleted the ref-backed
+    case proposes a candidate of `pull-request-head` kind, and with the rung
+    dropped from `SOURCES` three of the four fail — which is what makes the
+    module a test of the ladder rather than of a private function.
+  - The rung's prose was updated with it, and both places said something the
+    code had stopped saying. The module docstring's list of rungs gained the
+    head; the `SOURCES` note said "the shared record and the pull request head
+    need a forge to read, and this version reads no forge", which was true of
+    the design and false of the rung — the head the run fetched is already in
+    hand by the time a rung runs. The note now says what the rung is for (a
+    forge naming a commit is scarcer than a record naming one, and this rung is
+    the case the milestone exists for), how it answers with the forge out of
+    reach, and why a ref-backed head is silent here. `wheresat_payload` joins
+    the module's imports for `identity_text`, which is the one function that
+    decides how a pull request is written for an operator; the label is
+    therefore the same string the parent-consulting report prints.
 
 ## Surprises & discoveries
 
@@ -3253,6 +3280,23 @@ Stop and escalate rather than improvising when any of these is reached.
   a pull request nobody recorded a stack record for, and it is why
   ``parent-merged`` can refuse: the head of a pull request still open is not a
   boundary any replay should be computed from.
+  Date/Author: 2026-09-15, implementation agent, EP-M10.
+- Decision: that rung answers only for a head the _run_ fetched, and only when
+  a pull request is in hand to attribute it to. ``ParentHead.ref is None`` is
+  the test, because the two heads the ladder recovers always carry the ref they
+  were read from (a tombstone ref, a remote-tracking ref) while
+  ``wheresat.py:_head`` builds the fetched one with ``ref=None``. A
+  ref-backed head is left to the rungs that read refs, under their own kinds.
+  Rationale: offering it here as well would report one repository fact under
+  two kinds, and ``may_establish`` counts corroboration by _kind_ — the head a
+  ref named would then stand as two witnesses to one boundary when the ladder
+  recovered it, which is the miscount the kind-keyed rule exists to prevent. The
+  parent may be open, merged, or unidentified: withholding the candidate from a
+  run whose parent is still open would leave the ``parent-merged`` refusal to
+  no one, so the rung proposes and the gate refuses. The second guard is
+  defensive — the pipeline fetches no head for a run that identified no parent —
+  and is covered by ``tests/unit/test_wheresat_collect.py`` rather than through
+  a run, because the state is unreachable from the ladder.
   Date/Author: 2026-09-15, implementation agent, EP-M10.
 - Decision: ``heuristic_window`` is a field of :class:`BoundaryRequest`, and
   the deep scan reads the target's history with ``history(target,
