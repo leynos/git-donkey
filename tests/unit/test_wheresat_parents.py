@@ -214,8 +214,12 @@ def test_a_history_longer_than_the_window_refuses_the_search(
     associated with these commits" — that a partial history cannot support.
     """
     limit = 3
+    # Twice the bound, and one commit per value, so a window taken from the tip
+    # is a different four commits from one taken from the root: the refusal is
+    # the same either way, and only the values the read kept tell the two apart.
+    commits = tuple(f"{index:040d}" for index in range(limit * 2))
     opener = Opener(forge=Forge())
-    history = graph_over(*("c" * 40 for _ in range(limit + 1)))
+    history = graph_over(*commits)
 
     identified = ask(
         boundary_request(),
@@ -233,6 +237,9 @@ def test_a_history_longer_than_the_window_refuses_the_search(
     )
     assert history.limits == [limit + 1], (
         "one commit beyond the bound is asked for, so a full window is recognisable"
+    )
+    assert history.windows == [commits[-(limit + 1) :]], (
+        "the read keeps the newest commits, which are the ones a squash lands"
     )
     assert identified.error_kind == "search_incomplete", (
         "the bound the run set is what stopped the search, not the forge"

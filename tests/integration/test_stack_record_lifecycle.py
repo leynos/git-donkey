@@ -58,8 +58,9 @@ from hypothesis.stateful import (
     run_state_machine_as_test,
 )
 
-from git_donkey import donkey_worktrees, helpers, stack_records, stack_store
+from git_donkey import donkey, stack_records, stack_store
 from tests import git_repo_helpers
+from tests.integration import donkey_helpers
 
 pytestmark = pytest.mark.timeout(120)
 
@@ -559,24 +560,49 @@ def test_the_exclusivity_check_rejects_a_record_beside_a_tombstone(
         _assert_exclusive(_Snapshot.read(repo), "child")
 
 
-@dataclasses.dataclass(frozen=True, slots=True)
-class _RefusingWriter:
-    """A record writer whose every write is refused with the configured error.
+def _refuse_writes(monkeypatch: pytest.MonkeyPatch, failure: Exception) -> None:
+    """Make every record write raise ``failure``, as a refusing store would.
+
+    The refusal is injected into the store rather than into a writer this test
+    builds, so what runs is the whole workflow: the writer the record is handed
+    to is the one the command constructed for itself, and the write is the only
+    thing replaced. A writer built here would have to be threaded through the
+    context the workflow builds for itself, which is what this test did before,
+    and it made the test one of those private classes rather than of the
+    command.
 
     Parameters
     ----------
+    monkeypatch : pytest.MonkeyPatch
+        Patcher the refusal is installed with.
     failure : Exception
-        Error raised when a record write is attempted, standing for the two
-        ways the store refuses one: its own error, and the ``ValueError`` its
-        ref-path validation raises.
+        Error every write is to raise, standing for the two ways the store
+        refuses one: its own error, and the ``ValueError`` its ref-path
+        validation raises.
 
     """
 
-    failure: Exception
+    def refuse(
+        _writer: stack_store.GitStackRecordWriter,
+        _record: stack_records.StackRecord,
+    ) -> None:
+        """Refuse the record, raising the failure this test configured."""
+        raise failure
 
-    def create(self, record: stack_records.StackRecord) -> None:
-        """Refuse to write ``record``, raising the configured failure."""
-        raise self.failure
+    monkeypatch.setattr(stack_store.GitStackRecordWriter, "create", refuse)
+
+
+def _stack_a_parent(repo: Repo) -> None:
+    """Commit to ``parent`` so that a branch cut from it is a stacked branch.
+
+    A branch created at the trunk commit is not stacked, however it is named,
+    and is not recorded at all (INV-11), so a parent still at the trunk would
+    leave this test with no record write to refuse.
+    """
+    repo.git.branch("parent", _TRUNK)
+    repo.git.checkout("parent")
+    donkey_helpers.seed_repo(repo, "parent.txt", "parent work")
+    repo.git.checkout(_TRUNK)
 
 
 @pytest.mark.parametrize(
@@ -589,6 +615,7 @@ class _RefusingWriter:
 )
 def test_a_refused_record_write_is_reported_as_a_failed_record(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
     failure: Exception,
 ) -> None:
@@ -599,32 +626,12 @@ def test_a_refused_record_write_is_reported_as_a_failed_record(
     created, so both must be reported as a birth whose record could not be
     written rather than as a worktree that could not be added.
     """
-    repo = git_repo_helpers.seed_repo(tmp_path / "repo", branch=_TRUNK)
-    target = tmp_path / "worktrees" / "child"
-    target.parent.mkdir(parents=True)
-    context = donkey_worktrees._WorktreeContext(
-        repo_home=repo,
-        remote="origin",
-        branch_to_worktree={},
-    )
-    request = donkey_worktrees._WorktreeRequest(
-        branch_name="child",
-        base_branch=_TRUNK,
-        target_path=target,
-        stack=donkey_worktrees._StackContext(
-            parent=_TRUNK,
-            writer=typ.cast(
-                "stack_store.GitStackRecordWriter",
-                _RefusingWriter(failure),
-            ),
-        ),
-    )
+    scenario = donkey_helpers.new_scenario(tmp_path, monkeypatch, "child")
+    _stack_a_parent(scenario.repo)
+    _refuse_writes(monkeypatch, failure)
 
     with pytest.raises(SystemExit) as excinfo:
-        donkey_worktrees._add_worktree_for_new_branch(
-            context=context,
-            request=request,
-        )
+        donkey.run_git_donkey(scenario.branch, "parent", no_pull=True)
 
     stderr = capsys.readouterr().err
     assert excinfo.value.code == 1, "a record that cannot be written is an error"
@@ -635,6 +642,6 @@ def test_a_refused_record_write_is_reported_as_a_failed_record(
     assert "worktree add failed" not in stderr, (
         "the record write is not reported as a failed worktree"
     )
-    assert helpers._local_branch_exists(repo, "child"), (
+    assert scenario.branch in scenario.repo.heads, (
         "the message is true: the branch really was created"
     )

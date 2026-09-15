@@ -22,7 +22,7 @@ from pathlib import Path
 
 from git import InvalidGitRepositoryError, NoSuchPathError, Repo
 
-from git_donkey.wheresat_errors import WheresatGraphError, _reported
+from git_donkey.wheresat_errors import WheresatGraphError, failure_line
 from git_donkey.wheresat_records import GitOperation, WorktreeState
 
 _ANSWERED_YES: typ.Final = 0
@@ -163,7 +163,7 @@ def _listing(repo: Repo, branch: str) -> str | None:
         with_exceptions=False,
     )
     if status != _ANSWERED_YES:
-        reported = _reported(stderr, status)
+        reported = failure_line(stderr, status)
         msg = f"cannot list the worktrees to find {branch!r}: {reported}"
         raise WheresatGraphError(msg)
     return _holding(str(output), branch)
@@ -326,7 +326,7 @@ def _absolute_git_dir(worktree: Repo) -> Path:
         with_exceptions=False,
     )
     if status != _ANSWERED_YES:
-        reported = _reported(stderr, status)
+        reported = failure_line(stderr, status)
         msg = f"cannot locate the worktree's Git directory: {reported}"
         raise WheresatGraphError(msg)
     return Path(str(output).strip())
@@ -370,7 +370,7 @@ def _dirty(worktree: Repo) -> bool:
         with_exceptions=False,
     )
     if status != _ANSWERED_YES:
-        reported = _reported(stderr, status)
+        reported = failure_line(stderr, status)
         msg = f"cannot read the worktree's status: {reported}"
         raise WheresatGraphError(msg)
     return bool(str(output).strip())

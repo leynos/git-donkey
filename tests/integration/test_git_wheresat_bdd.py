@@ -34,7 +34,7 @@ import typing as typ
 
 from pytest_bdd import given, parsers, scenarios, then, when
 
-from git_donkey import stack_records, wheresat, wheresat_refs
+from git_donkey import stack_records, wheresat, wheresat_records, wheresat_refs
 from tests import git_repo_helpers
 from tests.integration import wheresat_scenarios
 from tests.integration.wheresat_helpers import (
@@ -195,7 +195,7 @@ def _in_namespace(print_of: Fingerprint, namespace: str) -> list[str]:
 
 def _short(commit: str) -> str:
     """Return the abbreviation Git's own reports would print for ``commit``."""
-    return commit[:7]
+    return commit[: wheresat_records.COMMIT_ABBREVIATION]
 
 
 @given("a child branch stacked on a parent branch", target_fixture="scenario")
@@ -409,10 +409,10 @@ def parent_opened_from_a_fork(scenario: WheresatJourney, tmp_path: Path) -> None
     assert journey.forge.pull.head_repository == wheresat_scenarios.FORK, (
         "the pull request must record its head as living in the fork"
     )
-    assert wheresat_scenarios._branch_head(fork_path, journey.scenario.parent) == (
+    assert wheresat_scenarios.branch_head(fork_path, journey.scenario.parent) == (
         journey.parent_head
     ), "the fork must hold the head the pull request records"
-    assert not wheresat_scenarios._branch_head(
+    assert not wheresat_scenarios.branch_head(
         journey.scenario.remote_path, journey.scenario.parent
     ), "origin must not hold the parent branch any more"
 
@@ -656,7 +656,7 @@ def the_head_is_fetched_from_the_fork(scenario: WheresatJourney) -> None:
     fork_path = journey.fork_path
 
     assert fork_path is not None, "the fork journey must have a fork repository"
-    held = wheresat_scenarios._branch_head(fork_path, journey.scenario.parent)
+    held = wheresat_scenarios.branch_head(fork_path, journey.scenario.parent)
 
     assert held == named, "the cached head must be the one the fork holds"
 

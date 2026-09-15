@@ -152,8 +152,12 @@ boundary under evaluation.
    there is nothing to repair.
 6. **`parent-history-intact`** — `PARENT_HEAD` is known, its object is present,
    and the candidate is an ancestor of it, so the candidate lies on the
-   parent's own history rather than on the trunk. `INDETERMINATE` when
-   `PARENT_HEAD` cannot be recovered. This is the gate that catches a rewritten
+   parent's own history rather than on the trunk. `FAILED` when `PARENT_HEAD`
+   is known and present but the candidate is not an ancestor of it, which
+   places the candidate off the parent's history rather than on it.
+   `INDETERMINATE` when `PARENT_HEAD` cannot be recovered, and when the
+   repository is shallow, where Git's negative answer is an artefact of the
+   graft rather than an answer. This is the gate that catches a rewritten
    parent, where the merge base is an earlier trunk commit rather than the
    inherited boundary. `PARENT_HEAD` is sought in order: the fetched pull
    request head, the tombstone `git plonk` wrote for the parent, then the

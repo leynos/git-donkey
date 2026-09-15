@@ -56,12 +56,10 @@ from tests.integration import wheresat_scenarios
 from tests.integration.wheresat_helpers import (
     CHILD,
     PARENT,
-    Fingerprint,
-    WheresatRun,
+    Where,
     WheresatScenario,
-    fingerprint,
-    in_directory,
-    run_wheresat,
+    reading,
+    run_wheresat_in,
     stacked_child,
 )
 
@@ -84,9 +82,6 @@ _REFUSED: typ.Final = 1
 _UNUSABLE: typ.Final = 2
 _INDETERMINATE: typ.Final = 3
 
-type _Where = typ.Literal["worktree", "checkout"]
-"""Which working tree a vector is run from."""
-
 
 @dataclasses.dataclass(frozen=True, slots=True)
 class Vector:
@@ -102,7 +97,7 @@ class Vector:
         Status the run must return. It is pinned here because a vector that
         refused for an unexpected reason would still leave the repository alone,
         and the matrix would then pass while testing nothing.
-    where : _Where
+    where : Where
         Working tree to run from: the child's worktree, where the branch is
         checked out and no ``--branch`` is needed, or the main checkout, where
         the branch has to be named.
@@ -112,7 +107,7 @@ class Vector:
     label: str
     options: wheresat.WheresatOptions
     exit_code: int
-    where: _Where = "worktree"
+    where: Where = "worktree"
 
 
 _VECTORS: typ.Final[typ.Mapping[str, Vector]] = {
@@ -248,56 +243,6 @@ def rebasing(tmp_path: Path) -> WheresatScenario:
     return stopped
 
 
-def _run_in(
-    scenario: WheresatScenario,
-    vector: Vector,
-    capsys: pytest.CaptureFixture[str],
-) -> WheresatRun:
-    """Run ``vector`` where it says it belongs, and return what it reported.
-
-    Parameters
-    ----------
-    scenario : WheresatScenario
-        The checkout the vector is run against.
-    vector : Vector
-        The command line to run, and the working tree to run it from.
-    capsys : pytest.CaptureFixture[str]
-        Capture fixture the run's output is read from.
-
-    Returns
-    -------
-    WheresatRun
-        The status and both output streams.
-
-    """
-    where = (
-        scenario.worktree_path() if vector.where == "worktree" else scenario.local_path
-    )
-    with in_directory(where):
-        return run_wheresat(vector.options, capsys)
-
-
-def _reading(scenario: WheresatScenario) -> Fingerprint:
-    """Return the fingerprint of both working trees of ``scenario``.
-
-    Parameters
-    ----------
-    scenario : WheresatScenario
-        The checkout to take a reading of.
-
-    Returns
-    -------
-    Fingerprint
-        The reading, comparable with :meth:`Fingerprint.differences`.
-
-    """
-    return fingerprint(
-        scenario.local_path,
-        scenario.worktree_path(),
-        repo=scenario.repo,
-    )
-
-
 def _observed(
     scenario: WheresatScenario,
     vector: Vector,
@@ -325,7 +270,7 @@ def _observed(
 
     """
     first = len(recorder.observations)
-    _run_in(scenario, vector, capsys)
+    run_wheresat_in(scenario, vector.options, capsys, where=vector.where)
     return recorder.observations[first:]
 
 
@@ -364,9 +309,9 @@ def test_every_vector_leaves_the_repository_alone(
     already reaches, so no run needs to retain anything.
     """
     vector = _VECTORS[label]
-    before = _reading(scenario)
-    run = _run_in(scenario, vector, capsys)
-    after = _reading(scenario)
+    before = reading(scenario)
+    run = run_wheresat_in(scenario, vector.options, capsys, where=vector.where)
+    after = reading(scenario)
 
     assert run.exit_code == vector.exit_code, (
         f"expected {label} to exit {vector.exit_code}, not {run.exit_code}: "
@@ -584,7 +529,7 @@ def test_the_json_vector_reports_the_boundary_the_record_attests(
     the child it belongs to, the command that would replay the child's work, and
     no durable ref, because this run retained nothing.
     """
-    run = _run_in(scenario, _VECTORS["json"], capsys)
+    run = run_wheresat_in(scenario, _VECTORS["json"].options, capsys)
     payload = run.envelope
 
     assert payload["schema"] == "git-wheresat/1", (
@@ -620,7 +565,7 @@ def test_a_refused_run_names_its_gate_and_prints_no_replay_command(
     the two to replay. Nothing may be printed for a replay either — a refusal
     that printed a command would be read as an answer by anyone who ran it.
     """
-    run = _run_in(scenario, _VECTORS["refusal"], capsys)
+    run = run_wheresat_in(scenario, _VECTORS["refusal"].options, capsys)
     gate = wheresat_records.GateName.REPLAY_RANGE_NON_EMPTY.value
 
     assert any(
@@ -639,14 +584,15 @@ def test_a_dirty_worktree_is_warned_about_and_left_alone(
     it says so; that is not evidence about the boundary, so it changes neither
     the verdict nor the status.
     """
-    before = _reading(dirtied)
-    run = _run_in(dirtied, _VECTORS["default"], capsys)
+    vector = _VECTORS["default"]
+    before = reading(dirtied)
+    run = run_wheresat_in(dirtied, vector.options, capsys, where=vector.where)
 
     assert run.exit_code == _ESTABLISHED, (
         "a dirty worktree warns but does not change the verdict"
     )
     assert "has uncommitted changes" in run.stdout, "the warning names the obstacle"
-    assert not before.differences(_reading(dirtied)), (
+    assert not before.differences(reading(dirtied)), (
         "and the worktree is left exactly as it was"
     )
     assert (
@@ -669,8 +615,9 @@ def test_a_stopped_rebase_is_warned_about_and_left_running(
     stopped this way has a detached ``HEAD``, and the warning about the
     uncommitted conflict is expected alongside the warning about the rebase.
     """
-    before = _reading(rebasing)
-    run = _run_in(rebasing, _VECTORS["branch-named"], capsys)
+    vector = _VECTORS["branch-named"]
+    before = reading(rebasing)
+    run = run_wheresat_in(rebasing, vector.options, capsys, where=vector.where)
 
     assert run.exit_code == _ESTABLISHED, (
         "a stopped rebase warns but does not change the verdict"
@@ -679,7 +626,7 @@ def test_a_stopped_rebase_is_warned_about_and_left_running(
         "the warning names the rebase"
     )
     assert "has uncommitted changes" in run.stdout, "and the conflict it stopped on"
-    assert not before.differences(_reading(rebasing)), (
+    assert not before.differences(reading(rebasing)), (
         "and the rebase is left running where it was"
     )
     assert _git_directory(rebasing, CHILD).joinpath("rebase-merge").is_dir(), (

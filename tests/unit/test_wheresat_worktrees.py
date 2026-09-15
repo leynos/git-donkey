@@ -32,7 +32,25 @@ from git import Repo
 from git_donkey import wheresat_records, wheresat_worktrees
 from tests import git_repo_helpers
 
-pytestmark = pytest.mark.timeout(120)
+_GIT_VERSION = Repo.GitCommandWrapperType().version_info
+"""The Git this suite runs against, as the installed GitPython reads it."""
+
+_MINIMUM_GIT: typ.Final = (2, 48)
+"""The first Git whose ``worktree add`` writes a relative Git directory.
+
+``--relative-paths`` was added in Git 2.48, and the case this module builds
+exists to read the relative form: a Git that ignored the option would leave the
+case with nothing to read rather than answer it wrongly.
+
+"""
+
+pytestmark = [
+    pytest.mark.timeout(120),
+    pytest.mark.skipif(
+        _GIT_VERSION < _MINIMUM_GIT,
+        reason="worktree add --relative-paths needs Git 2.48 or newer",
+    ),
+]
 
 _BRANCH: typ.Final = "issue-77-child"
 """Branch the linked worktree has checked out, and the rebase detaches from."""

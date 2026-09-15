@@ -93,19 +93,50 @@ class History:
         Failure the read raises instead of answering.
     limits : list[int | None]
         The ``limit`` of every read, in the order the reads were made.
+    windows : list[tuple[str, ...]]
+        The commits every read returned, in the order the reads were made.
 
     """
 
     commits: tuple[str, ...] = ()
     refusal: Exception | None = None
     limits: list[int | None] = dataclasses.field(default_factory=list)
+    windows: list[tuple[str, ...]] = dataclasses.field(default_factory=list)
 
     def history(self, rev: str, *, limit: int | None = None) -> tuple[str, ...]:
-        """Return the newest commits of the history this double holds."""
+        """Return the newest commits of the history this double holds.
+
+        The window is taken from the tip, as the real reader takes it, so a
+        read of a history longer than the bound answers with the commits a
+        squash could have landed rather than with the oldest ones. A ``limit``
+        of zero keeps no commits at all, which ``self.commits[-0:]`` would
+        otherwise read as keeping every one of them.
+
+        Parameters
+        ----------
+        rev : str
+            Revision the history is read from, which this double ignores.
+        limit : int | None
+            How many of the newest commits to keep, or ``None`` for all of
+            them.
+
+        Returns
+        -------
+        tuple[str, ...]
+            The commits kept, oldest first.
+
+        """
         self.limits.append(limit)
         if self.refusal is not None:
             raise self.refusal
-        return self.commits if limit is None else self.commits[:limit]
+        if limit is None:
+            window = self.commits
+        elif limit <= 0:
+            window = ()
+        else:
+            window = self.commits[-limit:]
+        self.windows.append(window)
+        return window
 
 
 @dataclasses.dataclass(frozen=True, slots=True)

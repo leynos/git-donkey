@@ -49,6 +49,8 @@ from git_donkey import (
 from git_donkey.wheresat_errors import WheresatGraphError, WheresatUsageError
 
 if typ.TYPE_CHECKING:
+    import collections.abc as cabc
+
     from git import Repo
 
 _RECORD_OPERATION: typ.Final[observability.Operation] = "stack_record_write"
@@ -625,7 +627,7 @@ def _observe(
     )
 
 
-def _attested(support: typ.Sequence[wheresat_records.Establishing]) -> bool:
+def _attested(support: cabc.Sequence[wheresat_records.Establishing]) -> bool:
     """Return whether a deliberate statement carries the boundary.
 
     A record whose claim gate 8 demoted is carried by its commit as derived
@@ -635,7 +637,7 @@ def _attested(support: typ.Sequence[wheresat_records.Establishing]) -> bool:
 
     Parameters
     ----------
-    support : typ.Sequence[wheresat_records.Establishing]
+    support : cabc.Sequence[wheresat_records.Establishing]
         The candidates the established boundary rests on.
 
     Returns

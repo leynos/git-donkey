@@ -69,6 +69,8 @@ _ENTRY_SEPARATOR: typ.Final = "\0"
 _ABSENT_CONFIG_KEY: typ.Final = 1
 _MISSING_CONFIG_KEY: typ.Final = 5
 _MISSING_REF: typ.Final = 1
+_UNKNOWN_REVISION: typ.Final = 128
+"""What Git exits with when a revision it was handed does not resolve."""
 TOMBSTONE_EXPIRE_KEY: typ.Final = "stack.tombstoneExpire"
 """Repository-local key naming how long a tombstone is kept."""
 _REF_NAME_FORMAT: typ.Final = "--format=%(refname)"
@@ -510,9 +512,43 @@ class GitStackRecordReader:
         return int(value)
 
     def _tombstone_timestamp(self, branch: str) -> int | None:
-        """Return when ``branch``'s tombstone was written, if it can be read."""
+        """Return when ``branch``'s tombstone was written, if it can be read.
+
+        A tombstone that went between the listing that named it and this read
+        has no reflog to show, and an age that cannot be read is read as no age
+        at all: both callers keep such a tombstone, because neither reporting
+        nor deleting one on a window it may not have outlived is a claim about
+        the parent's life that the evidence does not support.
+
+        Parameters
+        ----------
+        branch : str
+            Branch whose tombstone's age is read.
+
+        Returns
+        -------
+        int | None
+            The instant the tombstone was written, in seconds since the epoch,
+            or ``None`` when its reflog could not be read.
+
+        Raises
+        ------
+        GitCommandError
+            If Git refused the read with a status other than 128, which is what
+            it exits with when it cannot resolve the ref it was handed. A ref
+            it cannot read is an age it cannot tell, and both callers keep such
+            a tombstone rather than acting on a window it may not have outlived.
+
+        """
         ref = stack_records.tombstone_ref_path(branch)
-        output = self.repo.git.reflog("show", "--date=unix", "--format=%gd", "-1", ref)
+        try:
+            output = self.repo.git.reflog(
+                "show", "--date=unix", "--format=%gd", "-1", ref
+            )
+        except GitCommandError as exc:
+            if exc.status == _UNKNOWN_REVISION:
+                return None
+            raise
         match = _RELOG_ENTRY_TIME.search(output)
         return int(match.group("timestamp")) if match is not None else None
 

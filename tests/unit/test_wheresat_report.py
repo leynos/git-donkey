@@ -61,10 +61,12 @@ from tests.unit.wheresat_variants import (
 )
 
 if typ.TYPE_CHECKING:
+    import collections.abc as cabc
+
     from syrupy.assertion import SnapshotAssertion
 
 
-type _Builder = typ.Callable[[], Case]
+type _Builder = cabc.Callable[[], Case]
 """A named case, built on demand so each example gets its own."""
 
 _OBSTACLES: typ.Final = 2
@@ -75,7 +77,7 @@ _OBSTACLES: typ.Final = 2
 # a run can reach it two ways: a gate that answered against the only candidate,
 # and two candidates the gates left at one tier, where refusing to choose
 # between them is the answer.
-_CASES: typ.Final[typ.Mapping[str, _Builder]] = {
+_CASES: typ.Final[cabc.Mapping[str, _Builder]] = {
     "established": permissive,
     "established-with-parent": parented,
     "unresolved": lambda: spoiled(GateName.PARENT_MERGED, GateOutcome.FAILED),
@@ -195,24 +197,33 @@ def test_a_refusal_prints_the_gate_table_without_being_asked() -> None:
     assert "Reasons" in rendered, "a refusal names why it refused"
 
 
-def test_truncation_tails_match_snapshots(snapshot: SnapshotAssertion) -> None:
-    """A range that was listed in part must report the part it left out."""
-    outranking = with_candidates(
+# One case per way a listing is rendered short: two ranges the run saw cut, one
+# the report abbreviates itself, and one whose candidate lost to a record. Each
+# is named, because a snapshot named after the position it was asserted in
+# pins nothing: reorder the loop and every case is compared against the
+# rendering of another.
+_TRUNCATION_CASES: typ.Final[cabc.Mapping[str, _Builder]] = {
+    "truncated-replay-range": truncated_replay_range,
+    "truncated-history": truncated_history,
+    "long-replay-range": lambda: long_replay_range(report.RENDER_COMMIT_LIMIT + 1),
+    "outranked-candidate": lambda: with_candidates(
         permissive(),
         attested(OLD_BASE, source=RECORD_SOURCE),
         derived(OTHER_BASE),
+    ),
+}
+
+
+@pytest.mark.parametrize("name", tuple(_TRUNCATION_CASES))
+def test_truncation_tails_match_snapshots(
+    name: str, snapshot: SnapshotAssertion
+) -> None:
+    """A range that was listed in part must report the part it left out."""
+    case = _TRUNCATION_CASES[name]()
+    rendered = report.render_text(assessment_of(case), case.request)
+    assert rendered == snapshot, (
+        "expected the truncated report to match the recorded snapshot"
     )
-    long_range = long_replay_range(report.RENDER_COMMIT_LIMIT + 1)
-    for case in (
-        truncated_replay_range(),
-        truncated_history(),
-        long_range,
-        outranking,
-    ):
-        rendered = report.render_text(assessment_of(case), case.request)
-        assert rendered == snapshot, (
-            "expected the truncated report to match the recorded snapshot"
-        )
 
 
 def test_the_two_reasons_a_listing_is_short_are_reported_apart() -> None:

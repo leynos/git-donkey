@@ -13,7 +13,7 @@ the command line into object IDs, the credential a run needs before it can ask
 anything, and the writes a run was asked to make — and the workflow that
 reports it must not have to name any of them.
 
-Nothing here reads anything. :func:`_reported` turns one failed command into
+Nothing here reads anything. :func:`failure_line` turns one failed command into
 the single line a message can carry: a read that fails is reported as
 indeterminate rather than read as a negative answer (INV-5), so what Git said
 is the whole of what an operator has to act on.
@@ -99,7 +99,7 @@ class WheresatCredentialError(WheresatUsageError):
     """
 
 
-def _reported(stderr: str, status: object) -> str:
+def failure_line(stderr: str, status: object) -> str:
     """Return the most specific line Git reported for a failed command.
 
     Parameters

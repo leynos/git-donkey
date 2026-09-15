@@ -27,8 +27,9 @@ from pathlib import Path
 import pytest
 from git import Repo
 
+from git_donkey.wheresat_refs import per_run_ref
 from tests import git_repo_helpers
-from tests.integration.wheresat_helpers import EVIDENCE_NAMESPACE, fingerprint
+from tests.integration.wheresat_helpers import fingerprint
 
 pytestmark = pytest.mark.timeout(120)
 
@@ -147,9 +148,7 @@ def test_evidence_a_run_may_write_is_not_a_difference(
     """
     root, repo = mutable
     before = fingerprint(root, repo=repo)
-    repo.git.update_ref(
-        f"{EVIDENCE_NAMESPACE}op/probe/boundary", repo.head.commit.hexsha
-    )
+    repo.git.update_ref(per_run_ref("probe", "boundary"), repo.head.commit.hexsha)
     after = fingerprint(root, repo=repo)
 
     assert after.refs != before.refs, "expected the evidence ref to be written"

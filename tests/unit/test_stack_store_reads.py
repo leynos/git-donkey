@@ -180,6 +180,34 @@ def test_expired_reports_a_tombstone_past_the_window_without_deleting_it(
     assert store.prune(EXPIRE) == (CHILD,), "and pruning still deletes it"
 
 
+def test_a_tombstone_that_vanished_before_it_was_read_is_kept(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A ref taken between the listing and the read is kept, not raised over.
+
+    The sweep lists the tombstones and then reads each one's age, and another
+    process can delete a ref between those two reads. Git then refuses the
+    reflog rather than answering with an empty one, and a branch whose age
+    cannot be read is one whose window cannot be said to have passed.
+    """
+    repo = make_repo(tmp_path)
+    base = repo.head.commit.hexsha
+    repo.git.branch(CHILD, base)
+    store = make_writer(repo)
+    store.entomb(CHILD, base)
+    backdate_tombstone(repo, CHILD, days=100)
+    monkeypatch.setattr(
+        stack_store.GitStackRecordReader,
+        "_tombstoned_branches",
+        lambda _self: iter((CHILD,)),
+    )
+    repo.git.update_ref("-d", stack_records.tombstone_ref_path(CHILD))
+
+    assert store.expired(EXPIRE) == (), (
+        "a tombstone whose age could not be read is not reported as past it"
+    )
+
+
 def test_expired_agrees_with_prune_on_every_tombstone(tmp_path: Path) -> None:
     """Two ways of asking one question must not answer it differently."""
     repo = make_repo(tmp_path)

@@ -168,7 +168,8 @@ def namespace_violations(repo: Repo) -> set[str]:
 
 def tombstone_log(repo: Repo, branch: str) -> Path:
     """Return the path of ``branch``'s tombstone reflog."""
-    return Path(repo.git_dir) / "logs" / "refs" / "stack-tombstones" / branch
+    ref = stack_records.tombstone_ref_path(branch)
+    return Path(repo.git_dir) / "logs" / ref
 
 
 def backdate_tombstone(repo: Repo, branch: str, *, days: int) -> None:

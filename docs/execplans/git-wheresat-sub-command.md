@@ -1822,6 +1822,96 @@ Stop and escalate rather than improvising when any of these is reached.
     `git_donkey.wheresat_shared_record`, which owns the body grammar, and the
     collector's bullet now names all seven of its rungs, adding the shared
     record and the head the run fetched for the parent to the five it stated.
+  - Review round: `coderabbit review --agent --base origin/main` reports
+    `review_completed` with 29 findings over the tree at `50a46c8` (log
+    `/tmp/coderabbit-git-donkey-git-wheresat-sub-command-140.out`), taken on
+    2026-09-15 on the first attempt and without meeting a rate limit, so no
+    `vsleep` retry was needed. The 29 are 4 major, 7 minor, and 18 trivial, and
+    they are 22 distinct requests rather than 29: seven pairs ask for one
+    change twice, in the two places the change appears, which is a shape the
+    earlier rounds did not have. All 29 are answered in this revision except
+    the one the last bullet here records as impossible.
+  - The four major findings were each a hazard rather than a style matter.
+    `_tombstone_timestamp` read a reflog with no handler at all, so a tombstone
+    another process deleted between the sweep's listing and its read ended the
+    run with a `GitCommandError`; it now absorbs Git's status 128, which is
+    what it exits with when it cannot resolve the ref it was handed, and
+    re-raises every other refusal rather than reporting it as an age nobody can
+    read. The finding asked for the broader reading — catch the exception and
+    return `None` — and the narrow form is the one that says which refusal an
+    age is allowed to absorb, which is why it is the form kept; the test that
+    pins it deletes the ref between the listing and the read, so the case is
+    the one the finding named rather than a double standing in for it.
+    `git_donkey/wheresat_payload.py` and `git_donkey/wheresat_writes.py` each
+    annotated a value with a `typing` abstract collection where this repository
+    reads `collections.abc` through a `TYPE_CHECKING` guard, which is the rule
+    the third module of the three — `tests/unit/wheresat_variants.py` — was
+    already breaking in its spoiler table; all three now name `cabc`, with the
+    `typing` import kept only where a `typ.cast` or an override still needs it.
+    `tests/integration/test_wheresat_read_only.py` carried a second copy of the
+    runner and the reading its sibling suites already shared, and the copy had
+    drifted: its `_run_in` drained nothing before the run, so a `git donkey`
+    that built the fixture could be read as the run's own output. The local
+    copy is gone and the shared `run_wheresat_in` and `reading` are what the
+    module calls, which is the seam the fingerprint round already pulled up.
+  - The remaining findings are shapes rather than behaviours, and the two the
+    plan had to give up something for are worth naming. `wheresat_parents.py`'s
+    claim rung returned from inside a `match` with no tail, so a reading it did
+    not name would have answered `None` where the type promises an
+    identification; the claimed parent's read is now `_claimed_parent`, and the
+    `match` ends with the explicit `return None` the finding asked for, which
+    is also what `ty` wanted. And the truncation suite's four renderings were
+    asserted in a loop, which gave each one the snapshot of the position it was
+    asserted in: reorder the loop and every case is compared against another
+    case's rendering. The four are now named cases in a mapping and the test is
+    `parametrize`d over its keys, so the snapshot file holds
+    `[long-replay-range]`, `[outranked-candidate]`, `[truncated-history]`, and
+    `[truncated-replay-range]` rather than four positional suffixes — the diff
+    to the `.ambr` is 35 lines and touches only `# name:` lines. The history
+    double the ladder's suite drives its window with answered with the oldest
+    commits where the real reader answers with the newest, which is the wrong
+    end of a squash, and now takes the window from the tip with `limit` of zero
+    kept as its own case; the relative-worktree case is skipped below Git 2.48,
+    which is when `worktree add --relative-paths` was added, so a Git that
+    ignored the option fails as unsupported rather than as a wrong answer; and
+    four names the suites reached past their owners for — `failure_line`,
+    `branch_head`, `per_run_ref`, and `tombstone_log` — are public, which is
+    what each call site already spelled them as.
+  - Two documents stated something the code does not do, and both were written
+    by this plan rather than inherited. The `entomb` docstring in the Interfaces
+    section said a crash between the tombstone and the record's removal leaves a
+    state `reconcile` reports as malformed and the sweep repairs; the ordering
+    is the reverse of that — a crash leaves a tombstone beside a live record on
+    a branch that still exists, the sweep resolves only records whose branch is
+    gone and so leaves it alone, and `reconcile` reads the configuration and the
+    anchor and never consults a tombstone at all. The state is benign, and the
+    docstring now says so while keeping the ordering rule and the reason for it.
+    The `parent-history-intact` gate in
+    `docs/squash-restack-boundary-recovery.md` stated its passing and
+    indeterminate conditions and never its failing one, which left the gate
+    that catches a rewritten parent as the only gate of the eight without a
+    stated refusal; it now says that the gate fails when
+    `PARENT_HEAD` is known and present and the candidate is not an ancestor of
+    it. The removal recipe was then made the same in the three documents that
+    carry it — `docs/stack-records.md` and
+    `docs/v0-2-0-migration-guide.md` both lead with the four `--unset` calls the
+    record's own writer performs and keep `--remove-section` as the labeled
+    shortcut for a section holding nothing else — because the guide had led with
+    the shortcut and the design document with the unsets, and the two were one
+    reading away from contradicting each other.
+  - One finding could not be actioned, and the reason is a gate rather than a
+    preference. Two of the 29 (the pair that is one request) ask for an explicit
+    bare `return` at the end of `pytest_addoption` in `conftest.py`. Ruff's
+    `PLR1711` refuses exactly that — `useless-return: Useless return statement
+    at end of function` — for a function annotated `-> None`, so the request and
+    `make lint` are mutually exclusive and the gate wins: adding the `return`
+    would fail a deterministic check every run, and the finding is dismissed
+    with this reason in the row-by-row reply rather than obeyed. The function
+    body is three lines — parse, add the option, end — and there is nothing for
+    an explicit return to make clearer.
+  - Gate note: the eight commit gates are run over this revision before the
+    review round is closed, and the row-by-row reply to the reviewer is sent
+    only once they are green.
 
 ## Surprises & discoveries
 
@@ -6104,9 +6194,15 @@ class StackRecordWriter(StackRecordReader, typ.Protocol):
         exactly what a surviving child needs for the
         `parent-history-intact` gate.
 
-        Ordering matters: a crash between the two steps leaves a tombstone and
-        a live record, which `reconcile` reports as malformed and the sweep
-        repairs. The reverse ordering would lose the tip outright.
+        Ordering matters: the reverse ordering would lose the tip outright,
+        because the `git branch -D` that follows an entombment always succeeds.
+        A crash between the two steps is benign — a tombstone beside a live
+        record, on a branch that is still there. The sweep resolves only
+        records whose branch is gone, so it leaves that state alone: the live
+        branch keeps the record that attests its own boundary, and a tombstone
+        is evidence that a deletion started, not that it finished. `reconcile`
+        reads the configuration and the anchor and never consults tombstones,
+        so it does not report the state either.
         """
 
     def sweep(self, orphans: typ.Sequence[str]) -> tuple[str, ...]:

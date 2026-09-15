@@ -641,10 +641,40 @@ def _claimed(
         case wheresat_shared_record.SharedRecordAmbiguous(records=readings):
             return faulted(_ambiguous(child, readings), "stack_record_malformed")
         case wheresat_shared_record.SharedRecord(parent=parent):
-            read = _read(port, parent)
-            if isinstance(read, ParentIdentification):
-                return read
-            return answered(read, "found", shared=claim)
+            return _claimed_parent(port, parent, claim)
+    return None
+
+
+def _claimed_parent(
+    port: WheresatGitHub,
+    parent: stack_records.PullRequestIdentity,
+    claim: wheresat_shared_record.SharedRecord,
+) -> ParentIdentification:
+    """Return the pull request a claim names, read from the forge.
+
+    The claim is handed back with the answer rather than paraphrased into it, so
+    the collection phase credits the boundary the body's author wrote and not
+    this run's reading of it.
+
+    Parameters
+    ----------
+    port : WheresatGitHub
+        Forge the claimed pull request is read from.
+    parent : stack_records.PullRequestIdentity
+        The pull request the body names as the child's stack parent.
+    claim : wheresat_shared_record.SharedRecord
+        The reading the parent was named in, which rides back with the answer.
+
+    Returns
+    -------
+    ParentIdentification
+        The claimed parent's payload, or the fault reading it produced.
+
+    """
+    read = _read(port, parent)
+    if isinstance(read, ParentIdentification):
+        return read
+    return answered(read, "found", shared=claim)
 
 
 def _ambiguous(

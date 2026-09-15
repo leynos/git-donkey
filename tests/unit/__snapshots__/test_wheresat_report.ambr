@@ -1155,71 +1155,7 @@
   
   '''
 # ---
-# name: test_truncation_tails_match_snapshots
-  '''
-  git wheresat: boundary for child
-    child tip   1111111
-    target      7777777
-    boundary    8888888
-  
-  Evidence
-    attested  stack-record-birth       8888888  stack record
-  
-  Included (2 commits)
-    1111111
-    2222222
-    ... the range was cut short: 2 commits seen
-  
-  Excluded (2 commits)
-    3333333
-    4444444
-  
-  Durability
-    a ref that outlives this run already reaches the boundary
-  
-  Replay
-    # back up the child tip first, then replay onto the target
-    git update-ref refs/wheresat-backup/child 1111111111111111111111111111111111111111
-    git rebase --onto 7777777777777777777777777777777777777777 8888888888888888888888888888888888888888 child
-    # undo: git reset --hard refs/wheresat-backup/child
-  
-    Verify before running: the child tip must still be 1111111
-  
-  '''
-# ---
-# name: test_truncation_tails_match_snapshots.1
-  '''
-  git wheresat: boundary for child
-    child tip   1111111
-    target      7777777
-    boundary    8888888
-  
-  Evidence
-    attested  stack-record-birth       8888888  stack record
-  
-  Included (2 commits)
-    1111111
-    2222222
-  
-  Excluded (2 commits)
-    3333333
-    4444444
-    ... the range was cut short: 2 commits seen
-  
-  Durability
-    a ref that outlives this run already reaches the boundary
-  
-  Replay
-    # back up the child tip first, then replay onto the target
-    git update-ref refs/wheresat-backup/child 1111111111111111111111111111111111111111
-    git rebase --onto 7777777777777777777777777777777777777777 8888888888888888888888888888888888888888 child
-    # undo: git reset --hard refs/wheresat-backup/child
-  
-    Verify before running: the child tip must still be 1111111
-  
-  '''
-# ---
-# name: test_truncation_tails_match_snapshots.2
+# name: test_truncation_tails_match_snapshots[long-replay-range]
   '''
   git wheresat: boundary for child
     child tip   1111111
@@ -1267,7 +1203,7 @@
   
   '''
 # ---
-# name: test_truncation_tails_match_snapshots.3
+# name: test_truncation_tails_match_snapshots[outranked-candidate]
   '''
   git wheresat: boundary for child
     child tip   1111111
@@ -1280,6 +1216,70 @@
   Included (2 commits)
     1111111
     2222222
+  
+  Excluded (2 commits)
+    3333333
+    4444444
+  
+  Durability
+    a ref that outlives this run already reaches the boundary
+  
+  Replay
+    # back up the child tip first, then replay onto the target
+    git update-ref refs/wheresat-backup/child 1111111111111111111111111111111111111111
+    git rebase --onto 7777777777777777777777777777777777777777 8888888888888888888888888888888888888888 child
+    # undo: git reset --hard refs/wheresat-backup/child
+  
+    Verify before running: the child tip must still be 1111111
+  
+  '''
+# ---
+# name: test_truncation_tails_match_snapshots[truncated-history]
+  '''
+  git wheresat: boundary for child
+    child tip   1111111
+    target      7777777
+    boundary    8888888
+  
+  Evidence
+    attested  stack-record-birth       8888888  stack record
+  
+  Included (2 commits)
+    1111111
+    2222222
+  
+  Excluded (2 commits)
+    3333333
+    4444444
+    ... the range was cut short: 2 commits seen
+  
+  Durability
+    a ref that outlives this run already reaches the boundary
+  
+  Replay
+    # back up the child tip first, then replay onto the target
+    git update-ref refs/wheresat-backup/child 1111111111111111111111111111111111111111
+    git rebase --onto 7777777777777777777777777777777777777777 8888888888888888888888888888888888888888 child
+    # undo: git reset --hard refs/wheresat-backup/child
+  
+    Verify before running: the child tip must still be 1111111
+  
+  '''
+# ---
+# name: test_truncation_tails_match_snapshots[truncated-replay-range]
+  '''
+  git wheresat: boundary for child
+    child tip   1111111
+    target      7777777
+    boundary    8888888
+  
+  Evidence
+    attested  stack-record-birth       8888888  stack record
+  
+  Included (2 commits)
+    1111111
+    2222222
+    ... the range was cut short: 2 commits seen
   
   Excluded (2 commits)
     3333333

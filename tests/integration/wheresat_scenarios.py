@@ -271,7 +271,7 @@ def _ref(repo: Repo, name: str) -> str:
         return ""
 
 
-def _branch_head(path: Path, branch: str) -> str:
+def branch_head(path: Path, branch: str) -> str:
     """Return the commit the branch ``branch`` names in the repository at ``path``.
 
     Returns
@@ -541,11 +541,11 @@ def forked(root: Path) -> Journey:
     repo.git.push("upstream", f"{PARENT}:{PARENT}", "main:main")
     repo.git.push("origin", f":refs/heads/{PARENT}")
     _expect(
-        _branch_head(fork_path, PARENT) == journey.parent_head,
+        branch_head(fork_path, PARENT) == journey.parent_head,
         "the fork must hold the head the pull request records",
     )
     _expect(
-        not _branch_head(journey.scenario.remote_path, PARENT),
+        not branch_head(journey.scenario.remote_path, PARENT),
         "origin must not hold the parent branch any more",
     )
     journey.forge.pull = _pull(

@@ -217,13 +217,20 @@ A record is removed with:
 
 ```shell
 git update-ref -d "refs/stack-bases/$BRANCH"
-git config --local --remove-section "branch.$BRANCH" 2>/dev/null || true
+git config --local --unset "branch.$BRANCH.stackParent"
+git config --local --unset "branch.$BRANCH.stackBase"
+git config --local --unset "branch.$BRANCH.stackBaseRecordedFrom"
+git config --local --unset "branch.$BRANCH.stackBaseEvidence"
 ```
 
-Prefer unsetting the four individual keys when the branch section holds other
-settings, because `--remove-section` takes all of them. Removing the record for
-a branch that still exists leaves nothing to clean up; the sweep only concerns
-records whose branch is already gone.
+That is the removal the record's own writer performs, and it leaves the rest of
+the branch section alone: a tracking branch keeps its `remote` and `merge`, and
+any other setting of the branch survives. The shortcut for a section that holds
+nothing but the record is `git config --local --remove-section "branch.$BRANCH"`
+(adding `2>/dev/null || true` where the section may already be gone), and it
+takes every other setting with it. Removing the record for a branch that still
+exists leaves nothing to clean up; the sweep only concerns records whose branch
+is already gone.
 
 A deletion through plain Git is the one case the record cannot answer for.
 `git branch -D` removes the whole `branch.<name>` section along with the branch,

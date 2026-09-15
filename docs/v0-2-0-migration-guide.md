@@ -147,13 +147,18 @@ Remove a record by hand with:
 
 ```shell
 git update-ref -d "refs/stack-bases/$BRANCH"
-git config --local --remove-section "branch.$BRANCH" 2>/dev/null || true
+git config --local --unset "branch.$BRANCH.stackParent"
+git config --local --unset "branch.$BRANCH.stackBase"
+git config --local --unset "branch.$BRANCH.stackBaseRecordedFrom"
+git config --local --unset "branch.$BRANCH.stackBaseEvidence"
 ```
 
-Prefer unsetting the four individual `branch.$BRANCH.stack*` keys when the
-branch section holds other settings, because `--remove-section` takes all of
-them. The [shared stack record](stack-records.md) design documents the full
-contract.
+Unsetting the four keys individually is the removal the record's own writer
+performs, and it leaves the rest of the branch section alone: a tracking
+branch keeps its `remote` and `merge`, and any other setting of the branch
+survives. `git config --local --remove-section "branch.$BRANCH"` is the
+shortcut for a section that holds nothing but the record. The
+[shared stack record](stack-records.md) design documents the full contract.
 
 ### git plonk cleanup policy
 

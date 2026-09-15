@@ -179,7 +179,7 @@ def test_discovered_default_records_discovery_and_fetch_success(
 
     branch, remote_ref = donkey._fetch_remote_default_ref(context)
 
-    assert branch == "trunk", "the advertised branch name is returned unnamed"
+    assert branch == "trunk", "the advertised branch name is trunk"
     assert remote_ref == "refs/remotes/origin/trunk", "the fetched ref is returned"
     assert recording_recorder.outcomes("remote_default_discovery") == ["success"], (
         "discovery reports success"

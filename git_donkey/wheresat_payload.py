@@ -25,8 +25,11 @@ import typing as typ
 from git_donkey import stack_records
 from git_donkey.wheresat_errors import WheresatGitHubError
 
+if typ.TYPE_CHECKING:
+    import collections.abc as cabc
 
-def mapping(payload: object) -> typ.Mapping[str, object]:
+
+def mapping(payload: object) -> cabc.Mapping[str, object]:
     """Return ``payload`` as a mapping, or report that it is not one.
 
     Parameters
@@ -48,7 +51,7 @@ def mapping(payload: object) -> typ.Mapping[str, object]:
 
     """
     if isinstance(payload, dict):
-        return typ.cast("typ.Mapping[str, object]", payload)
+        return typ.cast("cabc.Mapping[str, object]", payload)
     msg = "GitHub answered with a body this version does not understand"
     raise WheresatGitHubError(msg)
 

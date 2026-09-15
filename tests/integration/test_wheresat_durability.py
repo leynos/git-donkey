@@ -66,6 +66,25 @@ class EvidenceCase:
     name the retained ref is keyed by. ``reachable_from_a_branch`` is the
     answer the case is built to make true, and is asserted against the port's
     own answer rather than assumed.
+
+    Attributes
+    ----------
+    label : str
+        How the case names itself in a test's parametrisation.
+    repo : Repo
+        The repository whose refs the run is measured against.
+    branch : str
+        The child the boundary is established for, and the name the retained
+        ref is keyed by.
+    boundary : str
+        Commit the boundary was established at, which the case holds alive.
+    op_id : str
+        Identifier of the run whose per-run namespace holds the evidence, and
+        which :meth:`GitWheresatRefWriter.release` is given afterwards.
+    reachable_from_a_branch : bool
+        Whether a durable ref outside the evidence namespaces already reaches
+        the boundary before the run retains anything.
+
     """
 
     label: str

@@ -49,7 +49,7 @@ from git import GitCommandError, Repo
 from git_donkey.wheresat_errors import (
     ShallowHistoryError,
     WheresatGraphError,
-    _reported,
+    failure_line,
 )
 from git_donkey.wheresat_records import Ancestry, WorktreeState
 from git_donkey.wheresat_worktrees import worktree_state
@@ -162,7 +162,7 @@ class GitWheresatGraph:
                 f"{rev}^{{commit}}",
             )
         except GitCommandError as exc:
-            reported = _reported(exc.stderr, exc.status)
+            reported = failure_line(exc.stderr, exc.status)
             msg = f"cannot resolve {rev!r} to a commit: {reported}"
             raise WheresatGraphError(msg) from exc
         return str(value).strip()
@@ -208,7 +208,7 @@ class GitWheresatGraph:
             return Ancestry.ANCESTOR
         if status != _ANSWERED_NO:
             question = f"cannot tell whether {ancestor} is an ancestor of {descendant}"
-            msg = f"{question}: {_reported(stderr, status)}"
+            msg = f"{question}: {failure_line(stderr, status)}"
             raise WheresatGraphError(msg)
         if self._is_shallow():
             return Ancestry.UNKNOWN
@@ -253,7 +253,7 @@ class GitWheresatGraph:
             with_exceptions=False,
         )
         if status not in {_ANSWERED_YES, _ANSWERED_NO}:
-            reported = _reported(stderr, status)
+            reported = failure_line(stderr, status)
             msg = f"cannot find the merge bases of {left} and {right}: {reported}"
             raise WheresatGraphError(msg)
         if self._is_shallow():
@@ -300,7 +300,7 @@ class GitWheresatGraph:
             with_exceptions=False,
         )
         if status not in {_ANSWERED_YES, _ANSWERED_NO}:
-            reported = _reported(stderr, status)
+            reported = failure_line(stderr, status)
             msg = f"cannot find the fork point of {head} and {upstream_ref}: {reported}"
             raise WheresatGraphError(msg)
         if self._is_shallow():
@@ -355,7 +355,7 @@ class GitWheresatGraph:
         if status == _ANSWERED_NO:
             return None
         if status != _ANSWERED_YES:
-            reported = _reported(stderr, status)
+            reported = failure_line(stderr, status)
             msg = f"cannot tell whether {rev!r} names a ref: {reported}"
             raise WheresatGraphError(msg)
         return str(output).strip() or None
@@ -395,7 +395,7 @@ class GitWheresatGraph:
         if status == _ANSWERED_NO:
             return None
         if status != _ANSWERED_YES:
-            reported = _reported(stderr, status)
+            reported = failure_line(stderr, status)
             msg = f"cannot read what {name} points at: {reported}"
             raise WheresatGraphError(msg)
         return str(output).strip() or None
@@ -449,7 +449,7 @@ class GitWheresatGraph:
             if status == _ANSWERED_YES:
                 return candidate
             if status != _ANSWERED_NO:
-                reported = _reported(stderr, status)
+                reported = failure_line(stderr, status)
                 msg = f"cannot tell whether {candidate!r} is a ref: {reported}"
                 raise WheresatGraphError(msg)
         return None
@@ -496,7 +496,7 @@ class GitWheresatGraph:
             with_exceptions=False,
         )
         if status != _ANSWERED_YES:
-            reported = _reported(stderr, status)
+            reported = failure_line(stderr, status)
             msg = f"cannot list the history of {rev}: {reported}"
             raise WheresatGraphError(msg)
         if self._is_shallow():
@@ -556,7 +556,7 @@ class GitWheresatGraph:
             with_exceptions=False,
         )
         if status != _ANSWERED_YES:
-            reported = _reported(stderr, status)
+            reported = failure_line(stderr, status)
             msg = f"cannot list the commits {exclude}..{include}: {reported}"
             raise WheresatGraphError(msg)
         if self._is_shallow():
@@ -590,7 +590,7 @@ class GitWheresatGraph:
                 f"{rev}^{{tree}}",
             )
         except GitCommandError as exc:
-            reported = _reported(exc.stderr, exc.status)
+            reported = failure_line(exc.stderr, exc.status)
             msg = f"cannot read the tree of {rev!r}: {reported}"
             raise WheresatGraphError(msg) from exc
         return str(value).strip()
@@ -665,7 +665,7 @@ class GitWheresatGraph:
             with_exceptions=False,
         )
         if status != _ANSWERED_YES:
-            reported = _reported(stderr, status)
+            reported = failure_line(stderr, status)
             msg = f"cannot tell whether {commit} is retained by a ref: {reported}"
             raise WheresatGraphError(msg)
         return any(
@@ -734,7 +734,7 @@ class GitWheresatGraph:
         try:
             answer = self.repo.git.rev_parse("--is-shallow-repository")
         except GitCommandError as exc:
-            reported = _reported(exc.stderr, exc.status)
+            reported = failure_line(exc.stderr, exc.status)
             msg = f"cannot tell whether the history is shallow: {reported}"
             raise WheresatGraphError(msg) from exc
         return str(answer).strip() == "true"
@@ -751,7 +751,7 @@ class GitWheresatGraph:
             with_exceptions=False,
         )
         if status != _ANSWERED_YES:
-            reported = _reported(stderr, status)
+            reported = failure_line(stderr, status)
             msg = f"cannot diff {base} against {tip}: {reported}"
             raise WheresatGraphError(msg)
         return str(output)
@@ -771,7 +771,7 @@ class GitWheresatGraph:
                 with_exceptions=False,
             )
         if status != _ANSWERED_YES:
-            reported = _reported(stderr, status)
+            reported = failure_line(stderr, status)
             msg = f"cannot identify the patch {base}..{tip} introduces: {reported}"
             raise WheresatGraphError(msg)
         fields = str(output).split()

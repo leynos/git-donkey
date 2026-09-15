@@ -45,7 +45,7 @@ import re
 import typing as typ
 
 from git_donkey import stack_records, stack_store
-from git_donkey.wheresat_errors import _reported
+from git_donkey.wheresat_errors import failure_line
 
 if typ.TYPE_CHECKING:
     from git import Repo
@@ -402,7 +402,7 @@ class GitWheresatRefWriter:
             with_exceptions=False,
         )
         if status != _ANSWERED_YES:
-            reported = _reported(stderr, status)
+            reported = failure_line(stderr, status)
             msg = f"cannot retain the boundary for {branch!r}: {reported}"
             raise WheresatRefError(msg)
         return ref
@@ -528,7 +528,7 @@ class GitWheresatRefWriter:
             with_exceptions=False,
         )
         if status != _ANSWERED_YES:
-            reported = _reported(stderr, status)
+            reported = failure_line(stderr, status)
             msg = f"cannot delete the evidence ref {ref}: {reported}"
             raise WheresatRefError(msg)
 
@@ -572,7 +572,7 @@ class GitWheresatRefWriter:
             with_exceptions=False,
         )
         if status != _ANSWERED_YES:
-            reported = _reported(stderr, status)
+            reported = failure_line(stderr, status)
             msg = f"cannot fetch {source_ref} from {remote!r}: {reported}"
             raise WheresatRefError(msg)
 
@@ -585,7 +585,7 @@ class GitWheresatRefWriter:
             with_exceptions=False,
         )
         if status != _ANSWERED_YES:
-            reported = _reported(stderr, status)
+            reported = failure_line(stderr, status)
             msg = f"cannot list the refs under {namespace}: {reported}"
             raise WheresatRefError(msg)
         return tuple(line for line in str(output).splitlines() if line)

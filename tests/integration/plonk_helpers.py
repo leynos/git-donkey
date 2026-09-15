@@ -522,11 +522,13 @@ def aged_tombstone(
         env={"GIT_COMMITTER_DATE": _TOMBSTONE_WRITTEN_ON},
     )
     repo.git.branch("-D", branch)
+    # No ``orphan``: this scenario starts from a tombstone with no record
+    # behind it, so there is no record for a sweep to rescue and nothing an
+    # orphan-rescue assertion could hold it to.
     return PlonkStackScenario(
         local_path=local_path,
         completed_branch=branch,
         tip=tip,
-        orphan=branch,
     )
 
 

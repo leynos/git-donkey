@@ -18,8 +18,8 @@ short, and the one whose range is long enough that a report abbreviates it.
 
 from __future__ import annotations
 
+import collections.abc as cabc
 import dataclasses
-import typing as typ
 
 from git_donkey.wheresat_records import (
     COMMIT_ABBREVIATION,
@@ -236,9 +236,9 @@ def _spoil_record_superseded(*, failed: bool) -> Case:
 # One spoiler per gate, each taking whether the gate is to fail rather than go
 # unanswered. Indexing them by name is what makes the truth table complete: a
 # gate with no spoiler raises here rather than being skipped.
-type _Spoiler = typ.Callable[..., Case]
+type _Spoiler = cabc.Callable[..., Case]
 
-_SPOILERS: typ.Mapping[GateName, _Spoiler] = {
+_SPOILERS: cabc.Mapping[GateName, _Spoiler] = {
     GateName.PARENT_IDENTITY_MATCHES: _spoil_parent_identity,
     GateName.PARENT_MERGED: _spoil_parent_merged,
     GateName.LANDED_REACHABLE_FROM_TARGET: _spoil_landed_reachable,
