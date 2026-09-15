@@ -15,10 +15,10 @@ the configuration rather than changing generated entries by hand.
 
 `git_donkey.donkey.run_git_donkey()` is the workflow function behind the
 `git donkey` console script. The [users' guide](users-guide.md) documents the
-command from the outside, and the [default-base and pull-mode
-design](default-base-and-pull-modes.md) records the behavioural contract. This
-section describes the pipeline and the invariants a contributor must preserve
-when editing the workflow.
+command from the outside, and the
+[default-base and pull-mode design](default-base-and-pull-modes.md) records the
+behavioural contract. This section describes the pipeline and the invariants a
+contributor must preserve when editing the workflow.
 
 The module split mirrors `git-fafo` and `git-plonk`: `git_donkey.cli` owns
 Cyclopts parsing, `git_donkey.donkey` owns the workflow, and
@@ -48,13 +48,13 @@ and the fields of `_PullOptions` onto the workflow call, then raises
 
 Validation runs before repository discovery, so conflicting options cannot
 touch the repository. Base resolution and any opted-in update complete before
-the worktree is created. Failures route through `helpers._die()`, which writes
-a `git-donkey:`-prefixed message to stderr and raises `SystemExit`:
-conflicting pull flags and precondition failures exit 2, while fetch, pull,
-worktree, and filesystem failures exit 1. `_apply_template_overlay()` is the
-one step that reports failure by returning `False`; `run_git_donkey()` then
-returns 1 after the helper prints the reason. A missing overlay, or a
-repository whose template directory cannot be selected, is not a failure.
+the worktree is created. Failures route through `helpers._die()`, which writes a
+`git-donkey:`-prefixed message to stderr and raises `SystemExit`: conflicting
+pull flags and precondition failures exit 2, while fetch, pull, worktree, and
+filesystem failures exit 1. `_apply_template_overlay()` is the one step that
+reports failure by returning `False`; `run_git_donkey()` then returns 1 after
+the helper prints the reason. A missing overlay, or a repository whose template
+directory cannot be selected, is not a failure.
 
 ### Pull options and modes
 
@@ -68,8 +68,8 @@ one immutable default rather than declaring their own.
 strategies, with `None` meaning no update. `_pull_mode(options, *, no_pull)`
 maps the flags onto that type and rejects conflicting combinations before any
 repository discovery or mutation, exiting 2 with the `git-donkey:` prefix.
-`no_pull` participates in the same mutual-exclusion check, so it stays valid
-on its own and conflicts with either pull flag.
+`no_pull` participates in the same mutual-exclusion check, so it stays valid on
+its own and conflicts with either pull flag.
 
 ### Pull invariants
 
@@ -82,12 +82,12 @@ on its own and conflicts with either pull flag.
   checkout when no worktree holds it.
 - The behind count is a query. `_base_branch_behind_count()` must not create
   a tracking branch to measure a base: that would leave a branch no worktree
-  holds and that this command cannot pull into. A base with no local branch
-  has nothing to update and counts as zero behind.
+  holds and that this command cannot pull into. A base with no local branch has
+  nothing to update and counts as zero behind.
 - In the workflow, the prompt is the only path to
   `_update_base_branch_in_worktree()`. `_maybe_update_base_branch()` prompts
-  through `helpers._prompt_yes_no()` and skips the update when the answer is
-  no or the terminal is non-interactive.
+  through `helpers._prompt_yes_no()` and skips the update when the answer is no
+  or the terminal is non-interactive.
 
 ### Base resolution
 
@@ -98,11 +98,11 @@ calling directory. That branch was captured during context loading by
 resolution.
 
 Implicit discovery is deliberately a command rather than a query, and is shared
-with `git plonk` through `git_donkey.remote_default`. That module owns principal
-remote selection (`principal_remote()`), the pure
+with `git plonk` through `git_donkey.remote_default`. That module owns
+principal remote selection (`principal_remote()`), the pure
 `advertised_default_branch()` parser for `ls_remote --symref` output,
-`discover_default_branch()`, and `fetch_default_branch_ref()`, which fetches the
-named branch into `refs/remotes/{remote}/{branch}`.
+`discover_default_branch()`, and `fetch_default_branch_ref()`, which fetches
+the named branch into `refs/remotes/{remote}/{branch}`.
 `git_donkey.donkey._fetch_remote_default_ref()` composes discovery with the
 fetch for base selection. For completion history, `git_donkey.plonk` splits the
 same resolution into a query and a command, because a query must not fetch:
@@ -148,8 +148,8 @@ failure.
   directory cannot be selected), `started`, `success`, or `failure` with
   `os_error`.
 - `comparison_fetch`: `not_requested` when `--no-fetch` is used or the
-  comparison ref is a local ref owned by no remote, `success`, or `failure`
-  with `git_command_error`.
+  comparison ref is a local ref owned by no remote, `success`, or `failure` with
+  `git_command_error`.
 - `comparison`: `found`, `empty`, `unavailable` when no upstream is configured
   and no explicit ref was supplied, or `failure` with `git_command_error`.
 - `worktree_preflight`: `success`, or `skipped` with `skip_reason` `dirty` or
@@ -212,8 +212,8 @@ variables, credential files, or OAuth prompts.
 
 ## git-plonk module boundaries
 
-`git-plonk` is split across pure policy and selection, shared records,
-summary rendering, CLI parsing, and infrastructure mutation:
+`git-plonk` is split across pure policy and selection, shared records, summary
+rendering, CLI parsing, and infrastructure mutation:
 
 - `git_donkey.cli` exposes the `git-plonk` console script and maps `--soft`,
   `--hard`, and `--dry-run` to `git_donkey.plonk.run_git_plonk()`.
@@ -548,31 +548,32 @@ arguments to a log file. Scaffold workflow tests should use this fixture
 instead of writing per-test command stubs.
 
 The same module provides the `github_api_cassette` fixture, which loads an
-empty cassette (`interactions: []`) from `tests/integration/cassettes/`
-through `vcrpy` in its `none` record mode: because no interaction is recorded,
-any HTTP request raises inside the code under test instead of reaching the
-network. The worktree commands reach their remote over the Git protocol,
-which the temporary bare repositories stand in for, so a scenario run under
-the fixture proves that `git donkey` and `git plonk` never consult the
-GitHub API. Record a real cassette only for a command that is meant to call
-the API, and never edit a recording by hand.
+empty cassette (`interactions: []`) from `tests/integration/cassettes/` through
+`vcrpy` in its `none` record mode: because no interaction is recorded, any HTTP
+request raises inside the code under test instead of reaching the network. The
+worktree commands reach their remote over the Git protocol, which the temporary
+bare repositories stand in for, so a scenario run under the fixture proves that
+`git donkey` and `git plonk` never consult the GitHub API. Record a real
+cassette only for a command that is meant to call the API, and never edit a
+recording by hand.
 
-The behaviours the [worktree-management skill](../skill/git-donkey-worktrees/SKILL.md)
-documents are pinned by behavioural suites that build ephemeral repositories
-and real `git donkey` worktrees. `tests/integration/test_git_donkey_bases_bdd.py`
-binds `features/git_donkey_bases.feature`: the mandatory fetch, the equivalence
-of `--no-pull` and the default, the pull-option usage error raised before any
+The behaviours the
+[worktree-management skill](../skill/git-donkey-worktrees/SKILL.md) documents
+are pinned by behavioural suites that build ephemeral repositories and real
+`git donkey` worktrees. `tests/integration/test_git_donkey_bases_bdd.py` binds
+`features/git_donkey_bases.feature`: the mandatory fetch, the equivalence of
+`--no-pull` and the default, the pull-option usage error raised before any
 repository access, the non-interactive prompt, `.` as a base, the principal
 remote, and the absence of GitHub API calls.
 `tests/integration/test_git_donkey_reuse_bdd.py` binds
-`features/git_donkey_reuse.feature`, and both share the `DonkeyScenario`
-record and runners in `tests/integration/donkey_helpers.py`: branch reuse and
-its upstream rules,
-occupied-branch and existing-path conflicts, detached `HEAD`, nested branch
-paths, and overlay overwrites. `tests/integration/test_git_plonk_trunk_bdd.py`
-and `test_git_plonk_markers_bdd.py` cover trunk discovery (a non-`main`
-default, a missing advertisement, an unreachable remote, the fetch a dry run
-performs, and the absence of GitHub API calls) and completion-marker semantics.
+`features/git_donkey_reuse.feature`, and both share the `DonkeyScenario` record
+and runners in `tests/integration/donkey_helpers.py`: branch reuse and its
+upstream rules, occupied-branch and existing-path conflicts, detached `HEAD`,
+nested branch paths, and overlay overwrites.
+`tests/integration/test_git_plonk_trunk_bdd.py` and
+`test_git_plonk_markers_bdd.py` cover trunk discovery (a non-`main` default, a
+missing advertisement, an unreachable remote, the fetch a dry run performs, and
+the absence of GitHub API calls) and completion-marker semantics.
 `tests/integration/test_git_plonk_scope_bdd.py` and
 `test_git_plonk_outcomes_bdd.py` cover the path-based worktree scope, remote
 branches surviving hard mode, soft mode's reach, missing directories, skipped
@@ -611,11 +612,11 @@ below CodeScene's Low Cohesion threshold of four.
 
 ## Manual pages
 
-Every console entrypoint has an authored reStructuredText source in `docs/man/`,
-and the wheel build generates that command's section-one manual from it. The
-`hatch-build-scripts` hook and Docutils are build-system requirements, not
-runtime dependencies: they are declared in `[build-system] requires` and must
-never appear in `[project] dependencies`. The
+Every console entrypoint has an authored reStructuredText source in
+`docs/man/`, and the wheel build generates that command's section-one manual
+from it. The `hatch-build-scripts` hook and Docutils are build-system
+requirements, not runtime dependencies: they are declared in
+`[build-system] requires` and must never appear in `[project] dependencies`. The
 [manpage packaging design](manpages-design.md) records the decision, and the
 [users' guide](users-guide.md) documents installation and how to read the
 installed pages.
@@ -641,20 +642,20 @@ The wheel's `shared-data` mapping puts each generated page under
 as `<environment>/share/man/man1/<command>.1` without running a generator. The
 source distribution instead keeps the `.rst` sources, the Docutils
 configuration, and the build configuration, and excludes the generated `.1`
-pages, so a subsequent wheel build regenerates them rather than reusing
-build outputs.
+pages, so a subsequent wheel build regenerates them rather than reusing build
+outputs.
 
 Generated pages are build output only. They are ignored by Git and regenerated
-in place whenever the wheel build hook runs, so a stale `docs/man/*.1`
-never reaches a distribution. Edit the `.rst` source and rebuild; never edit
-or commit a `.1` file.
+in place whenever the wheel build hook runs, so a stale `docs/man/*.1` never
+reaches a distribution. Edit the `.rst` source and rebuild; never edit or
+commit a `.1` file.
 
 A change to a console script's arguments or options must update
 `docs/man/<command>.rst` and the users' guide in the same change.
-`tests/unit/test_manpage_sources.py` resolves the command-line parameters
-from `git_donkey/cli.py` and fails when a manual omits one. It follows
-Cyclopts `Parameter(name="*")` spreads: the annotated type's fields, not the
-parameter's own name, are the options that the manual must document.
+`tests/unit/test_manpage_sources.py` resolves the command-line parameters from
+`git_donkey/cli.py` and fails when a manual omits one. It follows Cyclopts
+`Parameter(name="*")` spreads: the annotated type's fields, not the parameter's
+own name, are the options that the manual must document.
 `tests/integration/test_manpage_packaging.py` builds both distributions and
 checks the packaged and installed pages. It seeds stale pages and malformed or
 missing sources, so it also proves that a build replaces or refuses them rather

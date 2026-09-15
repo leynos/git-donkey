@@ -79,13 +79,10 @@ git donkey-template
 
 ## Agent skill
 
-The
-[worktree-management skill]
-provides an agent workflow for `git donkey` and `git plonk`, including
-remote-default bases, existing-worktree reuse, stacked branches, and reviewed
-cleanup. Its bundled [cleanup checklist]
-covers the cleanliness check, completion-marker limitations, and other agents'
-active work.
+The [worktree-management skill] provides an agent workflow for `git donkey` and
+`git plonk`, including remote-default bases, existing-worktree reuse, stacked
+branches, and reviewed cleanup. Its bundled [cleanup checklist] covers the
+cleanliness check, completion-marker limitations, and other agents' active work.
 
 To install it in a compatible agent's skill directory, copy or symlink the whole
 `skill/git-donkey-worktrees/` directory, retaining the directory name and its
@@ -94,15 +91,13 @@ Python package installation does not install this skill automatically.
 
 ## Learn more
 
-Check out the
-[**Users' Guide**][users' guide]
-for detailed usage, options, and examples. The donkey's got a lot of tricks up
-its… hooves?
+Check out the [**Users' Guide**][users' guide] for detailed usage, options, and
+examples. The donkey's got a lot of tricks up its… hooves?
 
 ## License
 
-This project is licensed under the **ISC License**. See the
-[LICENSE] file for details.
+This project is licensed under the **ISC License**. See the [LICENSE] file for
+details.
 
 ## Contributing
 
