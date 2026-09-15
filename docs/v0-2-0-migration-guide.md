@@ -288,13 +288,16 @@ git wheresat --json
 ```
 
 It exits `0` when it established a boundary, `1` when the evidence refused one
-and the report names the check that refused it, `2` for a usage, environment,
-or credential error, and `3` when the repository or the forge could not answer
-a question the procedure asked. Statuses `1` and `3` are deliberately
-different: a refusal is an answer, and a question that went unanswered is not
-one, so automation never mistakes an unreadable repository for a branch that
-need not move. `--json` prints a versioned envelope on every status, `2` and
-`3` included, so a script never has to parse prose to find out what happened.
+and the report names the check that refused it, `2` for a usage or environment
+error, and `3` when the repository or the forge could not answer a question the
+procedure asked. A missing or unusable GitHub credential is `3` rather than
+`2`, because the credential is the forge's evidence: a run that cannot read it
+cannot tell whether a parent pull request exists rather than knowing that none
+does. Statuses `1` and `3` are deliberately different: a refusal is an answer,
+and a question that went unanswered is not one, so automation never mistakes an
+unreadable repository for a branch that need not move. `--json` prints a
+versioned envelope on every status, `2` and `3` included, so a script never has
+to parse prose to find out what happened.
 
 A run is read-only unless `--record` is given. Without it, the only refs it
 writes are its own: a per-run namespace it releases when it finishes, and a
