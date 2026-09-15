@@ -563,8 +563,26 @@ def should_record(
     return base_ref != trunk_ref and base_commit != trunk_commit
 
 
-def _is_object_id(value: str) -> bool:
-    """Return whether ``value`` is a full hexadecimal object ID."""
+def is_object_id(value: str) -> bool:
+    """Return whether ``value`` is a full hexadecimal object ID.
+
+    A full ID is 40 or 64 hexadecimal characters: an abbreviation is not one,
+    however unambiguous it looks, because a value that has to be resolved
+    before it can be compared is a value two readers can resolve differently.
+    The shared-record form reaches for this through the package rather than
+    restating the rule, so both forms of a boundary are held to one grammar.
+
+    Parameters
+    ----------
+    value : str
+        The text to read as an object ID.
+
+    Returns
+    -------
+    bool
+        Whether the text is a full object ID.
+
+    """
     return _OBJECT_ID_PATTERN.fullmatch(value) is not None
 
 
@@ -606,13 +624,13 @@ def _parse_record(
             f"{values[RecordKey.PARENT]!r}"
         )
     base = values[RecordKey.BASE]
-    if not _is_object_id(base):
+    if not is_object_id(base):
         return RecordMalformed(
             f"the record for {branch!r} names a boundary that is not a full "
             f"object ID: {base!r}"
         )
     recorded_from = values[RecordKey.RECORDED_FROM]
-    if not _is_object_id(recorded_from):
+    if not is_object_id(recorded_from):
         return RecordMalformed(
             f"the record for {branch!r} names a child tip that is not a full "
             f"object ID: {recorded_from!r}"

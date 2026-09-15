@@ -126,7 +126,10 @@ _EXPECTED_SKYLOS_WHITELIST_NAMES: typ.Final = frozenset[str]()
 # follows, so nothing below those methods is credited. ``_decoded`` in the same
 # module is the contrast that shows the limit rather than a dead helper: it is
 # named by a docstring cross-reference, which Skylos does count, and that alone
-# keeps it — and the two helpers it calls — alive.
+# keeps it — and the two helpers it calls — alive. ``render_shared_record`` is
+# not a false positive at all but a deliberate exception: it has no caller in
+# the scanned set because no command emits a record, and it exists for the
+# parser's round-trip property and the block the guide quotes.
 _EXPECTED_SKYLOS_DOCUMENTED_WHITELIST_NAMES: typ.Final = frozenset({
     "_commit_pulls_path",
     "_git_failure",
@@ -134,6 +137,7 @@ _EXPECTED_SKYLOS_DOCUMENTED_WHITELIST_NAMES: typ.Final = frozenset({
     "_pull_path",
     "_slug",
     "per_run_ref",
+    "render_shared_record",
 })
 # Every symbol the workflow or an embedder reaches through the recorder that
 # ``git_donkey.observability`` installs, which no static call graph follows.

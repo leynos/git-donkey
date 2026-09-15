@@ -1,11 +1,12 @@
 """The rungs ``git wheresat`` asks for a boundary, in the procedure's order.
 
 Each rung of the evidence ladder is a question that names a commit: the stack
-record ``git donkey`` wrote, the head of the parent pull request the run
-identified, a merge base, a surviving fork point. A rung returns the candidates
-it found; a rung that could not answer at all returns a *fault*, because "there
-is no evidence here" and "this question went unanswered" are different answers
-and only one of them is a refusal (INV-5).
+record ``git donkey`` wrote, the shared record a pull request body carries, the
+head of the parent pull request the run identified, a merge base, a surviving
+fork point. A rung returns the candidates it found; a rung that could not answer
+at all returns a *fault*, because "there is no evidence here" and "this question
+went unanswered" are different answers and only one of them is a refusal
+(INV-5).
 
 What one rung cannot answer another can. A branch with no record still has a
 merge base; a parent branch that was deleted still has the tombstone ``git
@@ -51,6 +52,7 @@ from git_donkey import (
     wheresat_deep,
     wheresat_heads,
     wheresat_payload,
+    wheresat_shared_record,
 )
 from git_donkey.wheresat_errors import ShallowHistoryError, WheresatGraphError
 from git_donkey.wheresat_records import (
@@ -121,6 +123,11 @@ class CollectionContext:
         by the pipeline. It is a value rather than a reader so that a rung
         cannot read a different record than the one the pipeline provisioned
         the parent head from.
+    shared_record : wheresat_shared_record.SharedRecordResult, optional
+        What the child's pull request body claimed, as the identification
+        ladder read it. It is a value for the same reason ``record`` is, and it
+        is the ladder's reading rather than this module's because reading a body
+        takes a forge and no rung has one.
     parent_head : ParentHead | None, optional
         The parent's tip as the run already has it: the head the run fetched,
         or, when it fetched none, the one the tombstone names or the one the
@@ -156,6 +163,9 @@ class CollectionContext:
     records: stack_store.StackRecordReader
     record: stack_records.RecordResult = dataclasses.field(
         default_factory=stack_records.RecordAbsent
+    )
+    shared_record: wheresat_shared_record.SharedRecordResult = dataclasses.field(
+        default_factory=wheresat_shared_record.SharedRecordAbsent
     )
     parent_head: ParentHead | None = None
     scan: wheresat_deep.Scan = dataclasses.field(default_factory=wheresat_deep.Scan)
@@ -239,6 +249,45 @@ def _record_evidence(context: CollectionContext) -> CollectionResult:
                 indeterminate_reasons=(reason,), error_kind="stack_record_malformed"
             )
     return CollectionResult()
+
+
+def _shared_record_evidence(context: CollectionContext) -> CollectionResult:
+    """Return the boundary the child's pull request body claimed, or nothing.
+
+    A claim pasted into the body is attested evidence: the child's author named
+    the parent and the boundary by a deliberate act, as a record's writer does,
+    and the ladder read the claim and answered with the pull request it named.
+    The reading is handed in rather than read here, so this rung asks the forge
+    nothing and can answer for a run that has since lost it.
+
+    A body nobody read, and a body whose claim nobody made, are both answers of
+    nothing; they are not faults. The two readings the ladder refused — one it
+    could not parse and one that supported several — are faults it has already
+    reported under its own operation, and a rung that faulted here as well would
+    report one unusable claim twice.
+
+    Returns
+    -------
+    CollectionResult
+        The candidate the claim names, or nothing at all when the run read no
+        body or read one that claimed nothing.
+
+    """
+    claim = context.shared_record
+    if not isinstance(claim, wheresat_shared_record.SharedRecord):
+        return CollectionResult()
+    return CollectionResult(
+        candidates=(
+            candidate_for(
+                claim.boundary,
+                EvidenceKind.SHARED_RECORD,
+                source=(
+                    "the shared record in the body of "
+                    f"{wheresat_payload.identity_text(claim.parent)}"
+                ),
+            ),
+        )
+    )
 
 
 def _pull_request_head_evidence(context: CollectionContext) -> CollectionResult:
@@ -393,6 +442,7 @@ def _patch_identity_evidence(context: CollectionContext) -> CollectionResult:
 
 SOURCES: typ.Final[tuple[tuple[EvidenceKind, EvidenceSource], ...]] = (
     (EvidenceKind.STACK_RECORD_BIRTH, _record_evidence),
+    (EvidenceKind.SHARED_RECORD, _shared_record_evidence),
     (EvidenceKind.PULL_REQUEST_HEAD, _pull_request_head_evidence),
     (EvidenceKind.MERGE_BASE, _merge_base_evidence),
     (EvidenceKind.FORK_POINT, _fork_point_evidence),
@@ -405,7 +455,14 @@ The kind beside each rung is what its observation is labelled with, so the
 evidence tier a rung's answer is recorded under comes from one declaration
 rather than from each rung's memory of what it reads.
 
-The pull request head is second because a forge naming a commit is scarce: a
+The shared record is second because it is a statement the child's own author
+made, and the ladder reads it once while it walks the association search: the
+reading is handed here rather than the body, so this rung asks no forge and
+answers for a run that has since lost one. It is silent for a body nobody read
+and for the two readings the ladder refused, which are reported where they were
+found.
+
+The pull request head is third because a forge naming a commit is scarce: a
 stack record names a boundary for a stack that was recorded, and a pull request
 head names one for a parent merged by a pull request nobody recorded, which is
 the case this ladder exists to answer. It reads the head the run fetched rather
@@ -417,8 +474,7 @@ The two comparisons of a ``--deep`` run are here because they need nothing but
 the graph, and they are last because what content comparison finds is inferred
 evidence and the ladder is ordered by the authority of what it reads. The
 ladder's remaining rungs arrive with the evidence they read rather than early
-and silent: the shared record needs a forge to read, and this version reads no
-forge. A rung that cannot run is absent from this
+and silent. A rung that cannot run is absent from this
 tuple, so the pipeline holds no branch that runs a question it cannot answer —
 and a run that did not ask for the comparison has it dropped from the list it
 reads, by :func:`_asked_for`, rather than left in place to answer nothing.

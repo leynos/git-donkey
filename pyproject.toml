@@ -416,6 +416,7 @@ names = []
 "_git_failure" = "Called only from the except GitCommandError handlers in _write_anchor and _write_tombstone; Skylos does not credit a call in a handler body"
 "_per_run_namespace" = "Called only from per_run_ref and GitWheresatRefWriter.release. No console script reaches either: the fetch this command performs writes the durable cache ref, so nothing a run does creates refs/wheresat/op/<op-id>/, and the namespace stays the surface a run that transported a boundary into one would use"
 "per_run_ref" = "Builds the destination such a transported boundary would be fetched into; the durability suite reaches it from outside the scanned set, and no console script does, for the same reason as _per_run_namespace"
+"render_shared_record" = "Called only from the shared-record suite, which pins the round trip parse_shared_record(render_shared_record(r)) == r and the exact two lines the guide tells a reader to paste. No console script emits a shared record: git donkey writes a record into the clone that made it, and git wheresat reads one a person pasted into a pull request body, so the renderer has no production caller by design"
 
 [build-system]
 requires = ["hatchling", "hatch-build-scripts>=1.0.0,<2", "docutils>=0.22.4,<0.23"]
