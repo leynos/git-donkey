@@ -1911,6 +1911,39 @@ Stop and escalate rather than improvising when any of these is reached.
     failing recipe, gates 4 to 8 had not run when pylint refused the revision,
     so their status was unknown rather than passing, and they are re-run over
     the fixed tree rather than assumed from an earlier revision.
+  - Reconciliation: the pull request was unmergeable — ten commits behind
+    `origin/main` — and the merge is `a161557`. What landed upstream reaches
+    this work three ways, and each was read rather than discovered in CI. The
+    estate Markdown baseline (upstream `#93`) replaces `mdformat-all` with
+    `mdtablefix` 0.6.0 plus `markdownlint-cli2 --fix`, so every document this
+    plan owns was reflowed by it; the guide's cassette rule and this plan's own
+    records survive the reflow word for word, which is checked by comparing the
+    word sequences before and after against the merge base rather than by
+    reading the diff. The package version becomes 0.2.0, the release the
+    migration guide already names, so the outstanding bump recorded here as
+    unfinished is closed upstream rather than by this branch. And the
+    development dependencies take `vcrpy` 8 and `syrupy` 6: `vcrpy` 8 changes
+    only the Python and urllib3 versions it supports, so the recorded cassettes
+    stand, and `syrupy` 6's dataclass and JSON-date serialization changes do
+    not reach snapshots that hold strings, dicts, and lists. `make test`
+    reports 934 passed with 22 snapshots passing over the merged tree.
+  - The reflow then exposed two defects in `mdtablefix` 0.6.0, both of them in
+    text the same run had just wrapped, and both are repaired here rather than
+    committed as noise. `--ellipsis` converts the periods of an ellipsis inside
+    an inline code span that `--wrap` has split across two lines, so three
+    spans came back as `origin/main…HEAD`, `App(name=…, help=…)`, and
+    `typ.Literal[…]`, each holding one ellipsis character where the periods had
+    been. Four spans were repaired, and the two the wrapper keeps splitting are
+    made split-proof instead: `origin/main...HEAD` is written as a single
+    space-free span it cannot break inside, and the elision in the quoted
+    `flock` command is moved out of the code span and into the sentence.
+    `--renumber` reads a line-initial `69.` that wrapping produced as an
+    ordered-list marker, which turned a recorded `exit 69` into `exit 1` on a
+    line renumbered to `1.`; that is a wrong fact rather than a formatting
+    preference, and the text reads `exit 69 (EX_UNAVAILABLE)` now, which no
+    list marker can be mistaken for. Every document the baseline formats is
+    exposed to the same two rules, and the repairs here are limited to the
+    files this plan owns.
 
 ## Surprises & discoveries
 
@@ -2069,7 +2102,12 @@ Stop and escalate rather than improvising when any of these is reached.
   `docs/execplans/git-wheresat-sub-command.md:3071:81` by reflowing an
   80-column URL line. Reverted with `git checkout --`. Impact: never run that
   script, including with `--help`. Format only the files this change owns.
-  `make markdownlint` is safe and is the gate.
+  `make markdownlint` is safe and is the gate. Superseded: upstream `#93`
+  deleted that wrapper and made `make fmt` the sanctioned baseline —
+  `ruff format`, `ruff check --select I --fix`, `mdtablefix --in-place` over
+  the tracked set, and `markdownlint-cli2 --fix`. The advice to run it never,
+  and to keep formatting scoped to the files this change owns, still stands;
+  the defect below is what that scoping buys.
 - Observation: the `skylos` dead-code gate counts liveness only from the
   production roots, so a module that only its tests call is dead code. Evidence:
   `make lint`'s last stage runs
