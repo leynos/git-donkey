@@ -903,6 +903,18 @@ touch it. Spend `/search/code`'s ten-request-per-minute allowance to reproduce
 it: that costs a minute and affects nobody else, where the core allowance and
 the anonymous one are shared with every other caller of the API.
 
+The parent-metadata cassette carries a dependency the rate-limit one does not.
+Its stack question is put to the Stacks API, which GitHub serves as a public
+preview, and the reader also takes the `stack` field of the pull request
+payload; either may change or be withdrawn. What the recording holds is
+`microsoft/vscode` pull requests 335346 and 335345, the second and first
+entries of one four-deep stack, so re-recording it needs both pull requests to
+still exist, still be in that stack, and still be readable with the credential
+in use. No test depends on that being true today: the suite replays the
+committed cassette in the default `none` record mode, so the cases keep passing
+once the live stack moves on or the preview ends, and they fail only when the
+reader starts asking a question the recording cannot answer.
+
 The behaviours the
 [worktree-management skill](../skill/git-donkey-worktrees/SKILL.md) documents
 are pinned by behavioural suites that build ephemeral repositories and real
