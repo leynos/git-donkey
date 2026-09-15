@@ -210,8 +210,7 @@ def _listed(commits: typ.Sequence[str]) -> tuple[str, ...]:
         work.
 
     """
-    limit = RENDER_COMMIT_LIMIT
-    return tuple(commits[:limit])
+    return tuple(commits[:RENDER_COMMIT_LIMIT])
 
 
 def _candidate_line(candidate: Candidate) -> str:
