@@ -131,11 +131,24 @@ class _Graph:
             raise refusal
 
     def history(self, rev: str, *, limit: int | None = None) -> tuple[str, ...]:
-        """Return the newest commits of the history this double holds."""
+        """Return the newest commits of the history this double holds.
+
+        A ``limit`` of zero keeps no commits, which ``self.commits[-0:]`` would
+        otherwise read as keeping every one of them — the same reading the
+        ladder's own double takes.
+
+        Returns
+        -------
+        tuple[str, ...]
+            The commits the bound keeps, oldest first.
+
+        """
         self._refuse("history")
         self.limits.append(limit)
         if limit is None:
             return self.commits
+        if limit <= 0:
+            return ()
         return self.commits[-limit:]
 
     def commits_in_range(
