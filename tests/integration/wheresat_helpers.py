@@ -165,7 +165,15 @@ def _ref_value(repo: Repo, ref: str) -> str | None:
 
 
 def reading(scenario: WheresatScenario) -> Fingerprint:
-    """Return the fingerprint of both of the scenario's working trees."""
+    """Return the fingerprint of both of the scenario's working trees.
+
+    Returns
+    -------
+    Fingerprint
+        The reading of the scenario's local and worktree checkouts, taken
+        together as one reading by :func:`fingerprint`.
+
+    """
     return fingerprint(
         scenario.local_path,
         scenario.worktree_path(),
@@ -190,7 +198,15 @@ def anchor(scenario: WheresatScenario, branch: str = CHILD) -> str | None:
 
 
 def configuration(scenario: WheresatScenario) -> dict[str, str]:
-    """Return the child's branch configuration, read from Git directly."""
+    """Return the child's branch configuration, read from Git directly.
+
+    Returns
+    -------
+    dict[str, str]
+        Every ``branch.<child>.*`` setting, keyed by the part after the
+        ``branch.<child>.`` prefix, as Git's own ``--list`` reports them.
+
+    """
     prefix = f"branch.{CHILD}."
     return {
         key[len(prefix) :]: value
