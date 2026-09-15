@@ -88,7 +88,7 @@ FOREIGN_REPOSITORY = "somebody/fork"
 
 # The number of independent derived sources a derived boundary needs, where a
 # source is a kind of evidence — one method of observation — and the number of
-# gates a parent-less run leaves unapplicable.
+# gates a parent-less run leaves inapplicable.
 REQUIRED_SOURCES = 2
 PARENT_GATES = 2
 

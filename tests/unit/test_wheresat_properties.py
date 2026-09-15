@@ -2,7 +2,7 @@
 
 ``test_wheresat_policy.py`` pins the gates and the verdicts with readable cases;
 the invariants themselves are about *every* corpus of evidence, so these tests
-generalise them over generated ones. Each example draws a child history, places
+generalize them over generated ones. Each example draws a child history, places
 candidates on it, and answers each graph question at random — including leaving
 questions unasked — and the invariants are then read off whatever the assessment
 makes of that:

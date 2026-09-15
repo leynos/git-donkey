@@ -237,7 +237,7 @@ def test_a_history_longer_than_the_window_refuses_the_search(
         "the refusal should name the way out of the search"
     )
     assert history.limits == [limit + 1], (
-        "one commit beyond the bound is asked for, so a full window is recognisable"
+        "one commit beyond the bound is asked for, so a full window is recognizable"
     )
     assert history.windows == [commits[-(limit + 1) :]], (
         "the read keeps the newest commits, which are the ones a squash lands"
