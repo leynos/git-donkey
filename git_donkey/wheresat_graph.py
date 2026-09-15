@@ -134,6 +134,9 @@ class GitWheresatGraph:
     """
 
     repo: Repo
+    _shallowness: bool | None = dataclasses.field(
+        default=None, init=False, repr=False, compare=False
+    )
 
     def resolve(self, rev: str) -> str:
         """Return the full commit object ID for a revision.
@@ -730,14 +733,32 @@ class GitWheresatGraph:
         return tuple(candidates)
 
     def _is_shallow(self) -> bool:
-        """Return whether a graft cuts Git's traversal short."""
+        """Return whether a graft cuts Git's traversal short.
+
+        The first answer is remembered: five questions ask it, and nothing here writes.
+
+        Returns
+        -------
+        bool
+            Whether a graft cuts Git's traversal short.
+
+        Raises
+        ------
+        WheresatGraphError
+            If Git cannot say whether the history is shallow.
+
+        """
+        if self._shallowness is not None:
+            return self._shallowness
         try:
             answer = self.repo.git.rev_parse("--is-shallow-repository")
         except GitCommandError as exc:
             reported = failure_line(exc.stderr, exc.status)
             msg = f"cannot tell whether the history is shallow: {reported}"
             raise WheresatGraphError(msg) from exc
-        return str(answer).strip() == "true"
+        shallowness = str(answer).strip() == "true"
+        object.__setattr__(self, "_shallowness", shallowness)
+        return shallowness
 
     def _range_diff(self, base: str, tip: str) -> str:
         """Return the patch that turns ``base``'s tree into ``tip``'s."""
