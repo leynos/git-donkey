@@ -20,6 +20,7 @@ import os
 import typing as typ
 
 from git import Git, GitCommandError, Repo
+from git.exc import BadName
 
 from git_donkey import (
     donkey_worktrees,
@@ -489,6 +490,38 @@ def _worktrees_root(home_dir: Path) -> Path:
     return (home_dir.parent / f"{home_dir.name}.worktrees").resolve()
 
 
+def _base_commit(context: _DonkeyContext, base_branch: str) -> str | None:
+    """Return the commit ``base_branch`` resolves to, or ``None`` when it does not.
+
+    The base may be named in either form the workflow accepts: a local branch,
+    or the remote-tracking form the base selection discovered. A name that
+    resolves to neither is not a start point this can freeze, and it is not
+    this function's job to report it: the worktree creation that follows puts
+    the name to Git, which refuses it in Git's own words rather than in a
+    traceback from a revision lookup.
+
+    Parameters
+    ----------
+    context : _DonkeyContext
+        Resolved repository state.
+    base_branch : str
+        Ref the new branch's base was selected by.
+
+    Returns
+    -------
+    str | None
+        The commit the base resolves to, or ``None`` when no ref of that name
+        is in this repository.
+
+    """
+    for candidate in (base_branch, f"refs/remotes/{context.remote}/{base_branch}"):
+        try:
+            return context.repo_home.commit(candidate).hexsha
+        except (BadName, GitCommandError, ValueError):
+            continue
+    return None
+
+
 def _stack_context(
     context: _DonkeyContext,
     *,
@@ -498,8 +531,10 @@ def _stack_context(
     """Return what to record for a branch created from ``base_branch``.
 
     A branch created at the trunk commit is not stacked (INV-11), so it is not
-    recorded and no writer is constructed for it. Every other base is the
-    parent the record names, as the caller selected it.
+    recorded and no writer is constructed for it. A base that resolves to no
+    commit at all is not recorded either: there is no start point to compare
+    against the trunk, and the creation step is about to refuse the name.
+    Every other base is the parent the record names, as the caller selected it.
 
     Parameters
     ----------
@@ -519,7 +554,9 @@ def _stack_context(
     """
     if trunk is None:
         return None
-    base_commit = context.repo_home.commit(base_branch).hexsha
+    base_commit = _base_commit(context, base_branch)
+    if base_commit is None:
+        return None
     if not stack_records.should_record(
         base_branch, base_commit, trunk.ref, trunk.commit
     ):

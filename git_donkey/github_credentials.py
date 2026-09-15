@@ -82,7 +82,9 @@ def write_token(path: Path, token: str, auth_id: int | None) -> None:
 
     The write is replace-in-place through a temporary file beside the target,
     so a reader never observes a half-written credential and a failure leaves
-    the previous one intact.
+    the previous one intact. The temporary file holds the token in the clear
+    until it is renamed over the target, so a write that fails removes it
+    rather than leaving a copy behind.
 
     Parameters
     ----------
@@ -94,6 +96,13 @@ def write_token(path: Path, token: str, auth_id: int | None) -> None:
         Authorization id to store on the second line, or nothing when the
         token's origin did not report one.
 
+    Raises
+    ------
+    OSError
+        Propagated from the filesystem when the temporary file cannot be
+        written or renamed over the target, after the temporary file has been
+        removed.
+
     """
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = f"{token}\n"
@@ -101,10 +110,14 @@ def write_token(path: Path, token: str, auth_id: int | None) -> None:
         payload += f"{auth_id}\n"
     temporary_handle, temporary_name = tempfile.mkstemp(dir=path.parent)
     temporary_path = Path(temporary_name)
-    with os.fdopen(
-        temporary_handle,
-        "w",
-        encoding="utf-8",
-    ) as fh:
-        fh.write(payload)
-    temporary_path.replace(path)
+    try:
+        with os.fdopen(
+            temporary_handle,
+            "w",
+            encoding="utf-8",
+        ) as fh:
+            fh.write(payload)
+        temporary_path.replace(path)
+    except OSError:
+        temporary_path.unlink(missing_ok=True)
+        raise
