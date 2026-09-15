@@ -64,7 +64,7 @@ class FailingGitAdapter:
     """
 
     @staticmethod
-    def history_messages(ref: str) -> typ.Iterator[str]:
+    def history_messages(ref: str) -> cabc.Iterator[str]:
         """Assert the resolved trunk ref, then yield the completion marker."""
         if ref != TRUNK_REF:
             msg = "expected configured trunk ref"
@@ -99,11 +99,11 @@ class RecordingGitAdapter:
 
     def __init__(
         self,
-        markers: typ.Iterable[str],
+        markers: cabc.Iterable[str],
         *,
         skip_reasons: dict[Path, plonk_records._SkipReason] | None = None,
-        removal_failures: typ.Iterable[Path] = (),
-        deletion_failures: typ.Iterable[str] = (),
+        removal_failures: cabc.Iterable[Path] = (),
+        deletion_failures: cabc.Iterable[str] = (),
     ) -> None:
         self._markers = tuple(markers)
         self.skip_reasons = dict(skip_reasons or {})
@@ -206,7 +206,7 @@ class EntombFirstAdapter(RecordingGitAdapter):
 
     def __init__(
         self,
-        markers: typ.Iterable[str],
+        markers: cabc.Iterable[str],
         records: RecordingStackStore,
         *,
         deletion_failures: cabc.Iterable[str] = (),
@@ -347,7 +347,7 @@ def marker_for(candidate: plonk_records._PlonkCandidate) -> str:
 
 
 def cleanup_context(
-    candidates: typ.Iterable[plonk_records._PlonkCandidate],
+    candidates: cabc.Iterable[plonk_records._PlonkCandidate],
 ) -> plonk_records._PlonkContext:
     """Return the repository state a completed cleanup of ``candidates`` sees.
 
@@ -409,7 +409,7 @@ def cleanup_surfaces(
 
 
 def run_cleanup(
-    candidates: typ.Iterable[plonk_records._PlonkCandidate],
+    candidates: cabc.Iterable[plonk_records._PlonkCandidate],
     surfaces: plonk_cleanup._CleanupSurfaces,
     mode: plonk._PlonkMode,
     *,
