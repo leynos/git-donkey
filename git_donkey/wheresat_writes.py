@@ -289,20 +289,22 @@ class WheresatWrites:
             because the user named the base the branch was cut from.
 
         """
-        result = self.context.records.read(branch)
-        if isinstance(result, stack_records.StackRecord):
-            return result
+        match self.context.records.read(branch):
+            case stack_records.StackRecord() as record:
+                return record
+            case stack_records.RecordAbsent():
+                reason = (
+                    f"the branch {branch!r} has no stack record to refresh; a "
+                    "record is written when a branch is created from another "
+                    "with git donkey"
+                )
+            case _:
+                reason = (
+                    f"the stack record for {branch!r} cannot be read, so it "
+                    "cannot be refreshed"
+                )
         _observe(_RECORD_OPERATION, "rejected")
-        if isinstance(result, stack_records.RecordAbsent):
-            msg = (
-                f"the branch {branch!r} has no stack record to refresh; a record "
-                "is written when a branch is created from another with git donkey"
-            )
-            raise WheresatUsageError(msg)
-        msg = (
-            f"the stack record for {branch!r} cannot be read, so it cannot be refreshed"
-        )
-        raise WheresatUsageError(msg)
+        raise WheresatUsageError(reason)
 
     def _expected_old(self, anchor: str | None, expected: str | None) -> str:
         """Return the value the anchor ref must hold for the write to proceed.
