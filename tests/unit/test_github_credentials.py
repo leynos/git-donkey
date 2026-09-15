@@ -9,7 +9,8 @@ of the token behind for a later reader of the directory to find.
 
 Where the token comes from, and which of the several sources wins, is
 ``tests/unit/test_fafo_token.py``'s subject; this module is about the file the
-token is finally put in.
+token is finally put in, and about reading it back, because a file no reader can
+recover a token from is a write that did not happen.
 """
 
 from __future__ import annotations
@@ -108,4 +109,22 @@ def test_a_write_that_succeeds_leaves_only_the_credential(
     )
     assert _beside(path) == [path.name], (
         "the temporary file is renamed rather than left beside the credential"
+    )
+
+
+def test_a_file_this_reader_cannot_decode_holds_no_token(
+    tmp_path: pathlib.Path,
+) -> None:
+    """Bytes that are not the UTF-8 the writer wrote read as an absent token.
+
+    The two halves of the file's contract are written and read as UTF-8, so a
+    file this reader cannot decode is one it has no token from rather than a
+    failure of the run: the reader may hold an environment variable instead,
+    and the caller is what decides what an empty set of sources means.
+    """
+    path = tmp_path / "credentials"
+    path.write_bytes(b"\xff\xfe\x00not-a-token")
+
+    assert github_credentials.read_token(path) is None, (
+        "an undecodable credential is an absent one, not a refusal to read"
     )

@@ -59,15 +59,17 @@ def read_token(path: Path) -> str | None:
     -------
     str | None
         The token, or ``None`` when the file is absent, unreadable, or holds no
-        non-empty first line.
+        non-empty first line. The bytes are read as UTF-8, which is what
+        :func:`write_token` wrote, and a file that is not that encoding holds no
+        token this reader can use — the same answer as a file it cannot open.
 
     """
     if not path.exists():
         return None
 
     try:
-        lines = path.read_text().splitlines()
-    except OSError:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeDecodeError):
         return None
 
     if not lines:
