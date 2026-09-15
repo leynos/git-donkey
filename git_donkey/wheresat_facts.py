@@ -205,32 +205,61 @@ def _replay_ranges(
     faults: list[str] = []
     for commit in _commits(evidence):
         key = range_key(commit, child_tip)
-        answer, fault = ask(
-            f"cannot list the commits {key}",
-            functools.partial(context.graph.commits_in_range, commit, child_tip),
-        )
-        if fault is not None:
-            faults.append(fault.reason)
+        listed, reason = _range_of(context, commit, child_tip)
+        if reason is not None:
+            faults.append(reason)
             continue
-        contents[key] = CommitRange(tuple(answer or ()))
+        contents[key] = listed
         if subtract is None:
             continue
-        answer, fault = ask(
-            f"cannot list the commits {key} without {subtract}",
-            functools.partial(
-                context.graph.commits_in_range,
-                commit,
-                child_tip,
-                not_reachable_from=subtract,
-            ),
-        )
-        if fault is not None:
-            faults.append(fault.reason)
+        listed, reason = _range_of(context, commit, child_tip, without=subtract)
+        if reason is not None:
+            faults.append(reason)
         else:
-            without_parent[key] = CommitRange(tuple(answer or ()))
+            without_parent[key] = listed
     return _RangeAnswers(
         contents=contents, without_parent=without_parent, faults=tuple(faults)
     )
+
+
+def _range_of(
+    context: CollectionContext,
+    commit: str,
+    child_tip: str,
+    *,
+    without: str | None = None,
+) -> tuple[CommitRange, str | None]:
+    """Return the commits one range holds, or why the listing was not made.
+
+    Parameters
+    ----------
+    context : CollectionContext
+        The run's inputs, whose graph lists the range.
+    commit : str
+        Boundary the range is listed above, exclusive.
+    child_tip : str
+        Child tip the range is listed down to.
+    without : str | None, optional
+        History to subtract from the listing, which gate 7 asks for and the
+        other readers of a range do not.
+
+    Returns
+    -------
+    tuple[CommitRange, str | None]
+        The range as listed and no reason, or no commits and the reason the
+        repository would not list them.
+
+    """
+    key = range_key(commit, child_tip)
+    listed = functools.partial(context.graph.commits_in_range, commit, child_tip)
+    question = f"cannot list the commits {key}"
+    if without is not None:
+        question = f"{question} without {without}"
+        listed = functools.partial(listed, not_reachable_from=without)
+    answer, fault = ask(question, listed)
+    if fault is not None:
+        return CommitRange(()), fault.reason
+    return CommitRange(tuple(answer or ())), None
 
 
 def _patch_answers(

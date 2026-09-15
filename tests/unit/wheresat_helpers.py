@@ -363,7 +363,7 @@ def assessment_of(case: Case) -> Assessment:
 
 
 def failed_gates(assessment: Assessment) -> tuple[GateName, ...]:
-    """Return the names of the gates that ruled against a candidate.
+    """Return the gates that ruled against a candidate.
 
     Parameters
     ----------
@@ -373,33 +373,48 @@ def failed_gates(assessment: Assessment) -> tuple[GateName, ...]:
     Returns
     -------
     tuple[GateName, ...]
-        The gates that answered ``FAILED``, in the order the run asked them;
-        a gate that did not apply is left out.
+        Every gate that was asked and answered ``FAILED``: the reasons a run
+        can give for not establishing a boundary.
 
     """
     return _gates_with(assessment, GateOutcome.FAILED)
 
 
 def undecided_gates(assessment: Assessment) -> tuple[GateName, ...]:
-    """Return the names of the gates that could not rule at all.
+    """Return the gates that could not rule at all.
 
     Parameters
     ----------
     assessment : Assessment
-        Verdict to read the unanswered gates from.
+        Verdict to read the gates that went unanswered from.
 
     Returns
     -------
     tuple[GateName, ...]
-        The gates that came back ``INDETERMINATE``, in the order the run
-        asked them; a gate that did not apply is left out.
+        Every gate that was asked and had no answer to give, which says less
+        than a refusal does: the run knows no more than before it asked.
 
     """
     return _gates_with(assessment, GateOutcome.INDETERMINATE)
 
 
 def _gates_with(assessment: Assessment, outcome: GateOutcome) -> tuple[GateName, ...]:
-    """Return the applicable gates of ``assessment`` with ``outcome``."""
+    """Return the gates of ``assessment`` that answered ``outcome``.
+
+    Parameters
+    ----------
+    assessment : Assessment
+        Verdict to sift.
+    outcome : GateOutcome
+        The answer a gate must have given to be returned.
+
+    Returns
+    -------
+    tuple[GateName, ...]
+        The applicable gates answering ``outcome``, in the order the run asked
+        them, with a gate that did not apply left out.
+
+    """
     return tuple(
         gate.name
         for gate in assessment.gates
