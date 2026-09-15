@@ -57,10 +57,14 @@ consumer never has to parse prose.
 ``--offline`` and ``--no-fetch`` are honoured rather than accepted: a run told
 to stay offline consults no forge at all and one told not to fetch reasons from
 a head a previous run cached, or reports that it has none. ``--limit`` bounds
-the association search. ``--heuristic-window`` and ``--deep`` are still
-accepted and inert, because the comparisons they control arrive with the report
-work that states the window they scanned. ``--op-id`` is checked as it is read,
-so a hostile id is refused before a run could write a ref built from it.
+the association search, and ``--heuristic-window`` bounds the deep comparison
+``--deep`` asks for: how many of the target's newest commits a child is
+compared against. A run without ``--deep`` puts no comparison question at all,
+and the window a deep run's scan was cut short by is a warning on the report
+rather than a fault, because what the comparison would have found is inferred
+evidence and ``--deep`` may not change the verdict. ``--op-id`` is checked as
+it is read, so a hostile id is refused before a run could write a ref built
+from it.
 """
 
 from __future__ import annotations
@@ -80,6 +84,7 @@ from git_donkey import (
     wheresat_collect,
     wheresat_facts,
     wheresat_github,
+    wheresat_heads,
     wheresat_parents,
     wheresat_policy,
     wheresat_records,
@@ -120,9 +125,10 @@ class WheresatOptions:
     envelope, and ``--record`` with ``--expected-old`` write the one record this
     command owns. ``--offline`` keeps the run from consulting any forge,
     ``--no-fetch`` keeps it from fetching the parent's head, and ``--limit``
-    bounds the association search. ``--heuristic-window`` and ``--deep`` are
-    accepted and inert at this milestone, because the comparisons they control
-    arrive with the report work that states the window it scanned.
+    bounds the association search. ``--deep`` asks the comparison of the child
+    against the target's content, and ``--heuristic-window`` is how many of the
+    target's newest commits that comparison is bounded to: the flag is the
+    cost control and the window is what the report states it scanned.
 
     """
 
@@ -209,7 +215,7 @@ def run_git_wheresat(
     # of those refusals is reported as the same usage failure.
     try:
         session = _session(options, repo=repo, graph=graph, github=github)
-        assessment = _assess(session)
+        assessment, caveats = _assess(session)
         writes = wheresat_writes.WheresatWrites(session.repo, session.context)
         recorded = writes.record(
             assessment,
@@ -220,7 +226,8 @@ def run_git_wheresat(
         return _failed(options, str(exc))
     assessment = writes.retain(assessment)
     _observe(assessment)
-    _write(options, assessment, session.context.request, _warnings(session) + recorded)
+    warnings = _warnings(session) + caveats + recorded
+    _write(options, assessment, session.context.request, warnings)
     return wheresat_records.EXIT_CODES[type(assessment)]
 
 
@@ -268,6 +275,7 @@ def _session(
         target=target,
         parent=_parent(options),
         deep=options.deep,
+        heuristic_window=options.heuristic_window,
         offline=options.offline,
     )
     identified = wheresat_parents.identify_parent(
@@ -365,7 +373,7 @@ def _fetch_head(
 
 def _head(
     fetched: wheresat_writes.ParentHeadFetch,
-) -> wheresat_collect.ParentHead | None:
+) -> wheresat_heads.ParentHead | None:
     """Return the parent head the gates read, or nothing when neither is in hand.
 
     The head is offered as a bare object ID with no ref beside it, because that
@@ -376,14 +384,14 @@ def _head(
 
     Returns
     -------
-    wheresat_collect.ParentHead | None
+    wheresat_heads.ParentHead | None
         The head the parent's gates ask about, or ``None`` when the run has
         none.
 
     """
     if fetched.parent is None:
         return None
-    return wheresat_collect.ParentHead(fetched.parent.head_sha, ref=None)
+    return wheresat_heads.ParentHead(fetched.parent.head_sha, ref=None)
 
 
 def _faults_of(fetched: wheresat_writes.ParentHeadFetch) -> tuple[str, ...]:
@@ -655,7 +663,9 @@ def _expectation(session: _Session) -> str | None:
     return _resolved(session.graph, expected, what=f"--expected-old {expected!r}")
 
 
-def _assess(session: _Session) -> wheresat_records.Assessment:
+def _assess(
+    session: _Session,
+) -> tuple[wheresat_records.Assessment, tuple[str, ...]]:
     """Return what the evidence makes of the boundary, faults included.
 
     The parent the run identified is handed to the assessment with the
@@ -664,11 +674,18 @@ def _assess(session: _Session) -> wheresat_records.Assessment:
     the fetch's, the collection's, and the facts' — because they are one thing
     to the reader: a question the procedure asked that nothing answered.
 
+    What the collection warns about is returned beside the assessment rather
+    than applied to it. A fault forces an indeterminate result, and a caveat
+    is not one: the deep comparison's window reaching only so far says what the
+    run did not look at, and a run cannot be made less able to answer by being
+    told less about a question no verdict rests on.
+
     Returns
     -------
-    wheresat_records.Assessment
+    tuple[wheresat_records.Assessment, tuple[str, ...]]
         The boundary the evidence establishes, or why none was, with a fault
-        forcing an indeterminate result rather than a refusal.
+        forcing an indeterminate result rather than a refusal; and what the run
+        warns about the reach of its own evidence.
 
     """
     evidence = wheresat_collect.collect_evidence(session.context)
@@ -679,9 +696,12 @@ def _assess(session: _Session) -> wheresat_records.Assessment:
         facts.facts,
         session.context.parent,
     )
-    return wheresat_policy.apply_collection_faults(
-        assessment,
-        session.parent_faults + evidence.faults + facts.faults,
+    return (
+        wheresat_policy.apply_collection_faults(
+            assessment,
+            session.parent_faults + evidence.faults + facts.faults,
+        ),
+        evidence.warnings,
     )
 
 

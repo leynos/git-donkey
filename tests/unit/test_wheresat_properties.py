@@ -192,6 +192,7 @@ def _request(
         target=draw(st.sampled_from(commits)),
         parent=draw(st.one_of(st.none(), st.just(PR_IDENTITY))),
         deep=draw(st.booleans()),
+        heuristic_window=draw(st.integers(min_value=1, max_value=64)),
         offline=draw(st.booleans()),
     )
 

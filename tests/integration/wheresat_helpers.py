@@ -49,6 +49,7 @@ if typ.TYPE_CHECKING:
 
     import pytest
 
+    from git_donkey.wheresat_graph import WheresatGraph
     from git_donkey.wheresat_records import ParentPullRequest
 
 CHILD: typ.Final = "child"
@@ -318,6 +319,8 @@ _THE_FORGE: typ.Final = _AssociationsOnlyForge()
 def run_wheresat(
     options: wheresat.WheresatOptions,
     capsys: pytest.CaptureFixture[str],
+    *,
+    graph: WheresatGraph | None = None,
 ) -> WheresatRun:
     """Run the command and record everything it reported.
 
@@ -335,6 +338,11 @@ def run_wheresat(
         What the command line asked for.
     capsys : pytest.CaptureFixture[str]
         Capture fixture the run's output is read from.
+    graph : wheresat_graph.WheresatGraph | None, optional
+        Read-only history questions. A Git-backed graph over the current
+        directory's repository is used when it is omitted, which is what every
+        suite but one wants; a suite that has to see *which* questions a run
+        put hands a graph that records them.
 
     Returns
     -------
@@ -342,7 +350,7 @@ def run_wheresat(
         The exit status and both output streams.
 
     """
-    exit_code = wheresat.run_git_wheresat(options, github=_THE_FORGE)
+    exit_code = wheresat.run_git_wheresat(options, github=_THE_FORGE, graph=graph)
     captured = capsys.readouterr()
     return WheresatRun(
         exit_code=exit_code,

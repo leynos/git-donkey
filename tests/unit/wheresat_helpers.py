@@ -90,6 +90,11 @@ FOREIGN_REPOSITORY = "somebody/fork"
 REQUIRED_SOURCES = 2
 PARENT_GATES = 2
 
+# How many of the target's newest commits a case's run says it would compare
+# against. The assessment reads the window for nothing — no gate asks about it —
+# so a case that is about the gates states the default and is done with it.
+DEFAULT_WINDOW = 200
+
 
 @dataclasses.dataclass(frozen=True, slots=True)
 class _Case:
@@ -158,6 +163,7 @@ def permissive() -> _Case:
             target=TARGET,
             parent=None,
             deep=False,
+            heuristic_window=DEFAULT_WINDOW,
             offline=False,
         ),
         candidates=(attested(OLD_BASE, EvidenceKind.STACK_RECORD_BIRTH),),

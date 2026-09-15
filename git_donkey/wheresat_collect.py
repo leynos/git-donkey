@@ -15,6 +15,16 @@ branch being deleted. It proposes no boundary of its own: it feeds the rungs
 that need a parent head, which is exactly the role the recovery procedure gives
 it.
 
+Two rungs are the deep comparison, and they are the only ones a run can leave
+out: ``--deep`` asks whether the work a child commit carries already landed on
+the target, and that is a cost the user chooses to pay, so a run without the
+flag does not put the question at all rather than answering it emptily (see
+:mod:`git_donkey.wheresat_deep`). What the comparison finds is inferred
+evidence, so a comparison that could not be taken is carried in the run's
+warnings rather than among the faults: a fault forces the verdict
+indeterminate, and ``--deep`` may not turn a refusal into a question nobody
+could answer.
+
 The candidate set is bounded by :data:`MAX_CANDIDATES`, because a set that hit
 the bound is not known to be complete: exceeding it is reported as a fault and
 the run answers that it could not tell, rather than listing the first
@@ -33,7 +43,13 @@ import dataclasses
 import functools
 import typing as typ
 
-from git_donkey import observability, stack_records, stack_store
+from git_donkey import (
+    observability,
+    stack_records,
+    stack_store,
+    wheresat_deep,
+    wheresat_heads,
+)
 from git_donkey.wheresat_errors import ShallowHistoryError, WheresatGraphError
 from git_donkey.wheresat_records import (
     TIERS,
@@ -49,6 +65,7 @@ if typ.TYPE_CHECKING:
     import collections.abc as cabc
 
     from git_donkey.wheresat_graph import WheresatGraph
+    from git_donkey.wheresat_heads import ParentHead
 
 
 MAX_CANDIDATES: typ.Final = 32
@@ -77,26 +94,6 @@ class _Fault:
 
     reason: str
     error_kind: observability.ErrorKind
-
-
-@dataclasses.dataclass(frozen=True, slots=True)
-class ParentHead:
-    """The parent's tip, and the ref the run read it from.
-
-    Parameters
-    ----------
-    commit : str
-        The parent's head commit, which is what the gates ask their ancestry
-        questions about.
-    ref : str | None
-        The ref it was read from, when it was read from one. A fork point is
-        read out of a reflog, so a head that arrived as a bare object ID has no
-        fork-point question to ask about it.
-
-    """
-
-    commit: str
-    ref: str | None
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -129,11 +126,18 @@ class CollectionContext:
         never plonked but was pushed still has a remote-tracking ref, and
         reading it is what gives the parent-history gate a head to ask its
         ancestry question about rather than leaving it inapplicable.
+    scan : wheresat_deep.Scan, optional
+        What a ``--deep`` run compared the child against, taken once by
+        :func:`collect_evidence` and read by both rungs of the comparison. It
+        is a value rather than a port because the two rungs read one window:
+        the target's newest commits are read once, for both passes, in the
+        place the record and the parent head are read once for every rung.
 
     Notes
     -----
-    ``record`` is filled by :func:`collect_evidence`; a caller leaves it at its
-    default. The other two are the run's own answers and are handed in, because
+    ``record`` and ``scan`` are filled by :func:`collect_evidence`; a caller
+    leaves them at their defaults. The others are the run's own answers and are
+    handed in, because
     the parent is identified and its head fetched before a rung runs: a rung
     that asked the forge would be a rung this module would have to give a
     network to. They live here rather than in a second object because a rung's
@@ -152,6 +156,7 @@ class CollectionContext:
         default_factory=stack_records.RecordAbsent
     )
     parent_head: ParentHead | None = None
+    scan: wheresat_deep.Scan = dataclasses.field(default_factory=wheresat_deep.Scan)
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -187,22 +192,32 @@ class CollectedEvidence:
     ``parent_head`` and ``recorded_from`` are carried beside the candidates
     because the gates read them the same way: they are what the run managed to
     learn about the parent, and they are not any one rung's answer.
+
+    ``warnings`` is what the run has to say about the reach of its own
+    collection rather than about the boundary — the deep comparison's window
+    stopping before the history did. It is kept apart from ``faults`` on
+    purpose: a fault forces an indeterminate verdict, and the comparison only
+    ever adds inferred candidates, so a caveat is the strongest thing its
+    silence may add.
+
     """
 
     candidates: tuple[Candidate, ...]
     parent_head: ParentHead | None
     recorded_from: str | None
     faults: tuple[str, ...] = ()
+    warnings: tuple[str, ...] = ()
 
 
 def _record_evidence(context: CollectionContext) -> CollectionResult:
     """Return the boundary ``git donkey`` wrote for the child, or why none.
 
-    This is the only rung whose candidate can establish a boundary on its own,
-    because it is the only one that names the boundary by a deliberate act. A
-    record that cannot be read is a fault and not an absence: a half-record, or
-    one whose evidence value this version does not classify, is a version
-    mismatch rather than a weak claim.
+    The record is attested evidence, and that is the one tier a single
+    candidate can establish a boundary from: it names the boundary by a
+    deliberate act rather than by a comparison of content or a computation over
+    surviving history. A record that cannot be read is a fault and not an
+    absence: a half-record, or one whose evidence value this version does not
+    classify, is a version mismatch rather than a weak claim.
 
     Returns
     -------
@@ -300,10 +315,43 @@ def _fork_point_evidence(context: CollectionContext) -> CollectionResult:
     return _result(candidates, faults)
 
 
+def _tree_identity_evidence(context: CollectionContext) -> CollectionResult:
+    """Return the candidates the tree pass of the deep comparison found.
+
+    The comparison is taken once for the run rather than here, so this rung
+    asks nothing: it states which of the two passes it reports the twins of.
+
+    Returns
+    -------
+    CollectionResult
+        One candidate per child commit the tree pass matched, or nothing at all
+        when it matched none. What the comparison could not cover is reported
+        by the run rather than here: a rung that answered has no fault to
+        report, and its silence about the window is not one.
+
+    """
+    return CollectionResult(candidates=wheresat_deep.tree_candidates(context.scan))
+
+
+def _patch_identity_evidence(context: CollectionContext) -> CollectionResult:
+    """Return the candidates the change pass of the deep comparison found.
+
+    Returns
+    -------
+    CollectionResult
+        One candidate per child commit the change pass matched, or nothing at
+        all when it matched none.
+
+    """
+    return CollectionResult(candidates=wheresat_deep.patch_candidates(context.scan))
+
+
 SOURCES: typ.Final[tuple[tuple[EvidenceKind, EvidenceSource], ...]] = (
     (EvidenceKind.STACK_RECORD_BIRTH, _record_evidence),
     (EvidenceKind.MERGE_BASE, _merge_base_evidence),
     (EvidenceKind.FORK_POINT, _fork_point_evidence),
+    (EvidenceKind.TREE_IDENTITY, _tree_identity_evidence),
+    (EvidenceKind.PATCH_IDENTITY, _patch_identity_evidence),
 )
 """The rungs this version reads, in the precedence order the procedure fixes.
 
@@ -311,12 +359,15 @@ The kind beside each rung is what its observation is labelled with, so the
 evidence tier a rung's answer is recorded under comes from one declaration
 rather than from each rung's memory of what it reads.
 
-The ladder's remaining rungs arrive with the evidence they read rather than
-early and silent: the shared record and the pull request head need a forge to
-read, and tree identity and cumulative patch identity compare the child against
-the parent's integration commit, which is a forge fact as well. A rung that
-cannot run is absent from this tuple, so the pipeline holds no branch that runs
-a question it cannot answer.
+The two comparisons of a ``--deep`` run are here because they need nothing but
+the graph, and they are last because what content comparison finds is inferred
+evidence and the ladder is ordered by the authority of what it reads. The
+ladder's remaining rungs arrive with the evidence they read rather than early
+and silent: the shared record and the pull request head need a forge to read,
+and this version reads no forge. A rung that cannot run is absent from this
+tuple, so the pipeline holds no branch that runs a question it cannot answer —
+and a run that did not ask for the comparison has it dropped from the list it
+reads, by :func:`_asked_for`, rather than left in place to answer nothing.
 """
 
 
@@ -333,34 +384,75 @@ def collect_evidence(
     sources : collections.abc.Sequence[tuple[EvidenceKind, EvidenceSource]], optional
         Rungs to run with the kind each is labelled by, in order. Overridden by
         tests that need a rung the repository cannot supply, such as one that
-        produces more candidates than the bound allows.
+        produces more candidates than the bound allows. A rung only a
+        ``--deep`` run reads is dropped from a run that did not ask for the
+        comparison whichever list it arrived in, so the choice is the run's and
+        not the caller's.
 
     Returns
     -------
     CollectedEvidence
         The candidates, the parent head and recorded-from the pipeline
-        recovered, and a reason for every question that went unanswered.
+        recovered, a reason for every question that went unanswered, and what
+        the run warns about the reach of its own collection.
 
     """
     prepared, faults = _prepared(context)
-    candidates, rung_faults = _rung_results(prepared, sources)
+    asked = _asked_for(context.request, sources)
+    candidates, rung_faults = _rung_results(prepared, asked)
     kept, cap_faults = _capped(candidates)
     return CollectedEvidence(
         candidates=kept,
         parent_head=prepared.parent_head,
         recorded_from=_recorded_from(prepared.record),
         faults=faults + rung_faults + cap_faults,
+        warnings=prepared.scan.warnings,
     )
+
+
+def _asked_for(
+    request: BoundaryRequest,
+    sources: cabc.Sequence[tuple[EvidenceKind, EvidenceSource]],
+) -> cabc.Sequence[tuple[EvidenceKind, EvidenceSource]]:
+    """Return the rungs this run asked for, in the order it was given them.
+
+    A rung whose evidence only ``--deep`` reads is dropped from a run that did
+    not ask for the comparison, so such a rung is *absent* rather than inert:
+    the question is not put, no observation is recorded for a kind the run never
+    asked about, and nothing can render a comparison the user declined as one
+    that answered nothing.
+
+    Parameters
+    ----------
+    request : BoundaryRequest
+        What the run set out to answer.
+    sources : collections.abc.Sequence[tuple[EvidenceKind, EvidenceSource]]
+        The rungs the pipeline would read.
+
+    Returns
+    -------
+    collections.abc.Sequence[tuple[EvidenceKind, EvidenceSource]]
+        Every rung, for a run that asked for the comparison, and the run's own
+        rungs otherwise.
+
+    """
+    if request.deep:
+        return sources
+    deep = frozenset(wheresat_deep.KINDS)
+    return tuple(one for one in sources if one[0] not in deep)
 
 
 def _prepared(
     context: CollectionContext,
 ) -> tuple[CollectionContext, tuple[str, ...]]:
-    """Return the context with the record and the parent head already read.
+    """Return the context with the record, the parent head, and the scan read.
 
     The record is read first because the parent head is sought through it: a
     child whose record names no parent branch has no tombstone to look for, so
     reading the record first is what keeps the second read from being a guess.
+    The deep comparison is taken here for the same reason: its two rungs read
+    one window between them, and it is taken once for the run rather than once
+    per rung.
 
     Returns
     -------
@@ -370,8 +462,11 @@ def _prepared(
 
     """
     record = _read_record(context)
-    head, fault = _parent_head(dataclasses.replace(context, record=record))
-    prepared = dataclasses.replace(context, record=record, parent_head=head)
+    head, fault = wheresat_heads.parent_head(
+        context.graph, context.records, record, context.parent_head
+    )
+    scan = wheresat_deep.scan_for(context.graph, context.request)
+    prepared = dataclasses.replace(context, record=record, parent_head=head, scan=scan)
     return prepared, (fault,) if fault is not None else ()
 
 
@@ -487,131 +582,6 @@ def _read_record(context: CollectionContext) -> stack_records.RecordResult:
         return context.records.read(context.request.branch)
     except stack_store.StackRecordError as exc:
         return stack_records.RecordMalformed(f"the record could not be read: {exc}")
-
-
-def _parent_head(
-    context: CollectionContext,
-) -> tuple[ParentHead | None, str | None]:
-    """Return the parent's tip, sought in the order the procedure fixes.
-
-    The order is the fetched pull request head, then the tombstone ``git plonk``
-    wrote for the parent branch, then that branch's remote-tracking ref. A head
-    the run already has is the procedure's first answer and is taken as given:
-    it was fetched from the pull request the run identified, so seeking a
-    tombstone below it would be asking a weaker question after a stronger one
-    was answered. A run that reads no forge reaches the tombstone instead, which
-    is the one that survives the parent branch being deleted — the degradation
-    this command exists for. The remote-tracking ref is the rung below that: a
-    parent that was never plonked, and a child whose record names no parent pull
-    request, usually still has one, because the parent branch was pushed
-    somewhere before the child was stacked on it. Reading it is what makes the
-    parent-history gate applicable — with no ``PARENT_HEAD`` at all that gate is
-    not applicable, and the case this command exists for, a parent rewritten
-    after the child was stacked, goes unnoticed.
-
-    A rung that finds nothing falls through to the next one. A rung that hits a
-    fault stops the ladder and returns the reason, because "no tombstone" and
-    "the tombstone would not open" are different answers.
-
-    Returns
-    -------
-    tuple[ParentHead | None, str | None]
-        The parent's head and the ref it was read from, or no head and the
-        reason it could not be recovered. No head and no reason is the honest
-        answer for a run whose child names no parent branch, whose parent pull
-        request named no head, and whose parent branch left neither a tombstone
-        nor a remote-tracking ref.
-
-    """
-    if context.parent_head is not None:
-        return context.parent_head, None
-    branch = _parent_branch(context.record)
-    if branch is None:
-        return None, None
-    head, reason = _tombstoned_head(context, branch)
-    if head is not None or reason is not None:
-        return head, reason
-    return _remote_tracked_head(context, branch)
-
-
-def _tombstoned_head(
-    context: CollectionContext, branch: str
-) -> tuple[ParentHead | None, str | None]:
-    """Return the parent's tip as the tombstone ``git plonk`` left behind names it.
-
-    Parameters
-    ----------
-    context : CollectionContext
-        Everything the rung may read.
-    branch : str
-        Parent branch the child's record names.
-
-    Returns
-    -------
-    tuple[ParentHead | None, str | None]
-        The head the tombstone names and the ref it was read from, or no head
-        and the reason the tombstone could not be read. No head and no reason
-        says the parent branch has no tombstone, which is an absence and not a
-        fault: the ladder has a rung below this one to try.
-
-    """
-    try:
-        commit = context.records.tombstone(branch)
-    except (stack_store.StackRecordError, WheresatGraphError, ValueError) as exc:
-        return None, f"the tombstone for {branch} could not be read: {exc}"
-    if commit is None:
-        return None, None
-    return ParentHead(commit, stack_records.tombstone_ref_path(branch)), None
-
-
-def _remote_tracked_head(
-    context: CollectionContext, branch: str
-) -> tuple[ParentHead | None, str | None]:
-    """Return the parent's tip as the branch's remote-tracking ref names it.
-
-    Parameters
-    ----------
-    context : CollectionContext
-        Everything the rung may read.
-    branch : str
-        Parent branch the child's record names.
-
-    Returns
-    -------
-    tuple[ParentHead | None, str | None]
-        The head the remote-tracking ref resolves to and the ref it was read
-        from, or no head and the reason the ref could not be read. No head and
-        no reason says the branch has no remote-tracking ref — a parent branch
-        that was never pushed, or pushed from a checkout that never fetched it
-        back.
-
-    """
-    try:
-        ref = context.graph.remote_tracking_ref(branch)
-        if ref is None:
-            return None, None
-        return ParentHead(context.graph.resolve(ref), ref), None
-    except WheresatGraphError as exc:
-        return None, f"the remote-tracking ref for {branch} could not be read: {exc}"
-
-
-def _parent_branch(record: stack_records.RecordResult) -> str | None:
-    """Return the parent branch the child's record names, when it names one.
-
-    A record written after the parent was opened names a pull request instead,
-    and a pull request is not a ref: nothing local says where that parent's tip
-    was, so such a run has no parent head to offer the gates.
-
-    Returns
-    -------
-    str | None
-        The parent branch name, or ``None`` when the record names none.
-
-    """
-    match record:
-        case stack_records.StackRecord(parent=stack_records.StackParent(branch=branch)):
-            return branch
-    return None
 
 
 def _asked[Answer](

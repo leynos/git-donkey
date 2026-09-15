@@ -76,7 +76,10 @@ def _parent(
 
     The head is not yet fetched, which is the state the payload is in when the
     fetch begins: ``head_fetched_from`` is what the function under test fills
-    in, so a case that left it set would assert nothing about the fetch.
+    in, so a case that left it set would assert nothing about the fetch. The
+    sentinel is applied before the overrides rather than after them, so a case
+    that named ``head_fetched_from`` would have it and would be asserting about
+    something other than the fetch — which is why none does.
 
     Parameters
     ----------

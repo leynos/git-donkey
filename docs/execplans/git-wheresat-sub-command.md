@@ -1093,10 +1093,58 @@ Stop and escalate rather than improvising when any of these is reached.
     regenerated, and the end-to-end acceptance asserts the token tuples exactly
     — the `git update-ref` with the full child tip, the rebase with both full
     IDs, and the undo line — rather than matching substrings.
-  - Slice (d) is next and owes `--deep`'s two rungs, the `heuristic_window`
-    plumbing, the cassettes, the behavioural scenario in
+  - Slice (d) is built: the deep comparison, the `heuristic_window` plumbing,
+    and the two suites that state what it answers.
+    `git_donkey/wheresat_deep.py` holds `scan`, which reads the target's newest
+    `window` commits in one listing, indexes them, and runs the two passes;
+    `Twin` is one child commit and the target commit it matched, and `Scan` is
+    both passes' twins plus the caveats the bound forced.
+    `wheresat_deep` also owns the candidate half — `scan_for` decides whether
+    the request asked for a comparison at all, and `tree_candidates` /
+    `patch_candidates` turn each pass's twins into candidates naming the child
+    commit and saying which comparison matched it — while `wheresat_collect`
+    holds two rungs, `_tree_identity_evidence` and `_patch_identity_evidence`,
+    that do nothing but hand `context.scan` to one of the two. `KINDS`
+    lets `_asked_for` leave both rungs _absent_ rather than inert when
+    `--deep` was not given, so a run without the flag asks the target's
+    history nothing at all. `BoundaryRequest.heuristic_window` has no default
+    and is threaded from the option through the run's request. The parent's
+    head and its recovery ladder moved out of `wheresat_collect` into
+    `git_donkey/wheresat_heads.py` in the same pass, to bring the collection
+    module back under the eight-hundred-line cap the lint gate enforces. What
+    is deliberately not here — the cassettes, the behavioural scenario in
     `git_wheresat.feature`, and INV-1's fetch-path non-vacuity assertion in the
-    read-only matrix.
+    read-only matrix — is still owed and is listed below.
+  - The comparison is measured from both sides. `tests/unit/test_wheresat_deep.py`
+    states it in 14 tests over a double that records every question put to it:
+    which commits a twin names and in whose order, that the change pass is
+    reached only for the commits the tree pass left unmatched, that the two
+    sides of the change comparison are different diffs, that the window is read
+    once and one commit past its bound, that a window which cut the scan, a
+    window of nothing, and a history the repository refused are each one caveat
+    and never a fault, and that a target commit can answer for one child commit
+    only. `tests/integration/test_wheresat_deep_comparison.py` states it in 7
+    tests over real repositories: a child commit the trunk landed whole is a
+    tree twin, a child commit no tree matched is matched by its change, a
+    window that reached the root compares it without complaint, a window that
+    cut the scan short says so and changes nothing, a run without the flag puts
+    no question about the trunk's history, and — the shape the whole slice
+    turns on — the two runs' envelopes differ in nothing a verdict rests on
+    while the deep run's adds the twin as an inferred candidate. The suite
+    names the target by object ID rather than by branch wherever the twin must
+    be _visible_, because a named branch hands the fork-point rung a reflog
+    that establishes the boundary, and an established run reports no candidates
+    at all: the twins are then present and unread, which is a weaker assertion
+    than the one these tests need.
+  - One property of the shape is worth stating because it looks like a gap and
+    is not: since a tree twin is named by the child's commit and the target's,
+    and both are inferred evidence, a deep run can add candidates and can never
+    change the verdict. The bound's case pins that from the outside — the deep
+    and shallow runs' exit codes and every non-evidence key are asserted equal
+    — and the reason is the policy's, not the comparison's.
+  - Cassettes, the `git_wheresat.feature` scenarios, the option documentation
+    that still calls these options inert, and the `--parent` documentation are
+    what EP-M10 still owes; the remaining slices are unchanged.
   - The first full gate run over slices (a) and (b) found three mechanical
     faults and nothing else: `check-fmt`, `lint`, and `markdownlint` failed
     while `build`, `typecheck`, `test` (801 passed, 21 snapshots), `spelling`,
@@ -3049,6 +3097,131 @@ Stop and escalate rather than improvising when any of these is reached.
   answering around it would report a boundary the run could not actually
   establish.
   Date/Author: 2026-09-15, implementation agent, EP-M10.
+- Decision: the pull request head is an evidence rung of its own
+  (:data:`EvidenceKind.PULL_REQUEST_HEAD`, attested), proposing the head the
+  run fetched for the parent pull request it identified.
+  Rationale: the procedure names it as one of the two attested carriers, and
+  every layer below this one already expects it — ``may_establish`` reads "a
+  stack record or a pull request head names the boundary by a deliberate act",
+  ``wheresat_report`` reads a ``PULL_REQUEST_HEAD`` candidate for the
+  envelope's ``parentHead`` key, and ``git_wheresat.feature`` states the
+  scenario that establishes a boundary from it. It is the rung that answers
+  the case the milestone exists for, a parent squash-merged into the trunk by
+  a pull request nobody recorded a stack record for, and it is why
+  ``parent-merged`` can refuse: the head of a pull request still open is not a
+  boundary any replay should be computed from.
+  Date/Author: 2026-09-15, implementation agent, EP-M10.
+- Decision: ``heuristic_window`` is a field of :class:`BoundaryRequest`, and
+  the deep scan reads the target's history with ``history(target,
+  limit=window + 1)`` exactly once, comparing the newest ``window`` of the
+  commits it returns.
+  Rationale: the window is what the user asked for, so it belongs beside
+  ``deep`` and ``offline``, which are the other two inputs that change what the
+  run reads rather than how it renders what it read. Carrying it on the request
+  rather than on the context keeps the collection context about the ports and
+  the evidence a run already has, and makes the bound visible at the one place
+  a run is resolved rather than at the rung that happens to honour it. The
+  field has no default, so a construction site that forgets it is a type error
+  rather than a run that silently scans two hundred commits. One commit more
+  than the window is asked for because that is how a cut scan is told from a
+  complete one: a listing longer than the window proves a commit older than the
+  window exists, which is the caveat recorded two entries below.
+  Date/Author: 2026-09-15, implementation agent, EP-M10.
+- Decision: ``--deep`` is split between two modules.
+  ``git_donkey/wheresat_deep.py`` owns the comparison entire — the two histories
+  read once, the index built from one of them, the two passes, the caveats the
+  bound forces, and the conversion of each pass's twins into candidates — and
+  ``wheresat_collect`` holds two thin rungs, ``_tree_identity_evidence`` and
+  ``_patch_identity_evidence``, that do nothing but hand
+  ``context.scan`` to ``tree_candidates`` or ``patch_candidates``. The
+  comparison is the tree pass by whole-tree object ID and the cumulative-patch
+  pass by the net change between a commit's fork point and the target on one
+  side and the change a windowed commit introduces on the other.
+  Rationale: ``wheresat_collect`` holds rungs that answer from one read each —
+  a record, a merge base, a reflog — and the deep scan is a different subject,
+  with a bound it has to state and a cost that is linear in that bound. Keeping
+  the comparison out of the collection module leaves that module's rungs the
+  shape its other rungs have, and lets the comparison be tested as the table of
+  two small histories it is rather than through a run's options. The candidate
+  half of the comparison lives with the comparison rather than with the rungs
+  that mount it, because which evidence kind a twin is and which commit it names
+  are decided by the pass that found it; a rung that built candidates would have
+  to know both, and the module split would be a file boundary rather than a
+  seam. Three details settle what the sketch left open. The commit either pass
+  names is the _child's_, because gate 4 asks whether the candidate is an
+  ancestor of the child and a target-side twin is not. The patch pass runs only
+  over the child commits the tree pass left unmatched, which is what the risk
+  entry's "cheap tree-identity pass first" buys: a tree match already answers
+  the question, and comparing net changes is the expensive half. And each twin
+  is claimed by the newest child commit that matches it, so a child history
+  that met and reverted the same change reports the commit that really landed
+  rather than both.
+  Date/Author: 2026-09-15, implementation agent, EP-M10.
+- Decision: the patch pass measures the child's change from
+  ``merge_base(child_commit, target)`` — the target itself, never a
+  ``target_before_window`` or any other commit inside the window — and measures
+  the windowed side as the change that commit introduces, from its own parent.
+  Rationale: the window is a bound on how far back the scan looks, so letting
+  it move the base would make the child's accumulated change depend on the
+  bound, and one child commit would be compared as a different change under a
+  different ``--heuristic-window``; measuring from the target gives every child
+  commit in a run the same fork point, and the change measured from it is the
+  child's own work and the whole of it, so a squash of several child commits is
+  compared as one cumulative change and never commit by commit, which is the
+  constraint the plan states at the top. The two sides are deliberately not
+  symmetrical, because they cannot be: an _accumulated_ change asked of a
+  windowed commit is the empty diff, every windowed commit being an ancestor of
+  the target, so what a windowed commit offers is the change it introduces.
+  Date/Author: 2026-09-15, implementation agent, EP-M10.
+- Decision: a windowed commit whose own change cannot be read is indexed under
+  nothing rather than reported, and a window that reached the repository's root
+  commit is therefore a complete scan.
+  Rationale: the change pass asks every windowed commit what change it
+  introduces, and the root commit has no parent to introduce anything over, so
+  the question raises where the repository's own answer is that there is none.
+  The commit was already read by the tree pass, so the only twin lost is one no
+  child commit could claim through this pass, and reporting the refusal would
+  turn a complete scan — one that read the target's whole history, root
+  included — into a caveat claiming it had not. This is the case that made the
+  swallowing necessary rather than merely tidy: without it a scan of any
+  history short enough to reach its root abandons the change pass entirely and
+  reports the twins it had already found nowhere.
+  Date/Author: 2026-09-15, implementation agent, EP-M10.
+- Decision: a deep scan the window cut short is reported as a warning naming
+  the window, never as a fault, and no ``--deep`` run is ever less determinate
+  than the same run without it.
+  Rationale: inferred evidence can neither establish a boundary nor
+  corroborate one, so a question the deep scan could not answer is one the
+  verdict never rested on — the rule the policy already applies when an
+  inferred candidate's own question goes unanswered. Reporting it as a
+  collection fault would turn ``--deep`` into a semantics switch, which the
+  command surface forbids, and the warning channel is exactly what the run
+  already has for a fact that must be stated and cannot change the answer: an
+  unreadable worktree is reported the same way, for the same reason. The
+  window is stated only when it cut the scan short, because a scan of the whole
+  history is complete and has nothing to warn about.
+  Date/Author: 2026-09-15, implementation agent, EP-M10.
+- Decision: the parent's head and the ladder that recovers it move out of
+  ``wheresat_collect`` into ``git_donkey/wheresat_heads.py``, which owns
+  :class:`ParentHead`, ``parent_head``, and the three rungs — the head the run
+  fetched, the tombstone ``git plonk`` left, and the parent branch's
+  remote-tracking ref.
+  Rationale: ``wheresat_collect`` grew past the eight-hundred-line module cap
+  once slice (d) mounted its two rungs, and the ladder is the one stretch of it
+  that is a subject of its own rather than a rung of the evidence ladder:
+  ``wheresat_parents`` answers _which_ pull request the child is stacked on, and
+  this module answers the question that follows it, _where that parent's tip
+  is_. The split is by seam rather than by line count — the rungs it moves are
+  read in the order the recovery procedure fixes, they share nothing with the
+  evidence rungs but the context they are read from, and the tombstone and
+  remote-tracking-ref rungs are tested on their own already. ``wheresat_heads``
+  imports neither ``wheresat_collect`` nor any rung of it, so the dependency
+  runs one way: a collection rung may reach for a parent's head, and the parent's
+  head knows nothing about the collection. ``parent_branch`` is promoted to a
+  public name for the same reason — it is the question both modules ask of a
+  record, and a private name imported across a module boundary is a seam drawn
+  in the wrong place.
+  Date/Author: 2026-09-15, implementation agent, EP-M10.
 
 ## Outcomes & retrospective
 
@@ -4675,13 +4848,20 @@ commit's diff equals the combined diff of the parent range, so the decisive
 test is one comparison per candidate, not one per commit:
 
 ```shell
-# cheap first pass: does the candidate's tree match the squash commit's tree?
-git rev-parse "$CANDIDATE^{tree}" "$LANDED^{tree}"
+# the window, read one commit past its bound so a cut scan can be told
+git rev-list --max-count="$((WINDOW + 1))" "$TARGET"
 
-# only for survivors: does the cumulative patch match?
-git diff "$(git merge-base "$CANDIDATE" "$TRUNK_BEFORE")" "$CANDIDATE" \
-  | git patch-id --stable
-git show "$LANDED" | git patch-id --stable
+# cheap pass: does the candidate's tree match a windowed commit's tree?
+git rev-parse "$CANDIDATE^{tree}" "$WINDOWED^{tree}"
+
+# only for survivors: does the cumulative patch match? The two sides are not
+# the same question. The candidate's change is measured from where its line
+# left the target, which gives every candidate in a run the same fork point;
+# a windowed commit's is measured from its own parent, because every windowed
+# commit is an ancestor of the target and so accumulates nothing.
+git diff --no-ext-diff --full-index \
+  "$(git merge-base "$CANDIDATE" "$TARGET")" "$CANDIDATE" | git patch-id --stable
+git diff --no-ext-diff --full-index "$WINDOWED^" "$WINDOWED" | git patch-id --stable
 ```
 
 The stack record, written by `git donkey` at birth and refreshed by

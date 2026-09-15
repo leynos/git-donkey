@@ -39,6 +39,7 @@ from git_donkey.wheresat_records import BoundaryRequest, ParentPullRequest
 from tests.unit.wheresat_helpers import (
     CHILD_BELOW,
     CHILD_TIP,
+    DEFAULT_WINDOW,
     PARENT_HEAD,
     PR_IDENTITY,
     PR_REPOSITORY,
@@ -231,6 +232,7 @@ def _request(
         target=TARGET,
         parent=parent,
         deep=False,
+        heuristic_window=DEFAULT_WINDOW,
         offline=offline,
     )
 

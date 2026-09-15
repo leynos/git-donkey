@@ -360,6 +360,12 @@ class BoundaryRequest:
     what decides whether the gates about a parent are applicable, so a run that
     named a parent it could not resolve refuses instead of establishing a
     boundary no gate examined.
+
+    ``heuristic_window`` is how many of the target's newest commits a
+    ``--deep`` run compares the child against. It is the run's own bound rather
+    than a rung's, because it is what the user asked for and what the scan's
+    cost is linear in, and it has no default: a construction site that forgot it
+    would be a run that silently scanned someone else's idea of a window.
     """
 
     branch: str
@@ -367,6 +373,7 @@ class BoundaryRequest:
     target: str
     parent: stack_records.PullRequestIdentity | None
     deep: bool
+    heuristic_window: int
     offline: bool
 
 
