@@ -180,6 +180,39 @@ def _without_some(
     return kept
 
 
+def _twins(
+    contents: typ.Mapping[str, CommitRange],
+    landed: str | None,
+    draw: st.DrawFn,
+) -> typ.Mapping[str, tuple[str, ...]]:
+    """Draw which of each range's commits carry the landed commit's content.
+
+    A commit is either matched or it is not, and the landed commit is the one
+    the comparison is made against, so an example with nothing landed has no
+    comparison to make.
+
+    Returns
+    -------
+    typ.Mapping[str, tuple[str, ...]]
+        The matching commits per range key.
+
+    """
+    if landed is None:
+        return {}
+    compared = {}
+    for key, listed in contents.items():
+        matched = draw(
+            st.lists(
+                st.booleans(),
+                min_size=len(listed.commits),
+                max_size=len(listed.commits),
+            )
+        )
+        selected = zip(listed.commits, matched, strict=True)
+        compared[key] = tuple(one for one, carries in selected if carries)
+    return compared
+
+
 def _request(
     child_tip: str,
     commits: tuple[str, ...],
@@ -204,12 +237,14 @@ def _facts(
     draw: st.DrawFn,
 ) -> GraphFacts:
     """Draw the graph answers an example is judged against."""
+    landed = draw(st.one_of(st.none(), st.sampled_from(commits)))
     return GraphFacts(
         parent_head=draw(st.one_of(st.none(), st.sampled_from(commits))),
-        landed=draw(st.one_of(st.none(), st.sampled_from(commits))),
+        landed=landed,
         ancestry=_ancestry(commits, draw),
         range_contents=contents,
         range_minus_parent=_without_some(contents, draw),
+        landed_twins=_twins(contents, landed, draw),
         child_history=CommitRange(commits),
         cumulative_patch={commit: draw(_PATCH_IDENTIFIERS) for commit in placed},
         landed_patch=draw(st.one_of(st.none(), st.just(LANDED_PATCH))),
@@ -313,10 +348,11 @@ def test_only_evidence_that_may_establish_ever_does(case: Case) -> None:
         "no content comparison can carry an answer, whatever corroborates it"
     )
     assert any(isinstance(one, AttestedCandidate) for one in support) or (
-        len({one.source for one in support}) >= REQUIRED_SOURCES
+        len({one.kind for one in support}) >= REQUIRED_SOURCES
     ), (
         f"a boundary established on {support!r} rests on either one deliberate "
-        "statement or two independent derived sources"
+        "statement or two independent derived sources, where the kind of "
+        "evidence and not the wording of its question is what a source is"
     )
 
 

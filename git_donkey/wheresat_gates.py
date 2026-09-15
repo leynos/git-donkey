@@ -24,9 +24,11 @@ widens the conjunction: a parent head is known whenever the parent's tombstone o
 remote-tracking ref survives, and a run holding one is judged against it, so a
 boundary that no longer lies on the parent's history is refused rather than
 established out of the record alone. Gate 7 joins them only when the head and
-the integration are both known, because its two clauses cannot be separated:
-what the range still holds beside the parent is read from the same listing that
-says what it holds.
+the integration are both known, because its clauses read one another: what the
+range still holds beside the parent head is read from the same listing that
+says what the range holds, and the range's patch and content are read against
+the commit the parent landed. That last comparison is the one a rewritten
+parent leaves standing, because an amend moves a commit and keeps its content.
 
 Nothing here reaches a verdict: :func:`gate_results` returns the gates for one
 candidate, and :mod:`git_donkey.wheresat_policy` weighs them into an assessment.
@@ -123,15 +125,15 @@ def ancestry_outcome(observed: Ancestry, *, expect: Ancestry) -> GateOutcome:
 
 @dataclasses.dataclass(frozen=True, slots=True)
 class _Clause:
-    """One half of a two-clause gate: what it decided and what it saw."""
+    """One half of a many-clause gate: what it decided and what it saw."""
 
     outcome: GateOutcome
     detail: str
 
 
-def _deciding(first: _Clause, second: _Clause) -> _Clause:
+def _deciding(first: _Clause, second: _Clause, *rest: _Clause) -> _Clause:
     """Return the clause that decides their gate, which is the worse answer."""
-    return max((first, second), key=_severity)
+    return max((first, second, *rest), key=_severity)
 
 
 def _severity(clause: _Clause) -> int:
@@ -423,6 +425,44 @@ def _patch_clause(commit: str, facts: GraphFacts) -> _Clause:
     )
 
 
+def _tree_clause(commit: str, child_tip: str, facts: GraphFacts) -> _Clause:
+    """Whether the range holds a commit carrying the landed commit's content.
+
+    The clause is what answers a parent that was rewritten before it was
+    merged. The suffix clause reads the parent head's reach, and a rewrite
+    leaves the parent's old commits reached by nothing; the landed content,
+    though, is still the content the range replays, because the rewrite kept
+    it and the merge landed it. A range holding any commit with that tree
+    carries work the target has already taken, so replaying the range onto the
+    target would apply it a second time.
+
+    Returns
+    -------
+    _Clause
+        FAILED when the range holds such a commit, PASSED when the comparison
+        was made and found none, and INDETERMINATE when the comparison was never
+        made, which reads as an unanswered question and never as a clean range.
+
+    """
+    key = range_key(commit, child_tip)
+    twins = facts.landed_twins.get(key)
+    if twins is None:
+        return _Clause(
+            GateOutcome.INDETERMINATE,
+            f"{key} was not compared with the landed commit's content",
+        )
+    if twins:
+        return _Clause(
+            GateOutcome.FAILED,
+            f"{key} holds {short_commit(twins[0])}, which carries the content the "
+            "landed commit carries",
+        )
+    return _Clause(
+        GateOutcome.PASSED,
+        f"{key} holds no commit carrying the content the landed commit carries",
+    )
+
+
 def _landed_work_is_in_scope(inputs: _GateInputs) -> bool:
     """Whether the run can tell which work the parent already landed.
 
@@ -469,6 +509,7 @@ def _replay_range_excludes_landed_gate(inputs: _GateInputs) -> GateResult:
     clause = _deciding(
         _suffix_clause(commit, child_tip, contents, without_parent),
         _patch_clause(commit, facts),
+        _tree_clause(commit, child_tip, facts),
     )
     return GateResult(name, clause.outcome, clause.detail)
 

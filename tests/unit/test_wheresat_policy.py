@@ -31,6 +31,7 @@ from git_donkey.wheresat_records import (
 )
 from tests.unit.wheresat_helpers import (
     ANCHOR_SOURCE,
+    CHILD_BELOW,
     CHILD_HISTORY,
     CHILD_WORK,
     FORK_POINT_SOURCE,
@@ -38,6 +39,7 @@ from tests.unit.wheresat_helpers import (
     MERGE_BASE_SOURCE,
     OLD_BASE,
     OTHER_BASE,
+    PARENT_MERGE_BASE_SOURCE,
     PATCH_SOURCE,
     RECORD_SOURCE,
     REQUIRED_SOURCES,
@@ -47,19 +49,23 @@ from tests.unit.wheresat_helpers import (
     TRUNK,
     assessment_of,
     attested,
-    blank_patch_identifier,
     derived,
     failed_gates,
     inferred,
+    permissive,
+    undecided_gates,
+)
+from tests.unit.wheresat_variants import (
+    blank_patch_identifier,
     parented_without_head,
     parented_without_landed,
-    permissive,
+    range_carrying_landed_content,
+    range_never_compared_with_the_landed_content,
     record_superseded,
     short,
     truncated_history,
     truncated_replay_range,
     unconsulted_parent,
-    undecided_gates,
     with_candidates,
     without_landed,
     without_parent_head,
@@ -124,7 +130,7 @@ def test_two_independent_derived_sources_may_establish() -> None:
         ),
     )
 
-    assert len({one.source for one in support}) >= REQUIRED_SOURCES, (
+    assert len({one.kind for one in support}) >= REQUIRED_SOURCES, (
         "the corpus is the case with independent sources"
     )
     assert may_establish(support), (
@@ -132,17 +138,49 @@ def test_two_independent_derived_sources_may_establish() -> None:
     )
 
 
-def test_two_derived_candidates_from_one_source_may_not_establish() -> None:
-    """One source read twice is not corroboration."""
+def test_two_answers_from_one_rung_may_not_establish() -> None:
+    """One method asked twice is not corroboration, however the questions differ.
+
+    The merge-base rung puts two questions — one about the target, one about the
+    parent's head — and it is the second that a rebased child leaves answering
+    at all. When the child's line was rewritten, its old parent tip becomes
+    unreachable and both questions collapse onto the same trunk commit, so a run
+    that counted the two answers as two sources would establish that commit and
+    offer to replay the parent's already-landed work from it. What makes them
+    one source is that they are one method, and it is counted by the kind rather
+    than by the label each question is reported under.
+    """
+    support = (
+        derived(OLD_BASE, EvidenceKind.MERGE_BASE, source=MERGE_BASE_SOURCE),
+        derived(
+            OLD_BASE,
+            EvidenceKind.MERGE_BASE,
+            source=PARENT_MERGE_BASE_SOURCE,
+        ),
+    )
+
+    assert len({one.source for one in support}) == REQUIRED_SOURCES, (
+        "the corpus is the case whose two answers are worded differently"
+    )
+    assert len({one.kind for one in support}) == 1, (
+        "and they are one method of observation between them"
+    )
+    assert not may_establish(support), (
+        "two answers from one rung are one answer, however they are labelled"
+    )
+
+
+def test_the_same_derived_observation_twice_may_not_establish() -> None:
+    """The same answer reported twice is not corroboration either."""
     support = (
         derived(OLD_BASE, EvidenceKind.MERGE_BASE),
         derived(OLD_BASE, EvidenceKind.MERGE_BASE, source=MERGE_BASE_SOURCE),
     )
 
     assert len({one.source for one in support}) == 1, (
-        "the corpus is the case with a single source"
+        "the corpus is the case with a single source string"
     )
-    assert not may_establish(support), "two answers from one source are one answer"
+    assert not may_establish(support), "one source read twice is one source"
 
 
 def test_inferred_evidence_never_establishes() -> None:
@@ -291,6 +329,54 @@ def test_a_blank_patch_identifier_is_not_an_agreement() -> None:
     assert undecided_gates(assessment) == (
         GateName.REPLAY_RANGE_EXCLUDES_LANDED_WORK,
     ), "the patch clause is the half of the gate that went unanswered"
+
+
+def test_a_range_carrying_the_landed_content_is_refused() -> None:
+    """The clause a rewritten parent leaves standing, and why it must.
+
+    A parent rewritten before it was merged takes the parent head's reach away
+    from the work the child inherited, so the clause that reads what the range
+    still holds beside the head has nothing to say. The content does not move
+    with an amend: the merge lands it, and the range that replays it would
+    apply it a second time, which is what this clause refuses.
+    """
+    assessment = assessment_of(range_carrying_landed_content())
+
+    assert isinstance(assessment, Unresolved), (
+        "a range holding the content the parent already landed must be refused, "
+        f"not reported as {assessment!r}"
+    )
+    assert failed_gates(assessment) == (GateName.REPLAY_RANGE_EXCLUDES_LANDED_WORK,), (
+        "the refusal comes from the landed-work gate, and no other: "
+        f"{failed_gates(assessment)}"
+    )
+    reason = next(
+        gate.detail
+        for gate in assessment.gates
+        if gate.name is GateName.REPLAY_RANGE_EXCLUDES_LANDED_WORK
+    )
+    assert short(CHILD_BELOW) in reason, (
+        f"the reason names the commit carrying that content: {reason}"
+    )
+
+
+def test_a_range_never_compared_is_not_a_range_with_no_match() -> None:
+    """A comparison that was not made is not a comparison that found nothing.
+
+    An empty answer and a missing one are the difference between "the range
+    holds none of the landed content" and "nothing is known about what it
+    holds", and reading the second as the first is how a boundary is
+    established on a question that was never answered.
+    """
+    assessment = assessment_of(range_never_compared_with_the_landed_content())
+
+    assert isinstance(assessment, Indeterminate), (
+        "the range's content was never compared, so the boundary cannot be "
+        f"established, yet the run reported {assessment!r}"
+    )
+    assert undecided_gates(assessment) == (
+        GateName.REPLAY_RANGE_EXCLUDES_LANDED_WORK,
+    ), "the clause that reads the comparison is the one left unanswered"
 
 
 def test_a_parent_a_run_consulted_leaves_its_history_gates_unanswered() -> None:

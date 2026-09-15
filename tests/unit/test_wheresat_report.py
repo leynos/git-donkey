@@ -48,9 +48,11 @@ from tests.unit.wheresat_helpers import (
     assessment_of,
     attested,
     derived,
-    long_replay_range,
     parented,
     permissive,
+)
+from tests.unit.wheresat_variants import (
+    long_replay_range,
     spoiled,
     truncated_history,
     truncated_replay_range,

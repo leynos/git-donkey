@@ -80,6 +80,21 @@ class _PatchAnswers:
     faults: tuple[str, ...] = ()
 
 
+@dataclasses.dataclass(frozen=True, slots=True)
+class _TreeAnswers:
+    """The commits in each replay range carrying the landed commit's tree.
+
+    Keyed by the range key gate 7 reads, with an empty tuple for a range that
+    was compared and holds no such commit. A range that was never listed, or
+    one whose comparison could not be finished, has no key — the same
+    distinction the other answers draw, where a mapping of nothing is "that
+    question was not put" and an empty listing is an answer.
+    """
+
+    twins: typ.Mapping[str, tuple[str, ...]]
+    faults: tuple[str, ...] = ()
+
+
 def assemble_facts(
     context: CollectionContext, evidence: CollectedEvidence
 ) -> CollectedFacts:
@@ -114,6 +129,7 @@ def assemble_facts(
     ancestry = _ancestry_answers(context, evidence)
     ranges = _replay_ranges(context, evidence)
     patches = _patch_answers(context, evidence)
+    trees = _tree_answers(context, evidence, ranges.contents)
     return CollectedFacts(
         facts=GraphFacts(
             parent_head=evidence.parent_head.commit if evidence.parent_head else None,
@@ -121,12 +137,13 @@ def assemble_facts(
             ancestry=ancestry.answers,
             range_contents=ranges.contents,
             range_minus_parent=ranges.without_parent,
+            landed_twins=trees.twins,
             child_history=history,
             cumulative_patch=patches.identifiers,
             landed_patch=patches.landed,
             record_recorded_from=evidence.recorded_from,
         ),
-        faults=ancestry.faults + ranges.faults + patches.faults,
+        faults=ancestry.faults + ranges.faults + patches.faults + trees.faults,
     )
 
 
@@ -263,6 +280,119 @@ def _patch_answers(
     return _PatchAnswers(identifiers=identifiers, landed=patch, faults=tuple(faults))
 
 
+def _tree_answers(
+    context: CollectionContext,
+    evidence: CollectedEvidence,
+    contents: typ.Mapping[str, CommitRange],
+) -> _TreeAnswers:
+    """Return the replay-range commits carrying the landed commit's tree.
+
+    Gate 7 reads this beside the two listings it already has: a range holding
+    a commit whose tree is the landed commit's carries content the target has
+    already taken, and replaying it onto the target would apply that content a
+    second time. The question is asked from the landed commit's side rather
+    than from the parent head's, so it survives the parent being rewritten:
+    an amend leaves the content where it was and changes which commit holds it.
+
+    The comparison is only worth making when gate 7 can apply, and only over
+    the ranges that were listed. Trees are read once per commit per run even
+    though the ranges nest, because a listing is a set of commits and the same
+    commit is above every candidate below it.
+
+    Parameters
+    ----------
+    context : CollectionContext
+        The run's inputs, whose ports put the questions.
+    evidence : CollectedEvidence
+        What the rungs produced, which decides whether any question exists.
+    contents : typ.Mapping[str, CommitRange]
+        The replay ranges as listed, keyed by the pair they were listed for.
+
+    Returns
+    -------
+    _TreeAnswers
+        The matching commits per range key, and a reason for every tree that
+        could not be read.
+
+    """
+    landed = _landed(context)
+    if landed is None or evidence.parent_head is None:
+        return _TreeAnswers(twins={})
+    trees: dict[str, str] = {}
+    tree, reason = _tree_of(context, landed, trees)
+    if reason is not None:
+        return _TreeAnswers(twins={}, faults=(reason,))
+    twins: dict[str, tuple[str, ...]] = {}
+    faults: list[str] = []
+    for key, listed in contents.items():
+        compared, reason = _twins(context, tree, listed.commits, trees)
+        if reason is not None:
+            faults.append(reason)
+        else:
+            twins[key] = compared
+    return _TreeAnswers(twins=twins, faults=tuple(faults))
+
+
+def _twins(
+    context: CollectionContext,
+    tree: str,
+    commits: tuple[str, ...],
+    trees: dict[str, str],
+) -> tuple[tuple[str, ...], str | None]:
+    """Return the commits carrying ``tree``, or why the comparison stopped.
+
+    The first tree the repository will not read abandons the whole range: a
+    comparison that stopped part way is not a comparison that found nothing,
+    so the range is left without an answer rather than answered from the half
+    of it that was read.
+
+    Returns
+    -------
+    tuple[tuple[str, ...], str | None]
+        The commits carrying the tree, oldest first, and no reason — or no
+        commits and the reason the comparison stopped.
+
+    """
+    found: list[str] = []
+    for commit in commits:
+        answer, reason = _tree_of(context, commit, trees)
+        if reason is not None:
+            return (), reason
+        if answer == tree:
+            found.append(commit)
+    return tuple(found), None
+
+
+def _tree_of(
+    context: CollectionContext,
+    commit: str,
+    trees: dict[str, str],
+) -> tuple[str, str | None]:
+    """Return one commit's tree, reading it at most once per run.
+
+    A tree is forty hexadecimal characters, so an empty one is no tree at all,
+    and the reason beside it always says why the repository named none. The
+    alternative — an optional tree and a fault that the caller has to narrow
+    against — leaves the caller able to compare a commit against a tree that
+    was never read, which is the comparison this module exists not to make.
+
+    Returns
+    -------
+    tuple[str, str | None]
+        The commit's tree and no reason, or no tree and the reason the
+        repository would not name one.
+
+    """
+    if commit in trees:
+        return trees[commit], None
+    question = f"cannot read the tree of {commit}"
+    answer, fault = ask(question, functools.partial(context.graph.tree_of, commit))
+    if answer is None:
+        return "", fault.reason if fault is not None else question
+    trees[commit] = answer
+    return answer, None
+
+
 def _child_history(context: CollectionContext) -> tuple[CommitRange, Fault | None]:
     """Return the child's whole history, oldest first, or why it was not listed."""
     answer, fault = ask(
@@ -293,6 +423,7 @@ def _empty_facts(context: CollectionContext, evidence: CollectedEvidence) -> Gra
         ancestry={},
         range_contents={},
         range_minus_parent={},
+        landed_twins={},
         child_history=CommitRange(()),
         cumulative_patch={},
         landed_patch=None,

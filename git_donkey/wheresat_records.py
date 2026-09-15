@@ -203,7 +203,7 @@ class AttestedCandidate:
 
 @dataclasses.dataclass(frozen=True, slots=True)
 class DerivedCandidate:
-    """A boundary computed from surviving history; needs corroboration."""
+    """A boundary computed from surviving history; needs a second source."""
 
     commit: str
     kind: EvidenceKind
@@ -239,9 +239,11 @@ def candidate_for(
     commit : str
         Commit the evidence names as the boundary.
     kind : EvidenceKind
-        Where the evidence came from.
+        The method of observation, which is what corroboration is counted by:
+        two questions put by one method are one source between them.
     source : str
-        Name of the source, which is what corroboration is counted by.
+        Label naming the question this evidence answered, for the report to
+        print beside the kind.
     supporting : tuple[str, ...], optional
         Further statements naming the same commit.
 
@@ -418,6 +420,14 @@ class GraphFacts:
     ``ancestry`` is keyed by the ordered pair that was asked about. A pair the
     run never asked about is absent, and absent reads as ``Ancestry.UNKNOWN``:
     a question never put to Git is not a negative answer.
+
+    ``landed_twins`` is keyed the same way the replay ranges are, and names the
+    commits in that range carrying the tree the landed commit carries. It is
+    the fact that survives a parent being rewritten: a rebase or an amend
+    changes which commits hold the parent's work, and the merge that follows
+    still lands that work as one commit, so the content says what the commit
+    identities no longer do. An empty tuple is a question that was put and
+    found nothing; a key that is absent is a question that was never put.
     """
 
     parent_head: str | None
@@ -425,6 +435,7 @@ class GraphFacts:
     ancestry: typ.Mapping[tuple[str, str], Ancestry]
     range_contents: typ.Mapping[str, CommitRange]
     range_minus_parent: typ.Mapping[str, CommitRange]
+    landed_twins: typ.Mapping[str, tuple[str, ...]]
     child_history: CommitRange
     cumulative_patch: typ.Mapping[str, str | None]
     landed_patch: str | None

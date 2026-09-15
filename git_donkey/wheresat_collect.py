@@ -247,8 +247,10 @@ def _merge_base_evidence(context: CollectionContext) -> CollectionResult:
     child. The second is the one a rebase leaves intact, because it is asked
     about the commit the child really inherited rather than about where the
     trunk has since moved to. Neither answer establishes a boundary alone: both
-    are derived candidates, and the policy asks two independent sources to name
-    one commit before either of them may.
+    are derived candidates of one kind, and the policy counts corroboration by
+    kind, so the two of them are one source however they are labelled — a
+    rewritten child collapses both onto the same commit, and two answers from
+    one question must not stand as two witnesses to it.
 
     Returns
     -------

@@ -9,7 +9,8 @@ corpus of answers it likes.
 Reading the results is where INV-2, INV-2b, and INV-4 are decided. A candidate
 serves as the boundary when every applicable gate passed *and*
 :func:`may_establish` permits its support — one deliberate statement, or two
-independent derived sources. Of the commits that could serve, the ones at the
+independent derived sources, where a source is the kind of evidence and not the
+question a rung happened to ask. Of the commits that could serve, the ones at the
 strongest rank present are the only candidates left: a commit a deliberate
 statement names outranks one computed from surviving history, which is the
 precedence ADR-005 ranks the evidence sources by and not a preference for the
@@ -62,7 +63,13 @@ _DEMOTED: typ.Final = (
 """Why gate 8 no longer applies to a record a later integration demoted."""
 
 _REQUIRED_SOURCES: typ.Final = 2
-"""How many independent derived sources corroborate a boundary between them."""
+"""How many independent kinds of derived evidence corroborate a boundary.
+
+A kind is one method of observation, so the merge base of the child and the
+target and the merge base of the child and the parent's head are one source
+between them however the two questions are worded, and a rewritten child that
+collapses both onto the same commit corroborates nothing.
+"""
 
 _ATTESTED_RANK: typ.Final = 0
 """Rank of a commit carried by a deliberate statement naming it."""
@@ -78,9 +85,19 @@ def may_establish(support: typ.Sequence[Candidate]) -> bool:
     names the boundary by a deliberate act. Derived evidence is not, so two
     candidates naming one commit establish it only when they come from
     independent sources — recorded reflogs expire, and a fork point and a merge
-    base over the same history can share one mistake. Inferred evidence never
-    establishes, whatever corroborates it, and a boundary's support never holds
-    it.
+    base over the same history can share one mistake.
+
+    A source is the method that produced the evidence, which its kind names,
+    and never the question that method was asked. The merge base of the child
+    and the target and the merge base of the child and the parent's head are
+    one computation put twice, and a rewritten child collapses both of them
+    onto the same trunk commit — so counting them as two sources is counting
+    one answer twice, in exactly the shape the rule exists to catch. Two
+    candidates of one kind are therefore one source, however their questions
+    are worded.
+
+    Inferred evidence never establishes, whatever corroborates it, and a
+    boundary's support never holds it.
 
     Parameters
     ----------
@@ -102,7 +119,10 @@ def may_establish(support: typ.Sequence[Candidate]) -> bool:
         return False
     if any(isinstance(candidate, AttestedCandidate) for candidate in establishing):
         return True
-    sources = {candidate.source for candidate in establishing}
+    # Counted by kind, which names the method, and not by the descriptive
+    # source string: two rungs of one kind are one observation of the history
+    # however differently they word the question that produced it.
+    sources = {candidate.kind for candidate in establishing}
     return len(sources) >= _REQUIRED_SOURCES
 
 
@@ -423,11 +443,11 @@ def _candidate_reason(checked: _Checked) -> str:
     if support is not candidate:
         return (
             f"{commit} was demoted by {_gate_summary(checked.gates)}, leaving "
-            "derived evidence that needs corroboration"
+            "derived evidence that needs a source of another kind"
         )
     return (
-        f"{commit} rests on one derived candidate from {support.source}, which "
-        "needs corroboration"
+        f"{commit} rests on one source of derived evidence, {support.kind.value}, "
+        "which needs a source of another kind"
     )
 
 
