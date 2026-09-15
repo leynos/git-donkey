@@ -16,295 +16,76 @@ GitHub repository has no question to put, and a run told ``--offline`` may not
 put one. Both leave the search skipped, because a question the run never asked
 is not a question the forge failed to answer.
 
-Nothing here opens a repository or a socket. The history and the forge are
-doubles, so every rung is driven without a network and the assertions can be
-about what was asked as much as about what was answered.
+The two rungs that read what the child itself carries — the stack record its
+branch holds and the shared record its pull request body carries — are stated
+in ``test_wheresat_parents_child.py``.
+
+Nothing here opens a repository or a socket: the history and the forge are
+doubles, kept in ``tests.unit.wheresat_parents_helpers`` with the builders that
+put a question to the ladder. Every rung is therefore driven without a network,
+and the assertions can be about what was asked as much as about what was
+answered.
 """
 
 from __future__ import annotations
 
-import dataclasses
 import typing as typ
 
 import pytest
 
-from git_donkey import observability, stack_records, wheresat_github
-from git_donkey import wheresat_parents as parents
+from git_donkey import (
+    wheresat_github,
+)
 from git_donkey.wheresat_errors import (
     ShallowHistoryError,
     WheresatCredentialError,
     WheresatGitHubError,
 )
-from git_donkey.wheresat_records import BoundaryRequest, ParentPullRequest
 from tests.unit.wheresat_helpers import (
     CHILD_BELOW,
     CHILD_TIP,
-    DEFAULT_WINDOW,
-    PARENT_HEAD,
     PR_IDENTITY,
-    PR_REPOSITORY,
-    TARGET,
     parent_pull_request,
+)
+from tests.unit.wheresat_parents_helpers import (
+    CHILD_BRANCH,
+    CHILD_IDENTITY,
+    DECOY_IDENTITY,
+    PARENT_IDENTIFICATION,
+    PARENT_IDENTITY,
+    SECOND_CHILD_IDENTITY,
+    SILENT_BODY,
+    Forge,
+    History,
+    Opener,
+    Records,
+    Run,
+    ask,
+    association_page,
+    boundary_request,
+    child_payload,
+    graph_over,
+    parent_payload,
+    search_bounds,
+    stacked_on,
 )
 
 if typ.TYPE_CHECKING:
-    import collections.abc as cabc
-
-    from git_donkey import wheresat_graph
     from tests.observability_helpers import RecordingRecorder
-
-_BRANCH: typ.Final = "child"
-"""The child branch the walk tells apart from the parent's."""
-
-_REPOSITORY: typ.Final = "acme/widget"
-"""``OWNER/REPOSITORY`` the association search is put to."""
-
-_CHILD_IDENTITY: typ.Final = stack_records.PullRequestIdentity(
-    repository=_REPOSITORY, number=17
-)
-"""The child's own pull request, as the association search reports it."""
-
-_PARENT_IDENTITY: typ.Final = stack_records.PullRequestIdentity(
-    repository=_REPOSITORY, number=16
-)
-"""The parent pull request the search or a stack may lead to."""
-
-_DECOY_IDENTITY: typ.Final = stack_records.PullRequestIdentity(
-    repository=_REPOSITORY, number=15
-)
-"""A pull request on an older commit, which a stronger rung should pre-empt."""
-
-_SECOND_CHILD_IDENTITY: typ.Final = stack_records.PullRequestIdentity(
-    repository=_REPOSITORY, number=18
-)
-"""A second pull request the child branch heads, on an older commit."""
-
-_PARENT_IDENTIFICATION: typ.Final[observability.Operation] = "parent_identification"
-"""Operation every question about the parent is recorded under."""
-
-
-@dataclasses.dataclass(frozen=True, slots=True)
-class _History:
-    """A graph that answers history questions, and records what it was asked.
-
-    Only ``history`` is implemented, because it is the only graph question the
-    ladder puts: the double is cast to the port rather than completed, so a
-    ladder that reached for another question would fail against it.
-
-    Attributes
-    ----------
-    commits : tuple[str, ...]
-        Commits the history holds, oldest first, as the real reader returns
-        them.
-    refusal : Exception | None
-        Failure the read raises instead of answering.
-    limits : list[int | None]
-        The ``limit`` of every read, in the order the reads were made.
-
-    """
-
-    commits: tuple[str, ...] = ()
-    refusal: Exception | None = None
-    limits: list[int | None] = dataclasses.field(default_factory=list)
-
-    def history(self, rev: str, *, limit: int | None = None) -> tuple[str, ...]:
-        """Return the newest commits of the history this double holds."""
-        self.limits.append(limit)
-        if self.refusal is not None:
-            raise self.refusal
-        return self.commits if limit is None else self.commits[:limit]
-
-
-@dataclasses.dataclass(frozen=True, slots=True)
-class _Forge(wheresat_github.WheresatGitHub):
-    """A forge whose every answer a test supplies, asked in a recorded order.
-
-    A question the test did not provide for is a defect in the test rather than
-    an answer of nothing: which questions the ladder puts is half of what these
-    tests assert, so an unprovided one is raised rather than read as a
-    negative.
-
-    Attributes
-    ----------
-    payloads : cabc.Mapping[int, ParentPullRequest]
-        What ``pull_request`` answers, keyed by pull request number.
-    stacks : cabc.Mapping[int, stack_records.PullRequestIdentity | None]
-        What ``stack_parent`` answers, keyed by pull request number.
-    page : wheresat_github.AssociationPage
-        What the association search answers.
-    read : list[int]
-        Every pull request read, in the order it was asked about.
-
-    """
-
-    payloads: cabc.Mapping[int, ParentPullRequest] = dataclasses.field(
-        default_factory=dict
-    )
-    stacks: cabc.Mapping[int, stack_records.PullRequestIdentity | None] = (
-        dataclasses.field(default_factory=dict)
-    )
-    page: wheresat_github.AssociationPage = dataclasses.field(
-        default_factory=lambda: wheresat_github.AssociationPage(
-            associations={}, commits_examined=0, truncated=False
-        )
-    )
-    read: list[int] = dataclasses.field(default_factory=list)
-
-    @typ.override
-    def pull_request(
-        self, identity: stack_records.PullRequestIdentity
-    ) -> ParentPullRequest:
-        """Return the payload this test supplied for ``identity``."""
-        self.read.append(identity.number)
-        try:
-            return self.payloads[identity.number]
-        except KeyError:
-            msg = f"the ladder read pull request {identity.number}, unprovided"
-            raise NotImplementedError(msg) from None
-
-    @typ.override
-    def pull_request_body(self, identity: stack_records.PullRequestIdentity) -> str:
-        """Refuse: the ladder reads bodies nowhere."""
-        msg = "the ladder asked for a pull request body"
-        raise NotImplementedError(msg)
-
-    @typ.override
-    def stack_parent(
-        self, identity: stack_records.PullRequestIdentity
-    ) -> stack_records.PullRequestIdentity | None:
-        """Return the pull request this test put below ``identity``, if any."""
-        try:
-            return self.stacks[identity.number]
-        except KeyError:
-            msg = f"the ladder asked about the stack of {identity.number}"
-            raise NotImplementedError(msg) from None
-
-    @typ.override
-    def associated_pull_requests(
-        self, repository: str, commits: cabc.Sequence[str]
-    ) -> wheresat_github.AssociationPage:
-        """Return the association page this test supplied."""
-        assert repository == _REPOSITORY, (
-            "the search should be put to the repository the run names"
-        )
-        return self.page
-
-
-@dataclasses.dataclass(frozen=True, slots=True)
-class _Opener:
-    """What opens the forge, counting how many times the ladder asked it to.
-
-    Attributes
-    ----------
-    forge : wheresat_github.WheresatGitHub | None
-        Port to hand back, or ``None`` for a caller that has none either.
-    refusal : Exception | None
-        Failure the open raises instead of returning a port.
-    opened : list[int]
-        One entry per call, so a test can assert the forge was never opened.
-
-    """
-
-    forge: wheresat_github.WheresatGitHub | None = None
-    refusal: Exception | None = None
-    opened: list[int] = dataclasses.field(default_factory=list)
-
-    def __call__(self) -> wheresat_github.WheresatGitHub:
-        """Return the port, or raise the refusal this opener was built with."""
-        self.opened.append(1)
-        if self.refusal is not None:
-            raise self.refusal
-        if self.forge is None:
-            msg = "this opener has no forge to offer"
-            raise NotImplementedError(msg)
-        return self.forge
-
-
-def _request(
-    *,
-    parent: stack_records.PullRequestIdentity | None = None,
-    offline: bool = False,
-) -> BoundaryRequest:
-    """Return the run's question, naming a parent and an offline flag."""
-    return BoundaryRequest(
-        branch=_BRANCH,
-        child_tip=CHILD_TIP,
-        target=TARGET,
-        parent=parent,
-        deep=False,
-        heuristic_window=DEFAULT_WINDOW,
-        offline=offline,
-    )
-
-
-def _bounds(
-    *, limit: int = 20, repository: str | None = _REPOSITORY
-) -> parents.SearchBounds:
-    """Return how far the search may walk, and in which repository."""
-    return parents.SearchBounds(limit=limit, repository=repository)
-
-
-def _history(*commits: str) -> _History:
-    """Return a graph answering with ``commits``, oldest first."""
-    return _History(commits=commits)
-
-
-def _ask(
-    request: BoundaryRequest,
-    bounds: parents.SearchBounds,
-    *,
-    history: _History | None = None,
-    opener: _Opener | None = None,
-) -> parents.ParentIdentification:
-    """Put the run's parent question to the ladder."""
-    return parents.identify_parent(
-        request,
-        bounds,
-        graph=typ.cast(
-            "wheresat_graph.WheresatGraph",
-            _History() if history is None else history,
-        ),
-        opener=opener,
-    )
-
-
-def _child_payload(*, stacked: bool = False) -> ParentPullRequest:
-    """Return the child's own pull request, as GitHub would report it."""
-    return parent_pull_request(
-        identity=_CHILD_IDENTITY,
-        head_ref=_BRANCH,
-        head_repository=PR_REPOSITORY,
-        stacked=stacked,
-    )
-
-
-def _parent_payload() -> ParentPullRequest:
-    """Return the parent pull request, as GitHub would report it."""
-    return parent_pull_request(identity=_PARENT_IDENTITY, head_sha=PARENT_HEAD)
-
-
-def _page(
-    associations: cabc.Mapping[str, tuple[stack_records.PullRequestIdentity, ...]],
-    *,
-    truncated: bool = False,
-) -> wheresat_github.AssociationPage:
-    """Return the association page a search would answer with."""
-    return wheresat_github.AssociationPage(
-        associations=associations,
-        commits_examined=len(associations),
-        truncated=truncated,
-    )
 
 
 def test_a_named_parent_is_read_from_the_forge(
     recording_recorder: RecordingRecorder,
 ) -> None:
     """A parent the user named is the whole of the ladder's work."""
-    forge = _Forge(payloads={PR_IDENTITY.number: parent_pull_request()})
-    opener = _Opener(forge=forge)
+    forge = Forge(payloads={PR_IDENTITY.number: parent_pull_request()})
+    opener = Opener(forge=forge)
+    records = Records(record=stacked_on(PR_IDENTITY))
 
-    identified = _ask(
-        _request(parent=PR_IDENTITY), _bounds(repository=None), opener=opener
+    identified = ask(
+        boundary_request(parent=PR_IDENTITY),
+        search_bounds(repository=None),
+        run=Run(records=records, opener=opener),
     )
 
     assert identified.parent is not None, "the named parent should have been read"
@@ -315,7 +96,10 @@ def test_a_named_parent_is_read_from_the_forge(
     assert forge.read == [PR_IDENTITY.number], (
         "a named parent should be the only pull request read"
     )
-    assert recording_recorder.outcomes(_PARENT_IDENTIFICATION) == ["found"], (
+    assert not records.reads, (
+        "a stronger rung answered, so the child's record should not be read"
+    )
+    assert recording_recorder.outcomes(PARENT_IDENTIFICATION) == ["found"], (
         "the identification should be recorded as found"
     )
 
@@ -324,11 +108,11 @@ def test_a_named_parent_is_skipped_when_no_opener_is_offered(
     recording_recorder: RecordingRecorder,
 ) -> None:
     """A caller with no forge to offer leaves every question unasked."""
-    identified = _ask(_request(parent=PR_IDENTITY), _bounds(), opener=None)
+    identified = ask(boundary_request(parent=PR_IDENTITY), search_bounds())
 
     assert identified.parent is None, "no forge means no parent"
     assert identified.faults == (), "asking nothing is not a question gone unanswered"
-    assert recording_recorder.outcomes(_PARENT_IDENTIFICATION) == ["skipped"], (
+    assert recording_recorder.outcomes(PARENT_IDENTIFICATION) == ["skipped"], (
         "the skip should be recorded rather than passed over in silence"
     )
 
@@ -344,9 +128,11 @@ def test_a_credential_that_cannot_be_opened_is_a_fault(
     and the reason the message carries is the one naming every source that was
     tried.
     """
-    opener = _Opener(refusal=WheresatCredentialError("no GitHub credential: set …"))
+    opener = Opener(refusal=WheresatCredentialError("no GitHub credential: set …"))
 
-    identified = _ask(_request(parent=PR_IDENTITY), _bounds(), opener=opener)
+    identified = ask(
+        boundary_request(parent=PR_IDENTITY), search_bounds(), run=Run(opener=opener)
+    )
 
     assert identified.parent is None, "a credential that is not there names no parent"
     assert len(identified.faults) == 1, "the refusal should be reported once"
@@ -359,7 +145,7 @@ def test_a_credential_that_cannot_be_opened_is_a_fault(
     assert identified.error_kind == "credential_unavailable", (
         "the run should report the credential as the bounded class of the fault"
     )
-    assert recording_recorder.error_kinds(_PARENT_IDENTIFICATION) == [
+    assert recording_recorder.error_kinds(PARENT_IDENTIFICATION) == [
         "credential_unavailable"
     ], "the observation should carry the same class the identification reports"
 
@@ -368,15 +154,17 @@ def test_a_forge_that_will_not_answer_is_a_fault(
     recording_recorder: RecordingRecorder,
 ) -> None:
     """A forge that fails to open stops the ladder rather than the run."""
-    opener = _Opener(refusal=WheresatGitHubError("GitHub did not answer"))
+    opener = Opener(refusal=WheresatGitHubError("GitHub did not answer"))
 
-    identified = _ask(_request(parent=PR_IDENTITY), _bounds(), opener=opener)
+    identified = ask(
+        boundary_request(parent=PR_IDENTITY), search_bounds(), run=Run(opener=opener)
+    )
 
     assert identified.parent is None, "a fault is never read as a parent"
     assert identified.error_kind == "github_api_error", (
         "a transport failure is the GitHub class of fault"
     )
-    assert recording_recorder.outcomes(_PARENT_IDENTIFICATION) == ["unavailable"], (
+    assert recording_recorder.outcomes(PARENT_IDENTIFICATION) == ["unavailable"], (
         "an unanswered question should be recorded as unavailable"
     )
 
@@ -385,9 +173,11 @@ def test_a_checkout_that_names_no_repository_asks_nothing(
     recording_recorder: RecordingRecorder,
 ) -> None:
     """No GitHub repository to ask about is no question to put."""
-    opener = _Opener(forge=_Forge())
+    opener = Opener(forge=Forge())
 
-    identified = _ask(_request(), _bounds(repository=None), opener=opener)
+    identified = ask(
+        boundary_request(), search_bounds(repository=None), run=Run(opener=opener)
+    )
 
     assert identified.parent is None, "a checkout with no repository names no parent"
     assert identified.faults == (), "having nothing to ask is not a failure to answer"
@@ -400,14 +190,16 @@ def test_an_offline_run_asks_nothing_of_an_offered_forge(
     recording_recorder: RecordingRecorder,
 ) -> None:
     """``--offline`` is a property of the run, not a promise the ladder keeps."""
-    opener = _Opener(forge=_Forge())
+    opener = Opener(forge=Forge())
 
-    identified = _ask(_request(offline=True), _bounds(), opener=opener)
+    identified = ask(
+        boundary_request(offline=True), search_bounds(), run=Run(opener=opener)
+    )
 
     assert identified.parent is None, "an offline run names no parent from the forge"
     assert identified.faults == (), "declining to ask is not a question unanswered"
     assert not opener.opened, "an offline run should not open the forge at all"
-    assert recording_recorder.outcomes(_PARENT_IDENTIFICATION) == ["skipped"], (
+    assert recording_recorder.outcomes(PARENT_IDENTIFICATION) == ["skipped"], (
         "the skip should be recorded as such"
     )
 
@@ -422,10 +214,14 @@ def test_a_history_longer_than_the_window_refuses_the_search(
     associated with these commits" — that a partial history cannot support.
     """
     limit = 3
-    opener = _Opener(forge=_Forge())
-    history = _history(*("c" * 40 for _ in range(limit + 1)))
+    opener = Opener(forge=Forge())
+    history = graph_over(*("c" * 40 for _ in range(limit + 1)))
 
-    identified = _ask(_request(), _bounds(limit=limit), history=history, opener=opener)
+    identified = ask(
+        boundary_request(),
+        search_bounds(limit=limit),
+        run=Run(history=history, opener=opener),
+    )
 
     assert identified.parent is None, "a truncated window names no parent"
     assert len(identified.faults) == 1, "the refusal should be reported once"
@@ -448,10 +244,12 @@ def test_a_shallow_history_is_reported_as_a_shallow_history(
 ) -> None:
     """A graft that stopped the read is labelled for the operator."""
     refusal = ShallowHistoryError("cannot trust the history: the clone is shallow")
-    opener = _Opener(forge=_Forge())
+    opener = Opener(forge=Forge())
 
-    identified = _ask(
-        _request(), _bounds(), history=_History(refusal=refusal), opener=opener
+    identified = ask(
+        boundary_request(),
+        search_bounds(),
+        run=Run(history=History(refusal=refusal), opener=opener),
     )
 
     assert identified.parent is None, "a history that could not be read names nothing"
@@ -472,29 +270,35 @@ def test_the_childs_own_pull_request_is_walked_past(
     the commit most likely to be the child's own, and the pull request reached
     through the commit below it is the parent.
     """
-    forge = _Forge(
+    forge = Forge(
         payloads={
-            _CHILD_IDENTITY.number: _child_payload(),
-            _PARENT_IDENTITY.number: _parent_payload(),
+            CHILD_IDENTITY.number: child_payload(),
+            PARENT_IDENTITY.number: parent_payload(),
         },
-        stacks={_CHILD_IDENTITY.number: None},
-        page=_page({
-            CHILD_TIP: (_CHILD_IDENTITY,),
-            CHILD_BELOW: (_PARENT_IDENTITY,),
+        stacks={CHILD_IDENTITY.number: None},
+        bodies={CHILD_IDENTITY.number: SILENT_BODY},
+        page=association_page({
+            CHILD_TIP: (CHILD_IDENTITY,),
+            CHILD_BELOW: (PARENT_IDENTITY,),
         }),
     )
-    history = _history(CHILD_BELOW, CHILD_TIP)
+    history = graph_over(CHILD_BELOW, CHILD_TIP)
 
-    identified = _ask(
-        _request(), _bounds(), history=history, opener=_Opener(forge=forge)
+    identified = ask(
+        boundary_request(),
+        search_bounds(),
+        run=Run(history=history, opener=Opener(forge=forge)),
     )
 
     assert identified.parent is not None, "the commit below the child should name one"
-    assert identified.parent.identity == _PARENT_IDENTITY, (
+    assert identified.parent.identity == PARENT_IDENTITY, (
         "the parent is the association that is not the child's own pull request"
     )
-    assert forge.read == [_CHILD_IDENTITY.number, _PARENT_IDENTITY.number], (
+    assert forge.read == [CHILD_IDENTITY.number, PARENT_IDENTITY.number], (
         "the child's own pull request is read before the parent's"
+    )
+    assert forge.bodies_read == [CHILD_IDENTITY.number], (
+        "the child's body is read once, before the walk continues past the child"
     )
     assert identified.faults == (), "a parent the search found is no fault"
 
@@ -503,30 +307,33 @@ def test_a_native_stack_names_the_parent_before_the_walk_continues(
     recording_recorder: RecordingRecorder,
 ) -> None:
     """A stack GitHub records is a statement, and outranks an inference."""
-    forge = _Forge(
+    forge = Forge(
         payloads={
-            _CHILD_IDENTITY.number: _child_payload(stacked=True),
-            _PARENT_IDENTITY.number: _parent_payload(),
+            CHILD_IDENTITY.number: child_payload(stacked=True),
+            PARENT_IDENTITY.number: parent_payload(),
         },
-        stacks={_CHILD_IDENTITY.number: _PARENT_IDENTITY},
-        page=_page({
-            CHILD_TIP: (_CHILD_IDENTITY,),
-            CHILD_BELOW: (_DECOY_IDENTITY,),
+        stacks={CHILD_IDENTITY.number: PARENT_IDENTITY},
+        page=association_page({
+            CHILD_TIP: (CHILD_IDENTITY,),
+            CHILD_BELOW: (DECOY_IDENTITY,),
         }),
     )
-    history = _history(CHILD_BELOW, CHILD_TIP)
+    history = graph_over(CHILD_BELOW, CHILD_TIP)
 
-    identified = _ask(
-        _request(), _bounds(), history=history, opener=_Opener(forge=forge)
+    identified = ask(
+        boundary_request(),
+        search_bounds(),
+        run=Run(history=history, opener=Opener(forge=forge)),
     )
 
     assert identified.parent is not None, "the stack should name the parent"
-    assert identified.parent.identity == _PARENT_IDENTITY, (
+    assert identified.parent.identity == PARENT_IDENTITY, (
         "the pull request below the child in the stack is the parent"
     )
-    assert _DECOY_IDENTITY.number not in forge.read, (
+    assert DECOY_IDENTITY.number not in forge.read, (
         "the association below the child should not be reached once the stack answers"
     )
+    assert not forge.bodies_read, "a stronger rung answered, so no body should be read"
 
 
 def test_a_second_child_head_is_not_asked_for_a_stack(
@@ -539,33 +346,39 @@ def test_a_second_child_head_is_not_asked_for_a_stack(
     reached through, so a second pull request the branch heads is read and
     walked past without asking GitHub about its stack.
     """
-    forge = _Forge(
+    forge = Forge(
         payloads={
-            _CHILD_IDENTITY.number: _child_payload(),
-            _SECOND_CHILD_IDENTITY.number: parent_pull_request(
-                identity=_SECOND_CHILD_IDENTITY, head_ref=_BRANCH
+            CHILD_IDENTITY.number: child_payload(),
+            SECOND_CHILD_IDENTITY.number: parent_pull_request(
+                identity=SECOND_CHILD_IDENTITY, head_ref=CHILD_BRANCH
             ),
         },
-        stacks={_CHILD_IDENTITY.number: None},
-        page=_page({
-            CHILD_TIP: (_CHILD_IDENTITY,),
-            CHILD_BELOW: (_SECOND_CHILD_IDENTITY,),
+        stacks={CHILD_IDENTITY.number: None},
+        bodies={CHILD_IDENTITY.number: SILENT_BODY},
+        page=association_page({
+            CHILD_TIP: (CHILD_IDENTITY,),
+            CHILD_BELOW: (SECOND_CHILD_IDENTITY,),
         }),
     )
-    history = _history(CHILD_BELOW, CHILD_TIP)
+    history = graph_over(CHILD_BELOW, CHILD_TIP)
 
-    identified = _ask(
-        _request(), _bounds(), history=history, opener=_Opener(forge=forge)
+    identified = ask(
+        boundary_request(),
+        search_bounds(),
+        run=Run(history=history, opener=Opener(forge=forge)),
     )
 
     assert identified.parent is None, (
         "neither child pull request should be reported as the parent"
     )
     assert identified.faults == (), "reading two child pull requests is no fault"
-    assert forge.read == [_CHILD_IDENTITY.number, _SECOND_CHILD_IDENTITY.number], (
+    assert forge.read == [CHILD_IDENTITY.number, SECOND_CHILD_IDENTITY.number], (
         "both pull requests the branch heads should be read, newest association first"
     )
-    assert recording_recorder.outcomes(_PARENT_IDENTIFICATION) == ["empty"], (
+    assert forge.bodies_read == [CHILD_IDENTITY.number], (
+        "only the child whose stack was asked about should have its body read"
+    )
+    assert recording_recorder.outcomes(PARENT_IDENTIFICATION) == ["empty"], (
         "the walk should run out of associations without a stack answer"
     )
 
@@ -574,18 +387,20 @@ def test_a_search_that_found_nothing_is_empty_and_not_a_fault(
     recording_recorder: RecordingRecorder,
 ) -> None:
     """A search that saw the whole history and found none has answered."""
-    forge = _Forge(page=_page({CHILD_TIP: (), CHILD_BELOW: ()}))
+    forge = Forge(page=association_page({CHILD_TIP: (), CHILD_BELOW: ()}))
 
-    identified = _ask(
-        _request(),
-        _bounds(),
-        history=_history(CHILD_BELOW, CHILD_TIP),
-        opener=_Opener(forge=forge),
+    identified = ask(
+        boundary_request(),
+        search_bounds(),
+        run=Run(
+            history=graph_over(CHILD_BELOW, CHILD_TIP),
+            opener=Opener(forge=forge),
+        ),
     )
 
     assert identified.parent is None, "nothing was associated with the child"
     assert identified.faults == (), "an answer of nothing is not a fault"
-    assert recording_recorder.outcomes(_PARENT_IDENTIFICATION) == ["empty"], (
+    assert recording_recorder.outcomes(PARENT_IDENTIFICATION) == ["empty"], (
         "the empty answer should be recorded as its own outcome"
     )
 
@@ -594,10 +409,12 @@ def test_a_search_that_stopped_short_refuses(
     recording_recorder: RecordingRecorder,
 ) -> None:
     """A page the adapter truncated is a refusal, not a short answer."""
-    forge = _Forge(page=_page({CHILD_TIP: ()}, truncated=True))
+    forge = Forge(page=association_page({CHILD_TIP: ()}, truncated=True))
 
-    identified = _ask(
-        _request(), _bounds(), history=_history(CHILD_TIP), opener=_Opener(forge=forge)
+    identified = ask(
+        boundary_request(),
+        search_bounds(),
+        run=Run(history=graph_over(CHILD_TIP), opener=Opener(forge=forge)),
     )
 
     assert identified.parent is None, "a search that stopped short names no parent"
@@ -617,13 +434,15 @@ def test_the_window_is_capped_by_the_adapter_ceiling(
     recording_recorder: RecordingRecorder,
 ) -> None:
     """``--limit`` may ask for fewer commits, and never for more."""
-    history = _history(CHILD_TIP)
+    history = graph_over(CHILD_TIP)
 
-    _ask(
-        _request(),
-        _bounds(limit=wheresat_github.ASSOCIATION_SEARCH_LIMIT * 10),
-        history=history,
-        opener=_Opener(forge=_Forge(page=_page({CHILD_TIP: ()}))),
+    ask(
+        boundary_request(),
+        search_bounds(limit=wheresat_github.ASSOCIATION_SEARCH_LIMIT * 10),
+        run=Run(
+            history=history,
+            opener=Opener(forge=Forge(page=association_page({CHILD_TIP: ()}))),
+        ),
     )
 
     assert history.limits == [wheresat_github.ASSOCIATION_SEARCH_LIMIT + 1], (
@@ -635,13 +454,15 @@ def test_a_limit_below_one_is_read_as_one(
     recording_recorder: RecordingRecorder,
 ) -> None:
     """A search allowed no commits has nothing to report but that it saw none."""
-    history = _history(CHILD_TIP)
+    history = graph_over(CHILD_TIP)
 
-    _ask(
-        _request(),
-        _bounds(limit=0),
-        history=history,
-        opener=_Opener(forge=_Forge(page=_page({CHILD_TIP: ()}))),
+    ask(
+        boundary_request(),
+        search_bounds(limit=0),
+        run=Run(
+            history=history,
+            opener=Opener(forge=Forge(page=association_page({CHILD_TIP: ()}))),
+        ),
     )
 
     assert history.limits == [2], (
@@ -655,13 +476,12 @@ def test_a_history_within_the_window_is_searched(
 ) -> None:
     """A window that saw the whole history is an answer about that history."""
     commits = tuple(f"{index:040d}" for index in range(limit))
-    forge = _Forge(page=_page(dict.fromkeys(commits, ())))
+    forge = Forge(page=association_page(dict.fromkeys(commits, ())))
 
-    identified = _ask(
-        _request(),
-        _bounds(limit=limit),
-        history=_history(*commits),
-        opener=_Opener(forge=forge),
+    identified = ask(
+        boundary_request(),
+        search_bounds(limit=limit),
+        run=Run(history=graph_over(*commits), opener=Opener(forge=forge)),
     )
 
     assert identified.faults == (), "a history inside the bound is not a refusal"

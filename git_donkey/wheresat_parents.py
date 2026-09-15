@@ -3,13 +3,14 @@
 A run may be told its parent, may have one written down, or may have to find
 one, and the order in which it asks is the whole of this module's policy: an
 explicit ``--parent`` first, then the pull request the child's own stack record
-names, then the pull request GitHub's own stack records, and last the pull
-requests associated with the child's commits. The rungs are asked in that order
-because each is a weaker statement than the one before it — a name the user
-typed, a claim ``git donkey`` wrote down, a stack GitHub maintains, and an
-inference from the pull requests other commits happen to belong to — and
-because a run that answered a stronger question has no business asking a weaker
-one.
+names, then the pull request GitHub's own stack records, then the one the
+child's pull request body claims in prose, and last the pull requests
+associated with the child's commits. The rungs are asked in that order because
+each is a weaker statement than the one before it — a name the user typed, a
+claim ``git donkey`` wrote down, a stack GitHub maintains, a claim the child's
+author pasted into a body, and an inference from the pull requests other
+commits happen to belong to — and because a run that answered a stronger
+question has no business asking a weaker one.
 
 There is no forge client here. The ladder asks :class:`WheresatGitHub`
 questions and answers with what the questions produced, so one walk serves the
@@ -17,18 +18,31 @@ live API and a recorded one, and a suite can drive every rung without a
 network. The port is opened by an opener this module is handed and never by the
 ladder itself, which is what lets a run that was told not to touch the network
 have nothing to open: ``--offline`` and a caller that offered no opener are the
-two reasons this module reports that it asked no forge anything.
+two reasons this module reports that it asked no forge anything. The child's
+own record is read through a reader the run hands in the same way, because two
+phases read that record — this ladder, for a parent it may name, and the
+collection phase, for the boundary — and neither may read a different one than
+the other.
 
 Two things about failure are decided here rather than at the boundary. A
 question that goes unanswered is a fault, and a fault stops the ladder. The
 next rung answers a weaker question, so reading it after a stronger question
 failed would present a fallback as the answer the run was looking for, which is
 the one reading ADR-005 forbids; a credential this command cannot find is
-therefore a fault of the run and not a quieter walk. And the association search
+therefore a fault of the run and not a quieter walk. A body whose record cannot
+be read, and one whose record supports several readings, are faults of that
+same kind: the claim was made and this run cannot take it up, so walking on
+would report the weakest rung's answer as the one the body's author was after.
+And the association search
 is bounded — by ``--limit`` commits of the child's history and by the ceiling
 the adapter will ask about — with the bound reported rather than applied
 silently, because "nothing names a boundary" is only an answer from a search
 that saw the whole history (INV-5).
+
+What a rung answers with, and what it is handed to read through, live in
+:mod:`git_donkey.wheresat_ladder`: this module is the policy, and that module is
+the vocabulary the policy is written in, so a rung states its answer the same way
+whichever question it asked.
 
 See ``docs/execplans/git-wheresat-sub-command.md`` for the rung order, both
 bounds, and the reasons each is what it is.
@@ -37,17 +51,28 @@ bounds, and the reasons each is what it is.
 
 from __future__ import annotations
 
-import dataclasses
 import typing as typ
 
-from git_donkey import observability, stack_records
+from git_donkey import (
+    stack_records,
+    stack_store,
+    wheresat_shared_record,
+)
 from git_donkey.wheresat_errors import (
     ShallowHistoryError,
     WheresatCredentialError,
     WheresatGitHubError,
     WheresatGraphError,
 )
+from git_donkey.wheresat_gates import short_commit
 from git_donkey.wheresat_github import ASSOCIATION_SEARCH_LIMIT
+from git_donkey.wheresat_ladder import (
+    LadderReads,
+    ParentIdentification,
+    SearchBounds,
+    answered,
+    faulted,
+)
 from git_donkey.wheresat_payload import identity_text
 
 if typ.TYPE_CHECKING:
@@ -56,9 +81,6 @@ if typ.TYPE_CHECKING:
     from git_donkey.wheresat_github import AssociationPage, WheresatGitHub
     from git_donkey.wheresat_graph import WheresatGraph
     from git_donkey.wheresat_records import BoundaryRequest, ParentPullRequest
-
-_PARENT_IDENTIFICATION: typ.Final[observability.Operation] = "parent_identification"
-"""Operation every question about the parent is recorded under."""
 
 _TOO_LONG: typ.Final = (
     "the child's history holds more commits than the {window} this run was "
@@ -76,60 +98,11 @@ _TRUNCATED: typ.Final = (
 """Refusal for a search the adapter's own budget stopped."""
 
 
-@dataclasses.dataclass(frozen=True, slots=True)
-class ParentIdentification:
-    """The parent pull request the ladder named, and what it could not ask.
-
-    ``parent`` and ``faults`` are two answers to one question, and the pair is
-    what tells them apart: no parent and no fault is the honest answer of a
-    ladder that asked every question it could and found none, while no parent
-    with a fault is a question that went unanswered and must not be read as the
-    same thing (INV-5).
-
-    Parameters
-    ----------
-    parent : ParentPullRequest | None
-        The parent pull request, as the forge reports it, or ``None`` when the
-        ladder named none.
-    faults : tuple[str, ...]
-        One reason the ladder could not answer, or nothing at all when it
-        answered.
-    error_kind : observability.ErrorKind | None
-        The bounded class of that failure, for the run's observation.
-
-    """
-
-    parent: ParentPullRequest | None = None
-    faults: tuple[str, ...] = ()
-    error_kind: observability.ErrorKind | None = None
-
-
-@dataclasses.dataclass(frozen=True, slots=True)
-class SearchBounds:
-    """How much of the child's history the association search may examine.
-
-    Parameters
-    ----------
-    limit : int
-        Commits the search may examine, from ``--limit``.
-    repository : str | None
-        ``OWNER/REPOSITORY`` slug of the repository to ask about those commits,
-        or ``None`` when the checkout names no GitHub repository at all. A run
-        with no repository to ask has no question to put, which is a different
-        thing from a question the forge could not answer.
-
-    """
-
-    limit: int
-    repository: str | None
-
-
 def identify_parent(
     request: BoundaryRequest,
     bounds: SearchBounds,
     *,
-    graph: WheresatGraph,
-    opener: cabc.Callable[[], WheresatGitHub] | None,
+    reads: LadderReads,
 ) -> ParentIdentification:
     """Return the parent pull request the run can identify, and how it found it.
 
@@ -141,11 +114,9 @@ def identify_parent(
     bounds : SearchBounds
         How far the association search may walk, and which repository to walk
         it in.
-    graph : WheresatGraph
-        Read-only history questions, for the commits the search asks about.
-    opener : collections.abc.Callable[[], WheresatGitHub] | None
-        Callable that returns a forge port, or ``None`` when the caller has
-        none to offer. It is called at most once, and only by a run that is
+    reads : LadderReads
+        What this walk reads through: history, the child's record, and the
+        forge. The opener is called at most once, and only by a run that is
         going to ask the forge something.
 
     Returns
@@ -155,8 +126,16 @@ def identify_parent(
 
     """
     if request.parent is not None:
-        return _named(request.parent, opener)
-    return _searched(request, bounds, graph=graph, opener=opener)
+        return _named(request.parent, reads.opener)
+    opener = reads.opener
+    if opener is None or request.offline:
+        # A run offered no opener has nothing to ask through, and one told
+        # ``--offline`` may not ask. Both are decided before any rung is walked,
+        # and before the child's own record is read, because a question the run
+        # never put is not one the forge failed to answer and a record this run
+        # may not act on can name no parent to it.
+        return answered(None, "skipped")
+    return _searched(request, bounds, reads=reads, opener=opener)
 
 
 def _named(
@@ -185,24 +164,29 @@ def _named(
 
     """
     if opener is None:
-        return _observed(None, "skipped")
+        return answered(None, "skipped")
     port = _forge(opener)
     if isinstance(port, ParentIdentification):
         return port
     read = _read(port, identity)
     if isinstance(read, ParentIdentification):
         return read
-    return _observed(read, "found")
+    return answered(read, "found")
 
 
 def _searched(
     request: BoundaryRequest,
     bounds: SearchBounds,
     *,
-    graph: WheresatGraph,
-    opener: cabc.Callable[[], WheresatGitHub] | None,
+    reads: LadderReads,
+    opener: cabc.Callable[[], WheresatGitHub],
 ) -> ParentIdentification:
-    """Return the parent the child's own pull requests lead to, if any do.
+    """Return the parent the child's own record or pull requests lead to.
+
+    The child's record is read before the search because it is a written claim
+    and the search is an inference: a record that names a pull request answers
+    the question outright, and a record that names a branch, or names nothing
+    at all, leaves the search to answer it.
 
     Parameters
     ----------
@@ -210,37 +194,88 @@ def _searched(
         What the run set out to answer.
     bounds : SearchBounds
         How far the search may walk, and which repository to walk it in.
-    graph : WheresatGraph
-        Read-only history questions.
-    opener : collections.abc.Callable[[], WheresatGitHub] | None
-        Callable that returns a forge port, or ``None`` when the caller has
-        none to offer.
+    reads : LadderReads
+        What this walk reads through.
+    opener : collections.abc.Callable[[], WheresatGitHub]
+        What opens the forge, handed in already narrowed by the caller that
+        decided this run may ask one at all.
 
     Returns
     -------
     ParentIdentification
-        The parent pull request the search found, or why none was found.
+        The parent pull request the record or the search named, or why none was
+        named.
 
     """
+    written = _written(_record(reads, request.branch), opener)
+    if written is not None:
+        return written
     repository = bounds.repository
-    # Three reasons a run asks nothing, and they are three different facts: a
-    # checkout that names no GitHub repository has nothing to ask about, a run
-    # offered no opener has nothing to ask through, and one told ``--offline``
-    # may not ask. All three leave the search skipped rather than faulted,
-    # because a question the run never put is not one the forge failed to answer.
-    unasked = opener is None or request.offline or repository is None
-    if unasked:
-        return _observed(None, "skipped")
+    if repository is None:
+        # A checkout that names no GitHub repository has no search to put. The
+        # record's own address was read first, because an address the run's
+        # repository supplies is put to the forge rather than discovered in it.
+        return answered(None, "skipped")
     port = _forge(opener)
     if isinstance(port, ParentIdentification):
         return port
-    window = _window(request, bounds.limit, graph=graph)
+    window = _window(request, bounds.limit, graph=reads.graph)
     if isinstance(window, ParentIdentification):
         return window
     page = _page(port, repository, window)
     if isinstance(page, ParentIdentification):
         return page
     return _walk(port, page, request.branch, window)
+
+
+def _record(reads: LadderReads, branch: str) -> stack_records.RecordResult:
+    """Return the child's own record, as a value even when reading it failed.
+
+    A record that cannot be read is not this rung's answer to report: the
+    collection phase reports it under its own kind, through the rung that owns
+    the record, and a ladder that faulted here as well would report one
+    unusable record twice. So the read failure is read as a record that names
+    no parent, and the walk goes on to the questions below.
+
+    Returns
+    -------
+    stack_records.RecordResult
+        The record, or an absent one when it could not be read.
+
+    """
+    try:
+        return reads.records.read(branch)
+    except stack_store.StackRecordError:
+        return stack_records.RecordAbsent()
+
+
+def _written(
+    record: stack_records.RecordResult,
+    opener: cabc.Callable[[], WheresatGitHub] | None,
+) -> ParentIdentification | None:
+    """Return the parent the child's own record names, if it names one.
+
+    A record written after the parent was opened names a pull request, and that
+    address is read exactly as ``--parent`` is: the record is an address the
+    run's own repository supplied, so a checkout that names no GitHub
+    repository of its own can still answer it. A record written at birth names
+    a branch instead, and a branch is not a pull request — nothing local says
+    which pull request heads it — so such a record answers nothing here and the
+    ladder walks on.
+
+    Returns
+    -------
+    ParentIdentification | None
+        What the named pull request is, or why it could not be read; ``None``
+        when the record names no pull request at all.
+
+    """
+    match record:
+        case stack_records.StackRecord(
+            parent=stack_records.StackParent(pull_request=identity)
+        ) if identity is not None:
+            return _named(identity, opener)
+    return None
 
 
 def _forge(
@@ -277,7 +312,7 @@ def _forge(
             if isinstance(exc, WheresatCredentialError)
             else "github_api_error"
         )
-        return _fault(f"the forge could not be opened: {exc}", kind)
+        return faulted(f"the forge could not be opened: {exc}", kind)
 
 
 def _window(
@@ -319,9 +354,9 @@ def _window(
             if isinstance(exc, ShallowHistoryError)
             else "git_command_error"
         )
-        return _fault(f"the child's history could not be read: {exc}", kind)
+        return faulted(f"the child's history could not be read: {exc}", kind)
     if len(history) > window:
-        return _fault(_TOO_LONG.format(window=window), "search_incomplete")
+        return faulted(_TOO_LONG.format(window=window), "search_incomplete")
     return tuple(reversed(history))
 
 
@@ -352,13 +387,13 @@ def _page(
     try:
         page = port.associated_pull_requests(repository, commits)
     except WheresatGitHubError as exc:
-        return _fault(
+        return faulted(
             f"the pull requests associated with the child's commits could not "
             f"be read: {exc}",
             "github_api_error",
         )
     if page.truncated:
-        return _fault(
+        return faulted(
             _TRUNCATED.format(examined=page.commits_examined), "search_incomplete"
         )
     return page
@@ -374,12 +409,13 @@ def _walk(
 
     The walk asks about each associated pull request in turn, newest commit
     first and GitHub's own order within a commit. The first pull request whose
-    head ref is the child branch is the child's own, and GitHub is asked one
-    more question about it — whether it records the child in a stack — before
-    the walk continues past it. The first pull request that is not the child's
-    own is the parent: the commits above the boundary belong to the child's own
-    pull request and to nothing else, so a pull request that is not the child's
-    own can only have been reached through a commit the child inherited.
+    head ref is the child branch is the child's own, and GitHub is asked two
+    more questions about it — whether it records the child in a stack, and, when
+    it records none, what the child's body claims — before the walk continues
+    past it. The first pull request that is not the child's own is the parent:
+    the commits above the boundary belong to the child's own pull request and
+    to nothing else, so a pull request that is not the child's own can only have
+    been reached through a commit the child inherited.
 
     A pull request associated with more than one of the child's commits is read
     once, because the answer is a fact about the pull request rather than about
@@ -413,17 +449,48 @@ def _walk(
         if isinstance(read, ParentIdentification):
             return read
         if read.head_ref != branch:
-            return _observed(read, "found")
+            return answered(read, "found")
         if child is not None:
             continue
         child = read
-        below = _below_the_child(port, child)
-        if isinstance(below, ParentIdentification):
-            return below
-        if below is None:
-            continue
-        return _observed(below, "found")
-    return _observed(None, "empty")
+        beneath = _beneath_the_child(port, child)
+        if beneath is not None:
+            return beneath
+    return answered(None, "empty")
+
+
+def _beneath_the_child(
+    port: WheresatGitHub,
+    child: ParentPullRequest,
+) -> ParentIdentification | None:
+    """Return the parent below the child, from GitHub's stack or its own claim.
+
+    The two questions are asked in the order the ladder puts them: a stack
+    GitHub maintains is a statement the forge makes about the child, and the
+    child's body is a claim its author made, so the statement is read first and
+    the claim only when there is no statement to read.
+
+    Parameters
+    ----------
+    port : WheresatGitHub
+        Forge every question is put to.
+    child : ParentPullRequest
+        The child's own pull request.
+
+    Returns
+    -------
+    ParentIdentification | None
+        The parent's payload, or the fault to report; ``None`` when neither
+        GitHub's stack nor the child's body names one, which sends the walk on
+        to the commits the child inherited.
+
+    """
+    below = _below_the_child(port, child)
+    if isinstance(below, ParentIdentification):
+        return below
+    if below is not None:
+        return answered(below, "found")
+    return _claimed(port, child)
 
 
 def _reported(
@@ -476,7 +543,7 @@ def _read(
     try:
         return port.pull_request(identity)
     except WheresatGitHubError as exc:
-        return _fault(
+        return faulted(
             f"the pull request {identity_text(identity)} could not be read: {exc}",
             "github_api_error",
         )
@@ -511,7 +578,7 @@ def _below_the_child(
     try:
         identity = port.stack_parent(child.identity)
     except WheresatGitHubError as exc:
-        return _fault(
+        return faulted(
             f"the stack GitHub records for {identity_text(child.identity)} "
             f"could not be read: {exc}",
             "github_api_error",
@@ -521,58 +588,96 @@ def _below_the_child(
     return _read(port, identity)
 
 
-def _observed(
-    parent: ParentPullRequest | None,
-    outcome: observability.Outcome,
-) -> ParentIdentification:
-    """Return an identification, recorded as ``outcome``.
+def _claimed(
+    port: WheresatGitHub,
+    child: ParentPullRequest,
+) -> ParentIdentification | None:
+    """Return the parent the child's pull request body claims, if it claims one.
+
+    The body is read as prose, and what it claims is a candidate like every
+    other rung: the pull request it names is read from the forge and reported as
+    the parent only because the address came from the child's own author. The
+    parse rides back on the identification so the collection phase can credit
+    the claim without reading the body a second time — collection has no forge,
+    and a body read twice is a body two phases could read differently.
+
+    A claim that cannot be read, and one that supports several readings, are
+    faults rather than a reason to walk on: the author named a parent and this
+    run cannot take the naming up, so the answer below would be the weakest
+    rung's rather than the one the author was after.
 
     Parameters
     ----------
-    parent : ParentPullRequest | None
-        The parent pull request, when the ladder identified one.
-    outcome : observability.Outcome
-        What became of the question, as the bounded vocabulary spells it.
+    port : WheresatGitHub
+        Forge the body is read from and the claim is put to.
+    child : ParentPullRequest
+        The child's own pull request, whose body carries the claim.
 
     Returns
     -------
-    ParentIdentification
-        The identification, with no fault: the ladder answered.
+    ParentIdentification | None
+        The claimed parent's payload, or the fault to report; ``None`` when the
+        body claims no parent at all, which sends the walk on to the commits the
+        child inherited.
 
     """
-    observability.get_recorder().record(
-        observability.Observation(
-            operation=_PARENT_IDENTIFICATION,
-            outcome=outcome,
+    try:
+        body = port.pull_request_body(child.identity)
+    except WheresatGitHubError as exc:
+        return faulted(
+            f"the body of {identity_text(child.identity)} could not be read: {exc}",
+            "github_api_error",
         )
-    )
-    return ParentIdentification(parent=parent)
+    claim = wheresat_shared_record.parse_shared_record(body)
+    match claim:
+        case wheresat_shared_record.SharedRecordAbsent():
+            return None
+        case wheresat_shared_record.SharedRecordMalformed(reason=reason):
+            return faulted(
+                f"the shared record in the body of {identity_text(child.identity)} "
+                f"could not be read: {reason}",
+                "stack_record_malformed",
+            )
+        case wheresat_shared_record.SharedRecordAmbiguous(records=readings):
+            return faulted(_ambiguous(child, readings), "stack_record_malformed")
+        case wheresat_shared_record.SharedRecord(parent=parent):
+            read = _read(port, parent)
+            if isinstance(read, ParentIdentification):
+                return read
+            return answered(read, "found", shared=claim)
 
 
-def _fault(
-    reason: str,
-    error_kind: observability.ErrorKind,
-) -> ParentIdentification:
-    """Return the identification of a question the ladder could not put.
+def _ambiguous(
+    child: ParentPullRequest,
+    records: tuple[wheresat_shared_record.SharedRecord, ...],
+) -> str:
+    """Return the refusal of a body that supports more than one reading.
+
+    Every reading the body supports is named, because the person who can settle
+    the disagreement is the one who pasted the block, and a refusal that named
+    only the reading this run happened to take first would send them to look for
+    a second block they were not told about.
 
     Parameters
     ----------
-    reason : str
-        Why the question went unanswered, in the operator's words.
-    error_kind : observability.ErrorKind
-        The bounded class of the failure.
+    child : ParentPullRequest
+        The child's own pull request, whose body carries the readings.
+    records : tuple[wheresat_shared_record.SharedRecord, ...]
+        The readings the body supports, in the order it gives them.
 
     Returns
     -------
-    ParentIdentification
-        The identification, carrying the fault and no parent.
+    str
+        The refusal, naming every reading it will not choose among.
 
     """
-    observability.get_recorder().record(
-        observability.Observation(
-            operation=_PARENT_IDENTIFICATION,
-            outcome="unavailable",
-            error_kind=error_kind,
-        )
+    readings = "; ".join(
+        f"{identity_text(record.parent)} with boundary {short_commit(record.boundary)}"
+        for record in records
     )
-    return ParentIdentification(faults=(reason,), error_kind=error_kind)
+    return (
+        f"the shared record in the body of {identity_text(child.identity)} names "
+        f"more than one reading, and this run will not choose among them: "
+        f"{readings}; leave one reading in the body, or name the parent with "
+        "--parent"
+    )

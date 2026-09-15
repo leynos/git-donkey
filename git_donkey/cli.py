@@ -36,6 +36,7 @@ from git_donkey import (
     template_cmd,
     track,
     wheresat,
+    wheresat_request,
 )
 
 _donkey_app = App(
@@ -324,7 +325,7 @@ def _wheresat_cli(
     options: typ.Annotated[
         wheresat.WheresatOptions,
         Parameter(name="*"),
-    ] = wheresat._DEFAULT_WHERESAT_OPTIONS,
+    ] = wheresat_request.DEFAULT_OPTIONS,
 ) -> None:
     """CLI wrapper for git-wheresat."""
     raise SystemExit(wheresat.run_git_wheresat(options))
