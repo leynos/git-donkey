@@ -246,17 +246,26 @@ def _supports(supporters: typ.Sequence[_Checked]) -> tuple[Establishing, ...]:
     return tuple(one.support for one in supporters if one.support is not None)
 
 
+def _grouped(
+    checked: typ.Sequence[_Checked],
+) -> typ.Mapping[str, tuple[_Checked, ...]]:
+    """Return every candidate, grouped by the commit it names, in canonical order."""
+    return {
+        commit: tuple(one for one in checked if one.original.commit == commit)
+        for commit in sorted({one.original.commit for one in checked})
+    }
+
+
 def _serving(
     checked: typ.Sequence[_Checked],
 ) -> typ.Mapping[str, tuple[_Checked, ...]]:
     """Return the commits that could serve, by the support each of them has."""
     cleared = [one for one in checked if _cleared(one)]
-    serving = {}
-    for commit in sorted({one.original.commit for one in cleared}):
-        supporters = tuple(one for one in cleared if one.original.commit == commit)
-        if may_establish(_supports(supporters)):
-            serving[commit] = supporters
-    return serving
+    return {
+        commit: supporters
+        for commit, supporters in _grouped(cleared).items()
+        if may_establish(_supports(supporters))
+    }
 
 
 def _rank(supporters: typ.Sequence[_Checked]) -> int:
@@ -372,6 +381,11 @@ def _has_refusal(checked: _Checked) -> bool:
     return any(
         gate.applicable and gate.outcome is GateOutcome.FAILED for gate in checked.gates
     )
+
+
+def _standing(checked: _Checked) -> bool:
+    """Return whether every applicable gate passed and nothing is still awaited."""
+    return not _has_refusal(checked) and not checked.pending
 
 
 def _included(facts: GraphFacts, commit: str, child_tip: str) -> CommitRange:
@@ -525,6 +539,42 @@ def _ambiguous(
     )
 
 
+def _twinned_commits(checked: typ.Sequence[_Checked]) -> tuple[str, ...]:
+    """Return the commits only content comparison names, when it names more than one.
+
+    Each of these commits cleared every applicable gate, and every candidate
+    naming one is inferred: a ``--deep`` run matched the commit's content
+    against the target's, which is evidence a report has to state and cannot
+    decide on. A commit whose evidence is derived is left out even when the same
+    gate set leaves it unable to serve, because one corroborating kind would be
+    enough for it — a shortfall its own reason states and this one would blur.
+
+    Returns
+    -------
+    tuple[str, ...]
+        The commits, in canonical order, when the comparison named more than
+        one of them; nothing otherwise, because one commit is not a distinction
+        between candidates and its own reason already names it.
+
+    """
+    commits = tuple(
+        commit
+        for commit, named in _grouped(checked).items()
+        if all(one.support is None and _standing(one) for one in named)
+    )
+    return commits if len(commits) > 1 else ()
+
+
+def _indistinguishable(commits: tuple[str, ...]) -> str:
+    """Return what a refusal makes of the commits content comparison matched."""
+    names = ", ".join(short_commit(commit) for commit in commits)
+    return (
+        f"{len(commits)} commits cleared every applicable gate ({names}) and are "
+        "named by content comparison alone, which cannot establish a boundary or "
+        "choose between them"
+    )
+
+
 def _refusal(
     reported: tuple[Candidate, ...],
     gates: tuple[GateResult, ...],
@@ -536,6 +586,12 @@ def _refusal(
     indeterminate: its support could never have established the boundary, so the
     question it could not answer is one the verdict never rested on.
 
+    The reasons state each candidate's own shortfall, and then — when content
+    comparison matched more than one commit — the distinction between those
+    commits, which no single candidate's reason can state: a reader told only
+    that each is inferred cannot tell a repository that holds no boundary from
+    one that holds several candidates for it.
+
     Returns
     -------
     Unresolved | Indeterminate
@@ -544,6 +600,9 @@ def _refusal(
 
     """
     reasons = tuple(_candidate_reason(one) for one in checked)
+    twinned = _twinned_commits(checked)
+    if twinned:
+        reasons += (_indistinguishable(twinned),)
     stated = reasons or ("no boundary candidate was found",)
     if _pending(checked):
         return Indeterminate(candidates=reported, gates=gates, reasons=stated)

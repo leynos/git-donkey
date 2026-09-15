@@ -288,11 +288,17 @@ def _tree_answers(
     """Return the replay-range commits carrying the landed commit's tree.
 
     Gate 7 reads this beside the two listings it already has: a range holding
-    a commit whose tree is the landed commit's carries content the target has
-    already taken, and replaying it onto the target would apply that content a
-    second time. The question is asked from the landed commit's side rather
-    than from the parent head's, so it survives the parent being rewritten:
-    an amend leaves the content where it was and changes which commit holds it.
+    a commit that applies the landed commit's tree carries content the target
+    has already taken, and replaying it onto the target would apply that
+    content a second time. The question is asked from the landed commit's side
+    rather than from the parent head's, so it survives the parent being
+    rewritten: an amend leaves the content where it was and changes which
+    commit holds it. It is asked of the commits that apply a change, because a
+    commit that changes nothing is dropped by a replay rather than applied,
+    and one sits at the boundary's own tree without applying anything — a
+    squash-merged parent leaves its content on the trunk, so the child's first
+    commit above the boundary sits at that content whenever it carries none of
+    its own.
 
     The comparison is only worth making when gate 7 can apply, and only over
     the ranges that were listed. Trees are read once per commit per run even
@@ -339,7 +345,15 @@ def _twins(
     commits: tuple[str, ...],
     trees: dict[str, str],
 ) -> tuple[tuple[str, ...], str | None]:
-    """Return the commits carrying ``tree``, or why the comparison stopped.
+    """Return the commits that apply ``tree``, or why the comparison stopped.
+
+    Sitting at a tree is not the same as applying it. A commit whose tree is
+    its parent's as well changes nothing, so a replay drops it rather than
+    applying it, and the content it happens to sit at is not applied a second
+    time by it: a range that holds landed content only in such a commit does
+    not hold work the target has already taken. The second question is put
+    only about the commits that sit at the tree, so a range holding none of
+    them costs no lookup beyond the trees it already reads.
 
     The first tree the repository will not read abandons the whole range: a
     comparison that stopped part way is not a comparison that found nothing,
@@ -349,7 +363,7 @@ def _twins(
     Returns
     -------
     tuple[tuple[str, ...], str | None]
-        The commits carrying the tree, oldest first, and no reason — or no
+        The commits applying the tree, oldest first, and no reason — or no
         commits and the reason the comparison stopped.
 
     """
@@ -358,9 +372,44 @@ def _twins(
         answer, reason = _tree_of(context, commit, trees)
         if reason is not None:
             return (), reason
-        if answer == tree:
+        if answer != tree:
+            continue
+        applied, reason = _applies_a_change(context, commit, trees)
+        if reason is not None:
+            return (), reason
+        if applied:
             found.append(commit)
     return tuple(found), None
+
+
+def _applies_a_change(
+    context: CollectionContext,
+    commit: str,
+    trees: dict[str, str],
+) -> tuple[bool, str | None]:
+    """Return whether ``commit`` changes anything against its first parent.
+
+    The question is Git's own notion of what a commit applies: the difference
+    between its tree and its first parent's, which is the patch a replay of it
+    would apply. A commit whose parent is a root asks about a revision the
+    repository will not resolve, and that is a fault rather than an answer:
+    the comparison is left unmade rather than read as a commit that applies
+    nothing, because a question that could not be put is not a clean answer.
+
+    Returns
+    -------
+    tuple[bool, str | None]
+        Whether the commit applies a change, and no reason — or no answer and
+        the reason the repository would not give one.
+
+    """
+    mine, reason = _tree_of(context, commit, trees)
+    if reason is not None:
+        return False, reason
+    theirs, reason = _tree_of(context, f"{commit}^", trees)
+    if reason is not None:
+        return False, reason
+    return mine != theirs, None
 
 
 def _tree_of(
@@ -369,6 +418,10 @@ def _tree_of(
     trees: dict[str, str],
 ) -> tuple[str, str | None]:
     """Return one commit's tree, reading it at most once per run.
+
+    The revision names a commit, and may name one commit's first parent
+    instead: that is how a comparison asks what a commit changes, and the
+    answer is memoised against the revision it was asked for either way.
 
     A tree is forty hexadecimal characters, so an empty one is no tree at all,
     and the reason beside it always says why the repository named none. The

@@ -600,6 +600,64 @@ def test_no_candidate_leaves_nothing_to_establish() -> None:
     )
 
 
+def test_two_commits_only_content_comparison_names_state_the_distinction() -> None:
+    """A refusal says when the repository holds more than one candidate.
+
+    Two child commits matched the target's content, so both cleared every gate
+    the run could ask and neither can serve: content comparison is carried no
+    further than a lead, however much of it agrees. A refusal that listed the
+    two reasons alone would read as two ways of finding nothing; the run adds
+    what distinguishes the case, which is that the evidence names more than one
+    boundary and cannot choose between them.
+    """
+    candidates = (
+        inferred(OLD_BASE, EvidenceKind.TREE_IDENTITY, source=TREE_SOURCE),
+        inferred(OTHER_BASE, EvidenceKind.PATCH_IDENTITY, source=PATCH_SOURCE),
+    )
+    assessment = assessment_of(with_candidates(permissive(), *candidates))
+
+    assert isinstance(assessment, Unresolved), (
+        "two inferred candidates establish nothing, however many gates they pass"
+    )
+    assert len(assessment.reasons) == len(candidates) + 1, (
+        "one reason per candidate, and one stating what the pair leaves unresolved"
+    )
+    distinction = assessment.reasons[-1]
+    assert short(OLD_BASE) in distinction, (
+        f"the distinction names the first candidate: {distinction}"
+    )
+    assert short(OTHER_BASE) in distinction, (
+        f"and the second, rather than choosing between them: {distinction}"
+    )
+    assert "content comparison" in distinction, (
+        f"and says which evidence could not decide: {distinction}"
+    )
+
+
+def test_one_commit_named_by_content_comparison_states_no_distinction() -> None:
+    """A single lead is stated as one candidate's shortfall, not as a tie.
+
+    A derived candidate cleared the same gates and also cannot serve, because
+    one computed kind needs a second; the content comparison matched one commit
+    and not a rival. Neither is a distinction between candidates, so the refusal
+    is the per-candidate reasons and nothing else: the line is for a corpus that
+    leaves more than one commit in the running.
+    """
+    candidates = (
+        derived(OLD_BASE, EvidenceKind.MERGE_BASE, source=MERGE_BASE_SOURCE),
+        inferred(OTHER_BASE, EvidenceKind.TREE_IDENTITY, source=TREE_SOURCE),
+    )
+    assessment = assessment_of(with_candidates(permissive(), *candidates))
+
+    assert isinstance(assessment, Unresolved), (
+        "the derived candidate needs a second kind and the inferred one never serves"
+    )
+    assert len(assessment.reasons) == len(candidates), (
+        f"neither candidate's shortfall is a distinction between candidates: "
+        f"{assessment.reasons}"
+    )
+
+
 def test_an_established_result_partitions_the_childs_history() -> None:
     """INV-6: the two halves are the child's history, cut at the boundary."""
     assessment = assessment_of(permissive())

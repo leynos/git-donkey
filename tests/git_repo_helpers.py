@@ -42,13 +42,24 @@ def configure_repo(repo: Repo) -> None:
         config.set_value("user", "email", "test@example.com")
 
 
-def _commit_file(repo: Repo, path: Path, text: str, message: str) -> str:
+def commit_file(repo: Repo, path: Path, text: str, message: str) -> str:
     """Write ``text`` to ``path``, commit it, and return the new commit's ID.
 
     The commit runs through Git rather than through the index object, because
     the stack builders check branches out and merge between commits: an index
     the repository has since rewritten on disk would otherwise be the tree the
     commit was made from.
+
+    Parameters
+    ----------
+    repo : Repo
+        Repository to commit in, on the branch it has checked out.
+    path : Path
+        File to write; it is created if it is not there.
+    text : str
+        Contents to write, which is what the commit changes.
+    message : str
+        Commit message.
 
     Returns
     -------
@@ -80,7 +91,7 @@ def seed_repo(repo_path: Path, *, branch: str = "main") -> Repo:
     """
     repo = Repo.init(repo_path)
     configure_repo(repo)
-    _commit_file(repo, repo_path / "README.md", "seed", "Seed commit")
+    commit_file(repo, repo_path / "README.md", "seed", "Seed commit")
     repo.git.branch("-M", branch)
     return repo
 
@@ -312,8 +323,8 @@ def squash_merged_stack(
     repo = seed_repo(repo_path, branch=trunk)
     repo.git.branch(parent, trunk)
     repo.git.checkout(parent)
-    _commit_file(repo, repo_path / "parent.txt", "parent work", "Parent work")
-    parent_head = _commit_file(
+    commit_file(repo, repo_path / "parent.txt", "parent work", "Parent work")
+    parent_head = commit_file(
         repo, repo_path / "parent.txt", "parent work, revised", "More parent work"
     )
     child_tip = _child_work(repo, repo_path, child=child, base=parent_head)
@@ -366,12 +377,12 @@ def advanced_parent_stack(
     repo = seed_repo(repo_path, branch=trunk)
     repo.git.branch(parent, trunk)
     repo.git.checkout(parent)
-    inherited_head = _commit_file(
+    inherited_head = commit_file(
         repo, repo_path / "parent.txt", "parent work", "Parent work"
     )
     child_tip = _child_work(repo, repo_path, child=child, base=inherited_head)
     repo.git.checkout(parent)
-    parent_head = _commit_file(
+    parent_head = commit_file(
         repo, repo_path / "parent.txt", "parent work, revised", "More parent work"
     )
     landed = _squash_merge(repo, parent, trunk=trunk)
@@ -428,8 +439,8 @@ def rewritten_parent_stack(
     repo = seed_repo(repo_path, branch=trunk)
     repo.git.branch(parent, trunk)
     repo.git.checkout(parent)
-    _commit_file(repo, repo_path / "parent.txt", "parent work", "Parent work")
-    inherited_head = _commit_file(
+    commit_file(repo, repo_path / "parent.txt", "parent work", "Parent work")
+    inherited_head = commit_file(
         repo, repo_path / "parent.txt", "parent work, revised", "More parent work"
     )
     child_tip = _child_work(repo, repo_path, child=child, base=inherited_head)
@@ -453,8 +464,8 @@ def _child_work(repo: Repo, repo_path: Path, *, child: str, base: str) -> str:
     """Cut ``child`` from ``base``, commit its work, and leave it checked out."""
     repo.git.branch(child, base)
     repo.git.checkout(child)
-    _commit_file(repo, repo_path / "child.txt", "child work", "Child work")
-    return _commit_file(
+    commit_file(repo, repo_path / "child.txt", "child work", "Child work")
+    return commit_file(
         repo, repo_path / "child.txt", "child work, revised", "More child work"
     )
 
@@ -473,10 +484,10 @@ def _rewrite_parent(repo: Repo, repo_path: Path, *, trunk: str, parent: str) -> 
 
     """
     repo.git.checkout("-B", parent, trunk)
-    _commit_file(
+    commit_file(
         repo, repo_path / "parent.txt", "parent work", "Rework the first parent commit"
     )
-    return _commit_file(
+    return commit_file(
         repo,
         repo_path / "parent.txt",
         "parent work, revised",
