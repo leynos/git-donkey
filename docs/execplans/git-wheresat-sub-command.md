@@ -2041,6 +2041,21 @@ Stop and escalate rather than improvising when any of these is reached.
     recorded rather than silently taken: a reader of the round-3 reply's "the
     eight gates were run clean" needs to know the gate set itself was still
     moving under the branch.
+  - A third defect in this round's own edits was found the same way, and it
+    teaches the baseline bullet's lesson in miniature: a gate that has not run
+    over a revision is not evidence about it. The refusal `spoiled` gained
+    this round — for the finding that asked the helper to refuse an outcome it
+    cannot spoil — raised its `AssertionError` with an inline f-string, which
+    `TRY003` refuses at the raise site and `EM102` refuses again for the
+    f-string itself, so `make lint` was red on the first run that reached the
+    line. Every other refusal in the tree builds its message first and raises
+    the variable, so the repair is the convention this line had missed rather
+    than a new one, and the words are unchanged. It is recorded here because
+    the round's fixes were committed without a green gate behind them: the run
+    taken over `50a46c8` was stopped when the tree moved under it, and its
+    replacement over `251a510` was stopped before it reached `make lint`, so
+    the reply that answers the review round was written against a revision
+    whose gates were still to come.
 
 ## Surprises & discoveries
 
