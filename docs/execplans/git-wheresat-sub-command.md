@@ -2403,9 +2403,9 @@ Stop and escalate rather than improvising when any of these is reached.
     blank lines around it, and the gate that says so is a Markdown gate, which
     runs over prose rather than over the Python the round was about.
   - The disposition is posted on the pull request (round 7,
-    `#issuecomment-TBD`), each request naming the file it changed and the one
-    request that was partly declined naming the rule that declined it, so a
-    reader can check the claim against the diff rather than against this
+    `#issuecomment-5689745494`), each request naming the file it changed and
+    the one request that was partly declined naming the rule that declined it,
+    so a reader can check the claim against the diff rather than against this
     paragraph.
 
 ## Surprises & discoveries
