@@ -993,7 +993,15 @@ Stop and escalate rather than improvising when any of these is reached.
     parent, faults, error_kind)`, and a `WheresatCredentialError` is mapped at
     the one place that catches it, which is what makes a missing credential
     Table 3's row rather than the usage handler's (see the corrected bullet
-    above).
+    above). **Corrected while slicing (i):** the rung list above is the ladder
+    as it stands after slice (i), and slice (b) landed three of its five rungs
+    — the named parent, the stack GitHub records, and the association search —
+    where this bullet listed the child's own record among what slice (b)
+    built. Reading that record is slice (i)'s work, and the claim in the body
+    is slice (i)'s too. The correction is recorded rather than the sentence
+    rewritten because the three-rung ladder is what slice (b)'s own tests were
+    measured against, and a reader comparing the entry with the tests of its
+    commit should find both readings here.
   - `git_donkey/wheresat_remotes.py` answers the two questions the fetch asks
     of a checkout's configuration — which repository the checkout's own
     commits are read in, and which remote holds the parent's head repository —
@@ -1546,6 +1554,263 @@ Stop and escalate rather than improvising when any of these is reached.
     the sentence now names the form without spelling it, and the second run
     reports the tree clean (logs
     `/tmp/{markdownlint,spelling,nixie}-git-donkey-git-wheresat-sub-command-135.out`).
+  - Slice (h) is landed: `git_donkey/wheresat_shared_record.py` owns the prose
+    form a pull request body may carry — a `Stack parent:` line and a
+    `Replay boundary (exclusive):` line — and
+    `tests/unit/test_wheresat_shared_record.py` states it in 28 cases over
+    fourteen tests, the last of them the `@given` round trip that ties the
+    parser to the renderer. Lines inside a
+    fenced block are quoted material and are skipped; leading Markdown
+    decoration is removed before a label is matched, so a bulleted, quoted, or
+    emboldened record is a claim like any other; and a body supporting several
+    readings yields one reading per distinct pair of a named parent and a named
+    boundary, never a choice between them. Two defects in the draft this
+    revision lands were caught by its own suite rather than by a gate, which is
+    the reason the suite was written before the module was trusted: the
+    constant naming the decoration characters was never applied, so a bulleted
+    or quoted label was prose and four parametrized cases said so, and the
+    half-record table paired each line with the label it _did_ carry rather
+    than the one it was missing, which would have pinned the opposite of the
+    module's rule. `stack_records._is_object_id` is public as `is_object_id`
+    for this module's sake, so the two forms of a boundary are held to one
+    grammar instead of to a copy of it.
+  - Decision: `stack_records.is_object_id` is promoted rather than restated in
+    `wheresat_shared_record`.
+    Rationale: the local record's boundary and the shared record's boundary are
+    one grammar — 40 or 64 hexadecimal characters, abbreviations refused rather
+    than resolved — and a second copy is a second opinion that would accept
+    what the other refuses. The promotion also makes the two readers agree in
+    what an operator is told: a boundary outside the grammar produces the same
+    sentence in both places. The function is public but unexported, which is
+    the shape `is_repository_slug` already has for the same reason.
+    Date/Author: 2026-09-15, implementation agent, EP-M10.
+  - Slice (i) is landed: the ladder's fourth rung reads the shared record the
+    child's own pull request body carries, and the concern the plan recorded
+    for that rung — one record read by two phases, this ladder for a parent it
+    may name and collection for the boundary — is answered by reading it once
+    and handing the reading on. `ParentIdentification` gained a `shared_record`
+    field carrying the `SharedRecordResult`, `CollectionContext` gained the
+    same field, and both phases therefore act on one reading rather than on two
+    that could differ. The read happens inside `_walk`, after GitHub's own
+    stack has answered nothing and before the walk continues to the commits the
+    child inherited — the order the module docstring now fixes: a stack the
+    forge maintains is a statement about the child, a body is a claim its
+    author made, and a claim is read only when there is no statement to read.
+  - The three reads the ladder walks with are bundled as
+    `LadderReads(graph, records, opener)` and handed to `identify_parent` as one
+    keyword, and the decision to skip the forge moved up into `identify_parent`
+    with them. Both moves were forced and both are recorded as decisions below:
+    `_searched` had reached seven returns with the skip inside it and four
+    parameters without it, and taking the skip out left a non-optional `opener`
+    for every rung below it, so no rung can ask whether a forge exists — the
+    run decided that before any rung was walked.
+  - An unreadable _local_ record and an unusable _shared_ one are reported by
+    different phases, and the rule is the same one read from both sides:
+    whichever phase owns the reading is the phase that reports it. `_record`
+    answers `RecordAbsent` for a record that will not open, because the rung
+    that owns a clone's record is the collection phase's, which reports it once
+    as `stack_record_malformed`; a body read by the ladder has no second
+    reader, so a `SharedRecordMalformed` or `SharedRecordAmbiguous` claim stops
+    the ladder under that same kind, naming the reason or every reading the
+    body supports. Choosing one of several readings is the resolution ADR-005
+    forbids, and a body whose readings disagree is exactly the case this
+    command must not settle.
+  - `tests/unit/test_wheresat_parents_child.py` states the new rung in eight
+    tests: the child's own record naming a pull request pre-empts the search, a
+    record naming a branch leaves the search to answer, a record that cannot be
+    read does not fault the ladder, no record is read when the run may not ask
+    the forge, the body's parent answers when no stack does, a body that claims
+    nothing leaves the walk to continue, a body that cannot be read stops the
+    ladder, and a body supporting two readings names every one of them. The
+    `Forge` double gained `bodies` and `bodies_read`, so a test that reaches
+    the child pull request has to say what its body holds — a question the test
+    did not provide for is a defect in the test — and the stack-answering test
+    asserts `bodies_read == []`, which is what proves the stronger rung
+    pre-empts the body read rather than merely answering first. The module is
+    the child's half of a suite that was drawn apart for its code health, which
+    is recorded under Progress below; the eight tests are the same eight, and
+    the ladder's own module still holds the sixteen that read the forge.
+  - Slice (j) is landed: `git_donkey/wheresat_collect.py` reports the shared
+    record the ladder read as a rung of its own, second in `SOURCES` after the
+    stack record and before the fetched head. The rung asks nothing — the claim
+    arrives on the context — so a run that has since lost its forge, and one
+    that was never given a forge to open, both still report the boundary the
+    body named. No vocabulary was added for it: `EvidenceKind.SHARED_RECORD`
+    already existed in the attested tier, and an attested candidate establishes
+    a boundary on its own, which is what makes the prose form a substitute for
+    the record rather than a hint at one. The rung is silent for a body nobody
+    read and for either refused reading, both reported where they were found,
+    so one unusable claim is never reported twice.
+  - The collect suite gained three tests and adjusted three. A claim of
+    `SharedRecord` yields exactly one attested candidate naming the claimed
+    boundary and the body's pull request; the absent reading yields no
+    candidate, no fault, and still records an attested rung that answered
+    nothing; and each refused reading yields no candidate and a fault list
+    identical to the same run's with no reading at all — the comparison is
+    against a second run rather than against the empty tuple, so the test says
+    "the same faults" rather than "no faults", which is the claim actually
+    being made. The three tests that read the attested rung sequence gained the
+    new rung's `empty`, which is how the suite distinguishes a rung that was
+    asked and answered nothing from one that is not in the list. The module's
+    own docstring was rewritten with the rung: it had described one subject —
+    the fetched head — and now describes both, which is what a reader arriving
+    at the file needs first.
+  - The developers' guide gained the rung in both of the bullets it belongs to,
+    and one of the two was stale in the direction that matters: the
+    `wheresat_parents` bullet still said "four rungs" and named the shared
+    record not at all, and the `wheresat_collect` bullet listed the rungs it
+    asks — which the head rung had already made wrong, since the head is read
+    between the record and the merge base. Both now list five and seven entries
+    respectively, in the order the code holds them, and the parents bullet
+    records why the claim is read once and handed on. The spec blocks in this
+    plan's Interfaces section were left as designed rather than rewritten to
+    the as-built signature, which is the convention every slice since (a) has
+    followed: that section is the design record and these Progress bullets are
+    the build record.
+  - Code health over the three slices' surface, taken before the review is
+    asked for rather than after it, found two modules below the 10.00 this
+    repository's files hold. Both were repaired by removing what the finding
+    named. `git_donkey/wheresat_facts.py` scored 9.38 on Overall Code
+    Complexity — a mean cyclomatic complexity of 4.07 across fourteen
+    functions, against a threshold of four — and the repair is the extraction
+    the two range listings had been asking for: `_range_of` puts one range
+    question, with `not_reachable_from` as a keyword, so the listing and the
+    listing without the parent's history call one function rather than
+    carrying the same `ask`, fault check, and `CommitRange` construction
+    twice. The module is 10.00 again, with one more function and no change to
+    what any gate reads. `tests/unit/wheresat_helpers.py` scored 9.38 on Code
+    Duplication over the two gate readers `failed_gates` and
+    `undecided_gates`; each now states the fact that belongs to it — what a
+    refusal is worth to the run, what an undecided gate says less of — and the
+    fact they shared moved to `_gates_with`, which is the function that
+    decides it. That is the lever this file needed in EP-M9 applied to the
+    pair that survived it (see Surprises): what was duplicated was a sentence,
+    and what it described was already one computation.
+  - The ladder's suite was drawn apart, and the drawing was forced by a
+    measurement rather than by taste. The module the ladder's tests had grown
+    into scored 9.38 — a line-count penalty at first — and the doubles and
+    builders it drove the ladder with were carried into
+    `tests/unit/wheresat_parents_helpers.py` (434 lines, 10.00) to bring it
+    inside the file limit. That left it scoring 8.03 instead, on CodeScene's
+    Low Cohesion, which is the LCOM4 measure at a threshold of four: the tests
+    that remained connect to each other through nothing at all, and twenty-four
+    of them count as twenty-four components. Probes were run before anything
+    else was moved, and three facts came back: the tests in such a module are
+    each their own component, imported names do not join them, and a local
+    definition they call does join them. Splitting the eight tests that read
+    what the child itself carries into
+    `tests/unit/test_wheresat_parents_child.py` (342 lines, 10.00) left the
+    ladder's own module at 489 lines and sixteen tests, also 10.00. The helper
+    module is named for the suites it serves and carries public names, the
+    shape `tests/unit/wheresat_helpers.py` and
+    `tests/unit/stack_store_helpers.py` already have: it is not a test module,
+    pytest does not collect it, and its own checks raise rather than assert.
+    The split is not a loss of coverage — twenty-four `def test_` functions
+    before and after, twenty-six collected cases, all passing.
+  - `git_donkey/wheresat.py`'s `_session` had reached 71 lines, which is past
+    the point a reader can hold one function, and the shared record gave it
+    one more value to hand on. Resolving the question — the branch, the
+    target, and the tip as the repository has them — moved out of it, and
+    `_session` is now the two validators, the resolution, the walk, and the
+    session it returns, which is the order the docstring states. That
+    resolution then left the module altogether for
+    `git_donkey/wheresat_request.py`, which is the split recorded below; the
+    same values are read in the same order from the same ports, which is what
+    the read-only suite's matrix measures.
+  - `cs delta origin/main`, the local equivalent of the pull request's Code
+    Health Review, reports `No issues found!` over the whole branch with those
+    four repairs in place and nothing else changed on the surface it scores
+    (log `/tmp/cs-delta-git-donkey-git-wheresat-sub-command.out`).
+  - The pylint step of `make lint` refuses a module longer than 800 lines
+    (`max-module-lines` in `pyproject.toml`), and the three slices above pushed
+    two modules past it: `git_donkey/wheresat_parents.py` at 823 and
+    `git_donkey/wheresat.py` at 815. Both were split at a seam that runs one
+    way and adds no import cycle, because the alternative — trimming prose from
+    modules whose docstrings are their specification — would pay for the gate
+    with the thing the gate exists to protect.
+  - `git_donkey/wheresat_ladder.py` (184 lines) takes the ladder's vocabulary:
+    `ParentIdentification`, `LadderReads`, `SearchBounds`, the two observations
+    a rung can record (`answered` and `faulted`), and the two constants behind
+    them. `git_donkey/wheresat_parents.py` (681 lines) keeps the policy — which
+    question is put, in what order, and what an unanswered one means — and
+    imports the vocabulary, so a rung answers the same way whichever question it
+    asked. The three names the suite already builds are re-exported by the
+    policy module, so no caller and no test changed.
+  - `git_donkey/wheresat_request.py` (391 lines) takes the options vocabulary
+    and every question resolution performs: `WheresatOptions`,
+    `DEFAULT_OPTIONS`, `validate_op_id`, `validate_record_options`, `resolve`,
+    and `object_id`.
+    `git_donkey/wheresat.py` (566 lines) is left with the run itself — the
+    ladder, the assessment, the exit status, and the bounded observations. The
+    options moved because they _are_ what the run was asked, and the module that
+    resolves them is the only one that reads them field by field; the
+    command-line wrapper in `git_donkey/cli.py` spreads
+    `wheresat_request.DEFAULT_OPTIONS` for the same reason.
+  - `wheresat.WheresatOptions` stays reachable, because the suite states a run
+    through the `wheresat` module and the class it states one with now lives
+    elsewhere. The re-export is named in `wheresat.__all__`, which is the shape
+    `git_donkey/fafo.py:75` already has for names ruff's `TC001` would otherwise
+    call typing-only: the name is bound at runtime for callers and not for this
+    module, and `__all__` is how that is said. Renaming the suite's forty-odd
+    call sites was the alternative and was rejected — the tests are about the
+    command, and the command's own module is where they should find its options.
+  - The parents suite's `Records` double is cast to the port it stands in for,
+    `stack_store.StackRecordReader`, in
+    `tests/unit/wheresat_parents_helpers.py`. The cast is what that module's
+    docstring already claimed — the doubles are cast to their ports rather than
+    completed — and `ty` refused the earlier form because a double is not an
+    implementation of the reader a walk is handed.
+  - Findings from the same gate round are this repository's own rules read
+    back. Four assertions across the two parents suites compared a list to `[]`
+    where the claim was that nothing was read, which pylint refuses as `C1803`;
+    each is now a truthiness assertion with its message unchanged, so the claim
+    is stated in the form the gate reads. One word in this plan was spelled the
+    en-GB way, which the spelling gate refuses because `typos.toml` carries the
+    en-GB to en-US table for exactly that word, and the plan is the only
+    Markdown that changed, so it was the only file the gate could have been
+    reporting; the word now carries the en-US spelling. The second pass then
+    refused the same rule again, this time broken by the bullet above that
+    explained it: a planning note recording a spelling rule must not spell the
+    form the rule refuses, which is the second time this plan has learned that
+    (the first is recorded beside the slice that wrote the sentence now naming
+    the form without spelling it).
+  - The pylint stages behind `make lint`'s first failing recipe had never run
+    over this tree, and reaching them found two rules the builtin pass does not
+    carry. `git_donkey/wheresat_parents.py`'s fourth rung dispatched on the
+    claim it had parsed with three `isinstance` checks, which the df12 pass
+    refuses as `R9101` and asks to be a `match`; it now is one, with a case per
+    reading and the identified parent's own case last, which is the shape
+    `_named` in the same module and `_record_evidence` in
+    `git_donkey/wheresat_collect.py` already have. And the child suite's test
+    that a body supporting two readings names both probed the one refusal with
+    three substring assertions, which is `R9109`: the sentence an operator is
+    told is pinned whole as a snapshot now, because which two readings
+    disagreed and why this run will not choose between them is the claim, and
+    three probes can only say that each expected part is somewhere in it.
+  - The same round's Markdown pass reported `MD049` twice on one line of the
+    bullet above that explains the re-export: prose that quotes a word back is
+    apt to reach for the asterisk form for emphasis, and this plan sets
+    `consistent` emphasis, so every emphasis in it is an underscore. The
+    sentence now uses the underscore form, and the plan has one fewer place
+    where the two conventions can disagree.
+  - Gate note: `uv run pytest` over the five suites the four repairs touch —
+    `test_wheresat_facts`, `test_wheresat_gates`, `test_wheresat_policy`,
+    `test_wheresat_parents`, and `test_wheresat_parents_child` — reports
+    `88 passed`, and `uv run ruff format --check` and `uv run ruff check` over
+    the two repaired modules report `1 file already formatted` and
+    `All checks passed!` (log
+    `/tmp/ruff-format-git-donkey-git-wheresat-sub-command.out`). The eight
+    commit gates are run over the whole tree before these bullets are
+    committed, and the review is asked for only after they are green.
+  - `docs/developers-guide.md` carries the split the way it carries the rest of
+    the command: a bullet of its own for `git_donkey.wheresat_ladder` and one
+    for `git_donkey.wheresat_request`, each stating what the module owns rather
+    than what moved out of where, and the `git_donkey.wheresat` bullet now says
+    the run keeps the exit status and the observations instead of claiming a
+    resolution it no longer performs. The same pass adds the bullet for
+    `git_donkey.wheresat_shared_record`, which owns the body grammar, and the
+    collector's bullet now names all seven of its rungs, adding the shared
+    record and the head the run fetched for the parent to the five it stated.
 
 ## Surprises & discoveries
 
@@ -2452,6 +2717,35 @@ Stop and escalate rather than improvising when any of these is reached.
   record and still not tell which reading it was, so no candidate is proposed
   from it at all, because an attested claim that is two claims is not one this
   run can report as a boundary.
+
+- Observation: CodeScene's Low Cohesion biomarker counts what a test module's
+  tests _call_, not what they import, and it has a size gate as well as a
+  cohesion one, so a large suite of independent tests is flagged however the
+  imports are arranged.
+  Evidence: the ladder's suite was scored 9.38 for its length and 8.03 for its
+  cohesion once its fixtures had been carried out, both reported at line 1
+  rather than at a function, and a series of probes over that file, its
+  variants, and the modules beside it separated three effects. A module of
+  isolated tests is scored as one component per test, because nothing joins
+  them; a test that calls an imported helper is still its own component,
+  because the import is a name and not an edge; and a test that calls a helper
+  defined in its own module joins that helper's component, which is why
+  `tests/unit/test_wheresat_report.py` (546 lines, 24 tests) and
+  `tests/unit/test_wheresat_policy.py` (797 lines, 34 tests) both score 10.00
+  while a body-only module of the same size is flagged. The size gate was
+  measured separately by removing nothing but prose: a copy of the suite with
+  its docstrings stripped passed at 643 lines, and the tests carried into a
+  second module passed at 489 and at 342, while the unsplit suite was refused
+  at its own length.
+  Impact: for a suite this size the lever is a split at a seam a reader would
+  recognize, not a rewrite — the eight tests that read what the child itself
+  carries are a subject of their own, and drawing them off left both modules
+  comfortably inside the gate with their tests unchanged. It also means a
+  suite can be made to pass by deleting its docstrings and by adding a helper
+  it never meant to need, which is why the split here is the one the module's
+  own docstring already drew between the forge-side rungs and the child's
+  testimony, and why the line count of every module in this milestone was
+  measured against the gate rather than guessed at.
 
 ## Decision log
 
@@ -3754,6 +4048,120 @@ Stop and escalate rather than improvising when any of these is reached.
   test makes live traffic. A bound below the next major turns that from a
   review comment into a resolution failure, and it costs one line of the
   manifest, mirrored by `uv lock`.
+  Date/Author: 2026-09-15, implementation agent, EP-M10.
+- Decision: the shared record is parsed once, by the ladder, and the reading is
+  carried on `ParentIdentification` into `CollectionContext` rather than read
+  again by the collection phase.
+  Rationale: two phases need the same claim — the ladder, for a parent the body
+  may name, and collection, for the boundary it proposes — and two reads of one
+  body are two chances to disagree, with nothing in the run that could notice.
+  The alternative of handing the body to the collection rung would have put a
+  forge in a phase that has none, and the alternative of parsing it in both
+  places would have made "the claim" a value neither phase owns. The cost is
+  one field on each of two value types and the discipline that the ladder is
+  the only reader, which the module docstring states where the next reader will
+  look. The reading is also what makes the rung answerable without a forge: a
+  run that identified its parent and then lost the network still reports the
+  boundary the body named, which a re-read could not.
+  Date/Author: 2026-09-15, implementation agent, EP-M10.
+- Decision: `LadderReads(graph, records, opener)` is the one keyword
+  `identify_parent` takes, and the run's decision not to ask the forge moved up
+  into `identify_parent` beside it.
+  Rationale: both were forced by the house limits rather than chosen. The new
+  record read took `_searched` to five parameters and its skip branch to seven
+  returns, and bundling the three reads is what let one keyword absorb the
+  first while the skip moved up to buy back the return. The move is worth more
+  than the limit it satisfies: deciding the skip before any rung is walked is
+  what makes "``--offline`` reads no body at all" a property of the walk rather
+  than of one branch inside it, and narrowing the opener to a callable is what
+  lets every rung below treat the forge as present. A rung that could ask
+  whether a forge exists would be a rung that could answer differently from the
+  run's own decision.
+  Date/Author: 2026-09-15, implementation agent, EP-M10.
+- Decision: the two refusals of a shared record are reported under the existing
+  `stack_record_malformed` kind, and no new error kind was added.
+  Rationale: `observability.ErrorKind` is a closed vocabulary and a new member
+  is a change to what every other operation's reports mean, so the question is
+  whether an operator would act differently. They would not: a body whose
+  record cannot be read and a body whose record supports several readings are
+  both "the record is not usable as written", and the reason carries which of
+  the two it is, with every reading named for the ambiguous case. The label
+  also keeps the two forms of record — the clone's and the body's — reporting
+  the same kind, which is what lets a report be read without knowing which form
+  the child used.
+  Date/Author: 2026-09-15, implementation agent, EP-M10.
+- Decision: the shared record is second in `SOURCES` while the ladder asks it
+  fourth, and the two orders are not the same order of the same facts.
+  Rationale: collection's precedence says what a boundary may rest on and how
+  strongly, and a claim the child's own author made is attested — it belongs
+  directly after the clone's own record, which is the same statement in a form
+  that travelled. The ladder's precedence says which question to put first, and
+  a statement the forge makes about its own stacks is read before a claim a
+  person wrote, because the forge's answer costs one request and settles the
+  question without interpretation. Neither order can be derived from the other,
+  which is why both are stated where they are held — the ladder's in its module
+  docstring, collection's in the `SOURCES` note — rather than one of them being
+  treated as the authority for the other.
+  Date/Author: 2026-09-15, implementation agent, EP-M10.
+- Decision: the absent shared reading is a module-level singleton
+  (`_NO_SHARED_RECORD`) rather than a default constructed where it is used.
+  Rationale: the house rules forbid a call in a default argument
+  (`function-call-in-default-argument`), and the value appears twice as a
+  default — once on the `ParentIdentification` field and once on
+  `_observed`'s keyword — so a singleton is what lets both spell the same
+  reading rather than two that compare equal. It is named for what it claims
+  rather than for the type, because `SharedRecordAbsent()` is what the parser
+  returns for a body that claimed nothing and the same value is what a walk
+  that read no body hands on: the two are one reading, and a run cannot act on
+  either.
+  Date/Author: 2026-09-15, implementation agent, EP-M10.
+- Decision: the ladder's suite is two modules, and the doubles and builders it
+  drives the ladder with are a third that pytest does not collect.
+  Rationale: `tests/unit/test_wheresat_parents.py` exceeds what CodeScene
+  scores as one file once the eighth rung's tests are in it, and the
+  biomarker it trips is cohesion rather than length once the fixtures are
+  carried out — a large module of independent tests is scored as one
+  component per test, and no arrangement of imports changes that. The seam
+  the split follows is the one the suite's own docstring already drew: the
+  rungs that read the forge are stated in `test_wheresat_parents.py`, and the
+  two that read what the child itself carries are stated beside them in
+  `test_wheresat_parents_child.py`. The alternative of growing a helper to
+  join the components would have been a change to the tests made for the
+  measurement, and the alternative of dropping docstrings to shrink the
+  module would have removed the reason each test exists, so the split is the
+  one that leaves every test's text and assertions as they were. The third
+  module carries public names and no `test_` prefix, the shape
+  `tests/unit/wheresat_helpers.py` and `tests/unit/stack_store_helpers.py`
+  already have, so that it is read as what it is: a module of doubles whose
+  own checks raise rather than assert, because nothing collects it.
+  Date/Author: 2026-09-15, implementation agent, EP-M10.
+- Decision: resolving the run's question from its options and its repository
+  is `wheresat._request`, a function of its own, rather than the opening half
+  of `_session`.
+  Rationale: `_session` had reached seventy-one lines, which is a function a
+  reader has to hold in two hands, and the shared record added a value to the
+  set it hands on. The seam is real rather than numeric: the options and the
+  repository decide _what_ the run asks — the branch, the target, and the tip
+  as the repository has them — and the session, the walk, and the report are
+  what it does with the answer. `_request` also names its refusal in one
+  place, `WheresatUsageError`, where before the two validators' failures and
+  the resolution's were read in one body. Nothing about the run changes: the
+  same values are read, in the same order, from the same ports, which is what
+  the read-only suite's matrix measures.
+  Date/Author: 2026-09-15, implementation agent, EP-M10.
+- Decision: the two range listings in `wheresat_facts` are put by one
+  function, `_range_of`, which takes the history to subtract as a keyword.
+  Rationale: gate 5 and gate 7 ask the same question of the same range, one
+  of them with the parent head's history removed, and the two call sites had
+  the same four steps between them — ask, check the fault, record the reason,
+  build the `CommitRange` — written twice. The keyword is what makes the
+  second question the first question with one operand changed rather than a
+  second function, and a range that cannot be listed returns no commits
+  beside its reason so that a caller cannot record an empty listing as an
+  answer. The module's mean cyclomatic complexity fell below the gate's
+  threshold as a consequence, which is the direction the extraction moves it
+  rather than the reason for it: the code that was duplicated was a
+  computation, and the four steps are now the one function that owns them.
   Date/Author: 2026-09-15, implementation agent, EP-M10.
 
 ## Outcomes & retrospective

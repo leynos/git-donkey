@@ -426,17 +426,36 @@ graph facts, the gates, the policy, and the two renderers are separate modules;
   `requests.Session` so that `vcrpy` still intercepts it. The association
   search is bounded by commits and by wall clock, and reports truncation rather
   than returning the part it saw as the whole answer.
+- `git_donkey.wheresat_shared_record` owns the prose form a pull request body
+  may carry in place of a local record: a `Stack parent:` line and a
+  `Replay boundary (exclusive):` line, which travel to a clone the record
+  never reached. It parses that block and renders it back, and it is pure and
+  resolves nothing — a value outside the grammar, half a record, and a body
+  that supports several readings are each reported as they were found, because
+  what it returns is a claim the run then validates rather than an instruction
+  it obeys. Lines inside a fenced block are quoted material and are skipped,
+  while leading Markdown decoration is removed, so a record a body bullets or
+  quotes is a claim like any other.
+- `git_donkey.wheresat_ladder` is the ladder's vocabulary rather than its
+  policy: what a rung answers with, what it is handed to read through, and the
+  two recorders that make an answer and a fault. Every rung answers the same
+  way whichever question it put, and the module that asks them reads as the
+  order and the refusals it is.
 - `git_donkey.wheresat_parents` identifies the parent pull request the child is
-  stacked on, by asking four rungs in order: an explicit `--parent`, the pull
-  request the child's own stack record names, the stack GitHub records, and
-  last the pull requests associated with the child's commits. Each rung is a
-  weaker statement than the one before it, and a run that answered a stronger
-  question has no business asking a weaker one. There is no forge client here —
-  the ladder asks the port questions — so one walk serves the live API and a
-  recorded one, and a run that was told not to touch the network has nothing to
-  open. A question that goes unanswered is a fault and stops the ladder rather
-  than letting the next rung's weaker answer be presented as the answer to the
-  question that failed, which is the reading ADR-005 forbids.
+  stacked on, by asking five rungs in order: an explicit `--parent`, the pull
+  request the child's own stack record names, the stack GitHub records, the
+  shared record the child's pull request body carries, and last the pull
+  requests associated with the child's commits. Each rung is a weaker statement
+  than the one before it, and a run that answered a stronger question has no
+  business asking a weaker one. There is no forge client here — the ladder asks
+  the port questions — so one walk serves the live API and a recorded one, and a
+  run that was told not to touch the network has nothing to open. A question
+  that goes unanswered is a fault and stops the ladder rather than letting the
+  next rung's weaker answer be presented as the answer to the question that
+  failed, which is the reading ADR-005 forbids. The body's claim is read here
+  and handed on with the identification, because two phases read that record —
+  this ladder, for a parent it may name, and the collection phase, for the
+  boundary — and neither may read a different claim than the other.
 - `git_donkey.wheresat_heads` answers the question that follows that ladder:
   which commit the parent's tip was, and which ref says so. Its three rungs are
   the head the run already fetched, the tombstone `git plonk` wrote for the
@@ -447,11 +466,15 @@ graph facts, the gates, the policy, and the two renderers are separate modules;
   different answers (INV-5). The tombstone proposes no boundary of its own:
   where the head was is a different question from where the child was cut.
 - `git_donkey.wheresat_collect` asks the evidence rungs in the procedure's
-  order: the stack record, the merge base, the fork point, and the two deep
-  comparisons behind `--deep`. A rung returns the candidates it found, or a
-  fault when it could not answer at all, because "there is no evidence here"
-  and "this question went unanswered" are different answers and only one of
-  them is a refusal. The parent head the gates ask about is the one
+  order: the stack record, the shared record the child's own pull request body
+  carries, the head the run fetched for the parent, the merge base, the fork
+  point, and the two deep comparisons behind `--deep`. A rung returns the
+  candidates it found, or a fault when it could not answer at all, because
+  "there is no evidence here" and "this question went unanswered" are different
+  answers and only one of them is a refusal. The shared record is read by the
+  ladder rather than here, so this rung asks no forge, and it is silent for a
+  claim the ladder already refused — one unusable claim is reported once, where
+  it was found. The parent head the gates ask about is the one
   `wheresat_heads` recovered.
 - `git_donkey.wheresat_deep` is the content-comparison scan behind `--deep`,
   and the one rung that answers a question of its own rather than reading
@@ -484,10 +507,17 @@ graph facts, the gates, the policy, and the two renderers are separate modules;
   projections of the assessment and the request, so they cannot disagree about
   what a run found, and a snapshot test can pin an established boundary, a
   refusal, and an environment that could not answer without a repository.
-- `git_donkey.wheresat` keeps resolution, the exit status, and the bounded
+- `git_donkey.wheresat_request` is what the run was asked and how it is
+  resolved: the options as the command line spells them, the two checks that
+  refuse an `--op-id` that could escape its namespace and an `--expected-old`
+  no record write would consult, and the resolution of the branch, the target,
+  and a parent the run named into immutable object IDs. Resolution is where a
+  run can fail before it has anything to report, so a name that does not
+  resolve is a usage error rather than an indeterminate result.
+- `git_donkey.wheresat` keeps the run itself: the exit status and the bounded
   observations. `run_git_wheresat()` resolves what the run was asked to
-  something immutable, calls the four modules above in the procedure's order,
-  and returns the exit code; `git_donkey.cli` exposes it as the `git-wheresat`
+  something immutable, calls the modules above in the procedure's order, and
+  returns the exit code; `git_donkey.cli` exposes it as the `git-wheresat`
   console script, from which Git discovers `git wheresat`.
 
 The report is deliberately wider than the verdict. A boundary that no durable
