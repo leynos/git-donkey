@@ -85,6 +85,9 @@ _SKYLOS_LINT_TOKENS: typ.Final = (
 _SKYLOS_WHITELIST_TOKENS: typ.Final = (
     "flock",
     "$(SKYLOS_WHITELIST_LOCK)",
+    # flock execs its command without a shell, so the uv environment must be
+    # applied by ``env`` rather than by leading assignments.
+    "env",
     "$(SKYLOS_CLI)",
     "whitelist",
     "$${SKYLOS_SYMBOL}",
@@ -105,7 +108,37 @@ _FULL_SUITE_WORKFLOW_JOBS: typ.Final = frozenset((
     (".github/workflows/ci.yml", "lint-test"),
 ))
 _EXPECTED_SKYLOS_WHITELIST_NAMES: typ.Final = frozenset[str]()
-_EXPECTED_SKYLOS_DOCUMENTED_WHITELIST_NAMES: typ.Final = frozenset[str]()
+# Every name here is reached, or is reached by the milestone that gives it a
+# caller, yet no production call graph sees it. ``_git_failure`` is a false
+# positive: its only callers are the ``except GitCommandError`` handlers in
+# ``stack_store._write_anchor`` and ``stack_store._write_tombstone``, and
+# Skylos does not credit a call made from a handler body as a use. The two
+# ``wheresat_refs`` names are the per-run evidence namespace and the factory
+# that builds refs under it: the factory is called by the durability suite's
+# fetched-boundary case and by nothing else, and the namespace by that factory
+# and by ``release``, which no console script reaches either — the fetch this
+# command performs writes the durable cache ref, so a run creates no per-run
+# ref for a release to delete. The three ``wheresat_github`` names are the same
+# kind of false positive one level down: Skylos records their call sites but
+# credits no reference to them, because every caller is a method of
+# ``ApiWheresatGitHub`` and the client is reached through the ``WheresatGitHub``
+# protocol — a call on a Protocol-typed parameter is not a reference Skylos
+# follows, so nothing below those methods is credited. ``_decoded`` in the same
+# module is the contrast that shows the limit rather than a dead helper: it is
+# named by a docstring cross-reference, which Skylos does count, and that alone
+# keeps it — and the two helpers it calls — alive. ``render_shared_record`` is
+# not a false positive at all but a deliberate exception: it has no caller in
+# the scanned set because no command emits a record, and it exists for the
+# parser's round-trip property and the block the guide quotes.
+_EXPECTED_SKYLOS_DOCUMENTED_WHITELIST_NAMES: typ.Final = frozenset({
+    "_commit_pulls_path",
+    "_git_failure",
+    "_per_run_namespace",
+    "_pull_path",
+    "_slug",
+    "per_run_ref",
+    "render_shared_record",
+})
 # Every symbol the workflow or an embedder reaches through the recorder that
 # ``git_donkey.observability`` installs, which no static call graph follows.
 _EXPECTED_SKYLOS_ENTRYPOINT_NAMES: typ.Final = frozenset({

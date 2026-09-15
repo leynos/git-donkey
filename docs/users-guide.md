@@ -17,6 +17,10 @@ these as `git <subcommand>` when `git-<subcommand>` is available on the `PATH`.
 - `git plonk` (`git-plonk`) removes completed, clean worktrees or generated
   directories from worktrees created by `git donkey`, and reports any completed
   worktree it leaves in place.
+- `git wheresat` (`git-wheresat`) prints the boundary a stacked branch should
+  be rebased onto, so work already landed in the trunk is dropped. It moves no
+  branch and no worktree; the only refs it adds are evidence refs under
+  `refs/wheresat/`.
 - `git donkey-template` (`git-donkey-template`) displays and creates the
   template directory for the current repository.
 
@@ -32,8 +36,8 @@ uv tool install git-donkey
 For an unreleased source checkout, run `uv tool install .` from the repository
 root instead. The wheel includes a section-one manual for every console script:
 `git-donkey(1)`, `git-track(1)`, `git-fafo(1)`, `git-plonk(1)`,
-`git-donkey-template(1)`, `git-incoming(1)`, `git-in(1)`, `git-outgoing(1)`, and
-`git-out(1)`.
+`git-wheresat(1)`, `git-donkey-template(1)`, `git-incoming(1)`, `git-in(1)`,
+`git-outgoing(1)`, and `git-out(1)`.
 
 ### Installation layout
 
@@ -53,6 +57,7 @@ result is:
 <uv-tool-dir>/git-donkey/share/man/man1/git-track.1
 <uv-tool-dir>/git-donkey/share/man/man1/git-fafo.1
 <uv-tool-dir>/git-donkey/share/man/man1/git-plonk.1
+<uv-tool-dir>/git-donkey/share/man/man1/git-wheresat.1
 <uv-tool-dir>/git-donkey/share/man/man1/git-donkey-template.1
 <uv-tool-dir>/git-donkey/share/man/man1/git-incoming.1
 <uv-tool-dir>/git-donkey/share/man/man1/git-in.1
@@ -214,6 +219,37 @@ Example template structure:
 On other platforms, the template directory follows the platform's conventions
 for user data storage (e.g., `~/.local/share/git-donkey/template` on Linux or
 `~/Library/Application Support/git-donkey/template` on macOS).
+
+### Stack records at branch birth
+
+When `git donkey` creates a branch from a base that is not the trunk — neither
+the base ref nor the commit it resolved to is the trunk's — it writes a stack
+record at the moment of birth. The record is four configuration keys in the
+branch's own section — `branch.<branch>.stackParent`, `.stackBase`,
+`.stackBaseRecordedFrom`, and `.stackBaseEvidence` — together with the anchor
+ref `refs/stack-bases/<branch>`, which keeps the boundary commit reachable from
+`git gc`. `stackBase` and `stackBaseRecordedFrom` are both the commit the new
+branch was created at, `stackBaseEvidence` is `stack-record-birth`, and
+`stackParent` names the base branch it was selected from as `v1:branch:<name>`.
+
+A branch created from the trunk is not recorded, whatever it is named. That is
+deliberate: a record would make it look stacked, and would offer a boundary for
+a branch that never had a parent.
+
+The record is written after the branch exists, so a store that refuses it
+leaves the branch in place and stops the run with status `1`, reporting that
+the branch was created but its stack record was not written. The branch is
+usable; only its birth boundary is unrecorded, and `git wheresat` has to
+establish one from the surviving evidence instead.
+
+Writing the record changes nothing about tracking — the new branch is still
+created with `--no-track` and inherits nothing. The record is local to one
+clone, because neither the configuration keys nor the anchor ref are pushed or
+fetched, and `git plonk` already turns it into a tombstone when it deletes the
+branch (see [`git plonk`](#git-plonk)); `git wheresat` treats it as boundary
+evidence. Its value today is that the boundary commit observed at birth is
+preserved rather than reconstructed by forensics. The
+[shared stack record](stack-records.md) design documents the full contract.
 
 ## git track
 
@@ -439,6 +475,196 @@ Skipped worktrees:
 
 A run in which every candidate is skipped reports the skips rather than
 claiming that no matching worktrees were found.
+
+Hard mode also owns the end of a stack record's life. A branch that
+`git donkey` created from another branch carries a
+[stack record](#stack-records-at-branch-birth), and deleting it would take the
+one statement about where it began with it. So before `git plonk --hard`
+deletes such a branch, it writes the branch's tip to the tombstone ref
+`refs/stack-tombstones/<branch>` and then clears the live record and its
+anchor. A child branch that outlived its parent can still reach the commit the
+parent stood at when the child was cut, which is the one commit the parent's
+own history can no longer supply.
+
+Two honest limits come with that. A tombstone preserves the tip, not the
+reflog, so it restores the parent's identity but not fork-point recovery:
+`git merge-base --fork-point` reads a reflog, and the reflog went with the
+branch. And a branch deleted through Git alone, by `git branch -D` rather than
+by `git plonk --hard`, takes its whole configuration section with it, leaving
+an anchor ref that names a base but no tip.
+
+That last case belongs to the sweep. Before a completed run touches a worktree,
+it clears the records of branches that no longer exist. A record that still
+parses becomes a tombstone naming the tip it recorded, and an orphan whose
+configuration went with the branch is cleared without inventing anything in its
+place. The summary keeps the two apart, because reporting them alike would
+claim a rescue that did not happen:
+
+```text
+Entombed branches:
+- issue-123-fix
+Swept records (tip preserved):
+- issue-100-parent
+Swept records (no tip to preserve):
+- issue-101-plain-deleted
+Pruned tombstones (older than 90.days.ago):
+- issue-050-stale
+```
+
+Tombstones do not accumulate. Every completed run prunes the tombstones written
+before `stack.tombstoneExpire`, a Git date expression defaulting to
+`90.days.ago`, which is the same horizon as Git's own `gc.reflogExpire`. A
+value Git cannot parse stops the run before anything is touched, because Git
+reads an unparsable date as *now* and would prune every tombstone in the
+repository. The [shared stack record](stack-records.md) design documents the
+full lifecycle.
+
+## git wheresat
+
+`git wheresat` answers "where should this branch be rebased onto?" for a
+stacked branch. It locates the exclusive replay boundary — the commit before
+the branch's own work — and prints a replay plan: a backup ref for the child
+tip, then `git rebase --onto <target> <old-base> <branch>` with the target and
+the boundary in full, so the replay can be checked before it is run and undone
+from that ref if it is wrong. Work already landed in the trunk (a squash merge,
+for example) is dropped by that replay.
+
+```shell
+# Report the replay boundary of the branch checked out here
+
+git wheresat
+
+# Report the boundary of another branch by name
+
+git wheresat --branch issue-123-fix
+```
+
+Without `--record` the command is read-only: it never moves a branch, never
+changes a worktree, and writes no record. The only refs it may add are evidence
+refs under `refs/wheresat/`; a boundary that nothing else reaches is retained at
+`refs/wheresat/boundary/<branch>` so a later `git gc` cannot collect it.
+
+It exits with one of four statuses:
+
+| Status | Meaning                                                                                                |
+| ------ | ------------------------------------------------------------------------------------------------------ |
+| `0`    | established: a boundary was found                                                                      |
+| `1`    | unresolved: the evidence refused a boundary, and the report says which check refused it                |
+| `2`    | a usage, configuration, or startup error, or a failed write, with no assessment behind it              |
+| `3`    | indeterminate: the repository could not answer a question the procedure asked, so no answer is claimed |
+
+*Table 1: the four exit statuses.*
+
+A missing or unusable GitHub credential is not status `2`. A run that reaches
+the forge reads the refusal as a question it could not ask, reports
+`indeterminate`, and exits with status `3`, naming `GITHUB_TOKEN`, `GH_TOKEN`,
+the credential cache path, and `--offline` in its reasons. Status `2` stays for
+a failure with no boundary assessment behind it at all.
+
+`--json` prints a versioned envelope (`"schema": "git-wheresat/1"`) on every
+exit status, refusals included.
+
+Options:
+
+- `--branch` names the branch to read; it defaults to the branch checked out
+  where the command runs, and a detached HEAD needs it named.
+- `--onto` names the replay target; it defaults to the principal remote's
+  default branch, resolved locally from `refs/remotes/<remote>/HEAD`, and is
+  required when the repository has no such alias.
+- `--parent OWNER/REPO#N` names a parent pull request. The run reads it through
+  the forge and fetches the parent's head, which is what the
+  `parent-history-intact` check judges the candidate against; a parent supplied
+  this way does not propose a boundary of its own.
+- `--remote` names the principal remote to read.
+- `--limit` bounds the commit-to-pull-request association search: how many of
+  the child's newest commits the run asks GitHub about, counted back from the
+  child's tip. It defaults to `20`, and the adapter asks about at most `20`
+  however large a limit it is given, so a larger value is not a longer search.
+  A history longer than the window the search examined refuses the search
+  rather than reporting that nothing is associated with the child, so a parent
+  further back than the window has to be named with `--parent`.
+- `--heuristic-window` bounds the deep scan: how many of the target's newest
+  commits `--deep` reads for tree-identity and cumulative-patch-identity
+  evidence. It defaults to `200`, and the report states the window it scanned —
+  a scan the window cut short is reported as a warning that names the window
+  rather than read as a complete one.
+- `--explain` prints the gate table: every check, its outcome, and the reason
+  for it.
+- `--json` prints the versioned envelope described above.
+- `--op-id` names this run; an id that could escape the `refs/wheresat/op/`
+  namespace is refused with status 2.
+- `--record` refreshes the branch's
+  [stack record](#stack-records-at-branch-birth) — the boundary, the tip the
+  record was written from, and the evidence kind that says a run restated it —
+  instead of only reading it. A refresh never invents a record: a branch no one
+  recorded is reported, not recorded. It also writes only a boundary the run
+  established from attested evidence, so a run that had to derive one still
+  reports the boundary and warns that nothing was recorded.
+- `--expected-old` names the commit the record's anchor ref must hold for
+  `--record` to replace it. It is required when the anchor ref exists — a write
+  that names no expectation is refused with status 2 rather than replacing a
+  record the user did not read — and must not be given when it does not,
+  because re-creating a collected anchor replaces nothing. Git performs the
+  same comparison again at the write, so an anchor that moves in between is
+  refused rather than overwritten.
+
+Refresh a record when its anchor ref has been collected — the configuration
+still names the boundary, and the refresh writes the ref back — or when the
+record should say the branch has been restated at the tip it has since reached.
+
+```shell
+# Re-anchor a record whose ref git gc collected
+
+git wheresat --record
+
+# Replace the record the run read, naming what its ref must hold
+
+git wheresat --record --expected-old <commit>
+```
+
+A record goes stale when the branch's own history is rewritten under it. Once
+the parent has been integrated and the branch restacked onto it, the tip the
+record was written from is no longer on the branch, so the record stops being a
+claim about where the branch came from: the run reads it as derived evidence,
+answers with the boundary the surviving history agrees on, and `--record`
+writes nothing back. Only an attested claim is written back, and the record's
+own claim is the only attested source the local path has, so a refresh restates
+the boundary the record already names — it re-anchors the commit and restates
+the tip the branch is at, so a later reader can tell the record was restated by
+a run rather than left as the claim written at birth. Moving a record to a new
+boundary needs an attested account of where the parent went, which local
+evidence cannot give.
+
+`--no-fetch` performs no Git transport, so the parent's head is not fetched and
+no cache ref is written, while queries to the forge are still permitted.
+`--offline` performs no network access of any kind, so no forge query runs: the
+run answers from the stack record and local ancestry, and a parent
+identification it declined to put is reported as skipped rather than as a
+question it could not answer. `--deep` derives the tree-identity and
+cumulative-patch-identity candidates by comparing the child against the
+target's content; those are inferred evidence, so the option can add candidates
+to the report and can never change the verdict.
+
+Evidence is weighted in tiers: attested (the stack record `git donkey` wrote at
+the branch's birth, a refreshed record, a fetched parent pull request head),
+derived (the merge base, the fork point), and inferred (tree identity, patch
+identity). Only attested and derived evidence can establish a boundary;
+inferred evidence is reported but never decides. `--explain` shows the tier of
+each line of evidence and the eight named checks.
+
+Warnings change neither the verdict nor the exit status. The run warns when the
+worktree holding the branch has uncommitted changes, and when a rebase, merge,
+cherry-pick, revert, or bisect is already in progress there. A worktree whose
+state cannot be read is warned about too, because a run that warned about
+nothing would be read as a run with nothing to warn about.
+
+The two honest limits documented under [`git plonk`](#git-plonk) still bound
+what a tombstone can carry here. A tombstone preserves a deleted branch's tip
+and not its reflog, so fork-point recovery for its children is still lost. And
+a branch deleted through plain Git leaves an anchor that names a base and no
+tip, so a run whose only record of the parent is that anchor has no parent head
+to judge and reports the checks that read one as not applicable rather than
+answering them.
 
 ## git donkey-template
 

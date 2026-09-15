@@ -54,6 +54,8 @@ def declared_attribute_values() -> frozenset[str]:
             observability.ErrorKind,
             observability.CleanupModeLabel,
             observability.SkipReasonLabel,
+            observability.EvidenceTierLabel,
+            observability.WheresatVerdictLabel,
         )
         for value in typ.get_args(alias.__value__)
     )

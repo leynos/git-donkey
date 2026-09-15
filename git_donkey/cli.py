@@ -3,12 +3,12 @@
 Provides CLI entrypoints for the git-donkey workflow tools. This module is the
 console-script boundary: it owns Cyclopts argument parsing and delegates all
 workflow behaviour to modules such as ``donkey``, ``track``, ``fafo``,
-``incoming_outgoing``, ``plonk``, and ``template_cmd``.
+``incoming_outgoing``, ``plonk``, ``wheresat``, and ``template_cmd``.
 
 This module exposes console scripts (git-donkey, git-track, git-fafo,
-git-plonk, git-donkey-template, git-incoming, git-in, git-outgoing, and
-git-out) registered in pyproject.toml. Each entrypoint maps to a workflow
-runner.
+git-plonk, git-wheresat, git-donkey-template, git-incoming, git-in,
+git-outgoing, and git-out) registered in pyproject.toml. Each entrypoint maps
+to a workflow runner.
 
 Run with::
 
@@ -16,6 +16,7 @@ Run with::
     git-track --help
     git-fafo --help
     git-plonk --help
+    git-wheresat --help
     git-donkey-template --help
     git-incoming --help
     git-outgoing --help
@@ -27,7 +28,16 @@ import typing as typ
 
 from cyclopts import App, Parameter
 
-from git_donkey import donkey, fafo, incoming_outgoing, plonk, template_cmd, track
+from git_donkey import (
+    donkey,
+    fafo,
+    incoming_outgoing,
+    plonk,
+    template_cmd,
+    track,
+    wheresat,
+    wheresat_request,
+)
 
 _donkey_app = App(
     name="git donkey",
@@ -292,6 +302,38 @@ def _plonk_cli(
 def git_plonk() -> None:
     """Console entrypoint for git-plonk."""
     _plonk_app()
+
+
+_wheresat_app = App(
+    name="git wheresat",
+    help=(
+        "Locate the boundary a branch was replayed over: the commit it should "
+        "be rebased onto to drop work that has already landed. Reads the stack "
+        "record git donkey wrote at the branch's birth, the parent pull "
+        "request's head, the merge base, and the fork point, and weighs them "
+        "under one precedence. Exits 0 when a boundary was established, 1 when "
+        "the evidence refused one, 2 for a usage or environment error, and 3 "
+        "when the repository could not answer. --json emits a versioned "
+        "envelope on every exit code."
+    ),
+)
+
+
+@_wheresat_app.default
+def _wheresat_cli(
+    *,
+    options: typ.Annotated[
+        wheresat.WheresatOptions,
+        Parameter(name="*"),
+    ] = wheresat_request.DEFAULT_OPTIONS,
+) -> None:
+    """CLI wrapper for git-wheresat."""
+    raise SystemExit(wheresat.run_git_wheresat(options))
+
+
+def git_wheresat() -> None:
+    """Console entrypoint for git-wheresat."""
+    _wheresat_app()
 
 
 _template_app = App(

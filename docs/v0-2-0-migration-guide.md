@@ -131,6 +131,35 @@ including when called from a linked worktree. If the requested branch already
 exists locally or on the remote, it is reused with its existing tracking rules;
 the base is used only when creating a new branch.
 
+### Stack records for new branches
+
+`git donkey` now writes a stack record at branch birth, when it creates a
+branch from a base that is not the trunk: four configuration keys in the
+branch's own section — `branch.<branch>.stackParent`, `.stackBase`,
+`.stackBaseRecordedFrom`, and `.stackBaseEvidence` — and the anchor ref
+`refs/stack-bases/<branch>`, which keeps the boundary commit reachable from
+`git gc`. The record is local to the clone; it is not pushed or fetched. A
+branch created from the trunk is unaffected, and a branch created before this
+change has no record and is not expected to. Readers treat a missing record as
+ordinary, not an error.
+
+Remove a record by hand with:
+
+```shell
+git update-ref -d "refs/stack-bases/$BRANCH"
+git config --local --unset "branch.$BRANCH.stackParent"
+git config --local --unset "branch.$BRANCH.stackBase"
+git config --local --unset "branch.$BRANCH.stackBaseRecordedFrom"
+git config --local --unset "branch.$BRANCH.stackBaseEvidence"
+```
+
+Unsetting the four keys individually is the removal the record's own writer
+performs, and it leaves the rest of the branch section alone: a tracking branch
+keeps its `remote` and `merge`, and any other setting of the branch survives.
+`git config --local --remove-section "branch.$BRANCH"` is the shortcut for a
+section that holds nothing but the record. The
+[shared stack record](stack-records.md) design documents the full contract.
+
 ### git plonk cleanup policy
 
 In 0.1.0 `git plonk` removed completed worktrees with
@@ -234,6 +263,53 @@ while `2` is git-donkey's own code for a command that could not run:
 
 The [users' guide](users-guide.md#git-incoming-and-git-outgoing) documents the
 full command usage, including the console-script aliases.
+
+## New replay-boundary command
+
+0.2.0 adds `git wheresat`, which answers where a stacked branch should be
+replayed onto after the pull request below it was squash-merged, so the branch
+no longer carries its parent's commits as its own. It has no 0.1.0 equivalent,
+and `git rebase --onto` is not one: that command names the destination but not
+the starting point, and recovering the starting point is the whole of what a
+squash merge destroyed. `git donkey` records the boundary when it creates a
+branch, `git plonk` leaves a tombstone when it sweeps the merged parent, and
+`git wheresat` reads what survived:
+
+```shell
+# Ask where this branch should be replayed onto
+git wheresat
+
+# Ask about another branch, or name the parent pull request
+git wheresat --branch issue-123-fix
+git wheresat --parent owner/repo#123
+
+# Print the machine-readable envelope
+git wheresat --json
+```
+
+It exits `0` when it established a boundary, `1` when the evidence refused one
+and the report names the check that refused it, `2` for a usage or environment
+error, and `3` when the repository or the forge could not answer a question the
+procedure asked. A missing or unusable GitHub credential is `3` rather than
+`2`, because the credential is the forge's evidence: a run that cannot read it
+cannot tell whether a parent pull request exists rather than knowing that none
+does. Statuses `1` and `3` are deliberately different: a refusal is an answer,
+and a question that went unanswered is not one, so automation never mistakes an
+unreadable repository for a branch that need not move. `--json` prints a
+versioned envelope on every status, `2` and `3` included, so a script never has
+to parse prose to find out what happened.
+
+A run is read-only unless `--record` is given. Without it, the only refs it
+writes are its own: a per-run namespace it releases when it finishes, and a
+boundary ref retained at `refs/wheresat/boundary/<branch>` so a later `git gc`
+cannot collect an answer the report has already given. `--record` refreshes the
+branch's [stack record](#stack-records-for-new-branches) instead of only
+reading it, and never invents one for a branch nobody recorded.
+
+The [users' guide](users-guide.md#git-wheresat) documents the command's options
+and output, and the
+[boundary-recovery design](squash-restack-boundary-recovery.md) specifies the
+evidence model the answer rests on.
 
 ## Command migration
 

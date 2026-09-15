@@ -9,8 +9,10 @@ from __future__ import annotations
 import typing as typ
 
 import pytest
+from git import Repo
 
 from git_donkey import donkey
+from tests import git_repo_helpers
 
 if typ.TYPE_CHECKING:
     from pathlib import Path
@@ -18,6 +20,10 @@ if typ.TYPE_CHECKING:
 
 # Exit status reserved for a command-line usage error.
 _USAGE_ERROR_EXIT_CODE = 2
+
+# The trunk the cases compare a base against. It is a commit no case's base
+# resolves to, so every base that resolves at all is one that gets recorded.
+_TRUNK = donkey._Trunk(ref="refs/remotes/origin/main", commit="f" * 40)
 
 
 @pytest.mark.parametrize(
@@ -72,4 +78,63 @@ def test_no_pull_remains_a_compatible_no_op() -> None:
     """The existing no-pull option retains the new non-pulling default."""
     assert donkey._pull_mode(donkey._PullOptions(), no_pull=True) is None, (
         "an explicit no-pull retains the non-pulling default"
+    )
+
+
+def _repository(tmp_path: Path) -> Repo:
+    """Return a fresh repository with one commit on its default branch.
+
+    The commit identity is configured in the repository itself, so the case
+    neither depends on nor writes to the runner's own Git configuration.
+
+    Returns
+    -------
+    Repo
+        The repository, checked out on the branch ``Repo.init`` created.
+
+    """
+    repo = Repo.init(tmp_path)
+    git_repo_helpers.configure_repo(repo)
+    repo.git.commit("--allow-empty", "-m", "the trunk")
+    return repo
+
+
+def _context(tmp_path: Path) -> donkey._DonkeyContext:
+    """Return a context over a fresh repository, with no remote configured."""
+    return donkey._DonkeyContext(
+        repo_home=_repository(tmp_path),
+        remote="origin",
+        branch_to_worktree={},
+        worktrees_root=tmp_path / "worktrees",
+    )
+
+
+def test_a_base_the_repository_does_not_hold_is_not_recorded(
+    tmp_path: Path,
+) -> None:
+    """A base that resolves to no commit is refused by Git, not by a traceback."""
+    context = _context(tmp_path)
+
+    stack = donkey._stack_context(context, trunk=_TRUNK, base_branch="no-such-branch")
+
+    assert stack is None, (
+        "a base with no start point to freeze is one no record can be written from"
+    )
+
+
+def test_a_base_only_a_remote_tracking_ref_names_is_resolved(
+    tmp_path: Path,
+) -> None:
+    """A base that is a remote-tracking ref resolves through that ref."""
+    context = _context(tmp_path)
+    base = context.repo_home.head.commit.hexsha
+    context.repo_home.git.update_ref("refs/remotes/origin/feature", base)
+
+    stack = donkey._stack_context(context, trunk=_TRUNK, base_branch="feature")
+
+    assert stack is not None, (
+        "the branch was created from a base that exists, so the record is owed"
+    )
+    assert stack.parent == "feature", (
+        "the parent the record names is the base the caller selected"
     )

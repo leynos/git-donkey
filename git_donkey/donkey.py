@@ -20,12 +20,15 @@ import os
 import typing as typ
 
 from git import Git, GitCommandError, Repo
+from git.exc import BadName
 
 from git_donkey import (
     donkey_worktrees,
     helpers,
     observability,
     remote_default,
+    stack_records,
+    stack_store,
     templates,
 )
 from git_donkey.helpers import _GIT_DONKEY_PREFIX as _GIT_DONKEY_PREFIX
@@ -51,6 +54,34 @@ _DEFAULT_PULL_OPTIONS = _PullOptions()
 def _record(observation: Observation) -> None:
     """Record one bounded workflow observation on the active recorder."""
     observability.get_recorder().record(observation)
+
+
+def _record_outcome(
+    operation: observability.Operation,
+    outcome: observability.Outcome,
+    error_kind: observability.ErrorKind | None = None,
+) -> None:
+    """Record one observation of ``operation`` on the active recorder."""
+    _record(Observation(operation=operation, outcome=outcome, error_kind=error_kind))
+
+
+def _record_base_update(
+    outcome: observability.Outcome,
+    pull_mode: observability.PullModeLabel,
+    base_kind: observability.BaseKind,
+    *,
+    error_kind: observability.ErrorKind | None = None,
+) -> None:
+    """Record one base-update observation on the active recorder."""
+    _record(
+        Observation(
+            operation="base_update",
+            outcome=outcome,
+            pull_mode=pull_mode,
+            base_kind=base_kind,
+            error_kind=error_kind,
+        )
+    )
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -85,7 +116,27 @@ def choose_base_branch(saved_cwd_branch: str, origin_arg: str) -> str:
     return origin_arg
 
 
-def _fetch_remote_default_ref(context: _DonkeyContext) -> str:
+@dataclasses.dataclass(frozen=True, slots=True)
+class _Trunk:
+    """The principal remote's default branch, as selected and as resolved.
+
+    Parameters
+    ----------
+    ref
+        Fully qualified remote-tracking ref of the default branch. This is
+        always the remote-tracking form rather than whichever form the base
+        happened to be named by, so the two refs compared when deciding
+        whether a branch is stacked are directly comparable.
+    commit
+        Commit the ref resolved to, frozen before the branch is created.
+
+    """
+
+    ref: str
+    commit: str
+
+
+def _fetch_remote_default_ref(context: _DonkeyContext) -> tuple[str, str]:
     """Fetch the principal remote's advertised default branch.
 
     This is a command, not a query: it discovers the branch the remote's
@@ -101,8 +152,9 @@ def _fetch_remote_default_ref(context: _DonkeyContext) -> str:
 
     Returns
     -------
-    str
-        The fully qualified remote-tracking ref of the fetched default branch.
+    tuple[str, str]
+        The advertised branch name, and the fully qualified remote-tracking ref
+        it was fetched into.
 
     Raises
     ------
@@ -117,12 +169,106 @@ def _fetch_remote_default_ref(context: _DonkeyContext) -> str:
         _GIT_DONKEY_PREFIX,
         missing_advice="specify a base branch explicitly",
     )
-    return remote_default.fetch_default_branch_ref(
+    return branch, remote_default.fetch_default_branch_ref(
         context.repo_home,
         context.remote,
         branch,
         _GIT_DONKEY_PREFIX,
     )
+
+
+def _local_trunk(
+    context: _DonkeyContext,
+    *,
+    default_branch: str,
+    base_branch: str,
+) -> _Trunk | None:
+    """Return the trunk from local refs only, or ``None`` when it is unknown.
+
+    No remote is contacted. The default branch arrives from the advertised
+    default when the workflow selected the base itself, and from the remote's
+    own ``HEAD`` alias otherwise, so that a branch created by an explicit base
+    costs no network beyond the fetch every run already performs.
+
+    An unknown trunk is not an error. It is the absence of the comparison that
+    decides whether a branch is stacked, and an unverifiable record is worse
+    than no record, so the branch is still created and simply goes unrecorded.
+    The same is true of a trunk whose commit will not resolve: a repository
+    this cannot reason about is not one to write evidence about.
+
+    Parameters
+    ----------
+    context : _DonkeyContext
+        Resolved repository state, including the repository holding the trunk.
+    default_branch : str
+        Name of the branch that would be the trunk, as discovered or as the
+        remote's ``HEAD`` alias names it.
+    base_branch : str
+        Ref the new branch's base was selected by. A base that is the default
+        branch by name needs no further comparison.
+
+    Returns
+    -------
+    _Trunk | None
+        The trunk and its commit, or ``None`` when either is unknown.
+
+    """
+    if not default_branch or base_branch == default_branch:
+        return None
+    trunk_ref = f"refs/remotes/{context.remote}/{default_branch}"
+    if not helpers._ref_exists(context.repo_home, trunk_ref):
+        return None
+    try:
+        return _Trunk(ref=trunk_ref, commit=context.repo_home.commit(trunk_ref).hexsha)
+    except (GitCommandError, ValueError):
+        # GitPython reports an unresolvable revision as either, and a ref that
+        # resolves to something that is not a commit is one this cannot reason
+        # about either.
+        return None
+
+
+def _remote_head_alias(context: _DonkeyContext) -> str:
+    """Return the branch the remote's own ``HEAD`` alias names, if any.
+
+    This is a local symbolic ref, never a query, and it can be stale: the plan
+    records that ``git donkey`` deliberately does not trust it in place of the
+    advertised default, and the explicit-base path deliberately avoids the
+    advertised default so that a remote which advertises nothing is still
+    usable. A stale alias costs nothing here: the only question asked of it is
+    whether the base a caller named is the branch the remote treats as its
+    default, and the range comparison is what decides the rest.
+
+    ``--short`` renders the target as ``<remote>/<branch>``, so the remote
+    prefix is removed rather than the branch name being split off after the
+    first slash: a branch may itself contain slashes, as ``feature/deep`` does,
+    and only the leading ``<remote>/`` is known to be a separator.
+
+    Parameters
+    ----------
+    context : _DonkeyContext
+        Resolved repository state, including the remote whose ``HEAD`` alias
+        is read.
+
+    Returns
+    -------
+    str
+        The default branch name, or the empty string when the repository has no
+        alias to read.
+
+    """
+    prefix = f"{context.remote}/"
+    try:
+        target = context.repo_home.git.symbolic_ref(
+            "--short", f"refs/remotes/{context.remote}/HEAD"
+        ).strip()
+    except GitCommandError:
+        # No alias: a clone that never had one, or a remote added by hand.
+        return ""
+    if not target.startswith(prefix):
+        # The alias names a branch of some other remote, which this context is
+        # in no position to compare a base against.
+        return ""
+    return target.removeprefix(prefix)
 
 
 def _pull_mode_label(pull_mode: _PullMode | None) -> observability.PullModeLabel:
@@ -263,14 +409,8 @@ def _update_base_branch_in_worktree(
     label = _pull_mode_label(pull_mode)
     worktree = context.branch_to_worktree.get(base_branch)
     if worktree is None:
-        _record(
-            Observation(
-                operation="base_update",
-                outcome="failure",
-                pull_mode=label,
-                base_kind=base_kind,
-                error_kind="base_not_in_worktree",
-            )
+        _record_base_update(
+            "failure", label, base_kind, error_kind="base_not_in_worktree"
         )
         helpers._die(
             _GIT_DONKEY_PREFIX,
@@ -278,39 +418,19 @@ def _update_base_branch_in_worktree(
             "check out that base explicitly or omit the pull option",
             1,
         )
-    _record(
-        Observation(
-            operation="base_update",
-            outcome="started",
-            pull_mode=label,
-            base_kind=base_kind,
-        )
-    )
+    _record_base_update("started", label, base_kind)
     helpers._eprint(f"Updating existing worktree at: {worktree}")
     with observability.get_recorder().span("pull_execution"):
         try:
             _pull_in_worktree(worktree, context.remote, base_branch, pull_mode)
         except GitCommandError as exc:
-            _record(
-                Observation(
-                    operation="base_update",
-                    outcome="failure",
-                    pull_mode=label,
-                    base_kind=base_kind,
-                    error_kind="git_command_error",
-                )
+            _record_base_update(
+                "failure", label, base_kind, error_kind="git_command_error"
             )
             helpers._die(
                 _GIT_DONKEY_PREFIX, f"update failed (pull {pull_mode}): {exc}", 1
             )
-        _record(
-            Observation(
-                operation="base_update",
-                outcome="success",
-                pull_mode=label,
-                base_kind=base_kind,
-            )
-        )
+        _record_base_update("success", label, base_kind)
 
 
 def _maybe_update_base_branch(
@@ -322,14 +442,7 @@ def _maybe_update_base_branch(
 ) -> None:
     """Update an opted-in, behind local base only after confirmation."""
     if pull_mode is None:
-        _record(
-            Observation(
-                operation="base_update",
-                outcome="not_requested",
-                pull_mode="none",
-                base_kind=base_kind,
-            )
-        )
+        _record_base_update("not_requested", "none", base_kind)
         return
 
     label = _pull_mode_label(pull_mode)
@@ -340,14 +453,7 @@ def _maybe_update_base_branch(
         prefix=_GIT_DONKEY_PREFIX,
     )
     if behind <= 0:
-        _record(
-            Observation(
-                operation="base_update",
-                outcome="not_behind",
-                pull_mode=label,
-                base_kind=base_kind,
-            )
-        )
+        _record_base_update("not_behind", label, base_kind)
         return
 
     if not helpers._prompt_yes_no(
@@ -355,14 +461,7 @@ def _maybe_update_base_branch(
         f"'{context.remote}/{local_branch}' by {behind} commit(s). Pull "
         f"{pull_mode} it first?"
     ):
-        _record(
-            Observation(
-                operation="base_update",
-                outcome="declined",
-                pull_mode=label,
-                base_kind=base_kind,
-            )
-        )
+        _record_base_update("declined", label, base_kind)
         return
 
     _update_base_branch_in_worktree(
@@ -378,25 +477,142 @@ def _worktrees_root(home_dir: Path) -> Path:
     return (home_dir.parent / f"{home_dir.name}.worktrees").resolve()
 
 
+def _base_commit(context: _DonkeyContext, base_branch: str) -> str | None:
+    """Return the commit ``base_branch`` resolves to, or ``None`` when it does not.
+
+    The base may be named in either form the workflow accepts: a local branch,
+    or the remote-tracking form the base selection discovered. A name that
+    resolves to neither is not a start point this can freeze, and it is not
+    this function's job to report it: the worktree creation that follows puts
+    the name to Git, which refuses it in Git's own words rather than in a
+    traceback from a revision lookup.
+
+    Parameters
+    ----------
+    context : _DonkeyContext
+        Resolved repository state.
+    base_branch : str
+        Ref the new branch's base was selected by.
+
+    Returns
+    -------
+    str | None
+        The commit the base resolves to, or ``None`` when no ref of that name
+        is in this repository.
+
+    """
+    for candidate in (base_branch, f"refs/remotes/{context.remote}/{base_branch}"):
+        try:
+            return context.repo_home.commit(candidate).hexsha
+        except (BadName, GitCommandError, ValueError):
+            continue
+    return None
+
+
+def _stack_context(
+    context: _DonkeyContext,
+    *,
+    trunk: _Trunk | None,
+    base_branch: str,
+) -> donkey_worktrees._StackContext | None:
+    """Return what to record for a branch created from ``base_branch``.
+
+    A branch created at the trunk commit is not stacked (INV-11), so it is not
+    recorded and no writer is constructed for it. A base that resolves to no
+    commit at all is not recorded either: there is no start point to compare
+    against the trunk, and the creation step is about to refuse the name.
+    Every other base is the parent the record names, as the caller selected it.
+
+    Parameters
+    ----------
+    context : _DonkeyContext
+        Resolved repository state, including the repository the record is
+        written to.
+    trunk : _Trunk | None
+        The resolved trunk, or ``None`` when it could not be resolved.
+    base_branch : str
+        Ref the new branch's base was selected by.
+
+    Returns
+    -------
+    donkey_worktrees._StackContext | None
+        The record to write, or ``None`` when the branch is not stacked.
+
+    """
+    if trunk is None:
+        return None
+    base_commit = _base_commit(context, base_branch)
+    if base_commit is None:
+        return None
+    if not stack_records.should_record(
+        base_branch, base_commit, trunk.ref, trunk.commit
+    ):
+        return None
+    return donkey_worktrees._StackContext(
+        parent=base_branch,
+        writer=stack_store.GitStackRecordWriter(context.repo_home),
+    )
+
+
 def _create_worktree(
     context: _DonkeyContext,
     *,
     branch_name: str,
     base_branch: str,
-    target_path: Path,
-) -> None:
-    """Create a new worktree for the specified branch."""
+    trunk: _Trunk | None,
+) -> Path:
+    """Create the worktree for ``branch_name`` and return where it was created.
+
+    The target path is resolved once, here, and returned: the template overlay
+    that follows this step acts on the directory this call created, and
+    computing the path a second time in the caller would let the two disagree
+    about where the worktree is.
+
+    The stack record to write is decided here, from the resolved trunk and the
+    base's resolved commit. Deciding it here rather than inside the creation
+    step keeps the one place that resolves the base and the one place that
+    freezes the start point adjacent, so neither can observe a different commit
+    from the other.
+
+    Parameters
+    ----------
+    context : _DonkeyContext
+        Resolved repository state, including the root the new worktree is
+        created under.
+    branch_name : str
+        Branch the new worktree checks out.
+    base_branch : str
+        Ref the new branch is created from.
+    trunk : _Trunk | None
+        Trunk the base is compared against to decide whether a record is
+        written, or ``None`` when the trunk could not be identified.
+
+    Returns
+    -------
+    Path
+        Directory the worktree was created at.
+
+    Raises
+    ------
+    SystemExit
+        Propagated from the creation step when the branch is already checked
+        out elsewhere, the target path exists, ``git worktree add`` fails, or
+        the branch was created but its stack record could not be written.
+
+    """
+    target_path = (context.worktrees_root / branch_name).resolve()
+    request = donkey_worktrees._WorktreeRequest(
+        branch_name=branch_name,
+        base_branch=base_branch,
+        target_path=target_path,
+        stack=_stack_context(context, trunk=trunk, base_branch=base_branch),
+    )
     worktree_context = donkey_worktrees._WorktreeContext(
         repo_home=context.repo_home,
         remote=context.remote,
         branch_to_worktree=context.branch_to_worktree,
     )
-    request = donkey_worktrees._WorktreeRequest(
-        branch_name=branch_name,
-        base_branch=base_branch,
-        target_path=target_path,
-    )
-    _record(Observation(operation="worktree_creation", outcome="started"))
+    _record_outcome("worktree_creation", "started")
     with observability.get_recorder().span("worktree_creation"):
         try:
             donkey_worktrees.create_worktree(
@@ -406,15 +622,10 @@ def _create_worktree(
         except SystemExit:
             # Creation reports conflicts and failed Git commands by exiting;
             # record that outcome and preserve the exit for the caller.
-            _record(
-                Observation(
-                    operation="worktree_creation",
-                    outcome="failure",
-                    error_kind="worktree_creation_error",
-                )
-            )
+            _record_outcome("worktree_creation", "failure", "worktree_creation_error")
             raise
-        _record(Observation(operation="worktree_creation", outcome="success"))
+        _record_outcome("worktree_creation", "success")
+    return target_path
 
 
 def _load_donkey_context() -> tuple[_DonkeyContext, str]:
@@ -469,20 +680,14 @@ def _apply_template_overlay(context: _DonkeyContext, target_path: Path) -> bool:
     try:
         template_dir = templates.get_template_dir(context.repo_home)
     except ValueError as exc:
-        _record(
-            Observation(
-                operation="template_overlay",
-                outcome="unavailable",
-                error_kind="selection_error",
-            )
-        )
+        _record_outcome("template_overlay", "unavailable", "selection_error")
         helpers._eprint(f"{_GIT_DONKEY_PREFIX}: {exc}")
         return True
     if template_dir is None:
-        _record(Observation(operation="template_overlay", outcome="unavailable"))
+        _record_outcome("template_overlay", "unavailable")
         return True
 
-    _record(Observation(operation="template_overlay", outcome="started"))
+    _record_outcome("template_overlay", "started")
     helpers._eprint(f"Applying template overlay from: {template_dir}")
     try:
         templates.apply_template(
@@ -491,13 +696,7 @@ def _apply_template_overlay(context: _DonkeyContext, target_path: Path) -> bool:
             prefix=_GIT_DONKEY_PREFIX,
         )
     except OSError as e:
-        _record(
-            Observation(
-                operation="template_overlay",
-                outcome="failure",
-                error_kind="os_error",
-            )
-        )
+        _record_outcome("template_overlay", "failure", "os_error")
         helpers._eprint(
             f"{_GIT_DONKEY_PREFIX}: Error applying template overlay from "
             f"{template_dir}: {e}"
@@ -506,7 +705,7 @@ def _apply_template_overlay(context: _DonkeyContext, target_path: Path) -> bool:
             f"{_GIT_DONKEY_PREFIX}: Worktree created but template overlay failed"
         )
         return False
-    _record(Observation(operation="template_overlay", outcome="success"))
+    _record_outcome("template_overlay", "success")
     return True
 
 
@@ -544,10 +743,17 @@ def run_git_donkey(
     base_kind: observability.BaseKind = (
         "implicit_remote_default" if origin_branch is None else "explicit"
     )
-    base_branch = (
-        _fetch_remote_default_ref(context)
-        if origin_branch is None
-        else choose_base_branch(saved_cwd_branch, origin_branch)
+    if origin_branch is None:
+        # The base selection already discovered the default and fetched it, so
+        # the trunk is that ref and the remote is not consulted a second time.
+        default_branch, base_branch = _fetch_remote_default_ref(context)
+    else:
+        base_branch = choose_base_branch(saved_cwd_branch, origin_branch)
+        default_branch = _remote_head_alias(context)
+    trunk = _local_trunk(
+        context,
+        default_branch=default_branch,
+        base_branch=base_branch,
     )
 
     _maybe_update_base_branch(
@@ -558,13 +764,12 @@ def run_git_donkey(
     )
 
     context.worktrees_root.mkdir(parents=True, exist_ok=True)
-    target_path = (context.worktrees_root / branch_name).resolve()
 
-    _create_worktree(
+    target_path = _create_worktree(
         context,
         branch_name=branch_name,
         base_branch=base_branch,
-        target_path=target_path,
+        trunk=trunk,
     )
 
     if not _apply_template_overlay(context, target_path):

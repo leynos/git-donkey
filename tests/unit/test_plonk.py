@@ -17,7 +17,7 @@ from pathlib import Path
 
 from syrupy.matchers import path_type
 
-from git_donkey import plonk
+from git_donkey import plonk, plonk_records
 
 if typ.TYPE_CHECKING:
     from syrupy.assertion import SnapshotAssertion
@@ -134,9 +134,9 @@ def test_skipped_only_summary_does_not_claim_nothing_matched() -> None:
     result = plonk._PlonkResult(
         mode=plonk._PlonkMode.DEFAULT,
         skipped_worktrees=(
-            plonk._SkippedWorktree(
+            plonk_records._SkippedWorktree(
                 Path("/repo.worktrees/issue-456-dirty"),
-                plonk._SkipReason.DIRTY,
+                plonk_records._SkipReason.DIRTY,
             ),
         ),
     )
@@ -159,13 +159,13 @@ def test_skipped_summary_matches_snapshot(snapshot: SnapshotAssertion) -> None:
         removed_worktrees=(Path("/repo.worktrees/issue-123-fix"),),
         removed_branches=("issue-123-fix",),
         skipped_worktrees=(
-            plonk._SkippedWorktree(
+            plonk_records._SkippedWorktree(
                 Path("/repo.worktrees/issue-456-dirty"),
-                plonk._SkipReason.DIRTY,
+                plonk_records._SkipReason.DIRTY,
             ),
-            plonk._SkippedWorktree(
+            plonk_records._SkippedWorktree(
                 Path("/repo.worktrees/issue-789-gone"),
-                plonk._SkipReason.UNAVAILABLE,
+                plonk_records._SkipReason.UNAVAILABLE,
             ),
         ),
     )
@@ -185,9 +185,9 @@ def test_dry_run_planned_and_skipped_summary_matches_snapshot(
         removed_worktrees=(Path("/repo.worktrees/issue-123-fix"),),
         removed_branches=("issue-123-fix",),
         skipped_worktrees=(
-            plonk._SkippedWorktree(
+            plonk_records._SkippedWorktree(
                 Path("/repo.worktrees/issue-456-dirty"),
-                plonk._SkipReason.DIRTY,
+                plonk_records._SkipReason.DIRTY,
             ),
         ),
     )
