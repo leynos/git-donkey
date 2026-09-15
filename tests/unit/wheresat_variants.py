@@ -18,8 +18,8 @@ short, and the one whose range is long enough that a report abbreviates it.
 
 from __future__ import annotations
 
-import collections.abc as cabc
 import dataclasses
+import typing as typ
 
 from git_donkey.wheresat_records import (
     COMMIT_ABBREVIATION,
@@ -48,6 +48,9 @@ from tests.unit.wheresat_helpers import (
     permissive,
     permissive_facts,
 )
+
+if typ.TYPE_CHECKING:
+    import collections.abc as cabc
 
 
 def _with_ancestry(key: tuple[str, str], answer: Ancestry | None) -> GraphFacts:
@@ -233,11 +236,22 @@ def _spoil_record_superseded(*, failed: bool) -> Case:
     return _changed(_with_recorded_from(None))
 
 
+class _Spoiler(typ.Protocol):
+    """What a spoiler is: one gate's case, built from the outcome it takes.
+
+    A protocol rather than a ``Callable`` alias so the table below is checked
+    rather than merely declared: the keyword-only ``failed`` is the whole of
+    what ``spoiled`` passes, and a spoiler that took it positionally or not at
+    all would be registered as one without the table noticing.
+    """
+
+    def __call__(self, *, failed: bool) -> Case:
+        """Return the case in which this gate is the one that answers."""
+
+
 # One spoiler per gate, each taking whether the gate is to fail rather than go
 # unanswered. Indexing them by name is what makes the truth table complete: a
 # gate with no spoiler raises here rather than being skipped.
-type _Spoiler = cabc.Callable[..., Case]
-
 _SPOILERS: cabc.Mapping[GateName, _Spoiler] = {
     GateName.PARENT_IDENTITY_MATCHES: _spoil_parent_identity,
     GateName.PARENT_MERGED: _spoil_parent_merged,
