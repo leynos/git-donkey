@@ -1,7 +1,11 @@
 # 🫏 git-donkey
 
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](
-https://deepwiki.com/leynos/git-donkey)
+[![Ask DeepWiki][dw]][deepwiki] [![PyPI Version][pypi]][package]
+
+[dw]: https://deepwiki.com/badge.svg
+[deepwiki]: https://deepwiki.com/leynos/git-donkey
+[pypi]: https://img.shields.io/pypi/v/git-donkey "PyPI package"
+[package]: https://pypi.org/project/git-donkey/
 
 *Because sometimes you need a worktree, and a donkey's got your back.*
 
@@ -70,29 +74,35 @@ git donkey-template
 
 ## Agent skill
 
-The [worktree-management skill](skill/git-donkey-worktrees/SKILL.md) provides an
-agent workflow for `git donkey` and `git plonk`, including remote-default bases,
-existing-worktree reuse, stacked branches, and reviewed cleanup. Its bundled
-[cleanup checklist](skill/git-donkey-worktrees/references/cleanup.md) covers
-the cleanliness check, completion-marker limitations, and other agents' active
-work.
+The
+[worktree-management skill](https://github.com/leynos/git-donkey/blob/main/skill/git-donkey-worktrees/SKILL.md)
+provides an agent workflow for `git donkey` and `git plonk`, including
+remote-default bases, existing-worktree reuse, stacked branches, and reviewed
+cleanup. Its bundled
+[cleanup checklist](https://github.com/leynos/git-donkey/blob/main/skill/git-donkey-worktrees/references/cleanup.md)
+covers the cleanliness check, completion-marker limitations, and other agents'
+active work.
 
-To install it in a compatible agent's skill directory, copy or symlink the
-whole `skill/git-donkey-worktrees/` directory, retaining the directory name and
-its `references/` subdirectory. Select the agent's documented skill location;
-the Python package installation does not install this skill automatically.
+To install it in a compatible agent's skill directory, copy or symlink the whole
+`skill/git-donkey-worktrees/` directory, retaining the directory name and its
+`references/` subdirectory. Select the agent's documented skill location; the
+Python package installation does not install this skill automatically.
 
 ## Learn more
 
-Check out the [**Users' Guide**](docs/users-guide.md) for detailed usage,
-options, and examples. The donkey's got a lot of tricks up its… hooves?
+Check out the
+[**Users' Guide**](https://github.com/leynos/git-donkey/blob/main/docs/users-guide.md)
+for detailed usage, options, and examples. The donkey's got a lot of tricks up
+its… hooves?
 
 ## License
 
-This project is licensed under the **ISC License**. See the [LICENSE](LICENSE)
-file for details.
+This project is licensed under the **ISC License**. See the
+[LICENSE](https://github.com/leynos/git-donkey/blob/main/LICENSE) file for
+details.
 
 ## Contributing
 
 Found a bug? Have an idea? The donkey welcomes contributions! Please ensure
-your changes follow the project's guidelines in [AGENTS.md](AGENTS.md).
+your changes follow the project's guidelines in
+[AGENTS.md](https://github.com/leynos/git-donkey/blob/main/AGENTS.md).
