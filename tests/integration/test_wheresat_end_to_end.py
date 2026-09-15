@@ -38,6 +38,7 @@ from tests.integration.wheresat_helpers import (
     WheresatRun,
     WheresatScenario,
     in_directory,
+    report_tokens,
     run_wheresat,
 )
 
@@ -118,23 +119,6 @@ def _commit_work(local_path: Path, branch: str) -> str:
     return repo.head.commit.hexsha
 
 
-def _tokens(output: str) -> set[tuple[str, ...]]:
-    """Return a report's lines as token tuples, so column alignment is ignored.
-
-    Parameters
-    ----------
-    output : str
-        What a run wrote to standard output.
-
-    Returns
-    -------
-    set[tuple[str, ...]]
-        One tuple of whitespace-separated tokens per line.
-
-    """
-    return {tuple(line.split()) for line in output.splitlines()}
-
-
 def _run(scenario: WheresatScenario, capsys: pytest.CaptureFixture[str]) -> WheresatRun:
     """Ask about the child branch from inside its own worktree.
 
@@ -153,6 +137,110 @@ def _run(scenario: WheresatScenario, capsys: pytest.CaptureFixture[str]) -> Wher
     """
     with in_directory(scenario.worktree_path()):
         return run_wheresat(wheresat.WheresatOptions(), capsys)
+
+
+def _assert_the_evidence_names(
+    plonked: WheresatScenario,
+    run: WheresatRun,
+    lines: set[tuple[str, ...]],
+) -> None:
+    """Assert the report names its answer and the artefact each row came from.
+
+    Parameters
+    ----------
+    plonked : WheresatScenario
+        Scenario whose boundary, tip, and refs the evidence has to name.
+    run : WheresatRun
+        The run a failure is reported against, for its streams.
+    lines : set[tuple[str, ...]]
+        The run's output, split into whitespace-separated token rows.
+
+    """
+    width = wheresat_records.COMMIT_ABBREVIATION
+    boundary = plonked.boundary[:width]
+    target = plonked.repo.heads["main"].commit.hexsha[:width]
+
+    assert run.exit_code == 0, run.stderr
+    assert not run.stderr, "a successful run writes nothing to the error stream"
+    assert "Included (1 commit)" in run.stdout, (
+        "the child's one commit is reported as one commit"
+    )
+    assert ("boundary", boundary) in lines, "the answer names the boundary in full"
+    assert ("target", target) in lines, (
+        "and names the target's commit, abbreviated as a detail line is"
+    )
+    assert (
+        "attested",
+        "stack-record-birth",
+        boundary,
+        stack_records.base_ref_path(CHILD),
+    ) in lines, f"expected the record in the evidence, got:\n{run.stdout}"
+    assert (
+        "derived",
+        "fork-point",
+        boundary,
+        "fork",
+        "point",
+        "of",
+        stack_records.tombstone_ref_path(PARENT),
+    ) in lines, f"expected the tombstone in the evidence, got:\n{run.stdout}"
+    assert (
+        "derived",
+        "merge-base",
+        boundary,
+        "merge",
+        "base",
+        "of",
+        "the",
+        "parent",
+        "head",
+        "and",
+        "the",
+        "child",
+    ) in lines, f"expected the tombstoned parent head to be used, got:\n{run.stdout}"
+
+
+def _assert_the_plan_is_pasteable(
+    plonked: WheresatScenario,
+    run: WheresatRun,
+    lines: set[tuple[str, ...]],
+) -> None:
+    """Assert the printed replay can be pasted and undone as it stands.
+
+    Parameters
+    ----------
+    plonked : WheresatScenario
+        Scenario whose tip and boundary the plan has to replay.
+    run : WheresatRun
+        The run a failure is reported against, for its streams.
+    lines : set[tuple[str, ...]]
+        The run's output, split into whitespace-separated token rows.
+
+    """
+    width = wheresat_records.COMMIT_ABBREVIATION
+    full_target = plonked.repo.heads["main"].commit.hexsha
+    backup = wheresat_records.backup_ref(CHILD)
+
+    assert ("git", "update-ref", backup, plonked.tip) in lines, (
+        f"expected the plan to keep the child tip first, got:\n{run.stdout}"
+    )
+    assert (
+        "git",
+        "rebase",
+        "--onto",
+        full_target,
+        plonked.boundary,
+        CHILD,
+    ) in lines, f"expected the child's replay in full, got:\n{run.stdout}"
+    assert ("#", "undo:", "git", "reset", "--hard", backup) in lines, (
+        f"expected the replay to be undoable from that ref, got:\n{run.stdout}"
+    )
+    assert f"the child tip must still be {plonked.tip[:width]}" in run.stdout, (
+        f"expected the premise to be checkable, got:\n{run.stdout}"
+    )
+    assert (plonked.tip[:width],) in lines, (
+        "and the child's tip is listed on the included side"
+    )
 
 
 def test_the_sweep_leaves_the_boundary_to_the_record_and_the_tombstone(
@@ -194,71 +282,10 @@ def test_the_boundary_comes_back_from_the_record_and_the_tombstone(
     a backup ref ahead of them, which is the form a user pastes into a shell.
     """
     run = _run(plonked, capsys)
-    lines = _tokens(run.stdout)
-    width = wheresat_records.COMMIT_ABBREVIATION
-    boundary = plonked.boundary[:width]
-    full_target = plonked.repo.heads["main"].commit.hexsha
-    target = full_target[:width]
-    backup = wheresat_records.backup_ref(CHILD)
+    lines = report_tokens(run.stdout)
 
-    assert run.exit_code == 0, run.stderr
-    assert not run.stderr, "a successful run writes nothing to the error stream"
-    assert "Included (1 commit)" in run.stdout, (
-        "the child's one commit is reported as one commit"
-    )
-    assert ("boundary", boundary) in lines, "the answer names the boundary in full"
-    assert ("target", target) in lines, (
-        "and names the target's commit, abbreviated as a detail line is"
-    )
-    assert (
-        "attested",
-        "stack-record-birth",
-        boundary,
-        stack_records.base_ref_path(CHILD),
-    ) in lines, f"expected the record in the evidence, got:\n{run.stdout}"
-    assert (
-        "derived",
-        "fork-point",
-        boundary,
-        "fork",
-        "point",
-        "of",
-        stack_records.tombstone_ref_path(PARENT),
-    ) in lines, f"expected the tombstone in the evidence, got:\n{run.stdout}"
-    assert (
-        "derived",
-        "merge-base",
-        boundary,
-        "merge",
-        "base",
-        "of",
-        "the",
-        "parent",
-        "head",
-        "and",
-        "the",
-        "child",
-    ) in lines, f"expected the tombstoned parent head to be used, got:\n{run.stdout}"
-    assert ("git", "update-ref", backup, plonked.tip) in lines, (
-        f"expected the plan to keep the child tip first, got:\n{run.stdout}"
-    )
-    assert (
-        "git",
-        "rebase",
-        "--onto",
-        full_target,
-        plonked.boundary,
-        CHILD,
-    ) in lines, f"expected the child's replay in full, got:\n{run.stdout}"
-    assert ("#", "undo:", "git", "reset", "--hard", backup) in lines, (
-        f"expected the replay to be undoable from that ref, got:\n{run.stdout}"
-    )
-    assert f"the child tip must still be {plonked.tip[:width]}" in run.stdout, (
-        f"expected the premise to be checkable, got:\n{run.stdout}"
-    )
-    assert (plonked.tip[:width],) in lines, (
-        "and the child's tip is listed on the included side"
-    )
+    _assert_the_evidence_names(plonked, run, lines)
+    _assert_the_plan_is_pasteable(plonked, run, lines)
 
 
 def test_the_run_reports_no_problem_with_the_plonked_parent(

@@ -56,6 +56,34 @@ def _record(observation: Observation) -> None:
     observability.get_recorder().record(observation)
 
 
+def _record_outcome(
+    operation: observability.Operation,
+    outcome: observability.Outcome,
+    error_kind: observability.ErrorKind | None = None,
+) -> None:
+    """Record one observation of ``operation`` on the active recorder."""
+    _record(Observation(operation=operation, outcome=outcome, error_kind=error_kind))
+
+
+def _record_base_update(
+    outcome: observability.Outcome,
+    pull_mode: observability.PullModeLabel,
+    base_kind: observability.BaseKind,
+    *,
+    error_kind: observability.ErrorKind | None = None,
+) -> None:
+    """Record one base-update observation on the active recorder."""
+    _record(
+        Observation(
+            operation="base_update",
+            outcome=outcome,
+            pull_mode=pull_mode,
+            base_kind=base_kind,
+            error_kind=error_kind,
+        )
+    )
+
+
 @dataclasses.dataclass(frozen=True, slots=True)
 class _DonkeyContext:
     """Container for resolved git-donkey repository state."""
@@ -375,14 +403,8 @@ def _update_base_branch_in_worktree(
     label = _pull_mode_label(pull_mode)
     worktree = context.branch_to_worktree.get(base_branch)
     if worktree is None:
-        _record(
-            Observation(
-                operation="base_update",
-                outcome="failure",
-                pull_mode=label,
-                base_kind=base_kind,
-                error_kind="base_not_in_worktree",
-            )
+        _record_base_update(
+            "failure", label, base_kind, error_kind="base_not_in_worktree"
         )
         helpers._die(
             _GIT_DONKEY_PREFIX,
@@ -390,39 +412,19 @@ def _update_base_branch_in_worktree(
             "check out that base explicitly or omit the pull option",
             1,
         )
-    _record(
-        Observation(
-            operation="base_update",
-            outcome="started",
-            pull_mode=label,
-            base_kind=base_kind,
-        )
-    )
+    _record_base_update("started", label, base_kind)
     helpers._eprint(f"Updating existing worktree at: {worktree}")
     with observability.get_recorder().span("pull_execution"):
         try:
             _pull_in_worktree(worktree, context.remote, base_branch, pull_mode)
         except GitCommandError as exc:
-            _record(
-                Observation(
-                    operation="base_update",
-                    outcome="failure",
-                    pull_mode=label,
-                    base_kind=base_kind,
-                    error_kind="git_command_error",
-                )
+            _record_base_update(
+                "failure", label, base_kind, error_kind="git_command_error"
             )
             helpers._die(
                 _GIT_DONKEY_PREFIX, f"update failed (pull {pull_mode}): {exc}", 1
             )
-        _record(
-            Observation(
-                operation="base_update",
-                outcome="success",
-                pull_mode=label,
-                base_kind=base_kind,
-            )
-        )
+        _record_base_update("success", label, base_kind)
 
 
 def _maybe_update_base_branch(
@@ -434,14 +436,7 @@ def _maybe_update_base_branch(
 ) -> None:
     """Update an opted-in, behind local base only after confirmation."""
     if pull_mode is None:
-        _record(
-            Observation(
-                operation="base_update",
-                outcome="not_requested",
-                pull_mode="none",
-                base_kind=base_kind,
-            )
-        )
+        _record_base_update("not_requested", "none", base_kind)
         return
 
     label = _pull_mode_label(pull_mode)
@@ -452,14 +447,7 @@ def _maybe_update_base_branch(
         prefix=_GIT_DONKEY_PREFIX,
     )
     if behind <= 0:
-        _record(
-            Observation(
-                operation="base_update",
-                outcome="not_behind",
-                pull_mode=label,
-                base_kind=base_kind,
-            )
-        )
+        _record_base_update("not_behind", label, base_kind)
         return
 
     if not helpers._prompt_yes_no(
@@ -467,14 +455,7 @@ def _maybe_update_base_branch(
         f"'{context.remote}/{local_branch}' by {behind} commit(s). Pull "
         f"{pull_mode} it first?"
     ):
-        _record(
-            Observation(
-                operation="base_update",
-                outcome="declined",
-                pull_mode=label,
-                base_kind=base_kind,
-            )
-        )
+        _record_base_update("declined", label, base_kind)
         return
 
     _update_base_branch_in_worktree(
@@ -573,14 +554,19 @@ def _create_worktree(
     branch_name: str,
     base_branch: str,
     trunk: _Trunk | None,
-) -> None:
-    """Create a new worktree for the specified branch.
+) -> Path:
+    """Create the worktree for ``branch_name`` and return where it was created.
+
+    The target path is resolved once, here, and returned: the template overlay
+    that follows this step acts on the directory this call created, and
+    computing the path a second time in the caller would let the two disagree
+    about where the worktree is.
 
     The stack record to write is decided here, from the resolved trunk and the
-    base's resolved commit, and handed to the creation step as part of the
-    request. Deciding it here rather than inside that step keeps the one place
-    that resolves the base and the one place that freezes the start point
-    adjacent, so neither can observe a different commit from the other.
+    base's resolved commit. Deciding it here rather than inside the creation
+    step keeps the one place that resolves the base and the one place that
+    freezes the start point adjacent, so neither can observe a different commit
+    from the other.
 
     Parameters
     ----------
@@ -595,6 +581,11 @@ def _create_worktree(
         Trunk the base is compared against to decide whether a record is
         written, or ``None`` when the trunk could not be identified.
 
+    Returns
+    -------
+    Path
+        Directory the worktree was created at.
+
     Raises
     ------
     SystemExit
@@ -603,18 +594,19 @@ def _create_worktree(
         the branch was created but its stack record could not be written.
 
     """
+    target_path = (context.worktrees_root / branch_name).resolve()
+    request = donkey_worktrees._WorktreeRequest(
+        branch_name=branch_name,
+        base_branch=base_branch,
+        target_path=target_path,
+        stack=_stack_context(context, trunk=trunk, base_branch=base_branch),
+    )
     worktree_context = donkey_worktrees._WorktreeContext(
         repo_home=context.repo_home,
         remote=context.remote,
         branch_to_worktree=context.branch_to_worktree,
     )
-    request = donkey_worktrees._WorktreeRequest(
-        branch_name=branch_name,
-        base_branch=base_branch,
-        target_path=(context.worktrees_root / branch_name).resolve(),
-        stack=_stack_context(context, trunk=trunk, base_branch=base_branch),
-    )
-    _record(Observation(operation="worktree_creation", outcome="started"))
+    _record_outcome("worktree_creation", "started")
     with observability.get_recorder().span("worktree_creation"):
         try:
             donkey_worktrees.create_worktree(
@@ -624,15 +616,10 @@ def _create_worktree(
         except SystemExit:
             # Creation reports conflicts and failed Git commands by exiting;
             # record that outcome and preserve the exit for the caller.
-            _record(
-                Observation(
-                    operation="worktree_creation",
-                    outcome="failure",
-                    error_kind="worktree_creation_error",
-                )
-            )
+            _record_outcome("worktree_creation", "failure", "worktree_creation_error")
             raise
-        _record(Observation(operation="worktree_creation", outcome="success"))
+        _record_outcome("worktree_creation", "success")
+    return target_path
 
 
 def _load_donkey_context() -> tuple[_DonkeyContext, str]:
@@ -687,20 +674,14 @@ def _apply_template_overlay(context: _DonkeyContext, target_path: Path) -> bool:
     try:
         template_dir = templates.get_template_dir(context.repo_home)
     except ValueError as exc:
-        _record(
-            Observation(
-                operation="template_overlay",
-                outcome="unavailable",
-                error_kind="selection_error",
-            )
-        )
+        _record_outcome("template_overlay", "unavailable", "selection_error")
         helpers._eprint(f"{_GIT_DONKEY_PREFIX}: {exc}")
         return True
     if template_dir is None:
-        _record(Observation(operation="template_overlay", outcome="unavailable"))
+        _record_outcome("template_overlay", "unavailable")
         return True
 
-    _record(Observation(operation="template_overlay", outcome="started"))
+    _record_outcome("template_overlay", "started")
     helpers._eprint(f"Applying template overlay from: {template_dir}")
     try:
         templates.apply_template(
@@ -709,13 +690,7 @@ def _apply_template_overlay(context: _DonkeyContext, target_path: Path) -> bool:
             prefix=_GIT_DONKEY_PREFIX,
         )
     except OSError as e:
-        _record(
-            Observation(
-                operation="template_overlay",
-                outcome="failure",
-                error_kind="os_error",
-            )
-        )
+        _record_outcome("template_overlay", "failure", "os_error")
         helpers._eprint(
             f"{_GIT_DONKEY_PREFIX}: Error applying template overlay from "
             f"{template_dir}: {e}"
@@ -724,7 +699,7 @@ def _apply_template_overlay(context: _DonkeyContext, target_path: Path) -> bool:
             f"{_GIT_DONKEY_PREFIX}: Worktree created but template overlay failed"
         )
         return False
-    _record(Observation(operation="template_overlay", outcome="success"))
+    _record_outcome("template_overlay", "success")
     return True
 
 
@@ -784,14 +759,13 @@ def run_git_donkey(
 
     context.worktrees_root.mkdir(parents=True, exist_ok=True)
 
-    _create_worktree(
+    target_path = _create_worktree(
         context,
         branch_name=branch_name,
         base_branch=base_branch,
         trunk=trunk,
     )
 
-    target_path = (context.worktrees_root / branch_name).resolve()
     if not _apply_template_overlay(context, target_path):
         return 1
 
