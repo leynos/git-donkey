@@ -318,6 +318,48 @@ def test_the_range_is_listed_oldest_first(
 
 
 @pytest.mark.parametrize("name", _SHAPE_NAMES)
+def test_the_history_limit_keeps_the_newest_commits(
+    shapes: typ.Mapping[str, Shape],
+    graph: typ.Mapping[str, GitWheresatGraph],
+    name: str,
+) -> None:
+    """A bounded history is the tip's own commits, and Git's grammar is held to.
+
+    The bound reaches Git as an option and the revision as the argument after
+    ``--end-of-options``, so an option passed on the wrong side of that
+    separator is refused by Git rather than quietly obeyed. That fault is
+    invisible to a fake graph, which answers whatever it is asked; this case is
+    what puts the question to a command line at all, and it asserts the listing
+    against ``git rev-list`` run here rather than against the port's own words.
+    """
+    shape = shapes[name]
+    whole = graph[name].history(shape.child_tip)
+    assert (
+        list(whole)
+        == shape.repo.git.rev_list(
+            "--reverse", "--end-of-options", shape.child_tip
+        ).split()
+    ), "an unbounded history is the whole listing, oldest first"
+    limit = len(whole) - 1
+    assert limit > 0, (
+        "the shape must have a history longer than the bound, or a bound that "
+        "was ignored would pass for one that was applied"
+    )
+    bounded = graph[name].history(shape.child_tip, limit=limit)
+
+    assert (
+        list(bounded)
+        == shape.repo.git.rev_list(
+            "--reverse", f"--max-count={limit}", "--end-of-options", shape.child_tip
+        ).split()
+    ), "the bounded listing is the one Git computes for the same bound"
+    assert list(bounded) == list(whole[-limit:]), (
+        "the bound keeps the commits nearest the tip, not the oldest ones"
+    )
+    assert whole[0] not in bounded, "and the oldest commit is what it drops"
+
+
+@pytest.mark.parametrize("name", _SHAPE_NAMES)
 def test_subtracting_a_third_commit_removes_exactly_its_history(
     shapes: typ.Mapping[str, Shape],
     graph: typ.Mapping[str, GitWheresatGraph],

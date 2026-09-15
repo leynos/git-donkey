@@ -8,7 +8,7 @@ the record's values and the anchor ref keeps its boundary commit reachable.
 
 ## Date
 
-2026-09-14.
+2026-09-14
 
 ## Context and Problem Statement
 

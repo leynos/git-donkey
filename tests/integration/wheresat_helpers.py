@@ -30,7 +30,6 @@ import contextlib
 import dataclasses
 import hashlib
 import json
-import os
 import typing as typ
 from pathlib import Path
 
@@ -232,12 +231,8 @@ def in_directory(path: Path) -> cabc.Iterator[None]:
         however the block ends.
 
     """
-    previous = Path.cwd()
-    os.chdir(path)
-    try:
+    with contextlib.chdir(path):
         yield
-    finally:
-        os.chdir(previous)
 
 
 @dataclasses.dataclass(frozen=True, slots=True)

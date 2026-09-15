@@ -259,6 +259,7 @@ def test_the_run_reports_no_problem_with_the_plonked_parent(
     """
     run = _run(plonked, capsys)
 
+    assert run.exit_code == 0, run.stderr
     assert "Warnings" not in run.stdout, (
         "a swept stack is an ordinary state, so no warning section is printed"
     )

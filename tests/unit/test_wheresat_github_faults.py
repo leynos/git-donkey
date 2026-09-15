@@ -105,7 +105,7 @@ class _StubResponse:
 
     status_code: int
     body: object = None
-    headers: typ.Mapping[str, str] = dataclasses.field(default_factory=dict)
+    headers: cabc.Mapping[str, str] = dataclasses.field(default_factory=dict)
     undecodable: str = ""
 
     def json(self) -> object:
@@ -131,9 +131,9 @@ class _StubSession:
         self,
         url: str,
         *,
-        params: typ.Mapping[str, str] | None = None,
+        params: cabc.Mapping[str, str] | None = None,
         timeout: float | None = None,
-        headers: typ.Mapping[str, str] | None = None,
+        headers: cabc.Mapping[str, str] | None = None,
     ) -> object:
         """Return the stubbed answer, or raise the stubbed failure."""
         self.calls.append(url)

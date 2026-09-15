@@ -8,7 +8,7 @@ with its own exit code, and an error is never a negative answer.
 
 ## Date
 
-2026-09-14.
+2026-09-14
 
 ## Context and Problem Statement
 

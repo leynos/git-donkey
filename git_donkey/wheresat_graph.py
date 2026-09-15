@@ -428,9 +428,9 @@ class GitWheresatGraph:
         arguments = [f"--max-count={limit}"] if limit is not None else []
         status, output, stderr = self.repo.git.rev_list(
             "--reverse",
+            *arguments,
             "--end-of-options",
             rev,
-            *arguments,
             with_extended_output=True,
             with_exceptions=False,
         )

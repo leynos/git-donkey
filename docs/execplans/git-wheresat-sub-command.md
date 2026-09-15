@@ -51,11 +51,11 @@ private, namespaced evidence ref, plus — behind an explicit opt-in flag — a
 local stack record naming the boundary so the next incident does not need
 forensics at all.
 
-You can see it working: on a repository constructed to reproduce the squash
-scenario, `git wheresat` exits `0` and prints the boundary a human would have
-derived by hand; on a repository where the parent branch was rewritten before
-merging, it exits `1`, names the `parent-history-intact` gate as the reason,
-and refuses to answer.
+The behaviour is observable end to end: on a repository constructed to
+reproduce the squash scenario, `git wheresat` exits `0` and prints the boundary
+a human would have derived by hand; on a repository where the parent branch was
+rewritten before merging, it exits `1`, names the `parent-history-intact` gate
+as the reason, and refuses to answer.
 
 ### One shared stack record across three commands
 
@@ -1111,6 +1111,63 @@ Stop and escalate rather than improvising when any of these is reached.
     exceptions appeared in `pyproject.toml` without being added to its
     consciously-approved set, which is the contract working as intended: the
     whitelist cannot grow without a test that says so.
+  - The CodeRabbit review over the pushed commit found one real defect that
+    the deterministic gates could not: `GitWheresatGraph.history` passed
+    `--max-count=<n>` _after_ `--end-of-options`, so Git refused the whole
+    listing (`fatal: option '--max-count=2' must come before non-option
+    arguments`, status 128) rather than bounding it. The path is live — the
+    association search reads the child's history with a window — but every
+    test of that ladder hands it a fake graph, which answers whatever it is
+    asked, so no test put the question to a command line. The bound now
+    travels before the separator, and
+    `tests/integration/test_wheresat_ranges.py::test_the_history_limit_keeps_the_newest_commits`
+    puts it to a real repository: the bounded listing is asserted against
+    `git rev-list` computed in the test, and the commits kept are asserted to
+    be the ones nearest the tip. Lesson: a fake port that accepts an argument
+    the real one rejects hides a transport fault, and an option only `--deep`
+    reaches still needs one test with a real command line behind it.
+  - The review's remaining 35 findings reduce to 26 concerns, and the ones
+    acted on beside the critical defect are: the duplicated `_reported` in
+    `wheresat_refs` (now imported from `wheresat_errors`, as
+    `wheresat_worktrees` already did), the deprecated `typ.Mapping` and
+    `typ.Sequence` annotations in two suites (now `cabc`, which the same files
+    already alias), the local `_REQUIRED_SOURCES` in
+    `test_wheresat_properties` (now the shared constant the policy suite
+    imports, so one threshold is stated once), the redundant `isinstance` in
+    `_below_the_child`, the two ADR dates that carried a trailing full stop
+    against their own `YYYY-MM-DD` format, `in_directory`'s hand-rolled
+    `os.chdir` (now `contextlib.chdir`, which restores the directory on the
+    same terms), and the stale "no implementation work has begun" paragraph.
+    The rest are style preferences this repository has decided against, and
+    each is rebutted in the pull request rather than actioned: `MappingProxyType`
+    over two module-level lookup tables that nothing mutates, promoting
+    `wheresat_gates`' private helpers to public names, grouping three
+    module-level tests into a class, and an upper bound on `requests` where the
+    repository's policy is a floor.
+  - CodeScene raised three change packets over the same branch, and all three
+    are landed: the nested conditional in `wheresat_parents._walk` is flat, with
+    the second child-head association short-circuiting before the stack
+    question; `wheresat_writes` has one `_observe` that takes the operation,
+    `_RECORD_OPERATION` or `_FETCH_OPERATION`, and no `_observe_fetch`; and
+    `WheresatRefWriter.fetch_evidence` is 57 lines, with the fetch call and its
+    status translation moved to `_fetch_into_evidence_ref`. The three preserve
+    policy, Git options, outcomes, and error text exactly, which the packets
+    required and the diff bears out. The walk gained the regression test it
+    lacked — two associations naming the child's branch must produce one stack
+    lookup, not two — and the whole tree passes all eight gates
+    (808 passed, 21 snapshots) after `check-fmt` asked for the new
+    assertion's wrapping.
+  - Still to action from the same review, in the order they were triaged: the
+    `TypedDict` behind `parent_pull_request`'s `**overrides`, whose `object`
+    annotation erases the key set at every one of its seven call sites; the URL
+    built in `ApiWheresatGitHub` from a repository slug validated only as two
+    non-empty components, which accepts `..` and a `?`; the worktree-creation
+    handler, where a record-write `ValueError` is reported as a failed
+    worktree; the tombstone-plus-live-record window an interrupted `entomb`
+    leaves, which `docs/plonk-cleanup-policy.md` claims the next sweep clears
+    and which nothing clears; and the option text in `docs/man/git-wheresat.rst`
+    and `docs/users-guide.md` that still describes `--limit`, `--no-fetch`,
+    `--offline`, and a named `--parent` as inert.
 
 ## Surprises & discoveries
 
@@ -5873,5 +5930,7 @@ panel before delivery. What changed, and why:
   the very evidence this command depends on. Revision 3 resequenced the
   milestones again and made the tombstones mandatory.
 
-No implementation work has begun. The plan awaits approval before Stage A;
-Stage A is documentation only, so the first code lands in Stage B.
+Implementation is under way: EP-M1 through EP-M9 are complete, and EP-M10, the
+GitHub evidence and `--json` plateau, is in progress on the
+`git-wheresat-sub-command` branch. The milestone board above records what each
+plateau delivered.

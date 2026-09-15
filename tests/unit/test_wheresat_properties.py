@@ -54,6 +54,7 @@ from tests.unit.wheresat_helpers import (
     OLD_BASE,
     PR_IDENTITY,
     PR_REPOSITORY,
+    REQUIRED_SOURCES,
     _Case,
     assessment_of,
     inferred,
@@ -74,9 +75,6 @@ _OBJECT_IDS = st.lists(
 # At most this many candidates are placed, so one example can mix tiers and
 # sources without becoming a corpus nobody can read.
 _CANDIDATE_MAX = 4
-
-_REQUIRED_SOURCES: typ.Final = 2
-"""How many independent derived sources INV-2b asks to corroborate a boundary."""
 
 # Every candidate is judged by every gate, in GATE_NAMES order, so a
 # candidate's results are a slice of the assessment's gates of this length.
@@ -314,7 +312,7 @@ def test_only_evidence_that_may_establish_ever_does(case: _Case) -> None:
         "no content comparison can carry an answer, whatever corroborates it"
     )
     assert any(isinstance(one, AttestedCandidate) for one in support) or (
-        len({one.source for one in support}) >= _REQUIRED_SOURCES
+        len({one.source for one in support}) >= REQUIRED_SOURCES
     ), (
         f"a boundary established on {support!r} rests on either one deliberate "
         "statement or two independent derived sources"
