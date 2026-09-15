@@ -347,9 +347,28 @@ def tombstone_ref_path(branch: str) -> str:
     return _ref_path(TOMBSTONE_NAMESPACE, branch)
 
 
+_POSITIVE_INTEGER = re.compile(r"0*[1-9][0-9]*")
+"""A count of at least one: ASCII decimal, with any number of leading zeros."""
+
+
 def _is_positive_integer(text: str) -> bool:
-    """Return whether ``text`` is a decimal count of at least one."""
-    return text.isdigit() and int(text) >= 1
+    """Return whether ``text`` is an ASCII decimal count of at least one.
+
+    The question is put to a full match rather than to :meth:`str.isdigit`,
+    which answers ``True`` for a superscript two and for an Arabic-Indic digit
+    alike: :func:`int` raised ``ValueError`` on the first, out of a parser
+    that answers ``None`` for unrecognized text, and read the second as the
+    count three. Leading zeros are part of the form, so ``001`` is the count
+    one — which is the count :func:`int` reads it as.
+
+    Returns
+    -------
+    bool
+        Whether the whole of ``text`` is one ASCII decimal count, and that
+        count is at least one.
+
+    """
+    return _POSITIVE_INTEGER.fullmatch(text) is not None
 
 
 def is_repository_slug(owner: str, separator: str, name: str) -> bool:
@@ -387,7 +406,10 @@ def repository_from_remote_url(url: str) -> str | None:
     ``ssh://git@github.com/owner/name`` — and any of them may end in ``.git``.
     All three are read, because a clone's spelling is the user's choice rather
     than the tool's, and the answer is the slug alone: the scheme, the user,
-    and the port say nothing about which repository the remote holds.
+    and the port say nothing about which repository the remote holds. The host
+    is compared without regard to case, since a host name is case-insensitive
+    and a remote is configured by hand: ``https://GitHub.com/owner/name`` names
+    the same repository as the lower-case spelling does.
 
     An answer of ``None`` is not a failure to parse. It is the refusal to
     guess, because the caller is looking for the one remote that holds a
@@ -411,7 +433,7 @@ def repository_from_remote_url(url: str) -> str | None:
     if parts is None:
         return None
     host, path = parts
-    if host != _GITHUB_HOST:
+    if host.lower() != _GITHUB_HOST:
         return None
     slug = path.removesuffix(_GIT_SUFFIX)
     owner, slash, name = slug.partition("/")

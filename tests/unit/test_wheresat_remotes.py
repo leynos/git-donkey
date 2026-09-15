@@ -42,6 +42,10 @@ _GITHUB_SPELLINGS: typ.Final = (
     "https://github.com/acme/widget",
     "git@github.com:acme/widget.git",
     "ssh://git@github.com/acme/widget",
+    # A host name is case-insensitive and a remote is configured by hand, so
+    # the same repository may be spelled with capitals in either URL shape.
+    "https://GitHub.com/acme/widget",
+    "git@GitHub.com:acme/widget",
 )
 
 _NOT_GITHUB: typ.Final = (

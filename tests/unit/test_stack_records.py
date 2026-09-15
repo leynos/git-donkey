@@ -106,6 +106,8 @@ def test_parent_values_round_trip_through_render_and_parse(
         "v1:pr:owner/repository#abc",
         "v1:pr:owner/repository#123#456",
         "v1:pr:owner/repository#0",
+        "v1:pr:owner/repository#²",
+        "v1:pr:owner/repository#٣",
     ],
     ids=[
         "empty",
@@ -118,6 +120,8 @@ def test_parent_values_round_trip_through_render_and_parse(
         "non-numeric-number",
         "two-numbers",
         "zero-number",
+        "superscript-number",
+        "arabic-indic-number",
     ],
 )
 def test_unparsable_parent_values_are_rejected_rather_than_guessed(value: str) -> None:
@@ -125,6 +129,23 @@ def test_unparsable_parent_values_are_rejected_rather_than_guessed(value: str) -
     assert stack_records.parse_parent(value) is None, (
         "a value outside the versioned grammar yields no parent"
     )
+
+
+def test_a_number_with_a_leading_zero_is_still_a_number() -> None:
+    """A leading zero is part of the decimal form, so ``001`` is the count one.
+
+    ``int`` reads the form that way, and rendering is what writes a number
+    back, so a hand-written ``#001`` is a number this grammar accepts and one
+    a later render normalizes to ``#1``.
+    """
+    assert stack_records.parse_parent("v1:pr:owner/repository#001") == (
+        stack_records.StackParent(
+            branch=None,
+            pull_request=stack_records.PullRequestIdentity(
+                repository="owner/repository", number=1
+            ),
+        )
+    ), "a leading zero is part of the count, not a different number"
 
 
 def test_record_keys_are_the_lower_case_spellings_git_returns() -> None:
