@@ -61,6 +61,7 @@ if typ.TYPE_CHECKING:
 
 _IDENTITY = stack_records.PullRequestIdentity(repository="leynos/git-donkey", number=80)
 _URL = "https://api.github.com/repos/leynos/git-donkey/pulls/80"
+_STACKS_URL = "https://api.github.com/repos/leynos/git-donkey/stacks"
 _COMMIT = "0e1d2c3b4a5968778695a4b3c2d1e0f1a2b3c4d5"
 _RATE_LIMIT_HEADERS: typ.Final = {
     "Retry-After": "60",
@@ -142,6 +143,37 @@ class _StubSession:
         return self.answer
 
 
+@dataclasses.dataclass(slots=True)
+class _RoutedSession:
+    """A session that answers each URL with the answer its case gave that URL.
+
+    One question here costs two requests: a pull request's own payload says
+    where it sits in its stack, and the stack itself says which pull requests
+    are in it. A case about the second answer cannot be driven by a session
+    that gives the same body to both, so the answers are keyed by the URL each
+    belongs to, and a URL no case provided for raises ``KeyError`` rather than
+    answering with an empty body the adapter would read as data.
+    """
+
+    answers: cabc.Mapping[str, object]
+    calls: list[str] = dataclasses.field(default_factory=list)
+
+    def get(
+        self,
+        url: str,
+        *,
+        params: cabc.Mapping[str, str] | None = None,
+        timeout: float | None = None,
+        headers: cabc.Mapping[str, str] | None = None,
+    ) -> object:
+        """Return the answer this case gave for ``url``, or raise its failure."""
+        self.calls.append(url)
+        answer = self.answers[url]
+        if isinstance(answer, Exception):
+            raise answer
+        return answer
+
+
 @dataclasses.dataclass(frozen=True, slots=True)
 class _Fault:
     """One way a question goes unanswered, and what its refusal must say."""
@@ -201,7 +233,7 @@ _FAULTS: typ.Final = (
 
 
 def _client(
-    session: _StubSession,
+    session: _StubSession | _RoutedSession,
     clock: cabc.Callable[[], float] = time.monotonic,
 ) -> ApiWheresatGitHub:
     """Return an adapter whose transport is the stub passed in.
@@ -212,8 +244,9 @@ def _client(
 
     Parameters
     ----------
-    session : _StubSession
-        Transport the adapter will make its requests through.
+    session : _StubSession | _RoutedSession
+        Transport the adapter will make its requests through, either one that
+        answers every URL alike or one that answers each URL its own way.
     clock : collections.abc.Callable[[], float], optional
         Clock the association search measures its budget with, so a case can
         run the budget out without waiting a minute.
@@ -303,6 +336,44 @@ def test_a_body_that_is_not_json_is_a_fault() -> None:
 
     assert "not JSON" in str(raised.value), (
         f"the refusal should say the body is unreadable; it says {raised.value!r}"
+    )
+
+
+def test_a_stack_member_this_version_cannot_read_refuses() -> None:
+    """A member left out of a stack would shift the position, so it refuses.
+
+    The pull request's own payload says it sits third in a stack of four, and
+    the stack itself says who is in it. :meth:`stack_parent` finds the pull
+    request below one by its position in that list, so a member quietly dropped
+    would not shorten the answer: it would move every pull request above the
+    gap, and this run would name the pull request *itself* as its own parent
+    rather than report that the stack could not be read.
+    """
+    session = _RoutedSession({
+        _URL: _StubResponse(200, body={"stack": {"position": 3}}),
+        _STACKS_URL: _StubResponse(
+            200,
+            body={
+                "pull_requests": [
+                    "a member this version cannot read",
+                    {"number": 79},
+                    {"number": 80},
+                    {"number": 81},
+                ]
+            },
+        ),
+    })
+
+    with pytest.raises(WheresatGitHubError) as raised:
+        _client(session).stack_parent(_IDENTITY)
+
+    assert session.calls == [_URL, _STACKS_URL], (
+        "the refusal should come from the stack the pull request names; "
+        f"the adapter asked for {session.calls!r}"
+    )
+    assert "does not understand" in str(raised.value), (
+        "the refusal should say the body could not be read rather than name a "
+        f"parent; it says {raised.value!r}"
     )
 
 

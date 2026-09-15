@@ -465,11 +465,22 @@ class ApiWheresatGitHub:
         than for the repository's stacks, because that is the question this
         method has: the answer is either one stack or none.
 
+        Every member is read as an object, and one that cannot be is refused.
+        :meth:`stack_parent` finds a pull request's neighbour by its position
+        in this tuple, so a member quietly dropped would shift every index
+        above it and name a different pull request — or the pull request
+        itself — rather than reporting that the stack could not be read.
+
         Returns
         -------
         tuple[collections.abc.Mapping[str, object], ...]
             The stack's pull requests, in GitHub's order, which is the bottom
             of the stack first.
+
+        Raises
+        ------
+        WheresatGitHubError
+            If the stack lists a member this version cannot read.
 
         """
         owner, name = _slug(identity.repository)
@@ -479,7 +490,7 @@ class ApiWheresatGitHub:
         if not stacks:
             return ()
         members = list_field(nested(stacks[0], "pull_requests"))
-        return tuple(member for member in members if isinstance(member, dict))
+        return tuple(mapping(member) for member in members)
 
 
 def _decoded(response: requests.Response, url: str) -> object:
