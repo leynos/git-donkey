@@ -18,10 +18,10 @@ classifiers = [
 ]
 dependencies = [
     "GitPython>=3.1.45",
-    "cyclopts>=4.21.0",
+    "cyclopts>=4.25.2",
     "github3.py>=4.0.1",
     "loctocat>=0.6.0",
-    "platformdirs>=4.10.0",
+    "platformdirs>=4.11.8",
     "plumbum>=1.8",
     "python-slugify>=8.0.0",
     "requests>=2.32.0,<3.0",
@@ -435,7 +435,7 @@ names = []
 "render_shared_record" = "Called only from the shared-record suite, which pins the round trip parse_shared_record(render_shared_record(r)) == r and the exact two lines the guide tells a reader to paste. No console script emits a shared record: git donkey writes a record into the clone that made it, and git wheresat reads one a person pasted into a pull request body, so the renderer has no production caller by design"
 
 [build-system]
-requires = ["hatchling", "hatch-build-scripts>=1.0.0,<2", "docutils>=0.22.4,<0.24"]
+requires = ["hatchling", "hatch-build-scripts>=1.0.0,<2", "docutils>=0.23,<0.24"]
 build-backend = "hatchling.build"
 
 # Generate manuals in the isolated build environment, not at installation time.
