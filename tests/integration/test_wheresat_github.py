@@ -342,9 +342,10 @@ def test_a_recording_does_not_say_which_client_made_the_requests(
     and ``x-accepted-oauth-scopes`` — are dropped as each recording is read.
     None of the three is a credential, and none is read by any test, but
     together they name who recorded the traffic, which a recording a reader can
-    check into a repository has no reason to keep. The recordings on disk still
-    carry them, because a recording is not edited by hand; the pass that
-    refreshes one writes a file that never held them.
+    check into a repository has no reason to keep. A recording on disk may
+    still carry them, because a recording is not edited by hand; the pass that
+    refreshes one writes a file that never held them, and the rate-limit
+    recording is the one left as it was recorded.
     """
     for described, cassette in {
         "the parent metadata recording": wheresat_parent_metadata_cassette,
