@@ -165,10 +165,16 @@ def resolve(
     """
     branch = _branch(options, repository)
     target, target_ref = _target(options, repository, graph)
+    # The tip is read from the branch's own ref rather than from the bare name,
+    # because a bare name is resolved by Git's precedence rules: a tag, or a
+    # file, that happens to carry the branch's name would answer for it. The
+    # ``--branch`` option names a branch, so only the branch's ref is asked.
     return (
         wheresat_records.BoundaryRequest(
             branch=branch,
-            child_tip=object_id(graph, branch, what=f"the branch {branch}"),
+            child_tip=object_id(
+                graph, f"refs/heads/{branch}", what=f"the branch {branch}"
+            ),
             target=target,
             parent=_named_parent(options),
             deep=options.deep,
@@ -198,11 +204,12 @@ def _branch(options: WheresatOptions, repo: Repo) -> str:
     ------
     WheresatUsageError
         If HEAD is detached and no ``--branch`` was given, because a boundary
-        read for a detached HEAD would name a branch that does not exist.
+        read for a detached HEAD would name a branch that does not exist; or if
+        the branch named is one no ref may carry.
 
     """
     if options.branch is not None:
-        return options.branch
+        return _usable_branch(options.branch)
     if repo.head.is_detached:
         msg = (
             "HEAD is detached in the current directory, so no child branch can be "
@@ -210,6 +217,37 @@ def _branch(options: WheresatOptions, repo: Repo) -> str:
         )
         raise WheresatUsageError(msg)
     return repo.active_branch.name
+
+
+def _usable_branch(branch: str) -> str:
+    """Return ``branch`` when a record may be kept for it, else refuse.
+
+    The branch names the refs a record is written to and read from, and it
+    reaches the command line of the Git commands those refs are written with.
+    A value that begins with a dash, that carries the ``:`` a fetch refspec
+    separates its halves with, or that is otherwise no ref path component would
+    fail inside the collection phase, where the anchor ref is built — an
+    uncaught :class:`ValueError` raised after the run had begun reading
+    evidence. Checking it here makes it a usage error instead: reported before
+    the run reads anything, and with the status every other unresolvable name
+    carries.
+
+    Returns
+    -------
+    str
+        ``branch``, unchanged.
+
+    Raises
+    ------
+    WheresatUsageError
+        If ``branch`` would be unsafe in a ref path.
+
+    """
+    try:
+        return stack_records.validate_ref_component(branch)
+    except ValueError as exc:
+        msg = f"--branch cannot name a branch: {exc}"
+        raise WheresatUsageError(msg) from exc
 
 
 def _target(

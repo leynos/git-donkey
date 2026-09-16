@@ -724,7 +724,7 @@ def ask[Answer](
 
 
 def _result(
-    candidates: typ.Sequence[Candidate], faults: typ.Sequence[Fault]
+    candidates: cabc.Sequence[Candidate], faults: cabc.Sequence[Fault]
 ) -> CollectionResult:
     """Return one rung's result, labelled with the class of failure it saw."""
     return CollectionResult(

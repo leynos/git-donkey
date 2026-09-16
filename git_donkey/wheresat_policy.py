@@ -81,7 +81,7 @@ _DERIVED_RANK: typ.Final = 1
 """Rank of a commit carried by evidence computed from surviving history."""
 
 
-def may_establish(support: typ.Sequence[Candidate]) -> bool:
+def may_establish(support: cabc.Sequence[Candidate]) -> bool:
     """Return whether this support may establish a boundary.
 
     One attested candidate is enough: a stack record or a pull request head
@@ -168,7 +168,7 @@ def _check(
     )
 
 
-def _refused(deciding: typ.Sequence[GateResult]) -> bool:
+def _refused(deciding: cabc.Sequence[GateResult]) -> bool:
     """Return whether a gate refused the candidate's claim altogether.
 
     Gate 8 is the one exception: a superseded record's claim is demoted rather
@@ -244,13 +244,13 @@ def _cleared(checked: _Checked) -> bool:
     return checked.support is not None and not checked.refused and not checked.pending
 
 
-def _supports(supporters: typ.Sequence[_Checked]) -> tuple[Establishing, ...]:
+def _supports(supporters: cabc.Sequence[_Checked]) -> tuple[Establishing, ...]:
     """Return the support each cleared candidate of a commit carries."""
     return tuple(one.support for one in supporters if one.support is not None)
 
 
 def _grouped(
-    checked: typ.Sequence[_Checked],
+    checked: cabc.Sequence[_Checked],
 ) -> cabc.Mapping[str, tuple[_Checked, ...]]:
     """Return every candidate, grouped by the commit it names, in canonical order."""
     return {
@@ -260,7 +260,7 @@ def _grouped(
 
 
 def _serving(
-    checked: typ.Sequence[_Checked],
+    checked: cabc.Sequence[_Checked],
 ) -> cabc.Mapping[str, tuple[_Checked, ...]]:
     """Return the commits that could serve, by the support each of them has."""
     cleared = [one for one in checked if _cleared(one)]
@@ -271,7 +271,7 @@ def _serving(
     }
 
 
-def _rank(supporters: typ.Sequence[_Checked]) -> int:
+def _rank(supporters: cabc.Sequence[_Checked]) -> int:
     """Return how strongly the evidence names the commit its supporters cover.
 
     A commit one deliberate statement names outranks a commit computed from
@@ -319,7 +319,7 @@ def _preferred(serving: cabc.Mapping[str, tuple[_Checked, ...]]) -> tuple[str, .
     return tuple(commit for commit, rank in ranks.items() if rank == strongest)
 
 
-def _carrier(supporters: typ.Sequence[_Checked]) -> tuple[GateResult, ...]:
+def _carrier(supporters: cabc.Sequence[_Checked]) -> tuple[GateResult, ...]:
     """Return the gates an established boundary reports as its acceptance.
 
     A record whose claim gate 8 demoted still supports its commit once another
@@ -411,7 +411,7 @@ def _included(facts: GraphFacts, commit: str, child_tip: str) -> CommitRange:
 def _established(
     request: BoundaryRequest,
     facts: GraphFacts,
-    supporters: typ.Sequence[_Checked],
+    supporters: cabc.Sequence[_Checked],
     commit: str,
 ) -> Established:
     """Return the result for a boundary its supporters carry."""
@@ -431,7 +431,7 @@ def _established(
     )
 
 
-def _gate_summary(gates: typ.Iterable[GateResult]) -> str:
+def _gate_summary(gates: cabc.Iterable[GateResult]) -> str:
     """Return the gates that did not pass, with what each of them saw."""
     deciding = [
         gate
@@ -468,17 +468,17 @@ def _candidate_reason(checked: _Checked) -> str:
     )
 
 
-def _originals(checked: typ.Sequence[_Checked]) -> tuple[Candidate, ...]:
+def _originals(checked: cabc.Sequence[_Checked]) -> tuple[Candidate, ...]:
     """Return the candidates as the sources handed them to the assessment."""
     return tuple(one.original for one in checked)
 
 
-def _gates(checked: typ.Sequence[_Checked]) -> tuple[GateResult, ...]:
+def _gates(checked: cabc.Sequence[_Checked]) -> tuple[GateResult, ...]:
     """Return every candidate's gates, in the canonical candidate order."""
     return tuple(gate for one in checked for gate in one.gates)
 
 
-def _pending(checked: typ.Sequence[_Checked]) -> bool:
+def _pending(checked: cabc.Sequence[_Checked]) -> bool:
     """Return whether evidence that could establish a boundary went unanswered.
 
     An inferred candidate is left out: its support could never have established
@@ -494,7 +494,7 @@ def _pending(checked: typ.Sequence[_Checked]) -> bool:
     return any(one.pending for one in checked if one.support is not None)
 
 
-def _awaiting(checked: typ.Sequence[_Checked]) -> tuple[str, ...]:
+def _awaiting(checked: cabc.Sequence[_Checked]) -> tuple[str, ...]:
     """Return what each candidate that could establish is still waiting for."""
     return tuple(
         _candidate_reason(one)
@@ -506,7 +506,7 @@ def _awaiting(checked: typ.Sequence[_Checked]) -> tuple[str, ...]:
 def _ambiguous(
     reported: tuple[Candidate, ...],
     gates: tuple[GateResult, ...],
-    checked: typ.Sequence[_Checked],
+    checked: cabc.Sequence[_Checked],
     commits: tuple[str, ...],
 ) -> Unresolved | Indeterminate:
     """Return the refusal for a corpus that leaves more than one boundary.
@@ -542,7 +542,7 @@ def _ambiguous(
     )
 
 
-def _twinned_commits(checked: typ.Sequence[_Checked]) -> tuple[str, ...]:
+def _twinned_commits(checked: cabc.Sequence[_Checked]) -> tuple[str, ...]:
     """Return the commits only content comparison names, when it names more than one.
 
     Each of these commits cleared every applicable gate, and every candidate
@@ -581,7 +581,7 @@ def _indistinguishable(commits: tuple[str, ...]) -> str:
 def _refusal(
     reported: tuple[Candidate, ...],
     gates: tuple[GateResult, ...],
-    checked: typ.Sequence[_Checked],
+    checked: cabc.Sequence[_Checked],
 ) -> Unresolved | Indeterminate:
     """Return why no boundary was established, and how sure the run can be.
 
@@ -666,7 +666,7 @@ def assess(
 
 
 def apply_collection_faults(
-    assessment: Assessment, faults: typ.Sequence[str]
+    assessment: Assessment, faults: cabc.Sequence[str]
 ) -> Assessment:
     """Return the assessment a collection fault forces, if it forces one.
 

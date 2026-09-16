@@ -141,7 +141,7 @@ class WheresatGitHub(typ.Protocol):
         """Return the pull request below this one in a native GitHub stack."""
 
     def associated_pull_requests(
-        self, repository: str, commits: typ.Sequence[str]
+        self, repository: str, commits: cabc.Sequence[str]
     ) -> AssociationPage:
         """Return the pull requests associated with a bounded set of commits."""
 
@@ -324,7 +324,7 @@ class ApiWheresatGitHub:
         return pull_identity(identity.repository, neighbours[position - 2])
 
     def associated_pull_requests(
-        self, repository: str, commits: typ.Sequence[str]
+        self, repository: str, commits: cabc.Sequence[str]
     ) -> AssociationPage:
         """Return the pull requests associated with a bounded set of commits.
 

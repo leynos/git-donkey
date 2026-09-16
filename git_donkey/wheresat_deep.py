@@ -329,7 +329,7 @@ def _claim(
     ----------
     children : collections.abc.Sequence[str]
         Child commits to compare, oldest first.
-    index : typing.Mapping[str, tuple[str, ...]]
+    index : collections.abc.Mapping[str, tuple[str, ...]]
         The window's commits, by the key each is looked up by.
     key : collections.abc.Callable[[str], str | None]
         What one child commit is looked up by, or ``None`` when it cannot be

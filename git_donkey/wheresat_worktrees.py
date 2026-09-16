@@ -127,11 +127,14 @@ def worktree_state(repo: Repo, branch: str) -> WorktreeState:
     path = _listing(repo, branch)
     if path is None:
         return WorktreeState(operation=None, dirty=False)
-    worktree = _opened(path)
-    return WorktreeState(
-        operation=_operation(worktree),
-        dirty=_dirty(worktree),
-    )
+    # The worktree is opened in its own right and read inside the block, so the
+    # handles that opening it takes are released once both reads have answered.
+    # Nothing outside reads the repository, which is why it is not returned.
+    with _opened(path) as worktree:
+        return WorktreeState(
+            operation=_operation(worktree),
+            dirty=_dirty(worktree),
+        )
 
 
 def _listing(repo: Repo, branch: str) -> str | None:

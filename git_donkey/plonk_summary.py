@@ -22,6 +22,9 @@ import typing as typ
 
 from git_donkey.plonk_records import _PlonkMode, _PlonkResult
 
+if typ.TYPE_CHECKING:
+    import collections.abc as cabc
+
 
 def _empty_summary_message(result: _PlonkResult) -> str:
     """Return the no-op summary line for ``result``."""
@@ -31,7 +34,7 @@ def _empty_summary_message(result: _PlonkResult) -> str:
 
 
 def _append_summary_section(
-    lines: list[str], heading: str, entries: typ.Iterable[object]
+    lines: list[str], heading: str, entries: cabc.Iterable[object]
 ) -> None:
     """Append ``heading`` and bullet entries when ``entries`` is populated."""
     section_entries = tuple(entries)
@@ -42,19 +45,19 @@ def _append_summary_section(
     lines.extend(f"- {entry}" for entry in section_entries)
 
 
-def _skipped_entries(result: _PlonkResult) -> typ.Iterator[str]:
+def _skipped_entries(result: _PlonkResult) -> cabc.Iterator[str]:
     """Yield one report line per worktree git-plonk skipped."""
     for skipped in result.skipped_worktrees:
         yield f"{skipped.worktree_path} ({skipped.reason.value})"
 
 
-def _failed_branch_entries(result: _PlonkResult) -> typ.Iterator[str]:
+def _failed_branch_entries(result: _PlonkResult) -> cabc.Iterator[str]:
     """Yield one report line per branch git-plonk could not delete."""
     for branch_name in result.failed_branch_deletions:
         yield f"{branch_name} (branch deletion failed)"
 
 
-def _failed_entomb_entries(result: _PlonkResult) -> typ.Iterator[str]:
+def _failed_entomb_entries(result: _PlonkResult) -> cabc.Iterator[str]:
     """Yield one report line per branch whose tip could not be preserved."""
     for branch_name in result.failed_entombments:
         yield f"{branch_name} (tip not preserved, branch kept)"

@@ -489,7 +489,7 @@ def _write(
     options: WheresatOptions,
     assessment: wheresat_records.Assessment,
     request: wheresat_records.BoundaryRequest,
-    warnings: typ.Sequence[str],
+    warnings: cabc.Sequence[str],
 ) -> None:
     """Write the assessment to standard output in the form the run asked for."""
     if options.json:

@@ -601,13 +601,13 @@ class GitWheresatGraph:
     def cumulative_patch_identifier(self, base: str, tip: str) -> str | None:
         """Return one stable patch identifier for the whole ``base..tip`` diff.
 
-        The comparison that matters for a squash is cumulative: a squash
-        commit is an N-to-1 relationship whose diff equals the combined diff of
-        every commit above the boundary, so one identifier is computed for the
-        range and never one identifier per commit. ``--no-ext-diff`` is passed
-        to the diff because a configured ``diff.external`` prints a formatted
-        view that ``git patch-id`` cannot read, and the pipeline would then
-        return nothing at all.
+        The comparison that matters for a squash is cumulative: a squash commit
+        is an N-to-1 relationship whose diff equals the combined diff of every
+        commit above the boundary, so one identifier is computed for the range
+        and never one per commit. ``--no-ext-diff`` and ``--no-color`` keep the
+        diff in the plain form ``git patch-id`` reads: a configured external
+        diff prints a formatted view, and colour for a pipe gets escape
+        sequences among the hunks. Either leaves the pipeline with nothing.
 
         Parameters
         ----------
@@ -764,6 +764,7 @@ class GitWheresatGraph:
         """Return the patch that turns ``base``'s tree into ``tip``'s."""
         status, output, stderr = self.repo.git.diff(
             "--no-ext-diff",
+            "--no-color",
             "--full-index",
             "--end-of-options",
             base,

@@ -71,6 +71,9 @@ from git import GitCommandError, Repo
 
 from git_donkey import helpers, incoming_outgoing_policy, observability
 
+if typ.TYPE_CHECKING:
+    import collections.abc as cabc
+
 _LOGGER = logging.getLogger(__name__)
 
 _GIT_INCOMING_PREFIX = "git-incoming"
@@ -119,7 +122,7 @@ class _ComparisonAdapter(_GitLog, typ.Protocol):
         resolved, so callers can tell that apart from an unset upstream.
         """
 
-    def remote_names(self) -> typ.Iterable[str]:
+    def remote_names(self) -> cabc.Iterable[str]:
         """Return the configured remote names."""
 
     def fetch_remote(self, remote: str) -> None:
@@ -174,7 +177,7 @@ class _GitPythonComparison:
                 raise _UpstreamLookupError(msg) from exc
             return None
 
-    def remote_names(self) -> typ.Iterable[str]:
+    def remote_names(self) -> cabc.Iterable[str]:
         """Return the configured remote names."""
         return [str(remote.name) for remote in self.repo.remotes]
 

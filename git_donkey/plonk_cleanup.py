@@ -191,6 +191,56 @@ def _configured_expiry(records: stack_store.StackRecordWriter) -> str:
         )
 
 
+def _swept(
+    records: stack_store.StackRecordWriter,
+    orphans: cabc.Sequence[str],
+    mode: _PlonkMode,
+    *,
+    dry_run: bool,
+) -> tuple[str, ...]:
+    """Return the orphans a sweep rescues, or stop the run before it writes.
+
+    Both halves of the sweep are read here, because both fail the same way: a
+    sweep reads every orphan's anchor ref, and a name Git would not accept in a
+    ref path — one under the record namespace that begins with ``-``, for
+    instance — raises rather than reporting an orphan it could not classify.
+    The sweep is repository-wide, so that stop comes before the first worktree
+    is removed rather than after the cleanup was half done. A dry run takes the
+    read half alone and stops on exactly the same names, so a run that only
+    reports what it would do is not the run that discovers a name it cannot
+    read.
+
+    Parameters
+    ----------
+    records : stack_store.StackRecordWriter
+        Store holding the records and the tombstones.
+    orphans : collections.abc.Sequence[str]
+        Branch names to clear, as reported by ``orphans``.
+    mode : _PlonkMode
+        Cleanup mode, carried into the observability record.
+    dry_run : bool
+        When true, read which tips a sweep would preserve without writing any.
+
+    Returns
+    -------
+    tuple[str, ...]
+        The orphans whose recorded tip a sweep preserves.
+
+    Raises
+    ------
+    SystemExit
+        If a record cannot be read or cleared.
+
+    """
+    try:
+        if dry_run:
+            return records.rescuable(orphans)
+        return records.sweep(orphans)
+    except (stack_store.StackRecordError, ValueError) as exc:
+        _record_failure("stack_record_sweep", mode)
+        helpers._die(GIT_PLONK_PREFIX, f"the stack record sweep failed: {exc}", 1)
+
+
 def _sweep_orphans(
     records: stack_store.StackRecordWriter,
     mode: _PlonkMode,
@@ -231,14 +281,7 @@ def _sweep_orphans(
     orphans = records.orphans()
     if not orphans:
         return (), ()
-    if dry_run:
-        swept = records.rescuable(orphans)
-    else:
-        try:
-            swept = records.sweep(orphans)
-        except stack_store.StackRecordError as exc:
-            _record_failure("stack_record_sweep", mode)
-            helpers._die(GIT_PLONK_PREFIX, f"the stack record sweep failed: {exc}", 1)
+    swept = _swept(records, orphans, mode, dry_run=dry_run)
     preserved = set(swept)
     unrescuable = tuple(branch for branch in orphans if branch not in preserved)
     _LOGGER.info(

@@ -120,7 +120,7 @@ class StackRecordReader(typ.Protocol):
     def branch_tip(self, branch: str) -> str | None:
         """Return the commit ``refs/heads/<branch>`` names, if it still exists."""
 
-    def rescuable(self, orphans: typ.Sequence[str]) -> tuple[str, ...]:
+    def rescuable(self, orphans: cabc.Sequence[str]) -> tuple[str, ...]:
         """Return the orphans whose recorded tip a sweep would preserve.
 
         The read half of :meth:`sweep`, so a caller that must not write — a
@@ -166,7 +166,7 @@ class StackRecordWriter(StackRecordReader, typ.Protocol):
         gate.
         """
 
-    def sweep(self, orphans: typ.Sequence[str]) -> tuple[str, ...]:
+    def sweep(self, orphans: cabc.Sequence[str]) -> tuple[str, ...]:
         """Convert orphaned records into tombstones; return those salvageable."""
 
     def prune(self, expire: str) -> tuple[str, ...]:
@@ -306,12 +306,12 @@ class GitStackRecordReader:
         """
         return self._ref_value(f"refs/heads/{branch}")
 
-    def rescuable(self, orphans: typ.Sequence[str]) -> tuple[str, ...]:
+    def rescuable(self, orphans: cabc.Sequence[str]) -> tuple[str, ...]:
         """Return the orphans whose recorded tip is still readable.
 
         Parameters
         ----------
-        orphans : typ.Sequence[str]
+        orphans : cabc.Sequence[str]
             Branch names to classify, as reported by ``orphans``. Names
             without a record are ignored, so a caller may pass a stale list.
 
@@ -422,7 +422,7 @@ class GitStackRecordReader:
             if key.startswith(prefix)
         }
 
-    def _recorded_branches(self) -> typ.Iterator[str]:
+    def _recorded_branches(self) -> cabc.Iterator[str]:
         """Yield branches whose configuration holds a record key.
 
         A configuration key is a branch name only by convention, so a section
@@ -448,15 +448,15 @@ class GitStackRecordReader:
                 continue
             yield branch
 
-    def _anchored_branches(self) -> typ.Iterator[str]:
+    def _anchored_branches(self) -> cabc.Iterator[str]:
         """Yield branches whose anchor ref exists."""
         yield from self._refs_in(stack_records.BASE_NAMESPACE)
 
-    def _tombstoned_branches(self) -> typ.Iterator[str]:
+    def _tombstoned_branches(self) -> cabc.Iterator[str]:
         """Yield branches whose tombstone ref exists."""
         yield from self._refs_in(stack_records.TOMBSTONE_NAMESPACE)
 
-    def _refs_in(self, namespace: str) -> typ.Iterator[str]:
+    def _refs_in(self, namespace: str) -> cabc.Iterator[str]:
         """Yield the branch names recorded under ``namespace``."""
         prefix = f"{namespace}/"
         output = self.repo.git.for_each_ref(_REF_NAME_FORMAT, prefix)
@@ -667,7 +667,7 @@ class GitStackRecordWriter(GitStackRecordReader):
         self._write_tombstone(branch, tip)
         self._remove_live_record(branch)
 
-    def sweep(self, orphans: typ.Sequence[str]) -> tuple[str, ...]:
+    def sweep(self, orphans: cabc.Sequence[str]) -> tuple[str, ...]:
         """Clear the records of branches that no longer exist.
 
         A record that still parses is converted into a tombstone naming the
@@ -679,7 +679,7 @@ class GitStackRecordWriter(GitStackRecordReader):
 
         Parameters
         ----------
-        orphans : typ.Sequence[str]
+        orphans : cabc.Sequence[str]
             Branch names to clear, as reported by ``orphans``. Names without a
             record are ignored, so a caller may pass a stale list.
 

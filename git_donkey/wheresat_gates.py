@@ -91,7 +91,7 @@ _POLARITY_WORDS: typ.Final[cabc.Mapping[Ancestry, str]] = {
 }
 """How the two decidable ancestry answers read in a gate's detail."""
 
-type _Evaluator = typ.Callable[[_GateInputs], GateResult]
+type _Evaluator = cabc.Callable[[_GateInputs], GateResult]
 
 
 def ancestry_outcome(observed: Ancestry, *, expect: Ancestry) -> GateOutcome:
@@ -394,8 +394,11 @@ def _suffix_clause(
 ) -> _Clause:
     """Whether the replay range holds commits the parent's history reaches."""
     key = range_key(commit, child_tip)
-    reachable = set(without_parent.commits)
-    landed_work = [one for one in contents.commits if one not in reachable]
+    # ``without_parent`` is the same listing with the commits the parent's head
+    # reaches taken out, so what it holds is what the parent does not already
+    # have — and a commit of the range absent from it is one the parent does.
+    parent_lacks = set(without_parent.commits)
+    landed_work = [one for one in contents.commits if one not in parent_lacks]
     if landed_work:
         return _Clause(
             GateOutcome.FAILED,

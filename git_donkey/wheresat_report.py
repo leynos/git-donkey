@@ -193,7 +193,7 @@ def _abbreviate(commit: str) -> str:
     return commit[:COMMIT_ABBREVIATION]
 
 
-def _listed(commits: typ.Sequence[str]) -> tuple[str, ...]:
+def _listed(commits: cabc.Sequence[str]) -> tuple[str, ...]:
     """Return the commits to render.
 
     Parameters
@@ -223,7 +223,7 @@ def _candidate_line(candidate: Candidate) -> str:
     )
 
 
-def _text_warnings(warnings: typ.Sequence[str]) -> list[str]:
+def _text_warnings(warnings: cabc.Sequence[str]) -> list[str]:
     """Render the warnings a run collected, or nothing when it collected none.
 
     The section sits directly under the headline rather than beside the replay
@@ -335,7 +335,7 @@ def _text_established(
     request: BoundaryRequest,
     *,
     explain: bool,
-    warnings: typ.Sequence[str] = (),
+    warnings: cabc.Sequence[str] = (),
 ) -> list[str]:
     """Render an established boundary, its evidence, and the replay plan."""
     lines = [
@@ -362,7 +362,7 @@ def _text_refused(
     assessment: Assessment,
     request: BoundaryRequest,
     *,
-    warnings: typ.Sequence[str] = (),
+    warnings: cabc.Sequence[str] = (),
 ) -> list[str]:
     """Render a refusal or an indeterminate result with its reasons."""
     lines = [f"{_HEADLINES[type(assessment)]} {request.branch}"]
@@ -379,7 +379,7 @@ def render_text(
     request: BoundaryRequest,
     *,
     explain: bool = False,
-    warnings: typ.Sequence[str] = (),
+    warnings: cabc.Sequence[str] = (),
 ) -> str:
     """Render the human-readable report.
 
@@ -418,7 +418,7 @@ def render_text(
     return "\n".join(lines) + "\n"
 
 
-def _json_range(commits: typ.Sequence[str], *, cut_short: bool) -> _Payload:
+def _json_range(commits: cabc.Sequence[str], *, cut_short: bool) -> _Payload:
     """Return one side of the partition as the envelope represents it.
 
     The two reasons a listing is short are reported apart here as they are in
@@ -601,7 +601,7 @@ def render_json(
     assessment: Assessment,
     request: BoundaryRequest,
     *,
-    warnings: typ.Sequence[str] = (),
+    warnings: cabc.Sequence[str] = (),
 ) -> str:
     """Render the versioned machine-readable envelope.
 

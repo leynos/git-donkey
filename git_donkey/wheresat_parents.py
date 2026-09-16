@@ -125,37 +125,44 @@ def identify_parent(
         The parent pull request, or why none was identified.
 
     """
-    if request.parent is not None:
-        return _named(request.parent, reads.opener)
     opener = reads.opener
     if opener is None or request.offline:
         # A run offered no opener has nothing to ask through, and one told
         # ``--offline`` may not ask. Both are decided before any rung is walked,
-        # and before the child's own record is read, because a question the run
-        # never put is not one the forge failed to answer and a record this run
-        # may not act on can name no parent to it.
+        # which includes the strongest rung of all: a parent the user named is
+        # still read from the forge, so a run that may not ask must not answer
+        # ``--parent`` either. The same decision comes before the child's own
+        # record is read, because a question the run never put is not one the
+        # forge failed to answer and a record this run may not act on can name
+        # no parent to it.
         return answered(None, "skipped")
+    if request.parent is not None:
+        return _named(request.parent, opener)
     return _searched(request, bounds, reads=reads, opener=opener)
 
 
 def _named(
     identity: stack_records.PullRequestIdentity,
-    opener: cabc.Callable[[], WheresatGitHub] | None,
+    opener: cabc.Callable[[], WheresatGitHub],
 ) -> ParentIdentification:
     """Return the pull request the run was told to consult, as the forge reads it.
 
     A named parent overrides every rung below it, and the repository the
     association search would have run in with them: a run whose checkout names
     no GitHub repository can still answer a question about a pull request the
-    user named, because the address was given rather than discovered.
+    user named, because the address was given rather than discovered. It does
+    not override ``--offline``, which is decided above this rung: the pull
+    request is read from the forge like any other, so a run that may not ask
+    the forge may not answer this either.
 
     Parameters
     ----------
     identity : stack_records.PullRequestIdentity
-        The pull request ``--parent`` named.
-    opener : collections.abc.Callable[[], WheresatGitHub] | None
-        Callable that returns a forge port, or ``None`` when the caller has
-        none to offer.
+        The pull request ``--parent`` named, or the one the child's record
+        named.
+    opener : collections.abc.Callable[[], WheresatGitHub]
+        Callable that returns a forge port, which the caller has already
+        decided this run may open.
 
     Returns
     -------
@@ -163,8 +170,6 @@ def _named(
         What the pull request is, or why it could not be read.
 
     """
-    if opener is None:
-        return answered(None, "skipped")
     port = _forge(opener)
     if isinstance(port, ParentIdentification):
         return port
@@ -251,7 +256,7 @@ def _record(reads: LadderReads, branch: str) -> stack_records.RecordResult:
 
 def _written(
     record: stack_records.RecordResult,
-    opener: cabc.Callable[[], WheresatGitHub] | None,
+    opener: cabc.Callable[[], WheresatGitHub],
 ) -> ParentIdentification | None:
     """Return the parent the child's own record names, if it names one.
 
@@ -262,6 +267,14 @@ def _written(
     a branch instead, and a branch is not a pull request — nothing local says
     which pull request heads it — so such a record answers nothing here and the
     ladder walks on.
+
+    Parameters
+    ----------
+    record : stack_records.RecordResult
+        The child's own record, as the collection phase reads it.
+    opener : collections.abc.Callable[[], WheresatGitHub]
+        Callable that returns a forge port, which the caller has already
+        decided this run may open.
 
     Returns
     -------

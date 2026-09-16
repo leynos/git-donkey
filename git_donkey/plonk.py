@@ -42,6 +42,9 @@ from git_donkey.plonk_records import (
 from git_donkey.plonk_selection import _donkey_worktree_paths
 from git_donkey.plonk_summary import _render_summary
 
+if typ.TYPE_CHECKING:
+    import collections.abc as cabc
+
 _LOGGER = logging.getLogger(__name__)
 _SOFT_TARGET_NAMES = (
     "target",
@@ -183,7 +186,7 @@ def _load_soft_plonk_context() -> _SoftPlonkContext:
 
 
 def _run_soft(
-    stanzas: typ.Iterable[dict[str, object]],
+    stanzas: cabc.Iterable[dict[str, object]],
     worktrees_root: Path,
     filesystem: _FilesystemCleanupAdapter | None = None,
     *,
