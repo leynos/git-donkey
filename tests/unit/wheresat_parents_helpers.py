@@ -61,6 +61,9 @@ DECOY_IDENTITY: typ.Final = stack_records.PullRequestIdentity(
 BOUNDARY: typ.Final = "d" * 40
 """The boundary a body's shared record names."""
 
+OTHER_BOUNDARY: typ.Final = "e" * 40
+"""A second boundary, so a body can claim two and a reading name either."""
+
 SILENT_BODY: typ.Final = (
     "This branch was branched off its parent. The commits above the boundary "
     "are its own work."

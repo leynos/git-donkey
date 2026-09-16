@@ -23,8 +23,8 @@ was answered.
 
 The one refusal that names every reading a body supports is pinned as a
 snapshot rather than probed for the parts a reader expects, because the whole
-sentence is what the operator is told: which two readings disagreed, and why
-this run will not choose between them.
+sentence is what the operator is told: which readings disagreed, and why this
+run will not choose between them.
 """
 
 from __future__ import annotations
@@ -40,11 +40,11 @@ from tests.unit.wheresat_helpers import (
     CHILD_TIP,
 )
 from tests.unit.wheresat_parents_helpers import (
-    ASSOCIATION_REPOSITORY,
     BOUNDARY,
     CHILD_BRANCH,
     CHILD_IDENTITY,
     DECOY_IDENTITY,
+    OTHER_BOUNDARY,
     PARENT_IDENTIFICATION,
     PARENT_IDENTITY,
     SILENT_BODY,
@@ -305,14 +305,22 @@ def test_a_body_that_cannot_be_read_stops_the_ladder(
     )
 
 
-def test_a_body_that_supports_two_readings_names_every_reading(
+def test_a_body_that_supports_several_readings_names_every_reading(
     recording_recorder: RecordingRecorder,
     snapshot: SnapshotAssertion,
 ) -> None:
-    """A disagreement is reported with both readings rather than resolved."""
+    """A disagreement is reported with every reading rather than resolved.
+
+    The body names two parents and two boundaries, and a reading is a parent
+    read with a boundary, so it supports four of them: each pairing is one the
+    body gives and none of them is a reading this run may take. The two
+    boundaries are distinct so that a sentence carrying one boundary through
+    every reading fails here rather than passing on a body whose readings
+    happened to agree about it.
+    """
     body = "\n".join((
         shared_body(PARENT_IDENTITY.number),
-        f"Stack parent: {ASSOCIATION_REPOSITORY}#{DECOY_IDENTITY.number}",
+        shared_body(DECOY_IDENTITY.number, boundary=OTHER_BOUNDARY),
     ))
     forge = Forge(
         payloads={CHILD_IDENTITY.number: child_payload()},
@@ -336,8 +344,9 @@ def test_a_body_that_supports_two_readings_names_every_reading(
     assert identified.parent is None, "this run will not choose among readings"
     assert len(identified.faults) == 1, "the refusal should be reported once"
     assert identified.faults[0] == snapshot, (
-        "the refusal names every reading the body supports, so the sentence is "
-        "recorded rather than probed for the parts a reader expects"
+        "the refusal names every reading the body supports, in the order the "
+        "body gives them, so the sentence is recorded rather than probed for "
+        "the parts a reader expects"
     )
     assert identified.error_kind == "stack_record_malformed", (
         "two readings of one record are the stack-record class of fault"
