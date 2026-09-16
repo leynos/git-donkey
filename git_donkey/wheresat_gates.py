@@ -42,6 +42,7 @@ from __future__ import annotations
 import dataclasses
 import typing as typ
 
+from git_donkey import stack_records
 from git_donkey.wheresat_records import (
     COMMIT_ABBREVIATION,
     GATE_NAMES,
@@ -60,8 +61,6 @@ from git_donkey.wheresat_records import (
 
 if typ.TYPE_CHECKING:
     import collections.abc as cabc
-
-    from git_donkey import stack_records
 
 _NO_PARENT: typ.Final = "the run did not set out to consult a parent pull request"
 """Why the gates about a parent pull request do not apply to a run."""
@@ -238,11 +237,6 @@ def not_applicable(name: GateName, why: str) -> GateResult:
     return GateResult(name, GateOutcome.INDETERMINATE, why, applicable=False)
 
 
-def _identity(identity: stack_records.PullRequestIdentity) -> str:
-    """Return a pull request identity as a report spells it."""
-    return f"{identity.repository}#{identity.number}"
-
-
 def _parent_identity_gate(inputs: _GateInputs) -> GateResult:
     """Gate 1: the parent consulted is the one requested, from its own repo."""
     name = GateName.PARENT_IDENTITY_MATCHES
@@ -253,11 +247,12 @@ def _parent_identity_gate(inputs: _GateInputs) -> GateResult:
         return GateResult(name, GateOutcome.INDETERMINATE, _UNRESOLVED_PARENT)
     requested = inputs.request.parent
     if requested is not None and requested != parent.identity:
-        found = _identity(parent.identity)
+        found = stack_records.identity_text(parent.identity)
         return GateResult(
             name,
             GateOutcome.FAILED,
-            f"the parent resolved to {found}, not the requested {_identity(requested)}",
+            f"the parent resolved to {found}, not the requested "
+            f"{stack_records.identity_text(requested)}",
         )
     if parent.head_fetched_from is None:
         return GateResult(name, GateOutcome.INDETERMINATE, _NO_HEAD_ORIGIN)

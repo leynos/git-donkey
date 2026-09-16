@@ -102,6 +102,24 @@ class PullRequestIdentity:
     number: int
 
 
+def identity_text(identity: PullRequestIdentity) -> str:
+    """Return one pull request as an operator writes it.
+
+    Parameters
+    ----------
+    identity : PullRequestIdentity
+        The pull request to spell.
+
+    Returns
+    -------
+    str
+        ``owner/repository#number``, the spelling every report and every
+        refusal of one uses. ``parse_pull_request_identity`` reads it back.
+
+    """
+    return f"{identity.repository}#{identity.number}"
+
+
 @dataclasses.dataclass(frozen=True, slots=True)
 class StackParent:
     """Who a branch is stacked on: a branch at birth, a pull request later.

@@ -58,6 +58,7 @@ from git_donkey import (
     stack_store,
     wheresat_shared_record,
 )
+from git_donkey.stack_records import identity_text
 from git_donkey.wheresat_errors import (
     ShallowHistoryError,
     WheresatCredentialError,
@@ -73,7 +74,6 @@ from git_donkey.wheresat_ladder import (
     answered,
     faulted,
 )
-from git_donkey.wheresat_payload import identity_text
 
 if typ.TYPE_CHECKING:
     import collections.abc as cabc

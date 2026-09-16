@@ -41,7 +41,6 @@ from git_donkey import (
     stack_records,
     stack_store,
     wheresat_collect,
-    wheresat_payload,
     wheresat_records,
     wheresat_refs,
     wheresat_remotes,
@@ -482,7 +481,7 @@ def fetch_parent_head(
         _observe(_FETCH_OPERATION, "failure", error_kind="github_api_error")
         return ParentHeadFetch(
             fault=_MOVED_HEAD.format(
-                identity=wheresat_payload.identity_text(parent.identity),
+                identity=stack_records.identity_text(parent.identity),
                 reported=parent.head_sha,
                 fetched=commit,
             ),
@@ -570,7 +569,7 @@ def _fetch_failed(
     """
     _observe(_FETCH_OPERATION, "failure", error_kind="git_command_error")
     reason = _NO_HEAD.format(
-        identity=wheresat_payload.identity_text(parent.identity), remote=remote
+        identity=stack_records.identity_text(parent.identity), remote=remote
     )
     reported = "; ".join(failures)
     return ParentHeadFetch(

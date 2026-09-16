@@ -51,7 +51,6 @@ from git_donkey import (
     stack_store,
     wheresat_deep,
     wheresat_heads,
-    wheresat_payload,
     wheresat_shared_record,
 )
 from git_donkey.wheresat_errors import ShallowHistoryError, WheresatGraphError
@@ -283,7 +282,7 @@ def _shared_record_evidence(context: CollectionContext) -> CollectionResult:
                 EvidenceKind.SHARED_RECORD,
                 source=(
                     "the shared record in the body of "
-                    f"{wheresat_payload.identity_text(claim.parent)}"
+                    f"{stack_records.identity_text(claim.parent)}"
                 ),
             ),
         )
@@ -325,7 +324,7 @@ def _pull_request_head_evidence(context: CollectionContext) -> CollectionResult:
             candidate_for(
                 head.commit,
                 EvidenceKind.PULL_REQUEST_HEAD,
-                source=f"the head of {wheresat_payload.identity_text(parent.identity)}",
+                source=f"the head of {stack_records.identity_text(parent.identity)}",
             ),
         )
     )

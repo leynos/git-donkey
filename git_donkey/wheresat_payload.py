@@ -224,8 +224,3 @@ def associated(
         if isinstance(entry, dict)
     )
     return tuple(identity for identity in identities if identity is not None)
-
-
-def identity_text(identity: stack_records.PullRequestIdentity) -> str:
-    """Return one pull request as an operator writes it."""
-    return f"{identity.repository}#{identity.number}"

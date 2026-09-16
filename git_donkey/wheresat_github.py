@@ -39,6 +39,7 @@ that weigh it live above.
 from __future__ import annotations
 
 import dataclasses
+import enum
 import os
 import time
 import typing as typ
@@ -48,6 +49,7 @@ import github3.session as github3_session
 import requests
 
 from git_donkey import github_credentials, stack_records
+from git_donkey.stack_records import identity_text
 from git_donkey.wheresat_errors import (
     WheresatCredentialError,
     WheresatGitHubError,
@@ -57,7 +59,6 @@ from git_donkey.wheresat_payload import (
     associated,
     count_field,
     flag_field,
-    identity_text,
     list_field,
     mapping,
     nested,
@@ -87,16 +88,28 @@ against a rate limit the user's other work shares.
 _API_ROOT: typ.Final = "https://api.github.com"
 _ACCEPT: typ.Final = "application/vnd.github+json"
 _ANSWERED: typ.Final = 200
-_UNAUTHORIZED: typ.Final = 401
-_FORBIDDEN: typ.Final = 403
-_NOT_FOUND: typ.Final = 404
-_SERVER_ERROR: typ.Final = 500
 _TOKEN_VARIABLES: typ.Final = ("GITHUB_TOKEN", "GH_TOKEN")
 _RATE_LIMIT_HEADERS: typ.Final = (
     "Retry-After",
     "X-RateLimit-Reset",
     "X-RateLimit-Remaining",
 )
+
+
+class _Status(enum.IntEnum):
+    """HTTP statuses whose refusal has a reason of its own.
+
+    Members rather than module constants because :func:`_status_reason` weighs
+    them in a ``match``: a case written as a bare name is a capture pattern,
+    which matches every status and leaves the cases below it unreachable, so
+    the names a case compares against have to be dotted.
+    """
+
+    UNAUTHORIZED = 401
+    FORBIDDEN = 403
+    NOT_FOUND = 404
+    SERVER_ERROR = 500
+
 
 type _PayloadCache = dict[stack_records.PullRequestIdentity, cabc.Mapping[str, object]]
 """Decoded pull request payloads, keyed by the pull request they describe."""
@@ -596,25 +609,27 @@ def _status_reason(response: requests.Response, url: str) -> str:
 
     """
     status = response.status_code
-    if status == _UNAUTHORIZED:
-        return (
-            f"GitHub rejected the credential for {url} (HTTP {_UNAUTHORIZED}); "
-            "the token may have been revoked or expired"
-        )
-    if status == _FORBIDDEN:
-        return _forbidden_reason(response, url)
-    if status == _NOT_FOUND:
-        return (
-            f"GitHub has nothing at {url} (HTTP {_NOT_FOUND}); a credential "
-            "that cannot see a private repository is answered this way, so "
-            "this is not evidence that the pull request or the commit does "
-            "not exist"
-        )
-    if status is not None and status >= _SERVER_ERROR:
-        return (
-            f"GitHub answered {url} with a server error (HTTP {status}); the "
-            "question went unanswered"
-        )
+    match status:
+        case _Status.UNAUTHORIZED:
+            return (
+                f"GitHub rejected the credential for {url} "
+                f"(HTTP {_Status.UNAUTHORIZED}); the token may have been "
+                "revoked or expired"
+            )
+        case _Status.FORBIDDEN:
+            return _forbidden_reason(response, url)
+        case _Status.NOT_FOUND:
+            return (
+                f"GitHub has nothing at {url} (HTTP {_Status.NOT_FOUND}); a "
+                "credential that cannot see a private repository is answered "
+                "this way, so this is not evidence that the pull request or "
+                "the commit does not exist"
+            )
+        case _ if status >= _Status.SERVER_ERROR:
+            return (
+                f"GitHub answered {url} with a server error (HTTP {status}); "
+                "the question went unanswered"
+            )
     return f"GitHub answered {url} with HTTP {status}, which is not an answer"
 
 

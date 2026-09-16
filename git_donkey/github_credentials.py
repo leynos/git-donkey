@@ -124,11 +124,16 @@ def write_token(path: Path, token: str, auth_id: int | None) -> None:
             opened = True
             fh.write(payload)
         temporary_path.replace(path)
-    except OSError:
-        if not opened:
-            # ``os.fdopen`` refused before it took the descriptor over, so the
-            # descriptor is still this call's to close; unlinking the name
-            # alone would leave the token readable through it.
-            os.close(temporary_handle)
-        temporary_path.unlink(missing_ok=True)
-        raise
+    finally:
+        try:
+            if not opened:
+                # ``os.fdopen`` refused before it took the descriptor over, so
+                # the descriptor is still this call's to close; unlinking the
+                # name alone would leave the token readable through it.
+                os.close(temporary_handle)
+        finally:
+            # The rename consumed the name on success, so this is a no-op
+            # there. Every failure leaves it, an interrupt included: a token
+            # must not survive in the clear beside the target it was meant to
+            # become.
+            temporary_path.unlink(missing_ok=True)

@@ -28,7 +28,6 @@ import dataclasses
 import typing as typ
 
 from git_donkey import stack_records
-from git_donkey.wheresat_payload import identity_text
 
 PARENT_LABEL: typ.Final = "Stack parent"
 """The label whose line names the parent pull request."""
@@ -170,7 +169,7 @@ def render_shared_record(record: SharedRecord) -> str:
 
     """
     text = (
-        f"{PARENT_LABEL}: {identity_text(record.parent)}\n"
+        f"{PARENT_LABEL}: {stack_records.identity_text(record.parent)}\n"
         f"{BOUNDARY_LABEL}: {record.boundary}"
     )
     if parse_shared_record(text) != record:
