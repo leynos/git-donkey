@@ -2580,6 +2580,262 @@ Stop and escalate rather than improvising when any of these is reached.
     reader can check the claim against the diff rather than against this
     paragraph.
 
+  - Review round: `coderabbit review --agent --base origin/main` was invoked
+    twice over the tree at `a3e6039`: once to completion, reporting 11 findings
+    over 8 files (log
+    `/tmp/coderabbit-git-donkey-git-wheresat-sub-command-9.out`, the agent-mode
+    stream whose 11 `finding` records are kept as
+    `/tmp/coderabbit-findings-9.jsonl` for triage), and once earlier, cut off
+    at the command's ten-minute cap having already reported 19 findings over
+    18 files. Both streams are triaged, and the round's set is the 30 rows over
+    21 distinct files that the two hold — 2 major, 13 minor, and 15 trivial —
+    taken on 2026-09-16 without meeting a rate limit. Every request is actioned
+    but one, which is declined below with the evidence for it.
+  - The first lesson is about how the round was gathered rather than about any
+    finding. A completed run of this command is not the whole finding set, and
+    nothing in its exit status says so: the completed stream's 11 rows over 8
+    files and the cut-off stream's 19 over 18 come to 30 rows over 21 distinct
+    files, so triaging only the run that finished would have left most of the
+    cut-off stream unanswered and would have looked exactly like a clean round.
+    The cap is the command's, and the count it reports is a prefix of what it
+    found rather than a total.
+  - The round's two majors are both an answer that would have been silent
+    rather than wrong. `git_donkey/wheresat_graph.py` passed `--no-ext-diff`
+    but not `--no-color` to the `git diff` whose output `git patch-id` reads,
+    so a caller whose configuration colours a pipe would have handed the
+    identifier computation escape sequences and received nothing back: the
+    comparison that decides whether a squash landed would have had no answer to
+    give. Adding the flag put the module at 802 lines against 800, and the
+    paragraph stating why is how it came back under: the budget made the
+    explanation shorter, not vaguer.
+  - The second major read the child tip from the bare branch name, where Git's
+    precedence rules decide what answers, so a tag, or a file, carrying the
+    branch's name would have been read as the branch. `refs/heads/<branch>` is
+    resolved instead, which is the branch `--branch` means and the ref the
+    record's anchor is built from.
+  - `--branch` is validated through `stack_records.validate_ref_component`, the
+    same function birth applies to a branch name, so a name no record's ref may
+    carry is a `WheresatUsageError` naming the rule it broke, raised before
+    anything is read rather than as a `ValueError` from the collection phase
+    reaching the operator once evidence was already being read. The two paths
+    cannot drift, because they are one function.
+  - `git_donkey/plonk_cleanup.py` had the same hole with a name read out of the
+    record namespace rather than off the command line: `refs/stack-bases/-x` is
+    a ref Git will itself write, and the anchor path built from it raises
+    `ValueError`. A dry run reads every orphan's anchor through the same
+    reader, so both halves are wrapped and the refusal stops the run as a
+    failure before a single worktree is removed.
+  - `--offline` was decided after the named-parent rung, so a run that may not
+    ask the forge was still reading a `--parent` from it: a parent the user
+    named is read from the forge as any other is, so the decision is taken
+    before every rung. The two rungs that hold an opener no longer accept
+    `None`, which makes the "skipped" answer reachable on one path rather than
+    two.
+  - Two smaller source findings are about a resource and a derivation. The
+    repository opened to read a worktree's state is opened in a `with` block
+    and read inside it, so its handles are released once both reads have
+    answered. The parent-history gate's "what the parent lacks" is read from
+    `without_parent` rather than from the range listing, which is the
+    subtraction the gate is named for.
+  - The suites lose their second copies. `ref_value` and `config_section` have
+    one implementation in `tests/git_repo_helpers.py`, with `config_section`
+    taking the prefix it reads below, and both suites call it. The scenario
+    module's own `forget_record` is gone, and what it did is why: it unset a
+    _prefix_ of the branch section, so a key whose name merely began the way a
+    record key does would have gone with it, where the shared helper unsets
+    each of the four by name and deletes the anchor. Four assertions stop
+    naming what they should read: the abbreviated commit via
+    `COMMIT_ABBREVIATION`, the expected status via `Status`, the run's streams
+    drained before the run so a `git donkey` message cannot stand in for one of
+    its own, and the two fixtures' attributes documented as the shared dataclass
+    convention asks. The refusal double passes `GitCommandError`'s text through
+    `stderr=` rather than through the position that reads like a status, the
+    property tests' three dictionaries are annotated with `collections.abc`
+    rather than with bare builtins, the `--branch` refusal is pinned where the
+    request is built rather than at the store that would have found it later,
+    and the record suite's own account of how many cases it holds matches what
+    it collects.
+  - Two documents were corrected, and one of them is this plan. The manual page
+    ran a closing literal straight into the next emphasis marker, which Docutils
+    reads as one unterminated expression, and the plan's recipe for removing a
+    stack record unset the whole `branch.<name>` section, taking whatever else
+    Git and the user had put there with it; the four record keys are unset
+    individually now, and section removal is offered as the shortcut it is. A
+    review reads the plan as well as the code, which makes this the second round
+    running whose findings include this file's own text.
+  - The `ref_name` return is declined, and the reason is a gate rather than a
+    preference: the estate's pylint configuration enables `useless-return` at
+    `pyproject.toml:283`, and commit `45eef3b` on this branch deleted exactly
+    that statement — a `return None` under an annotation that already admits it
+    — to get `make lint` green. Adding it back would fail the gate the review
+    is handed a green run of, and the method's body already says what it
+    answers. Round 10 asks for it again, and round 10's entry below records the
+    shape that answers both: an explicit `return` taken before the `raise`,
+    rather than after it.
+  - `make lint` stopped at its first failing stage three times over, and each
+    stop hid the next: `wheresat_graph.py` at 802 lines (C0302, built-in
+    pylint); then the two `UnnameableStackStore` methods that only forwarded to
+    a private helper (R9104 `trivial-attribute-wrapper`, the df12 pylint
+    configuration); then, once those were declared static, `ty` refusing the
+    override for the Liskov rule the instance method it overrides states. The
+    final shape is two instance methods that build their message through a
+    private static helper and raise it, which is what all three checkers accept
+    at once. Two of the three are on files the review never named; they are on
+    this branch, and the branch keeps its own gates green either way. Round 8's
+    lesson is what this round re-ran: a gate that stops at its first failing
+    stage leaves every stage after it unmeasured, so a green re-run of one stage
+    is not a green gate.
+  - The nine checks are green over the tree the fixes were made in, which is
+    what round 9 is pushed as: `test` reports 971 passed with 22 snapshots, four
+    more than round 8's 967; `lint` completes all seven stages with both pylint
+    configurations at 10.00/10; `typecheck` is clean under `ty` 0.0.79;
+    `check-fmt` reports 175 files formatted with `mdtablefix` unchanged;
+    `markdownlint` lints 30 files with 0 errors; `nixie` validates every
+    diagram; `spelling` passes; `build` checks 78 packages; and
+    `cs delta origin/main` reports no issues, each log under
+    `/tmp/<gate>-git-donkey-git-wheresat-sub-command.out`.
+  - The disposition is posted on the pull request (round 9,
+    `#issuecomment-5690832724`), naming for each request the file it changed
+    and, for the one that is declined, the gate that declines it, so a reader
+    can check the claim against the diff rather than against this paragraph.
+
+  - Review round: `coderabbit review --agent --base origin/main` reports 14
+    findings over the tree at `7795307` (log
+    `/tmp/coderabbit-git-donkey-git-wheresat-sub-command-10.out`, the agent-mode
+    stream whose 14 `finding` records are kept as
+    `/tmp/coderabbit-findings-10.jsonl` for triage), taken on 2026-09-16 in one
+    attempt and without meeting a rate limit, over the 122 files the review
+    reports. The 14 are 5 major, 4 minor, and 5 trivial, and they are 9
+    distinct requests: five of them are raised twice, once in each of the two
+    places the same change is visible. All nine are actioned.
+  - The round's first major is a commit that could be recorded at one place and
+    started from another. `git donkey` resolved the base's commit twice — once
+    to decide whether the branch is stacked, and again by name inside the step
+    that created it — and a base branch can move in between, because a push
+    from somewhere else does exactly that. The record's whole claim rests on
+    those two being the same commit. The base is resolved once now, after the
+    pull that may have moved it, and the ref and its commit travel together in
+    `_Base`: that pair is what the stack decision weighs against the trunk,
+    what the worktree request carries, and what the birth record is written
+    from.
+  - The same finding has a second half, and it is the reason the first half
+    matters: whether a base _is_ the trunk is no longer decided by name. A
+    local `main` carrying unpushed work is not the commit the remote-tracking
+    ref of that name holds, so a branch cut from it is stacked, and the two
+    refs go to the comparison that sees it. Both halves are tested where they
+    can be observed: a unit case names the trunk as the base and asserts the
+    commit comparison still records it, and an integration case moves the base
+    branch inside the step that ensures it is available, asserting that the
+    worktree's tip and the record's boundary are both the commit resolved before
+    the move — resolving by name instead fails that assertion on the tip.
+  - A pull request's payload is read once, however many questions ask for it.
+    Whether a pull request merged, what its body says, and where it sits in a
+    stack are three facts one resource holds, and the adapter asked for it once
+    per question, against a forge allowance the credential shares with
+    everything else it does. `ApiWheresatGitHub` keeps the payloads it has read,
+    keyed by the pull request they describe, and `_payload` answers every reader
+    from that cache; the field is excluded from equality and from the
+    representation because it is what the adapter has been asked rather than
+    what it is. The recordings cannot show the saving, since VCR replays a
+    response as often as it is asked for, so the test counts what was played
+    instead: three questions about one stacked pull request and the stack below
+    it cost two requests, and the same test with the cache bypassed reports
+    four.
+  - The rollback is the round's third major and it is about a state readers
+    call malformed. A create published its anchor and then wrote the four
+    configuration values one at a time, so a refusal part way through left the
+    anchor in place beside an incomplete set of values; a refresh did the same
+    to a record that was already valid. Both put back what they found now. The
+    anchor is written first because Git's own compare-and-swap is what enforces
+    the create-only and expected-old conditions, so each failure path undoes the
+    anchor under the commit it wrote — deleted for a create, moved back for a
+    refresh — and restores the values the branch had. The repair is best effort,
+    because the caller is already being told its write failed and a second error
+    would replace that one.
+  - The write half of the store moved to `git_donkey/stack_writes.py` to make
+    room for that rollback without pushing the store past the 800-line budget,
+    and the split turned out to be a design one rather than a size one: the two
+    modules are the read half and the write half of one store, each caller holds
+    whichever half it uses, and a caller that only reads holds a reader it
+    cannot write through. The writer protocol and the Git-failure prose moved
+    with the writes, so no private name crosses between the halves. Each
+    rollback path is pinned by a test that fails when the undo is removed.
+  - The `--json` promise now holds where it was most likely to break. An
+    argument the parser refuses never reaches the run, so `git-wheresat` writes
+    that envelope at the console-script boundary, from the raw arguments rather
+    than from the parsed options, because the question is asked exactly when
+    parsing has failed. The scan stops at `--`, after which a token is
+    positional; a later flag overrides an earlier one, as it does in Cyclopts;
+    `--json=false`, `--json=0`, and `--no-json` are not a request for the
+    envelope, and the set of spellings Cyclopts reads as false was read from the
+    installed parser rather than assumed. The status is the usage status rather
+    than the `1` Cyclopts exits with, because `1` is this command's answer for a
+    boundary the evidence refused and no parser established one. A run that did
+    not ask for the envelope keeps Cyclopts' diagnostic and status, as every
+    other console script here does, and both halves are pinned at that
+    boundary: seven cases in `tests/unit/test_cli_wheresat.py` drive the
+    function `git_wheresat` hands the process arguments to, and read the streams
+    the envelope and the panel are written to.
+  - The unrecorded explicit base is documentation the round asked for twice, in
+    the users' guide and the migration guide both. Recording compares against
+    the trunk from local refs only, and a base named explicitly is qualified
+    against the remote's own ``refs/remotes/<remote>/HEAD`` alias, so a
+    repository without that alias leaves a branch cut from a reachable
+    non-trunk base unrecorded; `git wheresat` then establishes the boundary from
+    the surviving evidence, and `git remote set-head <remote> --auto` restores
+    the alias. Both documents say so now, which is the third round running whose
+    findings include a caveat standing in more than one place.
+  - Four smaller requests are shapes. The cleanup helper's summary said it
+    returns the Git surfaces a run cleans through while its Returns section had
+    named the record surface beside them for as long as both have been there, so
+    the summary says both. `ParentPullRequestOverrides` declares `landed`, which
+    the builder has been passing through `replace` all along: the TypedDict is
+    what makes a misspelt or mistyped override a type error rather than a
+    silently ignored keyword. The `skylos-allow` recipe's comment moved above
+    its target, because a comment inside a recipe is echoed by make before each
+    line it describes and it explains the target's exported variables rather
+    than any one line of its body. And the `ref_name` return that round 9
+    declined comes back here; the answer is the shape that satisfies both
+    rounds, with the explicit `return` taken before the `raise` rather than as
+    the function's last statement.
+  - What the gates found first arrived one failure at a time, and the reason is
+    the target: `make lint` runs its seven stages as separate recipe lines and
+    stops at the first one that fails, so each fix revealed only the stage
+    behind it. It stopped four times. The first was stage one, `ruff check`,
+    over `docstring-missing-exception` for the refusal the rollback helper in
+    `tests/unit/test_stack_store.py` raises, which a `Raises` section now
+    names. The second was stage one again, over `magic-value-comparison` for
+    the literal window the new console-script case compared against, a named
+    constant now. The third was stage four, the built-in pylint pass, over
+    `C1804` on three empty-stream comparisons in that same test file. The
+    fourth was stage five, the df12 profile, over `C9102` on six of the file's
+    assertions — the rule wants every one of them to say what it means — and
+    the run that cleared it reached `ambrleaks` and `skylos` for the first
+    time. The run between those was red in two more gates and one dependency:
+    `check-fmt` wanted `mdtablefix`'s own reflow of the paragraph the users'
+    guide had just gained, which is a wrap a hand wrap cannot guess, and
+    `spelling` flagged `--no-color` in this plan's own prose, because the
+    estate's dictionary no longer skips inline code, so the flag is named in
+    `typos.local.toml` as the entry beside it names `color`.
+    `make markdownlint` takes `spelling` as a prerequisite, so its red line
+    that run was that dependency rather than a result of its own — the shape of
+    round 8's lesson, one target further out. Every one of the six is this
+    round's own work, and each is a gate doing its job over code written after
+    the review rather than a defect the review missed.
+  - The nine checks are green over the tree the fixes were made in, which is
+    what round 10 is pushed as: `build` resolved 80 packages and checked 78;
+    `check-fmt` found 177 files already formatted and `mdtablefix` left its 29
+    unchanged; `lint` reached all seven of its stages, with the built-in and
+    df12 pylint passes both at 10.00/10 and `ambrleaks` and `skylos` clean over
+    `tests` and `git_donkey`; `typecheck` passed under ty 0.0.79; `test`
+    reported 983 passed, 233 warnings and 22 snapshots in 19.51 seconds;
+    `spelling` was clean and its helper tests passed 16 at 93.75% coverage;
+    `markdownlint` linted 30 files with 0 errors; `nixie` validated 6 diagrams;
+    and `cs delta origin/main` found no issues over the branch including its
+    uncommitted changes. This entry, including this bullet and the one above
+    it, is Markdown written once those numbers were known, so the Markdown
+    gates are re-run over it.
+
 ## Surprises & discoveries
 
 - Observation: this repository has no roadmap document.
@@ -6688,9 +6944,18 @@ def is_repository_slug(owner: str, separator: str, name: str) -> bool:
 
 ### `git_donkey/stack_store.py`
 
-The only module in the package that reads or writes a stack record. Split into
-a read protocol and a write protocol, so a caller that only reads —
-`git wheresat` on its default path — never holds an object that can write.
+The read half of the record store, and one of the two modules in the package
+that touch a record's artefacts: `git_donkey/stack_writes.py` holds the write
+half since review round 10, and between them they own the format's two
+artefacts. Split into a read protocol and a write protocol, so a caller that
+only reads — `git wheresat` on its default path — never holds an object that
+can write.
+
+The split is a module-size decision that turned out to be a design one: the
+rollback a failed write performs needs more code than the 800-line module
+budget had left, and a writer is the only thing that can be rolled back. The
+writer protocol and the Git-failure prose move with the writes, so no private
+name crosses between the halves, and each caller imports the half it uses.
 
 ```python
 class StackRecordReader(typ.Protocol):
@@ -6779,7 +7044,9 @@ class StackRecordWriter(StackRecordReader, typ.Protocol):
 
 `git donkey` uses `create`. `git plonk` uses `entomb`, `sweep`, and `prune`.
 `git wheresat` uses `StackRecordReader`, and `StackRecordWriter.refresh` only
-under `--record`.
+under `--record`. Every writer is constructed from
+`git_donkey/stack_writes.py`, which is where `StackRecordWriter` and its Git
+implementation live.
 
 ### `git_donkey/wheresat_records.py`
 
@@ -7746,10 +8013,11 @@ automatically.
 ### Changes to existing files
 
 - `git_donkey/cli.py`: add `_wheresat_app`, `_wheresat_cli`, and
-  `git_wheresat()`, following the `_plonk_app` pattern.
+  `git_wheresat()`, following the `_plonk_app` pattern, plus the raw-argument
+  interception `--json` needs for an argument the parser refuses (round 10).
 - `git_donkey/observability.py`: the vocabulary additions above.
 - `git_donkey/donkey_worktrees.py`: after the existing `git worktree add`
-  at lines 184-192, call `stack_store.StackRecordWriter.create` when
+  at lines 184-192, call `stack_writes.StackRecordWriter.create` when
   `stack_records.should_record` says the resolved base is not the trunk. The
   frozen `start_point` already computed on line 186 is the record's `base`;
   nothing new needs resolving. Do not change the `--no-track` decision —
