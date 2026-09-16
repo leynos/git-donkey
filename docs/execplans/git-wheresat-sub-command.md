@@ -3981,7 +3981,7 @@ Stop and escalate rather than improvising when any of these is reached.
     `/tmp/coderabbit-git-donkey-git-wheresat-sub-command-22.out`, whose 11
     `finding` records are kept as `/tmp/coderabbit-findings-22.jsonl` for
     triage), taken on 2026-09-16 in one attempt and without meeting a rate
-    limit. The 11 are 4 minor and 7 trivial, with no major among them, and
+    limit. The 11 are 5 minor and 6 trivial, with no major among them, and
     findings 3 and 11 are one request reported twice against the same lines of
     `tests/integration/wheresat_helpers.py`: the ten distinct requests are all
     taken, and none is declined. The round's changes are in `f8c5389`.
