@@ -3733,6 +3733,80 @@ Stop and escalate rather than improvising when any of these is reached.
     diagram; and `cs delta origin/main` found no issues. This entry, including
     this bullet, is Markdown written once those numbers were known, so the
     Markdown gates are re-run over it.
+  - Review round: `coderabbit review --agent --base origin/main` reports 11
+    findings over the tree at `9a1fa4c`, the head round 18 closed on (log
+    `/tmp/coderabbit-git-donkey-git-wheresat-sub-command-19.out`, whose 11
+    `finding` records are kept as `/tmp/coderabbit-findings-19.jsonl` for
+    triage), taken on 2026-09-16 in one attempt of 1061 seconds and without
+    meeting a rate limit. The 11 are 6 minor and 5 trivial, with no major among
+    them, and findings 7 and 11 are one request reported twice against the same
+    two lines: the ten distinct requests are all taken. The round's changes are
+    in `8196523`.
+  - The first finding is the boundary described as the subject of the replay
+    rather than its upstream argument. The report prints
+    `git rebase --onto <target> <old-base> <branch>`, so the boundary the run
+    establishes is the argument that rebase passes as its upstream, and the old
+    wording — the commit to rebase onto — named the target's role for it.
+    `docs/users-guide.md`'s overview and `git_donkey/cli.py`'s `_wheresat_app`
+    help now say the old base the branch's own work sits on, which a rebase
+    passes as its upstream argument while rebasing onto the target.
+    `README.md`'s quick-start comment carried the same wording and is aligned
+    with them. The `## git wheresat` section's own question was checked and
+    left: it asks where the replay goes, and the sentence after it names the
+    boundary as the commit before the branch's own work, so it does not carry
+    the claim the finding is about.
+  - The en-GB spelling finding takes `recognized` in the assertion message the
+    dotted-branch test carries, which is the form ten of this tree's twelve
+    `recogniz*` forms use. The forms carrying the other ending, which the
+    finding did not name, are left as the round found them: only the one
+    message was asked for, and the tree does not spell that word one way
+    throughout.
+  - Four test-infrastructure requests are taken as asked.
+    `tests/integration/wheresat_scenarios.py`'s `branch_head` and
+    `reflog_lines` gained the NumPy `Parameters` sections their neighbours
+    carry. `tests/unit/stack_store_helpers.py`'s tombstone write passes
+    `encoding="utf-8"` explicitly. `tests/unit/plonk_cleanup_helpers.py`
+    imports `stack_writes` under `TYPE_CHECKING`, where its only use is.
+    `tests/git_repo_helpers.py`'s squash-merge fixture commit passes
+    `--no-gpg-sign` and `--no-verify` beside the `-m`, so a contributor's
+    signing configuration or hooks cannot change what the fixture repository
+    contains.
+  - The twice-reported request is `git_donkey/wheresat_worktrees.py`'s
+    `_GitExecute.execute`, which now annotates its command as
+    `cabc.Sequence[str]` with `collections.abc` imported under `TYPE_CHECKING`,
+    the guard the house form uses.
+  - The candidate bound's prose is brought into line with the comparison that
+    applies it. `_capped` cuts when `len(candidates) > MAX_CANDIDATES`, so a
+    set that _reaches_ the bound is a set the run reports whole, and the
+    constant's docstring had said otherwise. Its docstring, the module
+    docstring, and `_capped`'s summary and `Returns` block now all say the
+    bound was exceeded rather than reached, so the constant is documented the
+    same way in the three places a reader meets it.
+  - The retention window's handler in `git_donkey/plonk_cleanup.py` catches
+    `GitCommandError` beside `ValueError`. Reading the window is a Git
+    configuration read, so a Git refusal there was escaping
+    `_configured_expiry` as a traceback rather than being reported through
+    `helpers._die` with the status every other unusable window is reported
+    with.
+  - The last finding is `_assert_reported` in
+    `tests/integration/test_git_plonk_stack_bdd.py`, whose scan now skips the
+    remainder of the line the heading was found on — that remainder is the
+    heading's own tail rather than a bullet of its section — and ends at the
+    first line that is not a bullet, a blank line included. Consecutive bullet
+    lines are still collected, and the summary the command prints carries no
+    blank lines, so the rewritten scan reads every section a real run writes
+    exactly as the one before it did.
+  - The nine gates were then taken over the tree `8196523` records, in one
+    sequential pass, and all nine are green: `build` synced 80 packages;
+    `check-fmt` left 188 files formatted with mdtablefix's 29 unchanged;
+    `lint` reached the end of its chain, with ruff passing, interrogate
+    holding 100.0%, and pylint at 10.00/10 under both configurations;
+    `typecheck` passed at ty 0.0.79; `test` passed 1005 tests with 22
+    snapshots; `spelling` passed its 16 helper tests at 93.75% coverage;
+    `markdownlint` linted 30 files with 0 errors; `nixie` validated every
+    diagram; and `cs delta origin/main` found no issues. This entry, including
+    this bullet, is Markdown written once those numbers were known, so the
+    Markdown gates are re-run over it.
 
 ## Surprises & discoveries
 
