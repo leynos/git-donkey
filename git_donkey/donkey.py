@@ -15,7 +15,6 @@ helpers, and upstream tracking.
 
 from __future__ import annotations
 
-import dataclasses
 import os
 import typing as typ
 
@@ -31,6 +30,13 @@ from git_donkey import (
     stack_writes,
     templates,
 )
+from git_donkey.donkey_context import (
+    _DEFAULT_PULL_OPTIONS,
+    _Base,
+    _DonkeyContext,
+    _PullOptions,
+    _Trunk,
+)
 from git_donkey.helpers import _GIT_DONKEY_PREFIX as _GIT_DONKEY_PREFIX
 from git_donkey.observability import Observation
 
@@ -38,17 +44,6 @@ if typ.TYPE_CHECKING:
     from pathlib import Path
 
 type _PullMode = typ.Literal["--rebase", "--ff-only"]
-
-
-@dataclasses.dataclass(frozen=True, slots=True)
-class _PullOptions:
-    """Explicit, mutually exclusive base-checkout update options."""
-
-    pull_rebase: bool = False
-    pull_ff: bool = False
-
-
-_DEFAULT_PULL_OPTIONS = _PullOptions()
 
 
 def _record(observation: Observation) -> None:
@@ -84,16 +79,6 @@ def _record_base_update(
     )
 
 
-@dataclasses.dataclass(frozen=True, slots=True)
-class _DonkeyContext:
-    """Container for resolved git-donkey repository state."""
-
-    repo_home: Repo
-    remote: str
-    branch_to_worktree: dict[str, Path]
-    worktrees_root: Path
-
-
 def choose_base_branch(saved_cwd_branch: str, origin_arg: str) -> str:
     """Resolve an explicitly supplied base branch.
 
@@ -114,48 +99,6 @@ def choose_base_branch(saved_cwd_branch: str, origin_arg: str) -> str:
     if origin_arg == ".":
         return saved_cwd_branch
     return origin_arg
-
-
-@dataclasses.dataclass(frozen=True, slots=True)
-class _Trunk:
-    """The principal remote's default branch, as selected and as resolved.
-
-    Parameters
-    ----------
-    ref
-        Fully qualified remote-tracking ref of the default branch. This is
-        always the remote-tracking form rather than whichever form the base
-        happened to be named by, so the two refs compared when deciding
-        whether a branch is stacked are directly comparable.
-    commit
-        Commit the ref resolved to, frozen before the branch is created.
-
-    """
-
-    ref: str
-    commit: str
-
-
-@dataclasses.dataclass(frozen=True, slots=True)
-class _Base:
-    """The base a new branch is created from, as this run resolved it.
-
-    The ref and the commit travel together because they are one observation: a
-    worktree started from one while the record names the other would describe a
-    birth that never happened.
-
-    Parameters
-    ----------
-    ref
-        Ref the base was selected by, as the selection named it.
-    commit
-        Commit that ref resolved to, or ``None`` when no ref of that name
-        exists here.
-
-    """
-
-    ref: str
-    commit: str | None
 
 
 def _fetch_remote_default_ref(context: _DonkeyContext) -> tuple[str, str]:
@@ -611,8 +554,11 @@ def _create_worktree(
     ------
     SystemExit
         Propagated from the creation step when the branch is already checked
-        out elsewhere, the target path exists, ``git worktree add`` fails, or
-        the branch was created but its stack record could not be written.
+        out elsewhere, the target path exists, or ``git worktree add`` fails.
+    donkey_worktrees.StackRecordRefusalError
+        Propagated when the branch was created but its stack record could not
+        be written, which the step below records as the successful creation it
+        was rather than as a worktree that was never made.
 
     """
     target_path = (context.worktrees_root / branch_name).resolve()
@@ -635,6 +581,13 @@ def _create_worktree(
                 context=worktree_context,
                 request=request,
             )
+        except donkey_worktrees.StackRecordRefusalError:
+            # The branch and its worktree were created; the record was not, and
+            # the write step has already recorded that failure under its own
+            # operation. This step ends as the creation it was, because
+            # reporting it as a failure would say the worktree was never made.
+            _record_outcome("worktree_creation", "success")
+            raise
         except SystemExit:
             # Creation reports conflicts and failed Git commands by exiting;
             # record that outcome and preserve the exit for the caller.

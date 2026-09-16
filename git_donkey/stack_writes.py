@@ -371,7 +371,11 @@ class GitStackRecordWriter(stack_store.GitStackRecordReader):
         The repair is best effort. A failure here is not reported, because the
         caller is already being told its write failed and a second error would
         replace that one; what it leaves is a record the next read reports as
-        malformed, which is the state this call exists to avoid.
+        malformed, which is the state this call exists to avoid. Every step is
+        repaired on its own for the same reason: a step that fails leaves the
+        rest repaired rather than abandoning the record part way back, and the
+        anchor is moved before the values are restored so that the boundary a
+        reader needs is the repair that is attempted first.
 
         Parameters
         ----------
@@ -385,20 +389,19 @@ class GitStackRecordWriter(stack_store.GitStackRecordReader):
             the ``branch.<name>.`` prefix.
 
         """
+        ref = stack_records.base_ref_path(record.branch)
         with contextlib.suppress(GitCommandError):
-            for key in stack_records.RecordKey:
-                self._unset_configuration(f"branch.{record.branch}.{key.value}")
-                if key.value in previous:
-                    self.repo.git.config(
-                        "--local",
-                        f"branch.{record.branch}.{key.value}",
-                        previous[key.value],
-                    )
-            ref = stack_records.base_ref_path(record.branch)
             if expected_old:
                 self.repo.git.update_ref(ref, expected_old, record.base)
             else:
                 self.repo.git.update_ref("-d", ref, record.base)
+        for key in stack_records.RecordKey:
+            key_path = f"branch.{record.branch}.{key.value}"
+            with contextlib.suppress(GitCommandError):
+                self._unset_configuration(key_path)
+            if key.value in previous:
+                with contextlib.suppress(GitCommandError):
+                    self.repo.git.config("--local", key_path, previous[key.value])
 
     def _write_tombstone(self, branch: str, tip: str) -> None:
         """Write the tombstone ref for ``branch``, with a reflog to age it by."""

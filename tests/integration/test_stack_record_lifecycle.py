@@ -754,3 +754,10 @@ def test_a_refused_record_write_is_reported_as_a_failed_record(
     assert recorded == ([] if expected_kind is None else [expected_kind]), (
         f"the refusal is recorded as {expected_kind}, got: {recorded}"
     )
+    assert recording_recorder.outcomes("worktree_creation") == [
+        "started",
+        "success",
+    ], (
+        "a refusal of the record is not a failed creation: the worktree the "
+        "branch was created in is there, and only the record is missing"
+    )

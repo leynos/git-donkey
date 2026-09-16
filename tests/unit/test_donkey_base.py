@@ -9,13 +9,14 @@ from __future__ import annotations
 import typing as typ
 
 import pytest
-from git import Repo
 
 from git_donkey import donkey
 from tests import git_repo_helpers
 
 if typ.TYPE_CHECKING:
     from pathlib import Path
+
+    from git import Repo
 
 
 # Exit status reserved for a command-line usage error.
@@ -84,11 +85,13 @@ def test_no_pull_remains_a_compatible_no_op() -> None:
 def _repository(tmp_path: Path) -> Repo:
     """Return a fresh repository with one commit on ``main``.
 
-    The commit identity is configured in the repository itself, so the case
-    neither depends on nor writes to the runner's own Git configuration. The
-    branch ``Repo.init`` started on is renamed to ``main``, so a case that
-    reads a local branch of that name is answered by the fixture rather than
-    by whatever ``init.defaultBranch`` happens to be set to.
+    The seeding is the shared helper's, so the repository a case here is handed
+    is the one the rest of the suite is handed: the commit identity is
+    configured in the repository itself, so the case neither depends on nor
+    writes to the runner's own Git configuration, and the branch ``Repo.init``
+    started on is renamed to ``main``, so a case that reads a local branch of
+    that name is answered by the fixture rather than by whatever
+    ``init.defaultBranch`` happens to be set to.
 
     Returns
     -------
@@ -96,11 +99,7 @@ def _repository(tmp_path: Path) -> Repo:
         The repository, checked out on ``main``.
 
     """
-    repo = Repo.init(tmp_path)
-    git_repo_helpers.configure_repo(repo)
-    repo.git.commit("--allow-empty", "-m", "the trunk")
-    repo.git.branch("-M", "main")
-    return repo
+    return git_repo_helpers.seed_repo(tmp_path, branch="main")
 
 
 def _context(tmp_path: Path) -> donkey._DonkeyContext:

@@ -314,13 +314,17 @@ def config_section(repo: Repo, branch: str) -> dict[str, str]:
 
     """
     prefix = f"branch.{branch}."
-    return {
-        key[len(prefix) :]: value
-        for entry in repo.git.config("--local", "--list", "-z").split("\0")
-        if entry
-        for key, _, value in (entry.partition("\n"),)
-        if key.startswith(prefix)
-    }
+    # ``--list -z`` separates entries with NUL and each entry's key from its
+    # value with a newline, so an entry is split on that newline and the whole
+    # of the value is kept however many newlines it holds.
+    settings: dict[str, str] = {}
+    for entry in repo.git.config("--local", "--list", "-z").split("\0"):
+        if not entry:
+            continue
+        key, _, value = entry.partition("\n")
+        if key.startswith(prefix):
+            settings[key[len(prefix) :]] = value
+    return settings
 
 
 def _merge_base(repo: Repo, *arguments: str) -> tuple[int, str]:

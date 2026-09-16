@@ -191,14 +191,19 @@ class WheresatWrites:
         """
         if not requested:
             return ()
-        if not isinstance(assessment, wheresat_records.Established):
-            _observe(_RECORD_OPERATION, "rejected")
-            return (_NOTHING_TO_RECORD,)
-        if not _attested(assessment.support):
-            _observe(_RECORD_OPERATION, "rejected")
-            return (_UNATTESTED_TO_RECORD,)
-        self._refresh(assessment, expected)
-        return ()
+        # The union is read by what the assessment is, so each shape says for
+        # itself what a run that reached it writes: nothing, when there is no
+        # boundary or the boundary is only computed evidence.
+        match assessment:
+            case wheresat_records.Established(support=support) if _attested(support):
+                self._refresh(assessment, expected)
+                return ()
+            case wheresat_records.Established():
+                _observe(_RECORD_OPERATION, "rejected")
+                return (_UNATTESTED_TO_RECORD,)
+            case _:
+                _observe(_RECORD_OPERATION, "rejected")
+                return (_NOTHING_TO_RECORD,)
 
     def retain(
         self,
@@ -224,19 +229,22 @@ class WheresatWrites:
             or an indeterminate result when the boundary could not be kept.
 
         """
-        if not isinstance(assessment, wheresat_records.Established):
-            return assessment
-        try:
-            reaches = self.context.graph.is_reachable_from_durable_ref(
-                assessment.old_base
-            )
-        except WheresatGraphError as exc:
-            return _indeterminate(
-                assessment, f"cannot tell whether the boundary is retained: {exc}"
-            )
-        if reaches:
-            return assessment
-        return self._retain(assessment)
+        match assessment:
+            case wheresat_records.Established():
+                try:
+                    reaches = self.context.graph.is_reachable_from_durable_ref(
+                        assessment.old_base
+                    )
+                except WheresatGraphError as exc:
+                    return _indeterminate(
+                        assessment,
+                        f"cannot tell whether the boundary is retained: {exc}",
+                    )
+                if reaches:
+                    return assessment
+                return self._retain(assessment)
+            case _:
+                return assessment
 
     def _refresh(
         self, assessment: wheresat_records.Established, expected: str | None
@@ -647,10 +655,11 @@ def _attested(support: cabc.Sequence[wheresat_records.Establishing]) -> bool:
         ``True`` when at least one supporting candidate is attested.
 
     """
-    return any(
-        isinstance(candidate, wheresat_records.AttestedCandidate)
-        for candidate in support
-    )
+    for candidate in support:
+        match candidate:
+            case wheresat_records.AttestedCandidate():
+                return True
+    return False
 
 
 def _indeterminate(

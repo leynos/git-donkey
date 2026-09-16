@@ -40,24 +40,26 @@ from git_donkey.wheresat_records import (
     WorktreeState,
     backup_ref,
 )
-from tests.unit.wheresat_helpers import (
+from tests.unit.wheresat_candidates import (
     FORK_POINT_SOURCE,
     MERGE_BASE_SOURCE,
+    RECORD_SOURCE,
+    attested,
+    derived,
+)
+from tests.unit.wheresat_helpers import (
     OLD_BASE,
     OTHER_BASE,
     PARENT_HEAD,
     PR_IDENTITY,
-    RECORD_SOURCE,
     Case,
     assessment_of,
-    attested,
-    derived,
     parented,
     permissive,
 )
+from tests.unit.wheresat_spoilers import spoiled
 from tests.unit.wheresat_variants import (
     long_replay_range,
-    spoiled,
     truncated_history,
     truncated_replay_range,
     unconsulted_parent,

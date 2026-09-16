@@ -48,6 +48,7 @@ from git_donkey.wheresat_records import (
     candidate_for,
     range_key,
 )
+from tests.unit.wheresat_candidates import inferred
 from tests.unit.wheresat_helpers import (
     FOREIGN_REPOSITORY,
     LANDED_PATCH,
@@ -57,7 +58,6 @@ from tests.unit.wheresat_helpers import (
     REQUIRED_SOURCES,
     Case,
     assessment_of,
-    inferred,
     parent_pull_request,
 )
 

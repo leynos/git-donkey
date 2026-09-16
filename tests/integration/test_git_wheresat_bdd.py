@@ -572,12 +572,16 @@ def parent_history_gate_failed(scenario: WheresatJourney) -> None:
         f"{_reported(scenario).stdout}"
     )
     detail = lines[position]
-    refused = detail.split()[0]
 
+    # The refusal is read before the commit it names, so a blank or truncated
+    # detail line fails as the missing ancestry it is rather than as the index
+    # error of splitting a line that has no first token.
     assert _NOT_AN_ANCESTOR in detail, (
         f"expected the failure to be an ancestry the parent does not have, "
         f"got: {detail}"
     )
+    refused = detail.split()[0]
+
     assert ("inferred", "tree-identity", refused) in [
         tokens[:3] for tokens in report_tokens(_reported(scenario).stdout)
     ], f"expected {refused} to be cited as content-comparison evidence"

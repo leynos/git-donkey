@@ -8,9 +8,12 @@ boundary clears every gate, and every other case is that one with a single named
 answer changed, which is what makes INV-4's truth table a table: one row per
 gate, each row changing only the answer that gate reads.
 
-The corpus is all this module holds. The cases built from it — one row per gate,
-and the handful a report or a policy test needs by name — are in
-:mod:`tests.unit.wheresat_variants`, which is where a gate's own row is added.
+The corpus and the cases built from it are all this module holds. What turns
+one of its commits into a candidate is in
+:mod:`tests.unit.wheresat_candidates`; the cases named for a report or a policy
+test are in :mod:`tests.unit.wheresat_variants`, and the one-row-per-gate
+spoilers they are built from — INV-4's truth table, which is where a gate the
+policy gains gets its row — are in :mod:`tests.unit.wheresat_spoilers`.
 """
 
 from __future__ import annotations
@@ -23,19 +26,17 @@ from git_donkey import wheresat_policy as policy
 from git_donkey.wheresat_records import (
     Ancestry,
     Assessment,
-    AttestedCandidate,
     BoundaryRequest,
     Candidate,
     CommitRange,
-    DerivedCandidate,
     EvidenceKind,
     GateName,
     GateOutcome,
     GraphFacts,
-    InferredCandidate,
     ParentPullRequest,
     range_key,
 )
+from tests.unit.wheresat_candidates import attested
 
 # One repeated digit per commit, so a detail line a failing example prints names
 # the commit the example meant at a glance. Every boundary in these suites is
@@ -67,20 +68,6 @@ OTHER_RANGE = range_key(OTHER_BASE, CHILD_TIP)
 # The pull request a run is told to consult, and the repository it heads.
 PR_IDENTITY = stack_records.PullRequestIdentity(repository="acme/widget", number=41)
 PR_REPOSITORY = "acme/widget"
-
-# Source names as the collector reports them: the label each question its rung
-# asked is reported under. Corroboration is counted by *kind* rather than by
-# these names, so the two merge-base questions are one source however they are
-# labelled, and the two record kinds are two: a record read at birth and the
-# same record read from the anchor ref that outlives it.
-RECORD_SOURCE = "stack record"
-ANCHOR_SOURCE = "stack-base anchor"
-SHARED_SOURCE = "shared record"
-MERGE_BASE_SOURCE = "merge base"
-PARENT_MERGE_BASE_SOURCE = "merge base of the parent head"
-FORK_POINT_SOURCE = "fork point"
-TREE_SOURCE = "tree identity"
-PATCH_SOURCE = "patch identity"
 
 # Where the parent head was fetched from when it did not come from the pull
 # request's own repository, which is the disagreement gate 1 refuses.
@@ -285,105 +272,6 @@ def parent_pull_request(
         stacked=False,
     )
     return dataclasses.replace(base, **overrides)
-
-
-def _candidate[C: (AttestedCandidate, DerivedCandidate, InferredCandidate)](
-    candidate_type: type[C],
-    commit: str,
-    kind: EvidenceKind,
-    source: str,
-) -> C:
-    """Return a candidate of ``candidate_type`` naming ``commit``."""
-    return candidate_type(commit=commit, kind=kind, source=source)
-
-
-def attested(
-    commit: str,
-    kind: EvidenceKind = EvidenceKind.STACK_RECORD_BIRTH,
-    *,
-    source: str = RECORD_SOURCE,
-) -> AttestedCandidate:
-    """Return an attested candidate naming ``commit``.
-
-    Attested evidence is what a record written at birth or a review approval
-    carries: a deliberate statement, which is the only kind of support that
-    can establish a boundary on its own.
-
-    Parameters
-    ----------
-    commit : str
-        Commit the candidate offers as the boundary.
-    kind : EvidenceKind, optional
-        A kind ``TIERS`` classes as attested; the birth record by default.
-    source : str, optional
-        Which producer stated it; the birth record by default.
-
-    Returns
-    -------
-    AttestedCandidate
-        A candidate that can establish a boundary on its own.
-
-    """
-    return _candidate(AttestedCandidate, commit, kind, source)
-
-
-def derived(
-    commit: str,
-    kind: EvidenceKind = EvidenceKind.MERGE_BASE,
-    *,
-    source: str = MERGE_BASE_SOURCE,
-) -> DerivedCandidate:
-    """Return a derived candidate naming ``commit``.
-
-    Derived evidence is computed from the repository rather than stated, so
-    it carries a boundary only when two independent sources agree on it.
-
-    Parameters
-    ----------
-    commit : str
-        Commit the candidate computes as the boundary.
-    kind : EvidenceKind, optional
-        A kind ``TIERS`` classes as derived; the merge base by default.
-    source : str, optional
-        The computation that produced it; the merge base by default.
-
-    Returns
-    -------
-    DerivedCandidate
-        A candidate that supports a boundary only alongside another.
-
-    """
-    return _candidate(DerivedCandidate, commit, kind, source)
-
-
-def inferred(
-    commit: str,
-    kind: EvidenceKind = EvidenceKind.TREE_IDENTITY,
-    *,
-    source: str = TREE_SOURCE,
-) -> InferredCandidate:
-    """Return an inferred candidate naming ``commit``.
-
-    Inferred evidence compares content rather than history, which is why a
-    ``--deep`` search can report it beside a boundary but never as support for
-    one.
-
-    Parameters
-    ----------
-    commit : str
-        Commit whose content resembles the boundary.
-    kind : EvidenceKind, optional
-        A kind ``TIERS`` classes as inferred; the tree identity by default.
-    source : str, optional
-        The comparison that produced it; the tree identity by default.
-
-    Returns
-    -------
-    InferredCandidate
-        A candidate that can never serve as support, only as a lead.
-
-    """
-    return _candidate(InferredCandidate, commit, kind, source)
 
 
 def assessment_of(case: Case) -> Assessment:

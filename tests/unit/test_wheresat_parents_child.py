@@ -15,10 +15,11 @@ for its own evidence, so the ladder reports it once, in the phase that owns it.
 A claim the ladder itself cannot take up — a body this run cannot read, or one
 carrying two disagreeing records — stops the walk where it was found.
 
-Nothing here opens a repository or a socket: the doubles this suite drives the
-ladder with live in ``tests.unit.wheresat_parents_helpers``, with the builders
-that put a question to the ladder. Every rung is therefore driven without a
-network, and the assertions can be about what was asked as much as about what
+Nothing here opens a repository or a socket: the record reader and the forge are
+doubles, in ``wheresat_parents_record`` and ``wheresat_parents_forge``, and the
+builders that put a question to the ladder are in
+``tests.unit.wheresat_parents_helpers``. Every rung is therefore driven without
+a network, and the assertions can be about what was asked as much as about what
 was answered.
 
 The one refusal that names every reading a body supports is pinned as a
@@ -39,7 +40,7 @@ from tests.unit.wheresat_helpers import (
     CHILD_BELOW,
     CHILD_TIP,
 )
-from tests.unit.wheresat_parents_helpers import (
+from tests.unit.wheresat_parents_corpus import (
     BOUNDARY,
     CHILD_BRANCH,
     CHILD_IDENTITY,
@@ -48,21 +49,22 @@ from tests.unit.wheresat_parents_helpers import (
     PARENT_IDENTIFICATION,
     PARENT_IDENTITY,
     SILENT_BODY,
-    Forge,
-    Opener,
-    Records,
+)
+from tests.unit.wheresat_parents_forge import Forge, Opener
+from tests.unit.wheresat_parents_helpers import (
     Run,
     ask,
-    association_page,
-    born_on,
     boundary_request,
-    child_payload,
-    graph_over,
-    parent_payload,
     search_bounds,
-    shared_body,
-    stacked_on,
 )
+from tests.unit.wheresat_parents_history import graph_over
+from tests.unit.wheresat_parents_payloads import (
+    association_page,
+    child_payload,
+    parent_payload,
+    shared_body,
+)
+from tests.unit.wheresat_parents_record import Records, born_on, stacked_on
 
 if typ.TYPE_CHECKING:
     from syrupy.assertion import SnapshotAssertion

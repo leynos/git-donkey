@@ -42,7 +42,7 @@ from tests.unit.wheresat_helpers import (
     permissive,
     undecided_gates,
 )
-from tests.unit.wheresat_variants import spoiled
+from tests.unit.wheresat_spoilers import spoiled
 
 # What an ancestry answer means for a gate that expects one polarity. Every
 # combination of the three answers and the two expectations is a row, and the

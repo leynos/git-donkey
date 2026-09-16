@@ -108,6 +108,19 @@ class _WorktreeRequest:
     stack: _StackContext | None = None
 
 
+class StackRecordRefusalError(SystemExit):
+    """Exit taken when a branch was created but its stack record was not.
+
+    The branch and its worktree exist by the time this is raised, so it is not
+    a failed birth: it is a created branch whose record could not be written,
+    reported as its own step's failure by :func:`_birth_record` before it is
+    raised. It derives from ``SystemExit`` because the status it carries is
+    still the one the process must end with, and the class is what lets a
+    handler weigh it against the exits that report a worktree that was never
+    created at all.
+    """
+
+
 def _record(observation: Observation) -> None:
     """Record one bounded workflow observation on the active recorder."""
     observability.get_recorder().record(observation)
@@ -345,8 +358,9 @@ def _write_birth_record(
 
     Raises
     ------
-    SystemExit
-        When the record could not be written, carrying the store's message.
+    StackRecordRefusalError
+        When the record could not be written, carrying the store's message and
+        the status the process ends with.
 
     """
     try:
@@ -357,11 +371,15 @@ def _write_birth_record(
             writer=stack.writer,
         )
     except (stack_store.StackRecordError, GitCommandError, ValueError) as exc:
-        helpers._die(
+        helpers._print_error(
             _GIT_DONKEY_PREFIX,
             f"the branch was created but its stack record was not written: {exc}",
-            1,
         )
+        # Reported before it is raised, under the same prefix and emoji every
+        # other exit here is reported under, and raised under this class so a
+        # handler can weigh it against the exits that report a worktree which
+        # was never created.
+        raise StackRecordRefusalError(1) from exc
 
 
 def _add_worktree_for_new_branch(
@@ -472,9 +490,12 @@ def create_worktree(
     ------
     SystemExit
         Propagated from the ``git_donkey.helpers`` exit helpers when the branch
-        is already checked out elsewhere, when the target path exists, when
-        ``git worktree add`` fails, or when the branch was created but its
-        stack record could not be written.
+        is already checked out elsewhere, when the target path exists, or when
+        ``git worktree add`` fails.
+    StackRecordRefusalError
+        Propagated when the branch was created but its stack record could not
+        be written. It derives from ``SystemExit``, and is raised under its own
+        class because the worktree it belongs to does exist.
     """
     existing_worktree = context.branch_to_worktree.get(request.branch_name)
     if existing_worktree is not None:

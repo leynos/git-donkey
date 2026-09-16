@@ -87,6 +87,13 @@ against a rate limit the user's other work shares.
 
 _API_ROOT: typ.Final = "https://api.github.com"
 _ACCEPT: typ.Final = "application/vnd.github+json"
+_API_VERSION_HEADER: typ.Final = "X-GitHub-Api-Version"
+_API_VERSION: typ.Final = "2026-03-10"
+"""Version every request names, so the payloads read are the ones written for.
+
+The API answers the version a request asks for, and a request that asks for
+none is answered as the oldest still-supported one rather than as an error.
+"""
 _ANSWERED: typ.Final = 200
 _TOKEN_VARIABLES: typ.Final = ("GITHUB_TOKEN", "GH_TOKEN")
 _RATE_LIMIT_HEADERS: typ.Final = (
@@ -189,7 +196,7 @@ def open_github() -> ApiWheresatGitHub:
         default_connect_timeout=REQUEST_TIMEOUT_SECONDS,
         default_read_timeout=REQUEST_TIMEOUT_SECONDS,
     )
-    session.headers.update({"Accept": _ACCEPT})
+    session.headers.update({"Accept": _ACCEPT, _API_VERSION_HEADER: _API_VERSION})
     session.token_auth(_token())
     return ApiWheresatGitHub(session)
 
@@ -509,7 +516,7 @@ class ApiWheresatGitHub:
                 url,
                 params=params,
                 timeout=REQUEST_TIMEOUT_SECONDS,
-                headers={"Accept": _ACCEPT},
+                headers={"Accept": _ACCEPT, _API_VERSION_HEADER: _API_VERSION},
             )
         except requests.Timeout as exc:
             msg = (

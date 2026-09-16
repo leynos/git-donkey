@@ -22,11 +22,14 @@ The two rungs that read what the child itself carries — the stack record its
 branch holds and the shared record its pull request body carries — are stated
 in ``test_wheresat_parents_child.py``.
 
-Nothing here opens a repository or a socket: the history and the forge are
-doubles, kept in ``tests.unit.wheresat_parents_helpers`` with the builders that
-put a question to the ladder. Every rung is therefore driven without a network,
-and the assertions can be about what was asked as much as about what was
-answered.
+Nothing here opens a repository or a socket: the history, the record reader and
+the forge are doubles, one to a module named for what it answers —
+``wheresat_parents_history``, ``wheresat_parents_record`` and
+``wheresat_parents_forge``, over the values in ``wheresat_parents_corpus`` —
+with the builders that put a question to the ladder in
+``tests.unit.wheresat_parents_helpers``. Every rung is therefore driven without
+a network, and the assertions can be about what was asked as much as about what
+was answered.
 """
 
 from __future__ import annotations
@@ -49,7 +52,7 @@ from tests.unit.wheresat_helpers import (
     PR_IDENTITY,
     parent_pull_request,
 )
-from tests.unit.wheresat_parents_helpers import (
+from tests.unit.wheresat_parents_corpus import (
     ASSOCIATION_REPOSITORY,
     CHILD_BRANCH,
     CHILD_IDENTITY,
@@ -59,20 +62,21 @@ from tests.unit.wheresat_parents_helpers import (
     PARENT_IDENTITY,
     SECOND_CHILD_IDENTITY,
     SILENT_BODY,
-    Forge,
-    History,
-    Opener,
-    Records,
+)
+from tests.unit.wheresat_parents_forge import Forge, Opener
+from tests.unit.wheresat_parents_helpers import (
     Run,
     ask,
-    association_page,
     boundary_request,
-    child_payload,
-    graph_over,
-    parent_payload,
     search_bounds,
-    stacked_on,
 )
+from tests.unit.wheresat_parents_history import History, graph_over
+from tests.unit.wheresat_parents_payloads import (
+    association_page,
+    child_payload,
+    parent_payload,
+)
+from tests.unit.wheresat_parents_record import Records, stacked_on
 
 if typ.TYPE_CHECKING:
     from tests.observability_helpers import RecordingRecorder

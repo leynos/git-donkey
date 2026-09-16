@@ -113,7 +113,7 @@ def test_create_writes_nothing_when_the_record_does_not_round_trip(
         make_writer(repo).create(make_record(CHILD, "abc1234"))
 
     assert anchor(repo, CHILD) is None, "no anchor was written"
-    assert config_section(repo, CHILD) == {}, "no configuration was written"
+    assert not config_section(repo, CHILD), "no configuration was written"
 
 
 def test_refresh_requires_the_value_the_caller_expected(tmp_path: Path) -> None:
@@ -230,7 +230,7 @@ def test_a_create_that_cannot_write_a_value_removes_what_it_wrote(
         make_writer(repo).create(make_record(CHILD, base))
 
     assert anchor(repo, CHILD) is None, "the anchor this call created is gone"
-    assert config_section(repo, CHILD) == {}, "and so is the value it wrote"
+    assert not config_section(repo, CHILD), "and so is the value it wrote"
     assert isinstance(
         stack_store.GitStackRecordReader(repo).read(CHILD),
         stack_records.RecordAbsent,
@@ -346,7 +346,7 @@ def test_sweep_converts_an_orphan_into_a_tombstone(tmp_path: Path) -> None:
         "the tombstone names the recorded tip, not the boundary or the branch"
     )
     assert anchor(repo, CHILD) is None, "the anchor is removed"
-    assert config_section(repo, CHILD) == {}, "the configuration is removed"
+    assert not config_section(repo, CHILD), "the configuration is removed"
     assert namespace_violations(repo) == set(), "INV-9 holds again after the sweep"
     assert not store.orphans(), "nothing is left to report"
     assert not store.sweep((CHILD,)), "sweeping a stale name changes nothing"
@@ -388,7 +388,7 @@ def test_sweep_keeps_a_tombstone_that_already_exists(tmp_path: Path) -> None:
     assert store.tombstone(CHILD) != base, (
         "the recorded boundary does not replace a tip already known"
     )
-    assert config_section(repo, CHILD) == {}, "the live record is cleared"
+    assert not config_section(repo, CHILD), "the live record is cleared"
 
 
 def test_a_tombstone_beside_a_live_branch_survives_a_sweep(tmp_path: Path) -> None:
@@ -424,7 +424,7 @@ def test_a_tombstone_beside_a_live_branch_survives_a_sweep(tmp_path: Path) -> No
     assert namespace_violations(repo) == set(), (
         "and the branch it belongs to is still there, so INV-9 never broke"
     )
-    assert config_section(repo, CHILD) != {}, "nor was its record cleared"
+    assert config_section(repo, CHILD), "nor was its record cleared"
 
 
 def test_sweep_clears_an_unreadable_record_without_inventing_a_tombstone(
@@ -443,7 +443,7 @@ def test_sweep_clears_an_unreadable_record_without_inventing_a_tombstone(
 
     assert store.tombstone(CHILD) is None, "no tombstone was invented"
     assert anchor(repo, CHILD) is None, "the anchor is removed all the same"
-    assert config_section(repo, CHILD) == {}, "and so is the record that did not parse"
+    assert not config_section(repo, CHILD), "and so is the record that did not parse"
     assert namespace_violations(repo) == set(), "INV-9 holds again"
 
 
