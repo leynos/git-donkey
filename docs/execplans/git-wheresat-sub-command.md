@@ -182,7 +182,7 @@ These are hard invariants. Violating one requires escalation, not a workaround.
   pytest-bdd, Hypothesis, syrupy, and vcrpy. Adding any new runtime dependency
   requires a tolerance exception.
 - Never hand-author or hand-edit a vcrpy cassette.
-  `docs/developers-guide.md:557-558` states the rule: "Record a real cassette
+  `docs/developers-guide.md:859-861` states the rule: "Record a real cassette
   only for a command that is meant to call the API, and never edit a recording
   by hand." Cassettes are recorded once against real GitHub traffic, with the
   `Authorization` header filtered.
@@ -2408,6 +2408,178 @@ Stop and escalate rather than improvising when any of these is reached.
     so a reader can check the claim against the diff rather than against this
     paragraph.
 
+  - Review round: `coderabbit review --agent --base origin/main` reports 19
+    findings over the tree at `37cf673` (log
+    `/tmp/coderabbit-git-donkey-git-wheresat-sub-command-8.out`, the agent-mode
+    stream whose 19 `finding` records are kept as
+    `/tmp/coderabbit-findings-8.jsonl` for triage), taken on 2026-09-16 in one
+    attempt and without meeting a rate limit, over the 115 files the review
+    reports. The 19 are 7 minor and 12 trivial, and they are 14 distinct
+    requests: five of them are raised twice, once in each of the two places the
+    same change is visible. All 14 are actioned, and one of them is answered a
+    second time: round 7's answer to the recorder finding could not work, and
+    the reason is a rule of `vcrpy` rather than a judgement about the finding.
+  - The recorder finding is this round's first lesson, and it is a lesson about
+    the previous round's answer rather than about the recording. Round 7 met
+    the finding by adding `x-oauth-client-id`, `x-oauth-scopes`, and
+    `x-accepted-oauth-scopes` to `filter_headers`, which cannot work: `vcrpy`
+    feeds that list to `_build_before_record_request`, so it reaches a
+    _request_, and a header GitHub sends in an _answer_ was never in its reach.
+    The three are dropped by a `before_record_response` hook now, which `vcrpy`
+    applies as an interaction is written and again as a cassette is loaded, and
+    `filter_headers` is back to the credential it can remove.
+    `test_a_recording_does_not_say_which_client_made_the_requests` asserts that
+    no interaction the suite replays carries any of the three, which is the
+    property the tests depend on and the check the round-7 answer could not
+    have passed.
+  - The half of that finding that asks for the recording itself to be
+    regenerated is taken rather than declined, and what makes it safe to take
+    is the procedure the module documents: the previous file was moved aside,
+    so `--record-mode=once` — which replays what a file already holds — had
+    nothing to replay, and the module was run against the live Stacks API with
+    a credential the runner holds. Seven interactions came back, which is the
+    same seven request URIs in the same order as the file they replace, so the
+    recording still answers exactly the questions the tests put; none of the
+    seven carries any of the three as a header name, the fourteen mentions that
+    remain being GitHub's own policy values — `X-OAuth-Scopes` and
+    `X-Accepted-OAuth-Scopes` inside `Access-Control-Expose-Headers`, and the
+    word `Authorization` inside `Vary` — and no token-like string appears in the
+    file at all. The module then replays against it in `--record-mode=none`,
+    the mode the suite is committed in, which is what shows the file holds
+    every question the tests ask rather than the ones the recording pass
+    happened to hear.
+  - `wheresat_rate_limited.yaml` is left as it was recorded, and the two
+    occurrences it still holds on disk are the cost of that decision rather
+    than an oversight. Making it again means spending the `search/code`
+    allowance on purpose before the `403` can be recorded, which the developer's
+    guide names as a deliberate cost rather than a side effect of running a
+    command; the hook drops the two headers as the recording is loaded, so no
+    test reads them, and the next deliberate re-record writes them out. A
+    recording is never edited by hand, which is what makes "leave it and wait"
+    the answer rather than a sanitation pass.
+  - Both halves of that finding also make a claim wrong in two places, and both
+    are corrected in the round that found them: the developer's guide's
+    recording procedure and the recorder test's docstring said the recordings
+    on disk _still carry_ the three headers, which was true of both files when
+    it was written and is true of one of them now. Each says a recording on
+    disk "may still carry them" and names the rate-limit recording as the one
+    left as it was recorded. This is the second round on the branch to find a
+    claim standing in more than one document, and the lesson round 6 recorded
+    is what found them: a claim corrected where it was found is corrected in
+    one place, and the rest are found by looking for them.
+  - `git_donkey/wheresat_request.py`'s `--onto` branch asked the graph which
+    ref a target names and let whatever came back through, so a graph that
+    could not answer raised `WheresatGraphError` out of a resolution whose
+    sibling branch had already learned to report the same fault as a usage
+    error: `git wheresat --onto` over an unreadable ref ended in a traceback
+    rather than in the documented usage-error envelope. The call is wrapped and
+    the fault re-raised as `WheresatUsageError` naming the target, with the
+    graph's error kept as its cause, which is the shape the `object_id` branch
+    beside it uses.
+  - A refused birth-record write could leave the `stack_record_write` step in
+    `started` with no outcome after it, which is the observability contract's
+    own failure mode: a reader of the log sees a step that began and never
+    finished. All three shapes a refusal arrives in — the store's own error,
+    the `ValueError` its ref-path validation raises, and an unwrapped
+    `GitCommandError` — record a terminal `failure` now, and `_refusal_kind`
+    gives each its kind. `StackRecordConflictError` keeps
+    `stack_record_conflict`, which is what tells a branch that already has a
+    record from one that could not be recorded; a store error that is not a
+    conflict is recorded with no kind, because the vocabulary has no member for
+    "the write did not happen" and the step's outcome already carries it.
+    `tests/integration/test_stack_record_lifecycle.py` drives each refusal
+    through a real repository.
+  - `git_donkey/wheresat_records.py` annotated a mapping through
+    `typing.Mapping`, a deprecated alias of `collections.abc.Mapping`, and the
+    branch had converted some annotations and left the rest. Fifty-five
+    annotations across fourteen files are converted, each file gaining the
+    `collections.abc as cabc` import inside its `TYPE_CHECKING` guard, which is
+    what the `TC` codes ask of a name that only ever appears in an annotation.
+    The review named three files; the other eleven are the same spelling in a
+    sibling module, and the count is here because it is the argument for the
+    wider sweep: a rule applied to one file and not to the file beside it is a
+    rule the next reader has to reconstruct.
+  - The parent-and-child snapshot's case built both readings from one boundary,
+    so a body that carried a single boundary through every reading would have
+    passed. It names two parents and two boundaries now — four readings — and
+    the snapshot is re-recorded from the new body rather than edited, because a
+    snapshot is a recording of what the reader does. A boundary per parent is
+    not expressible in the recorded grammar, since the readings are the cross
+    product of the parents claimed and the boundaries claimed, so it is the
+    second boundary that makes each reading independently checkable.
+  - The deep comparison's five refusal questions were bare strings used as
+    mapping keys, so a typo in a key was not a failure but a question that
+    quietly had no refusal. They are a `_Question(enum.StrEnum)` now, and
+    `_refuse` takes a member, so a name that is not one of the five cannot be
+    passed at all.
+  - Five smaller requests are the suite saying what it meant. The four statuses
+    both wheresat suites compared as integers are one `Status(enum.IntEnum)` in
+    `tests/integration/wheresat_helpers.py`, and the process exit code still
+    compares equal to a member because it is one. The two ref readers in that
+    package are one helper, with the caller whose absence semantics need the
+    empty string saying so at the call site, and the two association doubles
+    that built the same "examined one commit and found nothing" page delegate
+    to `examined_and_found_none`, which is where a truncated search is told
+    apart from a complete one. The failed-gate handling in the BDD module
+    checks that the line under a failure exists before it reads it, so a gate
+    that reports a refusal with no detail line raises the assertion its message
+    was written for rather than an `IndexError`. The twelve module-level
+    read-only cases are three classes — the same twelve tests, under names that
+    say what each group holds — and the unused `_FETCH_HEAD` constant is gone.
+  - This plan's own EP-M10 "Remaining gaps" bullet claimed the text report
+    abbreviates object IDs while only the envelope carries them in full. The
+    report renders the rebase plan with the target, the boundary, and the child
+    tip in full, so the bullet says that instead of listing a gap that was
+    closed, and the two traceability rows naming tests that became methods are
+    corrected in the same commit.
+  - The first gate run over the tree these fixes were made in was red in five
+    gates, and every one of them is accounted for. Two failed on this round's
+    own work: the new assertion in `tests/unit/test_donkey_base.py` read a
+    `base` attribute of the stack context that does not exist, which
+    `make typecheck` and `make test` both failed on, and the paragraph added to
+    this plan failed `make check-fmt`, where `mdtablefix` reported `+9 -8`, and
+    `make markdownlint`, which found the 85-column line a hand wrap had left.
+    Both are fixed, and this section is `mdtablefix`'s own output. The fifth was
+    `make lint`, and it failed twice over: `git_donkey/stack_store.py` had
+    reached 801 lines against a limit of 800, one line over, added by the
+    `TYPE_CHECKING` import the `collections.abc` sweep needed, and a double in
+    `tests/unit/test_wheresat_request.py` ended with a `return None` its own
+    annotation already admits. Neither file is one the review named; both are on
+    this branch, and the gates they fail are the branch's to keep green.
+  - The second `make lint` pass raised a diagnostic the first did not, and the
+    reason is the recipe rather than the diagnostic: `make lint` runs its stages
+    in order and stops at the first that fails, so the first pass's
+    `too-many-lines` and `useless-return` failures meant the second pylint
+    configuration never ran over the tree at all. It read the `isinstance`
+    chain in `_refusal_kind` as dispatch a `match` states more plainly
+    (`R9101 prefer-structural-pattern-matching`); the chain is a `match` over
+    the same classes in the same order now, so the kind each failure records is
+    unchanged. A gate that stops at its first failing stage leaves the stages
+    after it unmeasured, which is the thing to remember before a green re-run of
+    one stage is read as a green gate.
+  - The nine checks are green over the tree the fixes were made in, which is
+    what they are pushed as: `test` reports 967 passed with 22 snapshots, five
+    more than round 7's 962 — three new cases, the two target-resolution cases
+    in `tests/unit/test_wheresat_request.py` and the recorder-header
+    assertion, and two more rows in the refused-birth table, which covers four
+    refusals rather than two. `lint` completes all seven stages with both
+    pylint configs at 10.00/10, `typecheck` is clean under `ty` 0.0.79,
+    `check-fmt` reports 175 files formatted and 29 unchanged, `markdownlint`
+    lints 30 files with 0 errors, `nixie` validates every diagram, `spelling`
+    passes, `build` is a no-op, and `cs delta origin/main` reports no issues,
+    each log under `/tmp/<gate>-git-donkey-git-wheresat-sub-command.out`. The
+    run was taken over the working tree before it was split into commits, and
+    the tree was byte-identical before and after it, so every commit in the
+    split inherits a green run over its own content. This entry and the
+    reference correction above it land after that run, because both were
+    written once the round's numbers were known; the delta they add is
+    Markdown, and the Markdown gates are re-run over it.
+  - The disposition is posted on the pull request (round 8,
+    `#issuecomment-5690350245`), each request naming the file it changed and the
+    one request round 7 answered wrongly saying what the right answer is, so a
+    reader can check the claim against the diff rather than against this
+    paragraph.
+
 ## Surprises & discoveries
 
 - Observation: this repository has no roadmap document.
@@ -2443,7 +2615,7 @@ Stop and escalate rather than improvising when any of these is reached.
   defines `github_api_cassette`, replaying
   `tests/integration/cassettes/github_api_no_interactions.yaml` (body:
   `interactions: []`) in VCR `none` record mode.
-  `docs/developers-guide.md:557-558` states "Record a real cassette only for a
+  `docs/developers-guide.md:859-861` states "Record a real cassette only for a
   command that is meant to call the API, and never edit a recording by hand."
   Impact: EP-M7 records genuine cassettes against this repository's own merged
   pull requests rather than authoring fictions, and sets
@@ -7789,7 +7961,7 @@ before delivery. What changed, and why:
   because Hypothesis's 200 ms default deadline under a 30-second pytest timeout
   would have turned the first real counterexample into a flake.
 - Cassettes are now recorded, never authored;
-  `docs/developers-guide.md:557-558` forbids hand-editing a recording, and the
+  `docs/developers-guide.md:859-861` forbids hand-editing a recording, and the
   first draft proposed exactly that.
 - Observability was added; the first draft omitted it entirely from a package
   where every other command records.
