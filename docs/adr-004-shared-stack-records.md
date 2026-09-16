@@ -51,9 +51,10 @@ operations.
 A single versioned record, written at branch birth by `git donkey`, read and
 refreshed by `git wheresat`, and converted to a tombstone by `git plonk` before
 it deletes the branch. The format and its pure decisions live in
-`git_donkey/stack_records.py`; every read and write goes through
-`git_donkey/stack_store.py`. No command parses a key, builds a record ref path,
-or decides the lifecycle for itself.
+`git_donkey/stack_records.py`; every read goes through
+`git_donkey/stack_store.py` and every write through
+`git_donkey/stack_writes.py`. No command parses a key, builds a record ref
+path, or decides the lifecycle for itself.
 
 ### Option B: A private record format owned by `git wheresat`
 

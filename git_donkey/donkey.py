@@ -28,7 +28,7 @@ from git_donkey import (
     observability,
     remote_default,
     stack_records,
-    stack_store,
+    stack_writes,
     templates,
 )
 from git_donkey.helpers import _GIT_DONKEY_PREFIX as _GIT_DONKEY_PREFIX
@@ -567,7 +567,7 @@ def _stack_context(
         return None
     return donkey_worktrees._StackContext(
         parent=base.ref,
-        writer=stack_store.GitStackRecordWriter(context.repo_home),
+        writer=stack_writes.GitStackRecordWriter(context.repo_home),
     )
 
 

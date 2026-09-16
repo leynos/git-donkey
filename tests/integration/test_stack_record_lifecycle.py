@@ -58,7 +58,13 @@ from hypothesis.stateful import (
     run_state_machine_as_test,
 )
 
-from git_donkey import donkey, observability, stack_records, stack_store
+from git_donkey import (
+    donkey,
+    observability,
+    stack_records,
+    stack_store,
+    stack_writes,
+)
 from tests import git_repo_helpers
 from tests.integration import donkey_helpers
 
@@ -267,7 +273,7 @@ class _Lifecycle(RuleBasedStateMachine):
         self.repo = git_repo_helpers.seed_repo(
             Path(tempfile.mkdtemp(dir=root, prefix="repo-")), branch=_TRUNK
         )
-        self.store = stack_store.GitStackRecordWriter(self.repo)
+        self.store = stack_writes.GitStackRecordWriter(self.repo)
         self.live: dict[str, _Branch] = {}
         self._observed = _Snapshot.read(self.repo)
 
@@ -543,7 +549,7 @@ def test_the_exclusivity_check_rejects_a_record_beside_a_tombstone(
     repo = git_repo_helpers.seed_repo(tmp_path / "repo", branch=_TRUNK)
     tip = repo.head.commit.hexsha
     repo.git.branch("child", tip)
-    store = stack_store.GitStackRecordWriter(repo)
+    store = stack_writes.GitStackRecordWriter(repo)
     store.create(
         stack_records.StackRecord(
             branch="child",
@@ -588,13 +594,13 @@ def _refuse_writes(monkeypatch: pytest.MonkeyPatch, failure: Exception) -> None:
     """
 
     def refuse(
-        _writer: stack_store.GitStackRecordWriter,
+        _writer: stack_writes.GitStackRecordWriter,
         _record: stack_records.StackRecord,
     ) -> None:
         """Refuse the record, raising the failure this test configured."""
         raise failure
 
-    monkeypatch.setattr(stack_store.GitStackRecordWriter, "create", refuse)
+    monkeypatch.setattr(stack_writes.GitStackRecordWriter, "create", refuse)
 
 
 def _stack_a_parent(repo: Repo) -> None:

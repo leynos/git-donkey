@@ -26,6 +26,7 @@ from git_donkey import (
     plonk_records,
     stack_records,
     stack_store,
+    stack_writes,
 )
 
 if typ.TYPE_CHECKING:
@@ -430,7 +431,7 @@ def cleanup_surfaces(
     return plonk_cleanup._CleanupSurfaces(
         adapter=typ.cast("plonk_worktree_adapter._GitWorktreeAdapter", adapter),
         records=typ.cast(
-            "stack_store.StackRecordWriter",
+            "stack_writes.StackRecordWriter",
             RecordingStackStore() if records is None else records,
         ),
     )

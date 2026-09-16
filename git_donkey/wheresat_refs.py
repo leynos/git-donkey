@@ -44,7 +44,7 @@ import dataclasses
 import re
 import typing as typ
 
-from git_donkey import stack_records, stack_store
+from git_donkey import stack_records, stack_writes
 from git_donkey.wheresat_errors import failure_line
 
 if typ.TYPE_CHECKING:
@@ -469,7 +469,7 @@ class GitWheresatRefWriter:
             name would be unsafe in a ref path.
 
         """
-        writer = stack_store.GitStackRecordWriter(self.repo)
+        writer = stack_writes.GitStackRecordWriter(self.repo)
         if expected_old is None:
             writer.create(record)
             return

@@ -46,8 +46,9 @@ _Figure 1: the stack-record lifecycle across three commands._
 There is exactly one record format, one pair of owning modules, and one
 lifecycle. No command parses a record key, builds a record ref path, or decides
 the lifecycle for itself; each command reaches the artefact through
-`git_donkey.stack_records` for the format and its pure decisions, and
-`git_donkey.stack_store` for every read and every write.
+`git_donkey.stack_records` for the format and its pure decisions,
+`git_donkey.stack_store` for every read, and `git_donkey.stack_writes` for
+every write.
 
 The alternative — a private format per command — was rejected because three
 private parsers of one artefact diverge, and the divergence is silent: the

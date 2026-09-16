@@ -23,7 +23,7 @@ from pathlib import Path
 
 from syrupy.matchers import path_type
 
-from git_donkey import stack_records, stack_store
+from git_donkey import stack_records, stack_writes
 from tests import git_repo_helpers
 
 if typ.TYPE_CHECKING:
@@ -74,9 +74,9 @@ def make_repo(tmp_path: Path) -> Repo:
     return git_repo_helpers.seed_repo(tmp_path / "repo", branch=TRUNK)
 
 
-def make_writer(repo: Repo) -> stack_store.GitStackRecordWriter:
+def make_writer(repo: Repo) -> stack_writes.GitStackRecordWriter:
     """Return a writer for ``repo``."""
-    return stack_store.GitStackRecordWriter(repo)
+    return stack_writes.GitStackRecordWriter(repo)
 
 
 def make_record(

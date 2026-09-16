@@ -22,7 +22,13 @@ import dataclasses
 import logging
 import typing as typ
 
-from git_donkey import helpers, observability, plonk_policy, stack_store
+from git_donkey import (
+    helpers,
+    observability,
+    plonk_policy,
+    stack_store,
+    stack_writes,
+)
 from git_donkey._constants import GIT_PLONK_PREFIX
 from git_donkey.plonk_records import (
     _MODE_LABELS,
@@ -162,7 +168,7 @@ def _record_failure(operation: observability.Operation, mode: _PlonkMode) -> Non
     )
 
 
-def _configured_expiry(records: stack_store.StackRecordWriter) -> str:
+def _configured_expiry(records: stack_writes.StackRecordWriter) -> str:
     """Return the retention window tombstones are pruned by.
 
     The window is resolved before the run touches anything, because Git reads
@@ -172,7 +178,7 @@ def _configured_expiry(records: stack_store.StackRecordWriter) -> str:
 
     Parameters
     ----------
-    records : stack_store.StackRecordWriter
+    records : stack_writes.StackRecordWriter
         Store holding the repository the window is configured in.
 
     Returns
@@ -192,7 +198,7 @@ def _configured_expiry(records: stack_store.StackRecordWriter) -> str:
 
 
 def _swept(
-    records: stack_store.StackRecordWriter,
+    records: stack_writes.StackRecordWriter,
     orphans: cabc.Sequence[str],
     mode: _PlonkMode,
     *,
@@ -212,7 +218,7 @@ def _swept(
 
     Parameters
     ----------
-    records : stack_store.StackRecordWriter
+    records : stack_writes.StackRecordWriter
         Store holding the records and the tombstones.
     orphans : collections.abc.Sequence[str]
         Branch names to clear, as reported by ``orphans``.
@@ -242,7 +248,7 @@ def _swept(
 
 
 def _sweep_orphans(
-    records: stack_store.StackRecordWriter,
+    records: stack_writes.StackRecordWriter,
     mode: _PlonkMode,
     *,
     dry_run: bool,
@@ -257,7 +263,7 @@ def _sweep_orphans(
 
     Parameters
     ----------
-    records : stack_store.StackRecordWriter
+    records : stack_writes.StackRecordWriter
         Store holding the records and the tombstones.
     mode : _PlonkMode
         Cleanup mode, carried into the observability record.
@@ -300,7 +306,7 @@ def _sweep_orphans(
 
 
 def _prune_tombstones(
-    records: stack_store.StackRecordWriter,
+    records: stack_writes.StackRecordWriter,
     expire: str,
     mode: _PlonkMode,
     *,
@@ -310,7 +316,7 @@ def _prune_tombstones(
 
     Parameters
     ----------
-    records : stack_store.StackRecordWriter
+    records : stack_writes.StackRecordWriter
         Store holding the tombstones.
     expire : str
         Retention window, already validated as a past instant.
@@ -364,13 +370,13 @@ class _CleanupSurfaces:
     """
 
     adapter: _GitWorktreeAdapter
-    records: stack_store.StackRecordWriter
+    records: stack_writes.StackRecordWriter
 
 
 def _entomb_branch(
     candidate: _PlonkCandidate,
     tip: str,
-    records: stack_store.StackRecordWriter,
+    records: stack_writes.StackRecordWriter,
     mode: _PlonkMode,
 ) -> bool:
     """Preserve ``candidate``'s tip as a tombstone, before the branch goes.
@@ -385,7 +391,7 @@ def _entomb_branch(
         Completed candidate whose branch is about to be deleted.
     tip : str
         Commit the branch names now, read before this call.
-    records : stack_store.StackRecordWriter
+    records : stack_writes.StackRecordWriter
         Store the tombstone is written through.
     mode : _PlonkMode
         Cleanup mode, carried into the observability record.
@@ -597,7 +603,7 @@ def _default_surfaces(context: _PlonkContext) -> _CleanupSurfaces:
     """Return the Git surfaces a run given none of its own cleans through."""
     return _CleanupSurfaces(
         adapter=_GitWorktreeAdapter(context.repo_home),
-        records=stack_store.GitStackRecordWriter(context.repo_home),
+        records=stack_writes.GitStackRecordWriter(context.repo_home),
     )
 
 

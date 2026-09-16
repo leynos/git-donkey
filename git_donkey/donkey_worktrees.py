@@ -21,7 +21,13 @@ import typing as typ
 
 from git import GitCommandError, Repo
 
-from git_donkey import helpers, observability, stack_records, stack_store
+from git_donkey import (
+    helpers,
+    observability,
+    stack_records,
+    stack_store,
+    stack_writes,
+)
 from git_donkey.helpers import _GIT_DONKEY_PREFIX as _GIT_DONKEY_PREFIX
 from git_donkey.observability import Observation
 
@@ -69,7 +75,7 @@ class _StackContext:
     """
 
     parent: str
-    writer: stack_store.GitStackRecordWriter
+    writer: stack_writes.GitStackRecordWriter
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -148,7 +154,7 @@ def _birth_record(
     branch: str,
     parent: str,
     base: str,
-    writer: stack_store.GitStackRecordWriter,
+    writer: stack_writes.GitStackRecordWriter,
 ) -> None:
     """Write ``branch``'s stack record from the commit it was created at.
 
@@ -164,7 +170,7 @@ def _birth_record(
         Base ref the branch was created from.
     base : str
         Commit the base resolved to, frozen before the branch was created.
-    writer : stack_store.GitStackRecordWriter
+    writer : stack_writes.GitStackRecordWriter
         Store the record is written to.
 
     Raises

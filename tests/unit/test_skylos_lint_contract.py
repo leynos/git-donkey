@@ -111,7 +111,7 @@ _EXPECTED_SKYLOS_WHITELIST_NAMES: typ.Final = frozenset[str]()
 # Every name here is reached, or is reached by the milestone that gives it a
 # caller, yet no production call graph sees it. ``_git_failure`` is a false
 # positive: its only callers are the ``except GitCommandError`` handlers in
-# ``stack_store._write_anchor`` and ``stack_store._write_tombstone``, and
+# ``stack_writes._write_anchor`` and ``stack_writes._write_tombstone``, and
 # Skylos does not credit a call made from a handler body as a use. The two
 # ``wheresat_refs`` names are the per-run evidence namespace and the factory
 # that builds refs under it: the factory is called by the durability suite's

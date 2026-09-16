@@ -23,7 +23,7 @@ import typing as typ
 
 import pytest
 
-from git_donkey import stack_records, stack_store
+from git_donkey import stack_records, stack_store, stack_writes
 from tests.git_repo_helpers import config_section
 from tests.unit.stack_store_helpers import (
     CHILD,
@@ -167,6 +167,113 @@ def test_refresh_with_an_empty_expectation_refuses_an_existing_anchor(
 
     with pytest.raises(stack_store.StackRecordConflictError):
         store.refresh(make_record(CHILD, base), expected_old="")
+
+
+def _refuse_after_one_value(
+    store: stack_writes.GitStackRecordWriter,
+    record: stack_records.StackRecord,
+    values: dict[stack_records.RecordKey, str],
+) -> None:
+    """Write the record's first value through Git, then refuse the rest.
+
+    A value write that fails part way through is exactly what the store has to
+    undo, and Git cannot be asked to fail on the second of four writes. One
+    value is therefore written for real and the refusal raised after it, which
+    leaves the state such a failure leaves: the anchor already published and
+    the configuration incomplete.
+
+    Parameters
+    ----------
+    store : stack_writes.GitStackRecordWriter
+        The writer whose configuration write this stands in for.
+    record : stack_records.StackRecord
+        The record the refused write was writing.
+    values : dict[stack_records.RecordKey, str]
+        The values the refused write was handed, of which the first is written.
+
+    Raises
+    ------
+    stack_store.StackRecordError
+        Always, once the first value is written: this is the refusal the store
+        is being asked to survive.
+
+    """
+    first = next(iter(values))
+    store.repo.git.config(
+        "--local", f"branch.{record.branch}.{first.value}", values[first]
+    )
+    msg = f"the store could not write the rest of {record.branch!r}"
+    raise stack_store.StackRecordError(msg)
+
+
+def test_a_create_that_cannot_write_a_value_removes_what_it_wrote(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A create refused part way through leaves no record rather than half of one.
+
+    The anchor is what makes a branch look recorded, and a reader that finds it
+    beside an incomplete set of values reports a malformed record. That is
+    worse than the state the call found, because the branch then looks stacked
+    and is not, so the create takes back everything it wrote.
+    """
+    repo = make_repo(tmp_path)
+    base = repo.head.commit.hexsha
+    repo.git.branch(CHILD, base)
+    monkeypatch.setattr(
+        stack_writes.GitStackRecordWriter,
+        "_write_configuration",
+        _refuse_after_one_value,
+    )
+
+    with pytest.raises(stack_store.StackRecordError, match="could not write the rest"):
+        make_writer(repo).create(make_record(CHILD, base))
+
+    assert anchor(repo, CHILD) is None, "the anchor this call created is gone"
+    assert config_section(repo, CHILD) == {}, "and so is the value it wrote"
+    assert isinstance(
+        stack_store.GitStackRecordReader(repo).read(CHILD),
+        stack_records.RecordAbsent,
+    ), "so the branch reads back as having no record at all"
+
+
+def test_a_refresh_that_cannot_write_a_value_restores_the_record_it_found(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A refresh refused part way through leaves the record it found.
+
+    A refresh replaces the values a live branch's record already holds, so
+    undoing one means putting those values back and moving the anchor back to
+    the commit the caller read, never deleting the record: the branch keeps the
+    boundary it was stacked at.
+    """
+    repo = make_repo(tmp_path)
+    base = repo.head.commit.hexsha
+    repo.git.branch(CHILD, base)
+    store = make_writer(repo)
+    store.create(make_record(CHILD, base))
+    before = config_section(repo, CHILD)
+    moved = advance(repo)
+    monkeypatch.setattr(
+        stack_writes.GitStackRecordWriter,
+        "_write_configuration",
+        _refuse_after_one_value,
+    )
+
+    with pytest.raises(stack_store.StackRecordError, match="could not write the rest"):
+        store.refresh(make_record(CHILD, moved), expected_old=base)
+
+    assert anchor(repo, CHILD) == base, (
+        "the anchor is back at the commit the caller expected, not the one the "
+        "refused refresh wrote"
+    )
+    assert config_section(repo, CHILD) == before, (
+        "and the values the refused refresh replaced are back"
+    )
+    assert store.read(CHILD) == make_record(CHILD, base), (
+        "so the record reads back as the one the refresh found"
+    )
 
 
 def test_entomb_preserves_the_tip_and_clears_the_live_record(tmp_path: Path) -> None:
@@ -479,7 +586,7 @@ def test_the_record_namespace_is_a_subset_of_the_branch_namespace(
 
 
 def _perform(
-    store: stack_store.GitStackRecordWriter,
+    store: stack_writes.GitStackRecordWriter,
     repo: Repo,
     base: str,
     operation: str,
@@ -498,7 +605,7 @@ def _perform(
 
 
 def _perform_destructive(
-    store: stack_store.GitStackRecordWriter,
+    store: stack_writes.GitStackRecordWriter,
     repo: Repo,
     base: str,
     operation: str,

@@ -21,7 +21,7 @@ import typing as typ
 
 from git import Repo
 
-from git_donkey import donkey, stack_records, stack_store
+from git_donkey import donkey, stack_records, stack_store, stack_writes
 from tests.git_repo_helpers import configure_repo
 from tests.integration.conftest import _setup_repo
 from tests.integration.donkey_helpers import seed_repo
@@ -382,7 +382,7 @@ def _recorded_branch(local_path: Path, branch: str, parent: str) -> str:
     repo.git.branch(parent, "main")
     base = repo.head.commit.hexsha
     tip = branch_ahead_of_trunk(local_path, branch)
-    stack_store.GitStackRecordWriter(repo).create(
+    stack_writes.GitStackRecordWriter(repo).create(
         stack_records.StackRecord(
             branch=branch,
             parent=stack_records.StackParent(branch=parent, pull_request=None),
