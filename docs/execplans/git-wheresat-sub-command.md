@@ -3173,6 +3173,121 @@ Stop and escalate rather than improvising when any of these is reached.
     and what changed there, so a reader can check the claim against the diff
     rather than against this paragraph.
 
+  - Review round: `coderabbit review --agent --base origin/main` reports 12
+    findings over the tree at `d98d58c` (log
+    `/tmp/coderabbit-git-donkey-git-wheresat-sub-command-14.out`, the
+    agent-mode stream whose 12 `finding` records are kept as
+    `/tmp/coderabbit-findings-14.jsonl` for triage), taken on 2026-09-15 in
+    one attempt and without meeting a rate limit, over the 127 files the
+    review reports. The 12 are 1 critical, 1 major, 4 minor and 6 trivial,
+    and no two of them name the same lines: twelve requests, twelve changes.
+    Ten are actioned in the form they were asked for, one in substance, and
+    the critical as asked after collection showed its premise false either
+    way.
+  - The branch also merges `origin/main` at `faa7efe` in `61f21ee` — three
+    Dependabot bumps touching `pyproject.toml` and `uv.lock` and nothing
+    else — so this round's fixes are gated once, over the merged tree, and
+    the tree reviewed next is the tree that will be merged.
+  - The critical asks for `@staticmethod` to sit outermost in
+    `tests/integration/test_wheresat_read_only.py`, on the premise that the
+    parameterization beneath it is not collected, so the vector cases may not
+    run. The premise is false here and the check that settles it is
+    collection rather than argument: `pytest
+    tests/integration/test_wheresat_read_only.py --collect-only -q` collects
+    32 tests, 21 of them `test_every_vector_leaves_the_repository_alone[…]`,
+    one per label in `_VECTORS`. The requested order is the file's order now
+    — `@staticmethod` outermost, `@pytest.mark.parametrize` directly above
+    the function — and collection was re-run after the swap: still 32 tests,
+    still 21 vector cases. What the round does not do is treat a count as an
+    argument it did not make.
+  - The major asks the report to stop emitting a null `parentHead` and the
+    snapshots to carry it populated. `parentHead` is not a field of an
+    assessment: it is the commit a `pull-request-head` candidate names, so an
+    established run reports a head only when that head is a supporter of the
+    boundary it established. Both established snapshots carry null because
+    neither case's evidence names a head — `permissive()` consults no parent
+    at all, and `parented()`'s support is the record's birth boundary alone —
+    and populating them would state a fact the fixtures do not carry.
+    `landed` is null by a recorded decision and has no carrier yet. The gap
+    the finding implies is real all the same, and the round acts on it:
+    nothing pinned the populated case, so nothing would have failed if the
+    evidence stopped being read. `tests/unit/test_wheresat_report.py` gains
+    two cases — an established run whose support carries the head it fetched
+    as the boundary it established, and a run that read the head and
+    established nothing — asserting `parentHead` names the commit in each.
+    The reviewer's next move is a sample rather than a fixture, and the plan
+    is what it changes: the JSON sample's `parentHead` was a commit no
+    evidence in the sample carried, so it names the commit its `support`
+    names now, with the `pull-request-head` entry that carries it, and the
+    prose says which candidate the key is read from and what a run that named
+    no parent reports instead.
+  - The `429` the round adds is the one place a review request was changed in
+    form rather than in substance, and it is the round's own finding.
+    `_Status` gains `RATE_LIMITED = 429` beside `FORBIDDEN`, and one case
+    weighs both, since GitHub's secondary limit is refused for the reason a
+    rate-limited `403` is; `_forbidden_reason` is `_refusal_reason`, named
+    for what it reads rather than for one status, and it names the status it
+    answered to rather than a hard-coded `403`. The header test moved into
+    `_headers_name_a_limit`, which is also what keeps the condition to the
+    two boolean expressions the linter allows. The new
+    `rate-limited-secondary` fault asserts the refusal claims a rate limit and
+    does not claim a missing scope, and it found a defect in that very
+    change: `status is not _Status.RATE_LIMITED` is true for a plain-int
+    `429` out of a stub, because an `IntEnum` member is a different object
+    from the integer it equals, so the first version reported a secondary
+    limit as a missing scope. The comparison is `!=`. A snapshot could not
+    have seen it, which is why the fault is recorded here rather than only in
+    the diff.
+  - The remaining requests are shapes and one omission. `donkey_worktrees.py`
+    catches `BadName` beside `GitCommandError` and `ValueError` — the name is
+    worth recording because it is not one of them: `gitdb.exc.BadName`
+    descends from `ODBError`, which descends from `Exception`, not from
+    `ValueError`, so a base Git will not read as a revision escaped this
+    handler as a traceback rather than as the `worktree add failed:` refusal.
+    Its comment above the fallback said a base that resolved to nothing is
+    put to Git by name, which refuses it in Git's own words; that is not what
+    the line does — `context.repo_home.commit(request.base_branch)` is itself
+    a revision lookup, reached before `git worktree add` runs at all — and
+    the comment says so now. The properties fixture draws one patch
+    identifier per commit in `dict.fromkeys(placed)`, the de-duplicated
+    iteration the same module already uses for the retained commits. The
+    faults suite's header mapping is a `types.MappingProxyType`, so a case
+    cannot reach into the headers another case asserts against. The plonk
+    assertion reads the bullets of the heading's own section and stops at the
+    first line that is not a bullet, so an entry is matched as a whole bullet
+    within its section rather than anywhere in the summary, and no import was
+    needed to do it. The gates comment above `_ABSENT_PARENT_GATES` no longer
+    claims to be every gate a parentless run leaves out, because the gate
+    about the parent's integration is left out for a second reason, which
+    `_INAPPLICABLE_WITHOUT_PARENT` states. The shared-record fixture's default
+    parent is `stack_records.identity_text(_PARENT)`, the identity the case
+    asserts against, while the rendered-spelling literal the assertion pins
+    stays a literal because it holds the guide's example in place. And the
+    users' guide's exit-status caption is sentence case with underscore
+    delimiters — `_Table 1: The four exit statuses._` — as are the file's two
+    other emphasis spans, `*or*` and `*now*`, since MD049 takes its style
+    from the first emphasis in the file and changing the caption alone would
+    have left the file inconsistent with itself.
+  - The nine checks are green over the tree the fixes were made in, which is
+    what round 14 is pushed as, at `4631ba1`, and over the merge rather than
+    beside it: `build` built `git-donkey 0.2.0` from 80 resolved packages;
+    `check-fmt` found 177 files already formatted and `mdtablefix` left its 29
+    unchanged; `lint` reached all of its stages, with `interrogate` at 100.0%,
+    the built-in and df12 pylint passes both at 10.00/10, `pyscn` passed, and
+    `ambrleaks` and `skylos` clean; `typecheck` passed under ty 0.0.79 with no
+    diagnostics; `test` reported 993 passed, 233 warnings and no snapshot
+    update in 18.34 seconds; `spelling` was clean and its helper tests passed
+    16 at 93.75% coverage, with the regenerated `typos.toml` byte-identical
+    to the one it replaced; `markdownlint` linted 30 files with 0 errors;
+    `nixie` validated its 6 diagrams; and `cs delta origin/main` found no
+    issues over the branch. No gate modified a tracked file, and no gate was
+    red this round. This entry, including this bullet, is Markdown written
+    once those numbers were known, so the Markdown gates are re-run over it.
+  - The disposition is posted on the pull request (round 14,
+    `#issuecomment-5692245998`), naming for each request the file it changed
+    and what changed there, so a reader can check the claim against the diff
+    rather than against this paragraph.
+
 ## Surprises & discoveries
 
 - Observation: this repository has no roadmap document.
@@ -8108,13 +8223,15 @@ rather than the range's size:
   "child": {"branch": "feature/child", "tip": "9f2c1ab…"},
   "target": "7c8d9e0f…",
   "parent": {"repository": "leynos/git-donkey", "number": 123},
-  "parentHead": "5f6e7d8c…",
+  "parentHead": "1a2b3c4d…",
   "landed": null,
   "oldBase": "1a2b3c4d…",
   "durableRef": null,
   "included": {"commits": ["…"], "count": 2, "withheld": 0, "cutShort": false},
   "excluded": {"commits": ["…"], "count": 2, "withheld": 0, "cutShort": false},
   "support": [{"commit": "1a2b3c4d…", "kind": "stack-record-birth",
+               "tier": "attested"},
+              {"commit": "1a2b3c4d…", "kind": "pull-request-head",
                "tier": "attested"}],
   "candidates": [],
   "gates": [{"name": "parent-merged", "outcome": "passed", "detail": "…",
@@ -8139,6 +8256,14 @@ established no boundary proposes no replay: it reports `rebaseCommand` and
 `backupRef` as `null`, and both keys are declared in the empty payload too, so
 the key set is one shape whichever path the run took. `landed` stays `null`
 until an assessment carries the parent's landed commit, which none does yet.
+`parentHead` is the same kind of reading rather than a field of the run's
+result: it is the commit a `pull-request-head` candidate names, which for an
+established run is the commit its support names — the sample's child was cut
+from the parent's head, so the head and the old base are one commit — and is
+read from `candidates` when a run read a head and established nothing. A run
+that consulted no parent, or that read its boundary out of a stack record
+alone, reports `null`, which is what both established samples in
+`tests/unit/__snapshots__/test_wheresat_report.ambr` carry.
 
 Contract rules, to be written into `docs/developers-guide.md`: a key may be
 added in a later minor revision, but never removed or retyped without
