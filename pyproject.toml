@@ -63,12 +63,6 @@ dev = [
 [tool.ruff]
 line-length = 88
 preview = true
-extend-exclude = [
-    "scripts/generate_typos_config.py",
-    "scripts/typos_rollout.py",
-    "scripts/typos_rollout_cache.py",
-    "scripts/tests/test_typos_rollout.py",
-]
 
 [tool.ruff.lint]
 select = [
@@ -187,14 +181,6 @@ max-args = 4
 max-bool-expr = 2
 max-locals = 10
 
-[tool.ty.environment]
-# The estate typos-rollout scripts import each other as top-level modules and
-# `scripts/` is not a package, so the directory belongs on the module search
-# path. Editors honour this setting; the `typecheck` target also passes
-# `--extra-search-path scripts` because ty does not apply config-sourced extra
-# paths when it resolves the PEP 723 script as a standalone program.
-extra-paths = ["scripts"]
-
 [tool.interrogate]
 ignore-overloaded-functions = true
 
@@ -202,14 +188,6 @@ ignore-overloaded-functions = true
 # df12-python-lints plugin pass (configured in .pylintrc-df12.toml) both run
 # under the project virtual-env's CPython; see the Makefile.
 [tool.pylint.main]
-# The shared spelling-rollout helpers keep their own pinned Ruff and coverage
-# policy; exclude them here as they are excluded from Ruff.
-ignore = [
-    "generate_typos_config.py",
-    "typos_rollout.py",
-    "typos_rollout_cache.py",
-    "test_typos_rollout.py",
-]
 # Expand directory targets like git_donkey and tests even when a target is not
 # a package.
 recursive = true

@@ -5,11 +5,11 @@ contributors working on `git-donkey`.
 
 ## Spelling policy
 
-Run `make spelling` to enforce en-GB-oxendict prose spelling. The generated
-`typos.toml` starts from the shared estate dictionary, refreshes its untracked
-local cache only when the authority is newer, and then applies the narrow
-repository policy in `typos.local.toml`. Edit the local policy and regenerate
-the configuration rather than changing generated entries by hand.
+Run `make spelling` to enforce en-GB-oxendict prose spelling. The gate
+regenerates `typos.toml` from the live shared dictionary and the
+`typos.local.toml` overlay on every run, so `typos.toml` is never drift checked
+in CI. Put narrow repository-specific exceptions in `typos.local.toml`; never
+edit the generated entries by hand.
 
 ## git-donkey workflow
 

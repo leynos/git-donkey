@@ -7,14 +7,6 @@
 [tool.pylint.main]
 # Load only the df12 house-style checkers for this pass.
 load-plugins = ["df12_python_lints"]
-# The shared spelling-rollout helpers keep their own pinned Ruff and coverage
-# policy; exclude them here as they are excluded from Ruff.
-ignore = [
-    "generate_typos_config.py",
-    "typos_rollout.py",
-    "typos_rollout_cache.py",
-    "test_typos_rollout.py",
-]
 # Expand directory targets like git_donkey and tests even when a target is not
 # a package.
 recursive = true
