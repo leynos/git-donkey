@@ -47,6 +47,7 @@ from git_donkey.wheresat_graph import GitWheresatGraph
 from git_donkey.wheresat_records import EvidenceKind
 from tests import git_repo_helpers
 from tests.integration.wheresat_helpers import (
+    Status,
     WheresatRun,
     in_directory,
     run_wheresat,
@@ -73,9 +74,6 @@ _OTHER: typ.Final = "other.txt"
 
 _WIDE: typ.Final = 200
 """The window a case asks for when the bound is not what the case is about."""
-
-_ESTABLISHED: typ.Final = 0
-_REFUSED: typ.Final = 1
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -364,7 +362,7 @@ def test_a_child_commit_the_trunk_landed_whole_is_a_tree_twin(
 
     run = _run(tree_twin, capsys, deep=True)
 
-    assert run.exit_code == _REFUSED, (
+    assert run.exit_code == Status.REFUSED, (
         "the evidence that could establish this boundary is a reflog, and the "
         "target was named by object ID, so the comparison's answer is what the "
         "run has to report"
@@ -487,7 +485,7 @@ def test_a_run_without_the_flag_asks_the_trunk_nothing(
     assert _reported(deep, EvidenceKind.TREE_IDENTITY) == _twin(tree_twin), (
         "and the deep run reports it"
     )
-    assert local.exit_code == deep.exit_code == _REFUSED, (
+    assert local.exit_code == deep.exit_code == Status.REFUSED, (
         "the two runs agree about the boundary"
     )
 
@@ -500,7 +498,7 @@ def test_the_two_runs_differ_in_nothing_a_verdict_rests_on(
     local = _run(squashed, capsys, deep=False)
     deep = _run(squashed, capsys, deep=True)
 
-    assert local.exit_code == deep.exit_code == _REFUSED, (
+    assert local.exit_code == deep.exit_code == Status.REFUSED, (
         "the flag is a cost control and an extra rung, never a second opinion "
         "about the boundary"
     )
@@ -539,7 +537,7 @@ def test_an_established_run_reports_the_same_boundary_with_and_without_the_flag(
     local = _run(named, capsys, deep=False)
     deep = _run(named, capsys, deep=True)
 
-    assert local.exit_code == deep.exit_code == _ESTABLISHED, (
+    assert local.exit_code == deep.exit_code == Status.ESTABLISHED, (
         "the fixture must establish a boundary, or this case is the other one"
     )
     assert deep.envelope == local.envelope, (

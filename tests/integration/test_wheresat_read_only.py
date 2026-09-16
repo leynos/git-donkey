@@ -56,6 +56,7 @@ from tests.integration import wheresat_scenarios
 from tests.integration.wheresat_helpers import (
     CHILD,
     PARENT,
+    Status,
     Where,
     WheresatScenario,
     reading,
@@ -76,14 +77,6 @@ pytestmark = pytest.mark.timeout(120)
 _TRACKED: typ.Final = "README.md"
 """Tracked file the dirt and the conflicting edits are made to."""
 
-_FETCH_HEAD: typ.Final = "FETCH_HEAD"
-"""File a fetch writes, which the run must not touch either."""
-
-_ESTABLISHED: typ.Final = 0
-_REFUSED: typ.Final = 1
-_UNUSABLE: typ.Final = 2
-_INDETERMINATE: typ.Final = 3
-
 
 @dataclasses.dataclass(frozen=True, slots=True)
 class Vector:
@@ -95,7 +88,7 @@ class Vector:
         Name of the vector, which is how a failing example identifies itself.
     options : wheresat.WheresatOptions
         The command line the vector asks for.
-    exit_code : int
+    exit_code : Status
         Status the run must return. It is pinned here because a vector that
         refused for an unexpected reason would still leave the repository alone,
         and the matrix would then pass while testing nothing.
@@ -108,87 +101,88 @@ class Vector:
 
     label: str
     options: wheresat.WheresatOptions
-    exit_code: int
+    exit_code: Status
     where: Where = "worktree"
 
 
 _VECTORS: typ.Final[cabc.Mapping[str, Vector]] = {
-    "default": Vector("default", wheresat.WheresatOptions(), _ESTABLISHED),
-    "explain": Vector("explain", wheresat.WheresatOptions(explain=True), _ESTABLISHED),
-    "no-fetch": Vector(
-        "no-fetch", wheresat.WheresatOptions(no_fetch=True), _ESTABLISHED
+    "default": Vector("default", wheresat.WheresatOptions(), Status.ESTABLISHED),
+    "explain": Vector(
+        "explain", wheresat.WheresatOptions(explain=True), Status.ESTABLISHED
     ),
-    "offline": Vector("offline", wheresat.WheresatOptions(offline=True), _ESTABLISHED),
-    "deep": Vector("deep", wheresat.WheresatOptions(deep=True), _ESTABLISHED),
-    "json": Vector("json", wheresat.WheresatOptions(json=True), _ESTABLISHED),
+    "no-fetch": Vector(
+        "no-fetch", wheresat.WheresatOptions(no_fetch=True), Status.ESTABLISHED
+    ),
+    "offline": Vector(
+        "offline", wheresat.WheresatOptions(offline=True), Status.ESTABLISHED
+    ),
+    "deep": Vector("deep", wheresat.WheresatOptions(deep=True), Status.ESTABLISHED),
+    "json": Vector("json", wheresat.WheresatOptions(json=True), Status.ESTABLISHED),
     "op-id": Vector(
-        "op-id", wheresat.WheresatOptions(op_id="read-only-run"), _ESTABLISHED
+        "op-id", wheresat.WheresatOptions(op_id="read-only-run"), Status.ESTABLISHED
     ),
     "branch-named": Vector(
         "branch-named",
         wheresat.WheresatOptions(branch=CHILD),
-        _ESTABLISHED,
+        Status.ESTABLISHED,
         where="checkout",
     ),
     "branch-absent": Vector(
         "branch-absent",
         wheresat.WheresatOptions(branch="absent"),
-        _UNUSABLE,
+        Status.UNUSABLE,
         where="checkout",
     ),
     "onto-absent": Vector(
-        "onto-absent", wheresat.WheresatOptions(onto="no-such-revision"), _UNUSABLE
+        "onto-absent",
+        wheresat.WheresatOptions(onto="no-such-revision"),
+        Status.UNUSABLE,
     ),
     "parent-named": Vector(
         "parent-named",
         wheresat.WheresatOptions(parent="octocat/hello-world#42"),
-        _INDETERMINATE,
+        Status.INDETERMINATE,
     ),
     "parent-malformed": Vector(
         "parent-malformed",
         wheresat.WheresatOptions(parent="hello-world#42"),
-        _UNUSABLE,
+        Status.UNUSABLE,
     ),
     "onto-absent-json": Vector(
         "onto-absent-json",
         wheresat.WheresatOptions(json=True, onto="no-such-revision"),
-        _UNUSABLE,
+        Status.UNUSABLE,
     ),
     "refusal": Vector(
         "refusal",
         wheresat.WheresatOptions(branch=PARENT, onto=PARENT),
-        _REFUSED,
+        Status.REFUSED,
         where="checkout",
     ),
     "op-id-escapes": Vector(
-        "op-id-escapes", wheresat.WheresatOptions(op_id="../escape"), _UNUSABLE
+        "op-id-escapes", wheresat.WheresatOptions(op_id="../escape"), Status.UNUSABLE
     ),
     "op-id-dash": Vector(
-        "op-id-dash", wheresat.WheresatOptions(op_id="-dash"), _UNUSABLE
+        "op-id-dash", wheresat.WheresatOptions(op_id="-dash"), Status.UNUSABLE
     ),
     "op-id-colon": Vector(
-        "op-id-colon", wheresat.WheresatOptions(op_id="colon:name"), _UNUSABLE
+        "op-id-colon", wheresat.WheresatOptions(op_id="colon:name"), Status.UNUSABLE
     ),
     "op-id-newline": Vector(
-        "op-id-newline", wheresat.WheresatOptions(op_id="line\nbreak"), _UNUSABLE
+        "op-id-newline", wheresat.WheresatOptions(op_id="line\nbreak"), Status.UNUSABLE
     ),
     "op-id-dots": Vector(
-        "op-id-dots", wheresat.WheresatOptions(op_id="a..b"), _UNUSABLE
+        "op-id-dots", wheresat.WheresatOptions(op_id="a..b"), Status.UNUSABLE
     ),
     "op-id-trailing-dot": Vector(
-        "op-id-trailing-dot", wheresat.WheresatOptions(op_id="a."), _UNUSABLE
+        "op-id-trailing-dot", wheresat.WheresatOptions(op_id="a."), Status.UNUSABLE
     ),
     "op-id-lock": Vector(
-        "op-id-lock", wheresat.WheresatOptions(op_id="a.lock"), _UNUSABLE
+        "op-id-lock", wheresat.WheresatOptions(op_id="a.lock"), Status.UNUSABLE
     ),
 }
 
-_STATUSES: typ.Final[frozenset[int]] = frozenset({
-    _ESTABLISHED,
-    _REFUSED,
-    _UNUSABLE,
-    _INDETERMINATE,
-})
+_STATUSES: typ.Final[frozenset[Status]] = frozenset(Status)
 """Every status the command documents, each of which the matrix must reach."""
 
 
@@ -296,345 +290,367 @@ def _git_directory(scenario: WheresatScenario, branch: str) -> Path:
     return Path(scenario.worktree_repo(branch).git.rev_parse("--absolute-git-dir"))
 
 
-@pytest.mark.parametrize("label", tuple(_VECTORS))
-def test_every_vector_leaves_the_repository_alone(
-    label: str,
-    scenario: WheresatScenario,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    """Each vector answers what it must and changes nothing.
+class TestTheMatrix:
+    """The matrix: every vector answers what it must."""
 
-    The status is checked before the fingerprint, so a vector that refused for
-    an unexpected reason cannot be mistaken for one that answered, and the refs
-    are then compared strictly — a stronger claim than INV-1 permits, because
-    the boundary this fixture's record attests is a commit the parent branch
-    already reaches, so no run needs to retain anything.
-    """
-    vector = _VECTORS[label]
-    before = reading(scenario)
-    run = run_wheresat_in(scenario, vector.options, capsys, where=vector.where)
-    after = reading(scenario)
+    @pytest.mark.parametrize("label", tuple(_VECTORS))
+    @staticmethod
+    def test_every_vector_leaves_the_repository_alone(
+        label: str,
+        scenario: WheresatScenario,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Each vector answers what it must and changes nothing.
 
-    assert run.exit_code == vector.exit_code, (
-        f"expected {label} to exit {vector.exit_code}, not {run.exit_code}: "
-        f"{run.stderr.strip()}"
-    )
-    assert before.refs == after.refs, f"expected {label} to write no ref at all"
-    assert not before.differences(after), (
-        f"expected {label} to leave the repository unchanged"
-    )
+        The status is checked before the fingerprint, so a vector that refused for
+        an unexpected reason cannot be mistaken for one that answered, and the refs
+        are then compared strictly — a stronger claim than INV-1 permits, because
+        the boundary this fixture's record attests is a commit the parent branch
+        already reaches, so no run needs to retain anything.
+        """
+        vector = _VECTORS[label]
+        before = reading(scenario)
+        run = run_wheresat_in(scenario, vector.options, capsys, where=vector.where)
+        after = reading(scenario)
 
+        assert run.exit_code == vector.exit_code, (
+            f"expected {label} to exit {vector.exit_code}, not {run.exit_code}: "
+            f"{run.stderr.strip()}"
+        )
+        assert before.refs == after.refs, f"expected {label} to write no ref at all"
+        assert not before.differences(after), (
+            f"expected {label} to leave the repository unchanged"
+        )
 
-def test_the_matrix_reaches_every_status() -> None:
-    """The matrix exercises each way the command can end.
+    @staticmethod
+    def test_the_matrix_reaches_every_status() -> None:
+        """The matrix exercises each way the command can end.
 
-    A matrix that had quietly stopped reaching a status would still pass every
-    per-vector claim while measuring less of the command, so the statuses are
-    read off the table itself rather than from what the runs did.
-    """
-    assert {vector.exit_code for vector in _VECTORS.values()} == set(_STATUSES), (
-        "the matrix must reach every status the command can end with"
-    )
-
-
-def test_an_answering_run_reads_the_attested_record(
-    scenario: WheresatScenario,
-    capsys: pytest.CaptureFixture[str],
-    recording_recorder: RecordingRecorder,
-) -> None:
-    """The established verdict is reached through the record, and says so.
-
-    The boundary in this fixture is attested by the stack record ``git donkey``
-    wrote at the child's birth, so the run must both collect evidence at the
-    attested tier and reach a verdict on it. Reading that from the observations
-    rather than from the printed report is what makes the matrix's evidence
-    about the paths it reached rather than about the text it produced.
-    """
-    observations = _observed(scenario, _VECTORS["default"], capsys, recording_recorder)
-
-    assert any(
-        observation.operation == "evidence_collection"
-        and observation.evidence_tier == "attested"
-        for observation in observations
-    ), f"expected attested evidence to be collected, got {observations}"
-    assert any(
-        observation.operation == "boundary_assessment"
-        and observation.verdict == "established"
-        for observation in observations
-    ), f"expected an established verdict, got {observations}"
+        A matrix that had quietly stopped reaching a status would still pass every
+        per-vector claim while measuring less of the command, so the statuses are
+        read off the table itself rather than from what the runs did.
+        """
+        assert {vector.exit_code for vector in _VECTORS.values()} == _STATUSES, (
+            "the matrix must reach every status the command can end with"
+        )
 
 
-def test_a_named_parent_is_asked_for_and_reported_unavailable(
-    scenario: WheresatScenario,
-    capsys: pytest.CaptureFixture[str],
-    recording_recorder: RecordingRecorder,
-) -> None:
-    """A parent the run may not consult is reported, not silently ignored.
+class TestThePathsTheVectorsReach:
+    """What the vectors reach, as the observations each run recorded state it."""
 
-    ``--parent`` names a pull request the local evidence path cannot reach, so
-    the run records that it asked and could not answer, and returns the
-    indeterminate verdict that says so rather than a verdict about evidence it
-    never saw.
-    """
-    observations = _observed(
-        scenario, _VECTORS["parent-named"], capsys, recording_recorder
-    )
+    @staticmethod
+    def test_an_answering_run_reads_the_attested_record(
+        scenario: WheresatScenario,
+        capsys: pytest.CaptureFixture[str],
+        recording_recorder: RecordingRecorder,
+    ) -> None:
+        """The established verdict is reached through the record, and says so.
 
-    assert any(
-        observation.operation == "parent_identification"
-        and observation.outcome == "unavailable"
-        for observation in observations
-    ), f"expected the parent to be asked for, got {observations}"
-    assert any(
-        observation.operation == "boundary_assessment"
-        and observation.verdict == "indeterminate"
-        for observation in observations
-    ), f"expected an indeterminate verdict, got {observations}"
+        The boundary in this fixture is attested by the stack record ``git donkey``
+        wrote at the child's birth, so the run must both collect evidence at the
+        attested tier and reach a verdict on it. Reading that from the observations
+        rather than from the printed report is what makes the matrix's evidence
+        about the paths it reached rather than about the text it produced.
+        """
+        observations = _observed(
+            scenario, _VECTORS["default"], capsys, recording_recorder
+        )
 
-
-def test_a_run_that_may_fetch_fetches_the_head_and_writes_only_evidence(
-    answerable: Journey,
-    capsys: pytest.CaptureFixture[str],
-    recording_recorder: RecordingRecorder,
-) -> None:
-    """A parent the forge answers for is fetched, and its head cached as evidence.
-
-    This is the fetch the matrix's ``--no-fetch`` vector suppresses and the run
-    beside it performs, which is what makes the flag mean something: the same
-    question is asked twice, one flag apart, and only the run that may fetch
-    reaches ``success``. The head lands under the evidence namespace, which is
-    the one difference INV-1 permits, so the fingerprint is compared to say that
-    is the only thing the run wrote.
-    """
-    options = wheresat.WheresatOptions(parent=wheresat_scenarios.PULL_REQUEST)
-    before = wheresat_scenarios.reading_of(answerable)
-    first = len(recording_recorder.observations)
-    run = answerable.run(options, capsys)
-    observations = recording_recorder.observations[first:]
-    after = wheresat_scenarios.reading_of(answerable)
-    reached = {
-        (observation.operation, observation.outcome) for observation in observations
-    }
-    cache = str(wheresat_refs.parent_head_ref(answerable.identity))
-
-    assert run.exit_code == _ESTABLISHED, (
-        f"a fetched parent is established, but the run exited {run.exit_code}: "
-        f"{run.stderr.strip()}"
-    )
-    assert {("parent_identification", "found"), ("evidence_fetch", "success")} <= (
-        reached
-    ), f"expected the parent to be answered for and fetched, got {observations}"
-    assert answerable.scenario.repo.git.rev_parse(cache) == answerable.parent_head, (
-        "the fetched head is cached as the head the pull request records"
-    )
-    assert not before.differences(after), (
-        "the evidence ref is the only thing the run wrote"
-    )
-
-
-def test_a_run_that_may_not_fetch_records_the_refusal_and_writes_nothing(
-    answerable: Journey,
-    capsys: pytest.CaptureFixture[str],
-    recording_recorder: RecordingRecorder,
-) -> None:
-    """``--no-fetch`` is what stops the fetch, and no ref stands in its place.
-
-    The cache holds no head for this journey, so the run that may not fetch has
-    nothing to read, records that it did not ask, and answers indeterminate
-    rather than established. It is the pair to the test above: one journey, one
-    flag, and the two runs differ in the fetch and in what it wrote.
-    """
-    options = wheresat.WheresatOptions(
-        parent=wheresat_scenarios.PULL_REQUEST, no_fetch=True
-    )
-    before = wheresat_scenarios.reading_of(answerable)
-    first = len(recording_recorder.observations)
-    run = answerable.run(options, capsys)
-    observations = recording_recorder.observations[first:]
-    after = wheresat_scenarios.reading_of(answerable)
-
-    assert run.exit_code == _INDETERMINATE, (
-        f"an unfetched parent cannot be established, but the run exited "
-        f"{run.exit_code}: {run.stderr.strip()}"
-    )
-    assert any(
-        observation.operation == "evidence_fetch"
-        and observation.outcome == "not_requested"
-        for observation in observations
-    ), f"expected the fetch to be reported as not requested, got {observations}"
-    assert "--no-fetch" in run.stdout, "and the report names the flag that stopped it"
-    assert before.refs == after.refs, "and nothing is written in the head's place"
-    assert not before.differences(after), "and the repository is left as it was found"
-
-
-def test_a_refused_run_never_reaches_an_assessment(
-    scenario: WheresatScenario,
-    capsys: pytest.CaptureFixture[str],
-    recording_recorder: RecordingRecorder,
-) -> None:
-    """A run that cannot resolve its branch stops before weighing any evidence.
-
-    This is the error-path half of the matrix's non-vacuity: a run that refuses
-    its arguments must not spend the run collecting evidence, because evidence
-    is not what it is missing.
-    """
-    observations = _observed(
-        scenario, _VECTORS["branch-absent"], capsys, recording_recorder
-    )
-
-    assert not any(
-        observation.operation in {"evidence_collection", "boundary_assessment"}
-        for observation in observations
-    ), f"expected the run to stop at its arguments, got {observations}"
-
-
-def test_the_deep_vector_collects_what_the_default_run_does_not(
-    scenario: WheresatScenario,
-    capsys: pytest.CaptureFixture[str],
-    recording_recorder: RecordingRecorder,
-) -> None:
-    """``--deep`` reaches the content comparison, and the default run does not.
-
-    The inferred tier is the one only a comparison reaches: evidence read off the
-    tree, where the rest of the matrix is evidence read out of a record or left
-    unavailable. Both vectors leave the repository alone, so without this the
-    invariant would hold just as well over a run that never compared anything.
-    """
-
-    def inferred(observations: list[observability.Observation]) -> set[str]:
-        """Return the operations the run recorded at the inferred tier."""
-        return {
-            observation.operation
+        assert any(
+            observation.operation == "evidence_collection"
+            and observation.evidence_tier == "attested"
             for observation in observations
-            if observation.evidence_tier == "inferred"
+        ), f"expected attested evidence to be collected, got {observations}"
+        assert any(
+            observation.operation == "boundary_assessment"
+            and observation.verdict == "established"
+            for observation in observations
+        ), f"expected an established verdict, got {observations}"
+
+    @staticmethod
+    def test_a_named_parent_is_asked_for_and_reported_unavailable(
+        scenario: WheresatScenario,
+        capsys: pytest.CaptureFixture[str],
+        recording_recorder: RecordingRecorder,
+    ) -> None:
+        """A parent the run may not consult is reported, not silently ignored.
+
+        ``--parent`` names a pull request the local evidence path cannot reach, so
+        the run records that it asked and could not answer, and returns the
+        indeterminate verdict that says so rather than a verdict about evidence it
+        never saw.
+        """
+        observations = _observed(
+            scenario, _VECTORS["parent-named"], capsys, recording_recorder
+        )
+
+        assert any(
+            observation.operation == "parent_identification"
+            and observation.outcome == "unavailable"
+            for observation in observations
+        ), f"expected the parent to be asked for, got {observations}"
+        assert any(
+            observation.operation == "boundary_assessment"
+            and observation.verdict == "indeterminate"
+            for observation in observations
+        ), f"expected an indeterminate verdict, got {observations}"
+
+    @staticmethod
+    def test_a_run_that_may_fetch_fetches_the_head_and_writes_only_evidence(
+        answerable: Journey,
+        capsys: pytest.CaptureFixture[str],
+        recording_recorder: RecordingRecorder,
+    ) -> None:
+        """A parent the forge answers for is fetched, and its head cached as evidence.
+
+        This is the fetch the matrix's ``--no-fetch`` vector suppresses and the run
+        beside it performs, which is what makes the flag mean something: the same
+        question is asked twice, one flag apart, and only the run that may fetch
+        reaches ``success``. The head lands under the evidence namespace, which is
+        the one difference INV-1 permits, so the fingerprint is compared to say that
+        is the only thing the run wrote.
+        """
+        options = wheresat.WheresatOptions(parent=wheresat_scenarios.PULL_REQUEST)
+        before = wheresat_scenarios.reading_of(answerable)
+        first = len(recording_recorder.observations)
+        run = answerable.run(options, capsys)
+        observations = recording_recorder.observations[first:]
+        after = wheresat_scenarios.reading_of(answerable)
+        reached = {
+            (observation.operation, observation.outcome) for observation in observations
         }
+        cache = str(wheresat_refs.parent_head_ref(answerable.identity))
 
-    default = _observed(scenario, _VECTORS["default"], capsys, recording_recorder)
-    deep = _observed(scenario, _VECTORS["deep"], capsys, recording_recorder)
+        assert run.exit_code == Status.ESTABLISHED, (
+            f"a fetched parent is established, but the run exited {run.exit_code}: "
+            f"{run.stderr.strip()}"
+        )
+        assert {("parent_identification", "found"), ("evidence_fetch", "success")} <= (
+            reached
+        ), f"expected the parent to be answered for and fetched, got {observations}"
+        assert (
+            answerable.scenario.repo.git.rev_parse(cache) == answerable.parent_head
+        ), "the fetched head is cached as the head the pull request records"
+        assert not before.differences(after), (
+            "the evidence ref is the only thing the run wrote"
+        )
 
-    assert not inferred(default), (
-        f"the default run asks for no comparison, got {default}"
-    )
-    assert "evidence_collection" in inferred(deep), (
-        f"expected the deep run to compare contents, got {deep}"
-    )
+    @staticmethod
+    def test_a_run_that_may_not_fetch_records_the_refusal_and_writes_nothing(
+        answerable: Journey,
+        capsys: pytest.CaptureFixture[str],
+        recording_recorder: RecordingRecorder,
+    ) -> None:
+        """``--no-fetch`` is what stops the fetch, and no ref stands in its place.
+
+        The cache holds no head for this journey, so the run that may not fetch has
+        nothing to read, records that it did not ask, and answers indeterminate
+        rather than established. It is the pair to the test above: one journey, one
+        flag, and the two runs differ in the fetch and in what it wrote.
+        """
+        options = wheresat.WheresatOptions(
+            parent=wheresat_scenarios.PULL_REQUEST, no_fetch=True
+        )
+        before = wheresat_scenarios.reading_of(answerable)
+        first = len(recording_recorder.observations)
+        run = answerable.run(options, capsys)
+        observations = recording_recorder.observations[first:]
+        after = wheresat_scenarios.reading_of(answerable)
+
+        assert run.exit_code == Status.INDETERMINATE, (
+            f"an unfetched parent cannot be established, but the run exited "
+            f"{run.exit_code}: {run.stderr.strip()}"
+        )
+        assert any(
+            observation.operation == "evidence_fetch"
+            and observation.outcome == "not_requested"
+            for observation in observations
+        ), f"expected the fetch to be reported as not requested, got {observations}"
+        assert "--no-fetch" in run.stdout, (
+            "and the report names the flag that stopped it"
+        )
+        assert before.refs == after.refs, "and nothing is written in the head's place"
+        assert not before.differences(after), (
+            "and the repository is left as it was found"
+        )
+
+    @staticmethod
+    def test_a_refused_run_never_reaches_an_assessment(
+        scenario: WheresatScenario,
+        capsys: pytest.CaptureFixture[str],
+        recording_recorder: RecordingRecorder,
+    ) -> None:
+        """A run that cannot resolve its branch stops before weighing any evidence.
+
+        This is the error-path half of the matrix's non-vacuity: a run that refuses
+        its arguments must not spend the run collecting evidence, because evidence
+        is not what it is missing.
+        """
+        observations = _observed(
+            scenario, _VECTORS["branch-absent"], capsys, recording_recorder
+        )
+
+        assert not any(
+            observation.operation in {"evidence_collection", "boundary_assessment"}
+            for observation in observations
+        ), f"expected the run to stop at its arguments, got {observations}"
+
+    @staticmethod
+    def test_the_deep_vector_collects_what_the_default_run_does_not(
+        scenario: WheresatScenario,
+        capsys: pytest.CaptureFixture[str],
+        recording_recorder: RecordingRecorder,
+    ) -> None:
+        """``--deep`` reaches the content comparison, and the default run does not.
+
+        The inferred tier is the one only a comparison reaches: evidence read off the
+        tree, where the rest of the matrix is evidence read out of a record or left
+        unavailable. Both vectors leave the repository alone, so without this the
+        invariant would hold just as well over a run that never compared anything.
+        """
+
+        def inferred(observations: list[observability.Observation]) -> set[str]:
+            """Return the operations the run recorded at the inferred tier."""
+            return {
+                observation.operation
+                for observation in observations
+                if observation.evidence_tier == "inferred"
+            }
+
+        default = _observed(scenario, _VECTORS["default"], capsys, recording_recorder)
+        deep = _observed(scenario, _VECTORS["deep"], capsys, recording_recorder)
+
+        assert not inferred(default), (
+            f"the default run asks for no comparison, got {default}"
+        )
+        assert "evidence_collection" in inferred(deep), (
+            f"expected the deep run to compare contents, got {deep}"
+        )
+
+    @staticmethod
+    def test_the_json_vector_reports_the_boundary_the_record_attests(
+        scenario: WheresatScenario,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """The machine-readable envelope names the boundary the record attests.
+
+        The envelope is the interface a later milestone's ``--record`` writes from,
+        so its established shape is pinned here: the boundary the record attests,
+        the child it belongs to, the command that would replay the child's work, and
+        no durable ref, because this run retained nothing.
+        """
+        run = run_wheresat_in(scenario, _VECTORS["json"].options, capsys)
+        payload = run.envelope
+
+        assert payload["schema"] == "git-wheresat/1", (
+            "the envelope declares the schema a consumer reads it as"
+        )
+        assert payload["verdict"] == "established", (
+            "the record's boundary is established"
+        )
+        assert payload["exitCode"] == Status.ESTABLISHED, (
+            "and the run exits with the established status"
+        )
+        assert payload["oldBase"] == scenario.boundary, (
+            "naming the boundary the record attests"
+        )
+        assert payload["child"] == {"branch": CHILD, "tip": scenario.tip}, (
+            "and the child it belongs to"
+        )
+        assert payload["durableRef"] is None, (
+            "and no durable ref, because this run retained nothing"
+        )
+        assert payload["warnings"] == [], (
+            "and no warning, because nothing needed repairing"
+        )
+        assert payload["rebaseCommand"] == (
+            f"git rebase --onto {payload['target']} {scenario.boundary} {CHILD}"
+        ), "and the replay the boundary implies"
+
+    @staticmethod
+    def test_a_refused_run_names_its_gate_and_prints_no_replay_command(
+        scenario: WheresatScenario,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """A refusal says which gate refused, and offers nothing to run.
+
+        The gate that decides this vector's answer is the replay range being empty:
+        the candidate boundary is the child's own tip, so there is no work between
+        the two to replay. Nothing may be printed for a replay either — a refusal
+        that printed a command would be read as an answer by anyone who ran it.
+        """
+        vector = _VECTORS["refusal"]
+        run = run_wheresat_in(scenario, vector.options, capsys, where=vector.where)
+        gate = wheresat_records.GateName.REPLAY_RANGE_NON_EMPTY.value
+
+        assert any(
+            line.split()[:2] == ["failed", gate] for line in run.stdout.splitlines()
+        ), f"expected {gate} to be reported as failed, got:\n{run.stdout}"
+        assert "git rebase --onto" not in run.stdout, "a refusal offers nothing to run"
 
 
-def test_the_json_vector_reports_the_boundary_the_record_attests(
-    scenario: WheresatScenario,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    """The machine-readable envelope names the boundary the record attests.
+class TestWarnedStates:
+    """The two cases larger than a flag: each warns, and is left as it was found."""
 
-    The envelope is the interface a later milestone's ``--record`` writes from,
-    so its established shape is pinned here: the boundary the record attests,
-    the child it belongs to, the command that would replay the child's work, and
-    no durable ref, because this run retained nothing.
-    """
-    run = run_wheresat_in(scenario, _VECTORS["json"].options, capsys)
-    payload = run.envelope
+    @staticmethod
+    def test_a_dirty_worktree_is_warned_about_and_left_alone(
+        dirtied: WheresatScenario,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Uncommitted changes warn, do not decide, and are still there afterwards.
 
-    assert payload["schema"] == "git-wheresat/1", (
-        "the envelope declares the schema a consumer reads it as"
-    )
-    assert payload["verdict"] == "established", "the record's boundary is established"
-    assert payload["exitCode"] == _ESTABLISHED, (
-        "and the run exits with the established status"
-    )
-    assert payload["oldBase"] == scenario.boundary, (
-        "naming the boundary the record attests"
-    )
-    assert payload["child"] == {"branch": CHILD, "tip": scenario.tip}, (
-        "and the child it belongs to"
-    )
-    assert payload["durableRef"] is None, (
-        "and no durable ref, because this run retained nothing"
-    )
-    assert payload["warnings"] == [], "and no warning, because nothing needed repairing"
-    assert payload["rebaseCommand"] == (
-        f"git rebase --onto {payload['target']} {scenario.boundary} {CHILD}"
-    ), "and the replay the boundary implies"
+        The command prints a replay that would refuse to run over these changes, so
+        it says so; that is not evidence about the boundary, so it changes neither
+        the verdict nor the status.
+        """
+        vector = _VECTORS["default"]
+        before = reading(dirtied)
+        run = run_wheresat_in(dirtied, vector.options, capsys, where=vector.where)
 
+        assert run.exit_code == Status.ESTABLISHED, (
+            "a dirty worktree warns but does not change the verdict"
+        )
+        assert "has uncommitted changes" in run.stdout, "the warning names the obstacle"
+        assert not before.differences(reading(dirtied)), (
+            "and the worktree is left exactly as it was"
+        )
+        assert (
+            dirtied.worktree_path() / _TRACKED
+        ).read_text() == "edited in the worktree", (
+            "including the uncommitted edit, which is still there"
+        )
 
-def test_a_refused_run_names_its_gate_and_prints_no_replay_command(
-    scenario: WheresatScenario,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    """A refusal says which gate refused, and offers nothing to run.
+    @staticmethod
+    def test_a_stopped_rebase_is_warned_about_and_left_running(
+        rebasing: WheresatScenario,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """A stopped rebase warns, does not decide, and is still stopped afterwards.
 
-    The gate that decides this vector's answer is the replay range being empty:
-    the candidate boundary is the child's own tip, so there is no work between
-    the two to replay. Nothing may be printed for a replay either — a refusal
-    that printed a command would be read as an answer by anyone who ran it.
-    """
-    vector = _VECTORS["refusal"]
-    run = run_wheresat_in(scenario, vector.options, capsys, where=vector.where)
-    gate = wheresat_records.GateName.REPLAY_RANGE_NON_EMPTY.value
+        This is the case the warning exists for: the child's work cannot be replayed
+        where a rebase already is, and a run that tidied the rebase away would have
+        destroyed the user's work to answer a question about a commit. The branch is
+        therefore named rather than read from the checkout, because a worktree
+        stopped this way has a detached ``HEAD``, and the warning about the
+        uncommitted conflict is expected alongside the warning about the rebase.
+        """
+        vector = _VECTORS["branch-named"]
+        before = reading(rebasing)
+        run = run_wheresat_in(rebasing, vector.options, capsys, where=vector.where)
 
-    assert any(
-        line.split()[:2] == ["failed", gate] for line in run.stdout.splitlines()
-    ), f"expected {gate} to be reported as failed, got:\n{run.stdout}"
-    assert "git rebase --onto" not in run.stdout, "a refusal offers nothing to run"
-
-
-def test_a_dirty_worktree_is_warned_about_and_left_alone(
-    dirtied: WheresatScenario,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    """Uncommitted changes warn, do not decide, and are still there afterwards.
-
-    The command prints a replay that would refuse to run over these changes, so
-    it says so; that is not evidence about the boundary, so it changes neither
-    the verdict nor the status.
-    """
-    vector = _VECTORS["default"]
-    before = reading(dirtied)
-    run = run_wheresat_in(dirtied, vector.options, capsys, where=vector.where)
-
-    assert run.exit_code == _ESTABLISHED, (
-        "a dirty worktree warns but does not change the verdict"
-    )
-    assert "has uncommitted changes" in run.stdout, "the warning names the obstacle"
-    assert not before.differences(reading(dirtied)), (
-        "and the worktree is left exactly as it was"
-    )
-    assert (
-        dirtied.worktree_path() / _TRACKED
-    ).read_text() == "edited in the worktree", (
-        "including the uncommitted edit, which is still there"
-    )
-
-
-def test_a_stopped_rebase_is_warned_about_and_left_running(
-    rebasing: WheresatScenario,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    """A stopped rebase warns, does not decide, and is still stopped afterwards.
-
-    This is the case the warning exists for: the child's work cannot be replayed
-    where a rebase already is, and a run that tidied the rebase away would have
-    destroyed the user's work to answer a question about a commit. The branch is
-    therefore named rather than read from the checkout, because a worktree
-    stopped this way has a detached ``HEAD``, and the warning about the
-    uncommitted conflict is expected alongside the warning about the rebase.
-    """
-    vector = _VECTORS["branch-named"]
-    before = reading(rebasing)
-    run = run_wheresat_in(rebasing, vector.options, capsys, where=vector.where)
-
-    assert run.exit_code == _ESTABLISHED, (
-        "a stopped rebase warns but does not change the verdict"
-    )
-    assert "a rebase is already in progress" in run.stdout, (
-        "the warning names the rebase"
-    )
-    assert "has uncommitted changes" in run.stdout, "and the conflict it stopped on"
-    assert not before.differences(reading(rebasing)), (
-        "and the rebase is left running where it was"
-    )
-    assert _git_directory(rebasing, CHILD).joinpath("rebase-merge").is_dir(), (
-        "so the rebase directory is still there"
-    )
+        assert run.exit_code == Status.ESTABLISHED, (
+            "a stopped rebase warns but does not change the verdict"
+        )
+        assert "a rebase is already in progress" in run.stdout, (
+            "the warning names the rebase"
+        )
+        assert "has uncommitted changes" in run.stdout, "and the conflict it stopped on"
+        assert not before.differences(reading(rebasing)), (
+            "and the rebase is left running where it was"
+        )
+        assert _git_directory(rebasing, CHILD).joinpath("rebase-merge").is_dir(), (
+            "so the rebase directory is still there"
+        )
 
 
 def _stop_a_rebase(scenario: WheresatScenario) -> None:

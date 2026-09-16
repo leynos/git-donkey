@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import contextlib
 import dataclasses
+import enum
 import hashlib
 import json
 import typing as typ
@@ -66,6 +67,31 @@ _GIT_ENTRY: typ.Final = ".git"
 
 _FETCH_HEAD: typ.Final = "FETCH_HEAD"
 """The file a fetch writes, which INV-1 promises is unchanged."""
+
+
+class Status(enum.IntEnum):
+    """The statuses the command documents, as the numbers it exits with.
+
+    The suites assert on these rather than on bare integers because an exit
+    code is the one reading a run can get wrong without any text to show for
+    it, and because a number written beside an assertion says which status was
+    expected only to a reader who has the table open. The values are the
+    process exit codes, and the enum is an ``int`` so ``==`` still compares
+    them with a run's.
+
+    """
+
+    ESTABLISHED = 0
+    """The run answered the question it was asked."""
+
+    REFUSED = 1
+    """The run's question was answered, and the answer declined."""
+
+    UNUSABLE = 2
+    """The run could not start, or its argument named something unusable."""
+
+    INDETERMINATE = 3
+    """A question the run needed went unanswered, so it cannot say."""
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -156,8 +182,29 @@ def stacked_child(root: Path) -> WheresatScenario:
     return dataclasses.replace(scenario, tip=scenario.worktree_head())
 
 
-def _ref_value(repo: Repo, ref: str) -> str | None:
-    """Return the commit ``ref`` names, or ``None`` when it does not exist."""
+def ref_value(repo: Repo, ref: str) -> str | None:
+    """Return the commit ``ref`` names, or ``None`` when it does not exist.
+
+    This is the one reader for a ref that may be absent, and it is shared
+    because the suites disagree about what absence means: a suite that asks
+    about a ref the run may have written wants ``None`` told apart from a
+    commit, and a suite that reads a ref that must exist wants the empty string
+    its comparisons are written against. The second is a caller's decision, not
+    a second reader.
+
+    Parameters
+    ----------
+    repo : Repo
+        Repository the ref is read from.
+    ref : str
+        Full ref path, or any revision Git resolves.
+
+    Returns
+    -------
+    str | None
+        The commit the ref names, or ``None`` when no such ref exists.
+
+    """
     try:
         return str(repo.git.rev_parse("--verify", "--quiet", ref))
     except GitCommandError:
@@ -194,7 +241,7 @@ def anchor(scenario: WheresatScenario, branch: str = CHILD) -> str | None:
         The commit the ref names, or ``None`` when the branch has no anchor ref.
 
     """
-    return _ref_value(scenario.repo, stack_records.base_ref_path(branch))
+    return ref_value(scenario.repo, stack_records.base_ref_path(branch))
 
 
 def configuration(scenario: WheresatScenario) -> dict[str, str]:
@@ -281,6 +328,36 @@ _UNANSWERED: typ.Final = "this suite's forge answers nothing about a pull reques
 """Why the suite's double refuses every question about a pull request."""
 
 
+def examined_and_found_none(
+    commits: cabc.Sequence[str],
+) -> wheresat_github.AssociationPage:
+    """Return the page of a search that examined every commit and found none.
+
+    Every double in these suites answers the association search this way, and
+    the answer is the delicate one: a search that failed would make every local
+    refusal indeterminate, because a fault means the evidence set is not known
+    to be complete. Written once, the two doubles cannot drift into answering
+    differently about the one question the suites' local refusals depend on.
+
+    Parameters
+    ----------
+    commits : collections.abc.Sequence[str]
+        The commits the search was asked about, none of which is associated
+        with any pull request.
+
+    Returns
+    -------
+    wheresat_github.AssociationPage
+        A complete, untruncated page with an empty association for each commit.
+
+    """
+    return wheresat_github.AssociationPage(
+        associations=dict.fromkeys(commits, ()),
+        commits_examined=len(commits),
+        truncated=False,
+    )
+
+
 class _AssociationsOnlyForge(wheresat_github.WheresatGitHub):
     """The forge the local suites hand the run in place of GitHub.
 
@@ -321,11 +398,7 @@ class _AssociationsOnlyForge(wheresat_github.WheresatGitHub):
         self, repository: str, commits: cabc.Sequence[str]
     ) -> wheresat_github.AssociationPage:
         """Return the page of a search that examined every commit and found none."""
-        return wheresat_github.AssociationPage(
-            associations=dict.fromkeys(commits, ()),
-            commits_examined=len(commits),
-            truncated=False,
-        )
+        return examined_and_found_none(commits)
 
 
 _THE_FORGE: typ.Final = _AssociationsOnlyForge()

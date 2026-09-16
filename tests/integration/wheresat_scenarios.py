@@ -47,8 +47,10 @@ from tests.integration.wheresat_helpers import (
     PARENT,
     Fingerprint,
     WheresatScenario,
+    examined_and_found_none,
     fingerprint,
     reading,
+    ref_value,
     run_wheresat_at,
     stacked_child,
     working_tree,
@@ -156,11 +158,7 @@ class ScriptedForge(wheresat_github.WheresatGitHub):
         self, repository: str, commits: cabc.Sequence[str]
     ) -> wheresat_github.AssociationPage:
         """Return the page of a search that examined every commit and found none."""
-        return wheresat_github.AssociationPage(
-            associations=dict.fromkeys(commits, ()),
-            commits_examined=len(commits),
-            truncated=False,
-        )
+        return examined_and_found_none(commits)
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -263,16 +261,12 @@ def reading_of(journey: Journey) -> Fingerprint:
     return fingerprint(scenario.local_path, repo=scenario.repo)
 
 
-def _ref(repo: Repo, name: str) -> str:
-    """Return the commit ``name`` resolves to, or ``""`` when it resolves none."""
-    try:
-        return str(repo.git.rev_parse("--verify", "--quiet", name))
-    except GitCommandError:
-        return ""
-
-
 def branch_head(path: Path, branch: str) -> str:
     """Return the commit the branch ``branch`` names in the repository at ``path``.
+
+    An absent branch is the empty string rather than the shared reader's
+    ``None``, because the callers here compare the answer with the commits a
+    journey recorded and never ask whether the branch existed.
 
     Returns
     -------
@@ -280,7 +274,8 @@ def branch_head(path: Path, branch: str) -> str:
         The commit, or ``""`` when the repository has no such branch.
 
     """
-    return _ref(Repo(path), f"refs/heads/{branch}")
+    commit = ref_value(Repo(path), f"refs/heads/{branch}")
+    return "" if commit is None else commit
 
 
 def _bare_repository(root: Path) -> Path:
@@ -387,10 +382,22 @@ def squashed(root: Path) -> Journey:
     Journey
         The Background, with the record ``git donkey`` wrote still in place.
 
+    Raises
+    ------
+    AssertionError
+        If the parent branch the squash merges is not in the repository the
+        fixture just built, which would make the journey about a merge that
+        never happened.
+
     """
     scenario = stacked_child(root)
     repo = scenario.repo
-    parent_head = _ref(repo, f"refs/heads/{PARENT}")
+    parent_head = ref_value(repo, f"refs/heads/{PARENT}")
+    if parent_head is None:
+        # The fixture built this branch a few lines above, so its absence is the
+        # fixture being wrong about the repository rather than a journey shape.
+        msg = f"the fixture's branch {PARENT} must exist to be merged"
+        raise AssertionError(msg)
     worktree = scenario.worktree_repo()
     git_repo_helpers.commit_file(
         worktree,

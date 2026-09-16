@@ -50,6 +50,7 @@ from git_donkey import (
 from tests.integration.wheresat_helpers import (
     CHILD,
     PARENT,
+    Status,
     Where,
     WheresatRun,
     WheresatScenario,
@@ -70,9 +71,6 @@ if typ.TYPE_CHECKING:
 
 pytestmark = pytest.mark.timeout(120)
 
-_ESTABLISHED: typ.Final = 0
-_REFUSED: typ.Final = 1
-_UNUSABLE: typ.Final = 2
 
 _ANCHOR: typ.Final = stack_records.base_ref_path(CHILD)
 """Ref the child's record is anchored by, and the ref a refresh replaces."""
@@ -286,7 +284,7 @@ def test_an_absent_anchor_is_written_from_the_record_that_still_carries_it(
 
     run = _record(scenario, capsys)
 
-    assert run.exit_code == _ESTABLISHED, (
+    assert run.exit_code == Status.ESTABLISHED, (
         f"expected the refresh to write the anchor, not exit {run.exit_code}: "
         f"{run.stderr.strip()}"
     )
@@ -329,7 +327,7 @@ def test_an_existing_anchor_is_not_replaced_without_an_expectation(
 
     run = _record(scenario, capsys)
 
-    assert run.exit_code == _UNUSABLE, (
+    assert run.exit_code == Status.UNUSABLE, (
         f"expected the write to be refused, not exit {run.exit_code}"
     )
     assert "an expected old object ID is required" in run.stderr, (
@@ -365,7 +363,7 @@ def test_the_refusal_reaches_the_machine_readable_envelope(
 
     payload = run.envelope
     assert payload["verdict"] == "error", "a refused write is reported as an error"
-    assert payload["exitCode"] == _UNUSABLE, "with the usage status"
+    assert payload["exitCode"] == Status.UNUSABLE, "with the usage status"
     assert "an expected old object ID is required" in str(payload["error"]), (
         f"and the reason it was refused, got {payload['error']!r}"
     )
@@ -387,7 +385,7 @@ def test_a_matching_expectation_refreshes_the_record_in_place(
 
     run = _record(scenario, capsys, expected=scenario.boundary)
 
-    assert run.exit_code == _ESTABLISHED, (
+    assert run.exit_code == Status.ESTABLISHED, (
         f"expected the matching expectation to allow the write, not exit "
         f"{run.exit_code}: {run.stderr.strip()}"
     )
@@ -421,7 +419,7 @@ def test_a_stale_expectation_is_refused_and_changes_nothing(
 
     run = _record(scenario, capsys, expected=scenario.tip)
 
-    assert run.exit_code == _UNUSABLE, (
+    assert run.exit_code == Status.UNUSABLE, (
         f"expected the stale expectation to be refused, not exit {run.exit_code}"
     )
     assert "--expected-old does not match" in run.stderr, (
@@ -455,7 +453,7 @@ def test_an_unresolved_run_records_nothing_and_says_so(
         where="checkout",
     )
 
-    assert run.exit_code == _REFUSED, (
+    assert run.exit_code == Status.REFUSED, (
         f"expected the refusal vector to be refused, not exit {run.exit_code}"
     )
     assert _NOTHING_TO_RECORD in run.stdout, (
@@ -487,7 +485,7 @@ def test_a_boundary_no_record_attests_is_not_written_back(
         recording_recorder, functools.partial(_record, scenario, capsys)
     )
 
-    assert run.exit_code == _ESTABLISHED, (
+    assert run.exit_code == Status.ESTABLISHED, (
         f"expected the surviving history to establish the boundary, not exit "
         f"{run.exit_code}: {run.stdout.strip()}"
     )
@@ -537,7 +535,7 @@ def test_only_a_pair_that_agrees_replaces_the_record(
     run = _record(scenario, capsys, expected=named)
 
     if not agrees:
-        assert run.exit_code == _UNUSABLE, (
+        assert run.exit_code == Status.UNUSABLE, (
             f"expected the pair {held!r}/{named!r} to be refused as a usage "
             f"error, not exit {run.exit_code}: {run.stdout.strip()}"
         )
@@ -546,7 +544,7 @@ def test_only_a_pair_that_agrees_replaces_the_record(
             "changed the repository"
         )
         return
-    assert run.exit_code == _ESTABLISHED, (
+    assert run.exit_code == Status.ESTABLISHED, (
         f"expected the pair {held!r}/{named!r} to refresh the record, not exit "
         f"{run.exit_code}: {run.stderr.strip()}"
     )
@@ -590,7 +588,7 @@ def test_a_record_the_branch_has_moved_past_is_not_written_back(
         recording_recorder, functools.partial(_record, scenario, capsys)
     )
 
-    assert run.exit_code == _ESTABLISHED, (
+    assert run.exit_code == Status.ESTABLISHED, (
         f"expected the restacked branch's history to establish a boundary, not "
         f"exit {run.exit_code}: {run.stdout.strip()}"
     )
@@ -621,7 +619,7 @@ def test_a_refreshed_record_is_still_attested_evidence(
     """
     scenario = stacked_child(tmp_path)
     written = _record(scenario, capsys, expected=scenario.boundary)
-    assert written.exit_code == _ESTABLISHED, (
+    assert written.exit_code == Status.ESTABLISHED, (
         f"expected the refresh to succeed, not exit {written.exit_code}"
     )
     # The write collected evidence of its own, and a birth record is attested
@@ -632,7 +630,7 @@ def test_a_refreshed_record_is_still_attested_evidence(
 
     reread = run_wheresat_in(scenario, wheresat.WheresatOptions(), capsys)
 
-    assert reread.exit_code == _ESTABLISHED, (
+    assert reread.exit_code == Status.ESTABLISHED, (
         f"expected the refreshed record to establish the boundary, not exit "
         f"{reread.exit_code}: {reread.stderr.strip()}"
     )
@@ -667,7 +665,7 @@ def test_a_refresh_is_observed_as_one_timed_write(
         functools.partial(_record, scenario, capsys, expected=scenario.boundary),
     )
 
-    assert run.exit_code == _ESTABLISHED, (
+    assert run.exit_code == Status.ESTABLISHED, (
         f"expected the refresh to succeed, not exit {run.exit_code}"
     )
     written = _Trace(outcomes=("started", "success"), error_kinds=(), timed=True)
@@ -691,7 +689,7 @@ def test_a_refused_write_is_observed_as_a_conflict(
         recording_recorder, functools.partial(_record, scenario, capsys)
     )
 
-    assert run.exit_code == _UNUSABLE, (
+    assert run.exit_code == Status.UNUSABLE, (
         f"expected the write to be refused, not exit {run.exit_code}"
     )
     assert trace == _Trace(

@@ -30,6 +30,7 @@ from git_donkey import stack_records, wheresat
 from tests.integration.wheresat_helpers import (
     PARENT,
     Fingerprint,
+    Status,
     WheresatRun,
     WheresatScenario,
     anchor,
@@ -45,7 +46,6 @@ if typ.TYPE_CHECKING:
 
     import pytest
 
-_ESTABLISHED: typ.Final = 0
 
 _RECORDED_FROM: typ.Final = stack_records.RecordKey.RECORDED_FROM.value
 _EVIDENCE: typ.Final = stack_records.RecordKey.EVIDENCE.value
@@ -242,7 +242,7 @@ def wheresat_succeeds(scenario: RecordScenario) -> None:
     """Check the run reported its boundary with the established status."""
     run = _reported(scenario)
 
-    assert run.exit_code == _ESTABLISHED, (
+    assert run.exit_code == Status.ESTABLISHED, (
         f"expected the run to establish a boundary, not exit {run.exit_code}: "
         f"{run.stderr.strip()}"
     )
