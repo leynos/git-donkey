@@ -126,13 +126,15 @@ def _refusal_kind(exc: BaseException) -> observability.ErrorKind | None:
         one is not invented here: the step's outcome carries the finding.
 
     """
-    if isinstance(exc, stack_store.StackRecordConflictError):
-        return "stack_record_conflict"
-    if isinstance(exc, ValueError):
-        return "stack_record_malformed"
-    if isinstance(exc, GitCommandError):
-        return "git_command_error"
-    return None
+    match exc:
+        case stack_store.StackRecordConflictError():
+            return "stack_record_conflict"
+        case ValueError():
+            return "stack_record_malformed"
+        case GitCommandError():
+            return "git_command_error"
+        case _:
+            return None
 
 
 def _birth_record(

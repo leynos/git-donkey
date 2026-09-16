@@ -73,7 +73,6 @@ class _Graph:
         """Report the configured fault, or answer that ``rev`` names no ref."""
         if self.refusal is not None:
             raise WheresatGraphError(self.refusal)
-        return None
 
 
 def _target(tmp_path: Path, graph: _Graph) -> tuple[str, str | None]:

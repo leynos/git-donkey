@@ -572,8 +572,7 @@ class GitStackRecordWriter(GitStackRecordReader):
         configuration values are written only after the anchor exists, so a
         refused create never rewrites the values of the record that won. A
         tombstone for the same branch is retired last, because a name that is
-        live again must not still be described by the tip of its previous
-        incarnation.
+        live again must not still be described by the tip of its previous incarnation.
 
         Parameters
         ----------
