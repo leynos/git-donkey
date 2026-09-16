@@ -74,10 +74,10 @@ Without **--record** a run changes nothing but the refs it writes under
 ``refs/wheresat/``: it does not touch the working tree, the index, the stack
 record, or any branch.
 With **--record** it also writes the child branch's stack record, which is the
-anchor ref ``refs/stack-bases/``*BRANCH* and the branch's configuration
+anchor ref ``refs/stack-bases/``\ *BRANCH* and the branch's configuration
 section.
 A boundary that no other ref reaches is retained under
-``refs/wheresat/boundary/``*BRANCH* before it is reported, so that a later
+``refs/wheresat/boundary/``\ *BRANCH* before it is reported, so that a later
 ``git gc`` cannot take with it an answer the report has already given.
 
 The report warns about the worktree holding the branch when that worktree would
@@ -99,7 +99,7 @@ OPTIONS
 --onto REV
     Replay target.
     Defaults to the default branch the principal remote advertises, read from
-    the local ``refs/remotes/``*REMOTE*``/HEAD`` symbolic ref so that the run
+    the local ``refs/remotes/``\ *REMOTE*\ ``/HEAD`` symbolic ref so that the run
     needs no network.
     A run that cannot name one asks for **--onto** rather than guessing
     between a local ``main`` and the remote's idea of it.
@@ -116,7 +116,7 @@ OPTIONS
 --remote NAME
     Remote holding the child branch.
     Defaults to the principal remote, which is the first configured one.
-    Today it names the remote whose local ``refs/remotes/``*NAME*``/HEAD``
+    Today it names the remote whose local ``refs/remotes/``\ *NAME*\ ``/HEAD``
     symbolic ref supplies the default target when **--onto** is absent.
     A parent's head is fetched from this remote when the run has a parent whose
     head it needs, and the repository is identified from the remote's URL.

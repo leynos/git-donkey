@@ -6426,12 +6426,15 @@ A stack record is removed with:
 
 ```shell
 git update-ref -d "refs/stack-bases/$BRANCH"
-git config --local --remove-section "branch.$BRANCH" 2>/dev/null || true
+for key in stackParent stackBase stackBaseRecordedFrom stackBaseEvidence; do
+  git config --local --unset-all "branch.$BRANCH.$key" 2>/dev/null || true
+done
 ```
 
-Prefer unsetting the four individual keys — `stackParent`, `stackBase`,
-`stackBaseRecordedFrom` and `stackBaseEvidence` — if the branch section holds
-other settings.
+The four keys are unset individually, so any other setting the branch's section
+holds survives: `branch.<name>` carries whatever else Git and the user put
+there. `git config --local --remove-section "branch.$BRANCH"` is an optional
+shortcut, and only when the section is known to hold nothing but the record.
 
 Nothing in this plan rewrites history, force-pushes, or deletes a branch, so
 there is no destructive step requiring a backup. If a milestone must be
