@@ -31,6 +31,9 @@ from git_donkey.wheresat_refs import per_run_ref
 from tests import git_repo_helpers
 from tests.integration.wheresat_helpers import fingerprint
 
+if typ.TYPE_CHECKING:
+    import collections.abc as cabc
+
 pytestmark = pytest.mark.timeout(120)
 
 _TRACKED: typ.Final = "README.md"
@@ -96,7 +99,7 @@ def _change_the_stash(root: Path, repo: Repo) -> None:
     repo.git.stash()
 
 
-_CHANGES: typ.Final[typ.Mapping[str, Change]] = {
+_CHANGES: typ.Final[cabc.Mapping[str, Change]] = {
     "ref": Change("ref", "refs", _change_a_ref),
     "file": Change("file", "files", _change_a_tracked_file),
     "status": Change("status", "status", _remove_a_tracked_file),

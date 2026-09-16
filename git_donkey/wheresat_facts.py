@@ -39,6 +39,9 @@ from git_donkey.wheresat_records import (
     range_key,
 )
 
+if typ.TYPE_CHECKING:
+    import collections.abc as cabc
+
 
 @dataclasses.dataclass(frozen=True, slots=True)
 class CollectedFacts:
@@ -52,7 +55,7 @@ class CollectedFacts:
 class _AncestryAnswers:
     """The ancestry answers read, and the questions that could not be put."""
 
-    answers: typ.Mapping[tuple[str, str], Ancestry]
+    answers: cabc.Mapping[tuple[str, str], Ancestry]
     faults: tuple[str, ...] = ()
 
 
@@ -66,8 +69,8 @@ class _RangeAnswers:
     because a range listed as empty would be a different answer.
     """
 
-    contents: typ.Mapping[str, CommitRange]
-    without_parent: typ.Mapping[str, CommitRange]
+    contents: cabc.Mapping[str, CommitRange]
+    without_parent: cabc.Mapping[str, CommitRange]
     faults: tuple[str, ...] = ()
 
 
@@ -75,7 +78,7 @@ class _RangeAnswers:
 class _PatchAnswers:
     """The cumulative patch identifiers read, and those that could not be read."""
 
-    identifiers: typ.Mapping[str, str | None]
+    identifiers: cabc.Mapping[str, str | None]
     landed: str | None
     faults: tuple[str, ...] = ()
 
@@ -91,7 +94,7 @@ class _TreeAnswers:
     question was not put" and an empty listing is an answer.
     """
 
-    twins: typ.Mapping[str, tuple[str, ...]]
+    twins: cabc.Mapping[str, tuple[str, ...]]
     faults: tuple[str, ...] = ()
 
 
@@ -312,7 +315,7 @@ def _patch_answers(
 def _tree_answers(
     context: CollectionContext,
     evidence: CollectedEvidence,
-    contents: typ.Mapping[str, CommitRange],
+    contents: cabc.Mapping[str, CommitRange],
 ) -> _TreeAnswers:
     """Return the replay-range commits carrying the landed commit's tree.
 
@@ -340,7 +343,7 @@ def _tree_answers(
         The run's inputs, whose ports put the questions.
     evidence : CollectedEvidence
         What the rungs produced, which decides whether any question exists.
-    contents : typ.Mapping[str, CommitRange]
+    contents : cabc.Mapping[str, CommitRange]
         The replay ranges as listed, keyed by the pair they were listed for.
 
     Returns

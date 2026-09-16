@@ -64,6 +64,8 @@ from tests.integration.wheresat_helpers import (
 )
 
 if typ.TYPE_CHECKING:
+    import collections.abc as cabc
+
     from git import Repo
 
     from tests.integration.wheresat_scenarios import Journey
@@ -110,7 +112,7 @@ class Vector:
     where: Where = "worktree"
 
 
-_VECTORS: typ.Final[typ.Mapping[str, Vector]] = {
+_VECTORS: typ.Final[cabc.Mapping[str, Vector]] = {
     "default": Vector("default", wheresat.WheresatOptions(), _ESTABLISHED),
     "explain": Vector("explain", wheresat.WheresatOptions(explain=True), _ESTABLISHED),
     "no-fetch": Vector(

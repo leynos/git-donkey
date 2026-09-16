@@ -49,6 +49,7 @@ from git_donkey.wheresat_records import Ancestry
 from tests import git_repo_helpers
 
 if typ.TYPE_CHECKING:
+    import collections.abc as cabc
     from pathlib import Path
 
 pytestmark = pytest.mark.timeout(120)
@@ -244,7 +245,7 @@ def _criss_cross(root: Path) -> Shape:
     )
 
 
-_BUILDERS: typ.Final[typ.Mapping[str, typ.Callable[[Path], Shape]]] = {
+_BUILDERS: typ.Final[cabc.Mapping[str, typ.Callable[[Path], Shape]]] = {
     "linear": _linear,
     "forked-then-linear": _forked_then_linear,
     "advanced-parent": _advanced_parent,
@@ -258,22 +259,22 @@ _SHAPE_NAMES: typ.Final[tuple[str, ...]] = tuple(_BUILDERS)
 
 
 @pytest.fixture(scope="module")
-def shapes(tmp_path_factory: pytest.TempPathFactory) -> typ.Mapping[str, Shape]:
+def shapes(tmp_path_factory: pytest.TempPathFactory) -> cabc.Mapping[str, Shape]:
     """Build each shape once for the whole module."""
     root = tmp_path_factory.mktemp("wheresat-ranges")
     return {name: _BUILDERS[name](root / name) for name in _SHAPE_NAMES}
 
 
 @pytest.fixture(scope="module")
-def graph(shapes: typ.Mapping[str, Shape]) -> typ.Mapping[str, GitWheresatGraph]:
+def graph(shapes: cabc.Mapping[str, Shape]) -> cabc.Mapping[str, GitWheresatGraph]:
     """Return the read-only port over each shape's repository."""
     return {name: GitWheresatGraph(shape.repo) for name, shape in shapes.items()}
 
 
 @pytest.mark.parametrize("name", _SHAPE_NAMES)
 def test_the_range_partitions_the_childs_history(
-    shapes: typ.Mapping[str, Shape],
-    graph: typ.Mapping[str, GitWheresatGraph],
+    shapes: cabc.Mapping[str, Shape],
+    graph: cabc.Mapping[str, GitWheresatGraph],
     name: str,
 ) -> None:
     """INV-6: the boundary divides the child's history and loses nothing."""
@@ -303,8 +304,8 @@ def test_the_range_partitions_the_childs_history(
 
 @pytest.mark.parametrize("name", _SHAPE_NAMES)
 def test_the_range_is_listed_oldest_first(
-    shapes: typ.Mapping[str, Shape],
-    graph: typ.Mapping[str, GitWheresatGraph],
+    shapes: cabc.Mapping[str, Shape],
+    graph: cabc.Mapping[str, GitWheresatGraph],
     name: str,
 ) -> None:
     """The listing runs in the order a replay would apply it."""
@@ -319,8 +320,8 @@ def test_the_range_is_listed_oldest_first(
 
 @pytest.mark.parametrize("name", _SHAPE_NAMES)
 def test_the_history_limit_keeps_the_newest_commits(
-    shapes: typ.Mapping[str, Shape],
-    graph: typ.Mapping[str, GitWheresatGraph],
+    shapes: cabc.Mapping[str, Shape],
+    graph: cabc.Mapping[str, GitWheresatGraph],
     name: str,
 ) -> None:
     """A bounded history is the tip's own commits, and Git's grammar is held to.
@@ -361,8 +362,8 @@ def test_the_history_limit_keeps_the_newest_commits(
 
 @pytest.mark.parametrize("name", _SHAPE_NAMES)
 def test_subtracting_a_third_commit_removes_exactly_its_history(
-    shapes: typ.Mapping[str, Shape],
-    graph: typ.Mapping[str, GitWheresatGraph],
+    shapes: cabc.Mapping[str, Shape],
+    graph: cabc.Mapping[str, GitWheresatGraph],
     name: str,
 ) -> None:
     """``not_reachable_from`` subtracts a third commit, and nothing else."""
@@ -386,7 +387,7 @@ def test_subtracting_a_third_commit_removes_exactly_its_history(
 
 
 def test_the_corpus_holds_the_shapes_the_invariant_needs(
-    shapes: typ.Mapping[str, Shape],
+    shapes: cabc.Mapping[str, Shape],
 ) -> None:
     """Non-vacuity: the corpus contains what INV-6 says it must."""
     assert set(shapes) == set(_SHAPE_NAMES), (
@@ -411,8 +412,8 @@ def test_the_corpus_holds_the_shapes_the_invariant_needs(
 
 
 def test_a_criss_cross_has_two_best_common_ancestors(
-    shapes: typ.Mapping[str, Shape],
-    graph: typ.Mapping[str, GitWheresatGraph],
+    shapes: cabc.Mapping[str, Shape],
+    graph: cabc.Mapping[str, GitWheresatGraph],
 ) -> None:
     """Both bases are reported, so a port that kept the first would fail here.
 

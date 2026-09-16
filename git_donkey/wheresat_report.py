@@ -37,6 +37,8 @@ from git_donkey.wheresat_records import (
 )
 
 if typ.TYPE_CHECKING:
+    import collections.abc as cabc
+
     from git_donkey import stack_records
     from git_donkey.observability import WheresatVerdictLabel
 
@@ -46,7 +48,7 @@ RENDER_COMMIT_LIMIT: typ.Final = 20
 JSON_SCHEMA: typ.Final = "git-wheresat/1"
 """Version string of the machine-readable envelope."""
 
-VERDICT_WORDS: typ.Final[typ.Mapping[type, WheresatVerdictLabel]] = (
+VERDICT_WORDS: typ.Final[cabc.Mapping[type, WheresatVerdictLabel]] = (
     types.MappingProxyType({
         Established: "established",
         Unresolved: "unresolved",
@@ -73,7 +75,7 @@ the vocabulary a recorder stores cannot drift apart: dropping ``error`` from
 typecheck here rather than ship a verdict no consumer knows.
 """
 
-_HEADLINES: typ.Final[typ.Mapping[type, str]] = types.MappingProxyType({
+_HEADLINES: typ.Final[cabc.Mapping[type, str]] = types.MappingProxyType({
     Unresolved: "git wheresat: no boundary could be established for",
     Indeterminate: "git wheresat: could not tell where",
 })

@@ -57,6 +57,9 @@ from git_donkey.wheresat_records import (
     demoted,
 )
 
+if typ.TYPE_CHECKING:
+    import collections.abc as cabc
+
 _DEMOTED: typ.Final = (
     "the record's attested claim was superseded, so its evidence is read as derived"
 )
@@ -248,7 +251,7 @@ def _supports(supporters: typ.Sequence[_Checked]) -> tuple[Establishing, ...]:
 
 def _grouped(
     checked: typ.Sequence[_Checked],
-) -> typ.Mapping[str, tuple[_Checked, ...]]:
+) -> cabc.Mapping[str, tuple[_Checked, ...]]:
     """Return every candidate, grouped by the commit it names, in canonical order."""
     return {
         commit: tuple(one for one in checked if one.original.commit == commit)
@@ -258,7 +261,7 @@ def _grouped(
 
 def _serving(
     checked: typ.Sequence[_Checked],
-) -> typ.Mapping[str, tuple[_Checked, ...]]:
+) -> cabc.Mapping[str, tuple[_Checked, ...]]:
     """Return the commits that could serve, by the support each of them has."""
     cleared = [one for one in checked if _cleared(one)]
     return {
@@ -294,7 +297,7 @@ def _rank(supporters: typ.Sequence[_Checked]) -> int:
     return _DERIVED_RANK
 
 
-def _preferred(serving: typ.Mapping[str, tuple[_Checked, ...]]) -> tuple[str, ...]:
+def _preferred(serving: cabc.Mapping[str, tuple[_Checked, ...]]) -> tuple[str, ...]:
     """Return the commits that could serve at the strongest rank present.
 
     A lower-ranked commit is not a rival to be chosen between: the evidence that

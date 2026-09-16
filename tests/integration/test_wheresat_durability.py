@@ -50,6 +50,7 @@ from git_donkey.wheresat_refs import (
 from tests import git_repo_helpers
 
 if typ.TYPE_CHECKING:
+    import collections.abc as cabc
     from pathlib import Path
 
 pytestmark = pytest.mark.timeout(120)
@@ -179,7 +180,7 @@ def _fetched_boundary(root: Path) -> EvidenceCase:
     )
 
 
-_BUILDERS: typ.Final[typ.Mapping[str, typ.Callable[[Path], EvidenceCase]]] = {
+_BUILDERS: typ.Final[cabc.Mapping[str, typ.Callable[[Path], EvidenceCase]]] = {
     "branch-boundary": _branch_boundary,
     "fetched-boundary": _fetched_boundary,
 }

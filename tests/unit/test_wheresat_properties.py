@@ -61,6 +61,9 @@ from tests.unit.wheresat_helpers import (
     parent_pull_request,
 )
 
+if typ.TYPE_CHECKING:
+    import collections.abc as cabc
+
 # The child history an example is built on: two commits, so a boundary can sit
 # below the tip, and at most six, so each example stays cheap to read.
 _HISTORY_MIN = 2
@@ -135,7 +138,7 @@ def _replayed(commits: tuple[str, ...], boundary: str) -> tuple[str, ...]:
 def _ancestry(
     commits: tuple[str, ...],
     draw: st.DrawFn,
-) -> typ.Mapping[tuple[str, str], Ancestry]:
+) -> cabc.Mapping[tuple[str, str], Ancestry]:
     """Draw an answer, or no answer at all, for some ordered commit pairs."""
     answers = {}
     for left in commits:
@@ -180,9 +183,9 @@ def _masked(commits: tuple[str, ...], draw: st.DrawFn) -> tuple[str, ...]:
 
 
 def _without_some(
-    contents: typ.Mapping[str, CommitRange],
+    contents: cabc.Mapping[str, CommitRange],
     draw: st.DrawFn,
-) -> typ.Mapping[str, CommitRange]:
+) -> cabc.Mapping[str, CommitRange]:
     """Draw the same ranges as the parent's history leaves them.
 
     A commit the parent's head reaches is missing from the listing, which is the
@@ -190,7 +193,7 @@ def _without_some(
 
     Returns
     -------
-    typ.Mapping[str, CommitRange]
+    cabc.Mapping[str, CommitRange]
         The same ranges, with the commits the parent's head reaches left out.
 
     """
@@ -201,10 +204,10 @@ def _without_some(
 
 
 def _twins(
-    contents: typ.Mapping[str, CommitRange],
+    contents: cabc.Mapping[str, CommitRange],
     landed: str | None,
     draw: st.DrawFn,
-) -> typ.Mapping[str, tuple[str, ...]]:
+) -> cabc.Mapping[str, tuple[str, ...]]:
     """Draw which of each range's commits carry the landed commit's content.
 
     A commit is either matched or it is not, and the landed commit is the one
@@ -213,7 +216,7 @@ def _twins(
 
     Returns
     -------
-    typ.Mapping[str, tuple[str, ...]]
+    cabc.Mapping[str, tuple[str, ...]]
         The matching commits per range key.
 
     """
@@ -244,7 +247,7 @@ def _request(
 
 def _facts(
     commits: tuple[str, ...],
-    contents: typ.Mapping[str, CommitRange],
+    contents: cabc.Mapping[str, CommitRange],
     placed: tuple[str, ...],
     draw: st.DrawFn,
 ) -> GraphFacts:

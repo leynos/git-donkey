@@ -48,7 +48,7 @@ if typ.TYPE_CHECKING:
     from git_donkey.wheresat_graph import WheresatGraph
 
 
-_SOURCE_WORDS: typ.Final[typ.Mapping[EvidenceKind, str]] = {
+_SOURCE_WORDS: typ.Final[cabc.Mapping[EvidenceKind, str]] = {
     EvidenceKind.TREE_IDENTITY: "tree identity",
     EvidenceKind.PATCH_IDENTITY: "patch identity",
 }
@@ -313,7 +313,7 @@ def _index(
 
 def _claim(
     children: cabc.Sequence[str],
-    index: typ.Mapping[str, tuple[str, ...]],
+    index: cabc.Mapping[str, tuple[str, ...]],
     key: cabc.Callable[[str], str | None],
 ) -> tuple[tuple[Twin, ...], tuple[str, ...]]:
     """Return the twins the child commits claim, and the ones claiming none.

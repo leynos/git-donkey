@@ -59,6 +59,8 @@ from git_donkey.wheresat_records import (
 )
 
 if typ.TYPE_CHECKING:
+    import collections.abc as cabc
+
     from git_donkey import stack_records
 
 _NO_PARENT: typ.Final = "the run did not set out to consult a parent pull request"
@@ -76,14 +78,14 @@ _UNRESOLVED_PARENT: typ.Final = "the parent pull request could not be resolved"
 _NO_HEAD_ORIGIN: typ.Final = "no parent head ref was fetched, so its origin is unknown"
 """What gate 1 reports when the run never fetched the head it read."""
 
-_SEVERITY: typ.Final[typ.Mapping[GateOutcome, int]] = {
+_SEVERITY: typ.Final[cabc.Mapping[GateOutcome, int]] = {
     GateOutcome.PASSED: 0,
     GateOutcome.INDETERMINATE: 1,
     GateOutcome.FAILED: 2,
 }
 """Which of two answered halves decides their gate: the worse answer wins."""
 
-_POLARITY_WORDS: typ.Final[typ.Mapping[Ancestry, str]] = {
+_POLARITY_WORDS: typ.Final[cabc.Mapping[Ancestry, str]] = {
     Ancestry.ANCESTOR: "is",
     Ancestry.NOT_ANCESTOR: "is not",
 }
@@ -613,7 +615,7 @@ def _landed_since_record_clause(
     )
 
 
-_GATE_EVALUATORS: typ.Final[typ.Mapping[GateName, _Evaluator]] = {
+_GATE_EVALUATORS: typ.Final[cabc.Mapping[GateName, _Evaluator]] = {
     GateName.PARENT_IDENTITY_MATCHES: _parent_identity_gate,
     GateName.PARENT_MERGED: _parent_merged_gate,
     GateName.LANDED_REACHABLE_FROM_TARGET: _landed_reachable_gate,

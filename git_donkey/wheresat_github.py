@@ -119,7 +119,7 @@ class AssociationPage:
 
     """
 
-    associations: typ.Mapping[str, tuple[stack_records.PullRequestIdentity, ...]]
+    associations: cabc.Mapping[str, tuple[stack_records.PullRequestIdentity, ...]]
     commits_examined: int
     truncated: bool
 
@@ -360,7 +360,7 @@ class ApiWheresatGitHub:
             truncated=truncated,
         )
 
-    def get(self, *parts: str, params: typ.Mapping[str, str] | None = None) -> object:
+    def get(self, *parts: str, params: cabc.Mapping[str, str] | None = None) -> object:
         """Return what GitHub answers for one path, or raise for anything else.
 
         The two halves of a request are kept apart below — whether GitHub
@@ -406,7 +406,7 @@ class ApiWheresatGitHub:
         return _decoded(self._answered(url, params), url)
 
     def _answered(
-        self, url: str, params: typ.Mapping[str, str] | None
+        self, url: str, params: cabc.Mapping[str, str] | None
     ) -> requests.Response:
         """Return GitHub's answer to one request, or refuse the transport fault.
 
@@ -458,7 +458,7 @@ class ApiWheresatGitHub:
 
     def _stack_members(
         self, identity: stack_records.PullRequestIdentity
-    ) -> tuple[typ.Mapping[str, object], ...]:
+    ) -> tuple[cabc.Mapping[str, object], ...]:
         """Return the pull requests of the stack that holds ``identity``.
 
         The endpoint is asked for the stack containing one pull request rather

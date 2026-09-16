@@ -23,6 +23,8 @@ import types
 import typing as typ
 
 if typ.TYPE_CHECKING:
+    import collections.abc as cabc
+
     from git_donkey import stack_records
 
 
@@ -55,7 +57,7 @@ class EvidenceKind(enum.StrEnum):
     PATCH_IDENTITY = "patch-identity"
 
 
-TIERS: typ.Final[typ.Mapping[EvidenceKind, EvidenceTier]] = types.MappingProxyType({
+TIERS: typ.Final[cabc.Mapping[EvidenceKind, EvidenceTier]] = types.MappingProxyType({
     EvidenceKind.STACK_RECORD_BIRTH: EvidenceTier.ATTESTED,
     EvidenceKind.STACK_RECORD_REFRESHED: EvidenceTier.ATTESTED,
     EvidenceKind.SHARED_RECORD: EvidenceTier.ATTESTED,
@@ -432,12 +434,12 @@ class GraphFacts:
 
     parent_head: str | None
     landed: str | None
-    ancestry: typ.Mapping[tuple[str, str], Ancestry]
-    range_contents: typ.Mapping[str, CommitRange]
-    range_minus_parent: typ.Mapping[str, CommitRange]
-    landed_twins: typ.Mapping[str, tuple[str, ...]]
+    ancestry: cabc.Mapping[tuple[str, str], Ancestry]
+    range_contents: cabc.Mapping[str, CommitRange]
+    range_minus_parent: cabc.Mapping[str, CommitRange]
+    landed_twins: cabc.Mapping[str, tuple[str, ...]]
     child_history: CommitRange
-    cumulative_patch: typ.Mapping[str, str | None]
+    cumulative_patch: cabc.Mapping[str, str | None]
     landed_patch: str | None
     record_recorded_from: str | None
 
@@ -476,7 +478,7 @@ class Indeterminate:
 
 type Assessment = Established | Unresolved | Indeterminate
 
-EXIT_CODES: typ.Final[typ.Mapping[type, int]] = types.MappingProxyType({
+EXIT_CODES: typ.Final[cabc.Mapping[type, int]] = types.MappingProxyType({
     Established: 0,
     Unresolved: 1,
     Indeterminate: 3,

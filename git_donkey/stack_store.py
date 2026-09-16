@@ -65,6 +65,9 @@ from git import GitCommandError, Repo
 
 from git_donkey import stack_records
 
+if typ.TYPE_CHECKING:
+    import collections.abc as cabc
+
 _ENTRY_SEPARATOR: typ.Final = "\0"
 _ABSENT_CONFIG_KEY: typ.Final = 1
 _MISSING_CONFIG_KEY: typ.Final = 5
@@ -751,7 +754,7 @@ class GitStackRecordWriter(GitStackRecordReader):
     def _write_configuration(
         self,
         record: stack_records.StackRecord,
-        values: typ.Mapping[stack_records.RecordKey, str],
+        values: cabc.Mapping[stack_records.RecordKey, str],
     ) -> None:
         """Write the record's four configuration values."""
         for key, value in values.items():

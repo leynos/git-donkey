@@ -113,7 +113,7 @@ a caller states a run through.
 _ASSESSMENT: typ.Final[observability.Operation] = "boundary_assessment"
 """Operation a completed assessment is recorded under."""
 
-_VERDICT_OUTCOMES: typ.Final[typ.Mapping[type, observability.Outcome]] = {
+_VERDICT_OUTCOMES: typ.Final[cabc.Mapping[type, observability.Outcome]] = {
     wheresat_records.Established: "success",
     wheresat_records.Unresolved: "declined",
     wheresat_records.Indeterminate: "unavailable",
