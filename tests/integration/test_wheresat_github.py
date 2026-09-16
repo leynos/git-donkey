@@ -187,7 +187,7 @@ def _response_header_names(cassette: Cassette) -> set[str]:
     Returns
     -------
     set[str]
-        The names, folded so that a header is recognised however it is cased.
+        The names, folded so that a header is recognized however it is cased.
 
     """
     return {

@@ -112,7 +112,8 @@ def _lock_configuration(repo: Repo) -> Path:
     Parameters
     ----------
     repo : Repo
-        Repository whose configuration is to be left unlocked-to.
+        Repository whose configuration is left locked, so that a write or an
+        unset of one of its values is refused.
 
     Returns
     -------
@@ -319,4 +320,49 @@ def test_a_prune_that_cannot_delete_a_tombstone_reports_the_store_error(
     assert store.tombstone(CHILD) == base, (
         "the refused deletion is reported rather than passed over, so the "
         "tombstone it could not remove is still there"
+    )
+
+
+def test_a_create_that_cannot_retire_a_tombstone_removes_what_it_wrote(
+    tmp_path: Path,
+) -> None:
+    """A create that cannot clear the old tombstone is undone, not left standing.
+
+    The tombstone is retired last because a name that is live again must not
+    still be described by the tip of its previous incarnation, so a live record
+    beside a tombstone is the state the create exists to end. When Git refuses
+    that deletion the anchor and the four values go back, leaving the branch as
+    it was found: unrecorded, and still described by the tombstone that outlived
+    it. The refusal is a lock file left beside the ref, which is a writer that is
+    mid-update and the one way Git refuses a deletion an earlier write began.
+    """
+    repo = make_repo(tmp_path)
+    base = repo.head.commit.hexsha
+    repo.git.branch(CHILD, base)
+    store = make_writer(repo)
+    store.preserve_tip(CHILD, base)
+    ref = stack_records.tombstone_ref_path(CHILD)
+    _lock_ref(repo, ref)
+
+    with pytest.raises(stack_store.StackRecordError) as excinfo:
+        store.create(make_record(CHILD, base))
+
+    message = str(excinfo.value)
+    assert message.startswith(f"cannot delete {ref!r}: "), (
+        f"the refusal names the tombstone Git would not retire, got: {message!r}"
+    )
+    assert "cannot lock ref" in message, (
+        "and carries Git's own explanation of why it would not"
+    )
+    assert isinstance(excinfo.value.__cause__, GitCommandError), (
+        "the Git error is the cause, so a caller can still reach it"
+    )
+    assert anchor(repo, CHILD) is None, "the anchor this call created is gone"
+    assert not config_section(repo, CHILD), "and so are the values it wrote"
+    assert isinstance(
+        stack_store.GitStackRecordReader(repo).read(CHILD),
+        stack_records.RecordAbsent,
+    ), "so the branch reads back as having no record at all"
+    assert store.tombstone(CHILD) == base, (
+        "and the tombstone the create could not retire still describes it"
     )

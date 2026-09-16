@@ -615,7 +615,7 @@ def both_candidates_are_listed(scenario: WheresatJourney) -> None:
     rows = _rows(_reported(scenario), *_INFERRED_ROW)
     commits = {tokens[2] for tokens in rows}
 
-    assert len(rows) >= _CANDIDATE_COUNT, (
+    assert len(rows) == _CANDIDATE_COUNT, (
         f"expected two candidates at the same evidence tier, got {rows}:\n"
         f"{_reported(scenario).stdout}"
     )

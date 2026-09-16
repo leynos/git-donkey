@@ -71,7 +71,7 @@ def plonked(tmp_path_factory: pytest.TempPathFactory) -> WheresatScenario:
     WheresatScenario
         The checkout, the boundary the child's record attests, and the child's
         own tip — with ``child`` and ``parent`` naming the issue-style branches
-        this scenario has to use for the sweep to recognise the parent as
+        this scenario has to use for the sweep to recognize the parent as
         completed.
 
     """

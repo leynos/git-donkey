@@ -9,6 +9,7 @@ from __future__ import annotations
 import typing as typ
 
 import pytest
+from git.exc import BadName
 
 from git_donkey import donkey
 from tests import git_repo_helpers
@@ -180,4 +181,30 @@ def test_a_base_named_for_the_trunk_is_still_weighed_by_commit(
     )
     assert stack.parent == "main", (
         "the parent is the name the caller selected, which is the branch they hold"
+    )
+
+
+def test_a_trunk_the_repository_will_not_resolve_is_not_a_trunk(
+    context: donkey._DonkeyContext,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A trunk ref GitPython cannot read is the absence of a trunk, not a failure.
+
+    ``Repo.commit`` reports an unresolvable revision as ``BadName`` as well as
+    the ``ValueError`` and ``GitCommandError`` the two handlers around it catch,
+    so the ref is planted and the read made to raise rather than the state
+    provoked through Git. A trunk that cannot be read leaves the branch simply
+    unrecorded, which is the contract this helper documents.
+    """
+    head = context.repo_home.head.commit.hexsha
+    context.repo_home.git.update_ref("refs/remotes/origin/main", head)
+
+    def unresolvable(_rev: str) -> typ.NoReturn:
+        msg = "unknown revision or path not in the working tree"
+        raise BadName(msg)
+
+    monkeypatch.setattr(context.repo_home, "commit", unresolvable)
+
+    assert donkey._local_trunk(context, default_branch="main") is None, (
+        "the branch is still created, and simply goes unrecorded"
     )

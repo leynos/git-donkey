@@ -185,10 +185,10 @@ def _local_trunk(
         return None
     try:
         return _Trunk(ref=trunk_ref, commit=context.repo_home.commit(trunk_ref).hexsha)
-    except (GitCommandError, ValueError):
-        # GitPython reports an unresolvable revision as either, and a ref that
-        # resolves to something that is not a commit is one this cannot reason
-        # about either.
+    except (BadName, GitCommandError, ValueError):
+        # GitPython reports an unresolvable revision as any of the three, and a
+        # ref that resolves to something that is not a commit is one this
+        # cannot reason about either.
         return None
 
 

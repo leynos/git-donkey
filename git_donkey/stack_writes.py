@@ -161,9 +161,12 @@ class GitStackRecordWriter(stack_store.GitStackRecordReader):
             holds it (AXIOM-12). Nothing has been written in any of those
             cases.
         stack_store.StackRecordError
-            If a configuration value cannot be written. The anchor this call
-            created and the values it wrote are removed again, so the branch is
-            left as it was found rather than half recorded.
+            If a configuration value cannot be written, or if the branch's
+            tombstone cannot be retired once they have been. The anchor this
+            call created and the values it wrote are removed again, so the
+            branch is left as it was found rather than half recorded, and a
+            create that cannot retire a tombstone leaves the branch described
+            by that tombstone rather than by both it and a live record.
         ValueError
             If the record is not one this package's reader reads back, or the
             branch name would be unsafe in a ref path. Nothing has been
@@ -185,7 +188,15 @@ class GitStackRecordWriter(stack_store.GitStackRecordReader):
             # anchor is what makes the branch look recorded at all, so both go.
             self._undo_write(record, expected_old="", previous={})
             raise
-        self._retire_tombstone(record.branch)
+        try:
+            self._retire_tombstone(record.branch)
+        except stack_store.StackRecordError:
+            # A live record beside a tombstone describes one branch as both live
+            # and deleted, which is the state the create exists to end, so the
+            # create is taken back rather than left standing against a tombstone
+            # Git would not delete.
+            self._undo_write(record, expected_old="", previous={})
+            raise
 
     def refresh(self, record: stack_records.StackRecord, expected_old: str) -> None:
         """Update a record, requiring the anchor to still hold ``expected_old``.
@@ -484,7 +495,10 @@ class GitStackRecordWriter(stack_store.GitStackRecordReader):
 
         Deleting happens only after the record has been written, so a create
         that fails part way through leaves the tombstone in place rather than
-        destroying the only evidence of the previous incarnation.
+        destroying the only evidence of the previous incarnation. A deletion
+        Git refuses is raised as the write's own failure, which the create
+        answers by taking its record back: the tombstone is the statement the
+        branch cannot keep both of.
         """
         if self.tombstone(branch) is not None:
             self._delete_ref(stack_records.tombstone_ref_path(branch))

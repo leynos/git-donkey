@@ -71,7 +71,7 @@ class EvidenceCase:
     Attributes
     ----------
     label : str
-        How the case names itself in a test's parametrisation.
+        How the case names itself in a test's parametrization.
     repo : Repo
         The repository whose refs the run is measured against.
     branch : str
