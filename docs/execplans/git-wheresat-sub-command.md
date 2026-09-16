@@ -3510,10 +3510,18 @@ Stop and escalate rather than improvising when any of these is reached.
     `pyproject.toml:188`, and `cs delta origin/main` named the same excess
     independently, 10.00 to 9.68. Splitting the renderer out leaves `_die` at
     four parameters and gives the write path the rendering without the exit.
-  - The stages after pylint in that target — pylint's df12 run, ambrleaks and
-    skylos — had not been reached on this branch either, so the gate run that
-    closes this milestone is the first to exercise them, and its numbers are
-    recorded below once known.
+  - The stages after pylint in that target, its df12 run, ambrleaks and skylos,
+    had not been reached on this branch either. The nine gates were then taken
+    over `28292e7` and `f4a4b6f` in one sequential pass, and all nine are
+    green. `build` synced 80 packages and `check-fmt` left 185 files formatted
+    with mdtablefix's 29 unchanged. `lint` reached the end of its chain for the
+    first time here: ruff passed, interrogate held 100.0%, pyscn passed, pylint
+    scored 10.00/10 under both the builtin and the df12 configuration, and
+    ambrleaks and skylos raised nothing. `typecheck` passed at ty 0.0.79,
+    `test` passed 994 tests with 22 snapshot assertions in 18.17s, `spelling`
+    passed its 16 helper tests at 93.75% coverage, `markdownlint` linted 30
+    files with 0 errors, `nixie` validated every diagram, and
+    `cs delta origin/main` found no issues. The tree was pushed as `f4a4b6f`.
 
 ## Surprises & discoveries
 
