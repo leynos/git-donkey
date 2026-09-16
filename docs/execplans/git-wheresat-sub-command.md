@@ -3620,6 +3620,119 @@ Stop and escalate rather than improvising when any of these is reached.
     `cs delta origin/main` found no issues. This entry, including this bullet,
     is Markdown written once those numbers were known, so the Markdown gates
     are re-run over it. The tree was pushed as `32d0d03`.
+  - Review round: `coderabbit review --agent --base origin/main` reports 13
+    findings over the tree at `87c9694`, the head round 17 closed on (log
+    `/tmp/coderabbit-git-donkey-git-wheresat-sub-command-18.out`, whose 13
+    `finding` records are kept as `/tmp/coderabbit-findings-18.jsonl` for
+    triage), taken on 2026-09-16 in one attempt and without meeting a rate
+    limit. The 13 are 2 major, 3 minor and 8 trivial, and every one is a
+    distinct request: all 13 are taken. The round's changes are in `9e82e37`.
+  - The record lifecycle's Git failures are the first major.
+    `git_donkey/plonk_cleanup.py`'s three handlers — the sweep, the tombstone
+    prune, and the orphan listing the sweep is handed — catch
+    `GitCommandError` beside `StackRecordError` and `ValueError`, so a Git
+    command the read or the clear is made of is reported through
+    `_record_failure` and `helpers._die` like any other refusal rather than
+    escaping as a traceback. The listing had no handler at all before this:
+    `records.orphans()` read a ref namespace through Git, so a Git refusal
+    there left the run's own failure path unvisited. The `Raises` blocks of
+    all three say so now.
+  - The other major is the cut candidate set, one change across two modules
+    and their suite. `git_donkey/wheresat_collect.py` reports the bound as its
+    own signal: a set cut at `MAX_CANDIDATES` carries `capped` beside the
+    reason naming the bound, so the flag is decided by the cut rather than by
+    the text of a fault. `git_donkey/wheresat_policy.py`'s
+    `apply_collection_faults` returns `Indeterminate` for a capped set even
+    from `Established`, which is the one verdict an ordinary fault leaves
+    alone: the reasoning that lets a fault pass an establishment — the
+    establishing candidate passed every gate it needed — does not cover a cut,
+    because the candidates a cut removed were never weighed. The reasons the
+    earlier assessment reached are kept behind the fault, and `Established`'s
+    support is carried across as the candidates. The five cases that pin this
+    move to `tests/unit/test_wheresat_collection_faults.py`, a seam the suite
+    had already drawn.
+  - The worktree status read runs with Git's _global_ `--no-optional-locks`,
+    because a read taken to decide whether the run may write must not be a
+    write of its own: refreshing the index contends with whoever else is using
+    that worktree. `git status --no-optional-locks` exits 129 and
+    `git --no-optional-locks status` exits 0, and GitPython's attribute-call
+    form has nowhere to put an option that precedes the subcommand, so the
+    read goes through `Git.execute`, which takes the argument vector whole.
+    Its declared overloads have no shape for a read wanting the status, both
+    streams, and no exceptions, so a module-local `_GitExecute` Protocol names
+    that shape, as `git_donkey/incoming_outgoing.py` already does for the log
+    reader.
+  - The short `refs/remotes/<branch>` candidate is offered only when the
+    branch is not already a ref path. The order itself is unchanged — the
+    branch itself when it is a ref path, otherwise the short form, then one
+    candidate per configured remote — and only the `Returns` block gained the
+    word conditional; what the round's repair first got wrong was the
+    condition, since a bare name asked as itself resolves against
+    `refs/heads`, a different question, which the six cases in
+    `tests/integration/test_wheresat_remote_tracking_ref.py` then found.
+  - Four docstring and dispatch changes follow the house forms. `listed_range`
+    and `not_applicable` in `git_donkey/wheresat_gates.py`, and `string_field`
+    and `count_field` in `git_donkey/wheresat_payload.py`, gained the NumPy
+    `Parameters` and `Returns` sections their neighbours use, documenting the
+    distinction an unlisted range carries and why a boolean is not a count.
+    `_shared_record_evidence` and `_recorded_from` in
+    `git_donkey/wheresat_collect.py` dispatch on the shared-record reading
+    through `match`/`case` rather than `isinstance`, which is the form the
+    module's other readings of a result already take, with no behaviour
+    changed.
+  - The users' guide fences its entombment summary `plaintext` rather than
+    `text`, and describes an identification the run skipped rather than a
+    question it could not answer, since a run performing no network access of
+    any kind never asked.
+  - Four fixtures and helpers are taken as asked.
+    `tests/integration/wheresat_scenarios.py`'s `_pull` no longer takes the
+    repository it never read, and its three call sites name only what they
+    use. `tests/unit/test_donkey_base.py` takes its shared setup as a
+    `repository` fixture, with `context` depending on it and `tmp_path`, so
+    the three tests request the context they are about rather than calling the
+    builders themselves. `tests/unit/test_stack_store.py` imports
+    `stack_writes` under `TYPE_CHECKING`, the only place it is used.
+    `tests/git_repo_helpers.py`'s fixture commits pass `--no-gpg-sign` and
+    `--no-verify`, so a contributor's signing configuration or hooks cannot
+    change what a fixture repository contains.
+  - The round's changes were handed to the gates, and five failed.
+    `check-fmt` named two files; `lint` stopped at `PLR0916` in
+    `git_donkey/wheresat_policy.py` and `E501` in
+    `tests/unit/test_wheresat_collect.py`, so the stages after ruff never ran;
+    `typecheck` reported `no-matching-overload` at
+    `git_donkey/wheresat_worktrees.py:386`, which is the shape `_GitExecute`
+    was introduced for; `test` failed six cases in
+    `tests/integration/test_wheresat_remote_tracking_ref.py`, all of them the
+    candidate order above; and `cs delta origin/main` reported three new
+    issues.
+  - The policy change is why the suite split. Its guards had grown a boolean
+    chain ruff refused as `PLR0916` and CodeScene read as a complex
+    conditional, and the two files sat at 801 and 844 lines against pylint's
+    800-line ceiling. `_faulted` builds the `Indeterminate` from the
+    assessment it replaces now, dispatching through `match`/`case` over the
+    three verdict shapes and carrying the candidates and gates across, so the
+    guards end at three: a cut, an establishment, and nothing to report. The
+    five collection-fault cases moved to a module of their own, which leaves
+    `tests/unit/test_wheresat_policy.py` at 749 lines and
+    `git_donkey/wheresat_graph.py` at 799.
+  - `git_donkey/wheresat_graph.py`'s one line of headroom is what the
+    candidate order cost. The condition is expressed through a `ref_path`
+    local, so the branch's own candidate list is one expression, and the
+    reason a bare name is not asked as itself lives in a comment rather than
+    in the `Returns` block: CodeScene counts docstring lines as lines of code
+    and `#` comments as free, which three probes on a `/tmp` copy established
+    before the shape was chosen.
+  - The nine gates were then taken over the tree `9e82e37` records, in one
+    sequential pass, and all nine are green: `build` synced 80 packages;
+    `check-fmt` left 188 files formatted with mdtablefix's 29 unchanged;
+    `lint` reached the end of its chain, with ruff passing, interrogate
+    holding 100.0%, and pylint at 10.00/10 under both configurations;
+    `typecheck` passed at ty 0.0.79; `test` passed 1005 tests with 22
+    snapshots; `spelling` passed its 16 helper tests at 93.75% coverage;
+    `markdownlint` linted 30 files with 0 errors; `nixie` validated every
+    diagram; and `cs delta origin/main` found no issues. This entry, including
+    this bullet, is Markdown written once those numbers were known, so the
+    Markdown gates are re-run over it.
 
 ## Surprises & discoveries
 
