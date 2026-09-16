@@ -2966,6 +2966,105 @@ Stop and escalate rather than improvising when any of these is reached.
     and what changed there, so a reader can check the claim against the diff
     rather than against this paragraph.
 
+  - Review round: `coderabbit review --agent --base origin/main` reports 9
+    findings over the tree at `5bf03a7` (log
+    `/tmp/coderabbit-git-donkey-git-wheresat-sub-command-12.out`, the
+    agent-mode stream whose 9 `finding` records are kept as
+    `/tmp/coderabbit-findings-12.jsonl` for triage), taken on 2026-09-16 in
+    one attempt and without meeting a rate limit, over the 127 files the
+    review reports. The 9 are 1 major, 3 minor, and 5 trivial, and they are 7
+    distinct requests: two of them are raised twice, each pair over the same
+    lines. All seven are actioned, six of them literally and one in
+    substance, which is the subject of a bullet below.
+  - The round's one major is an interrupt the credential write could not
+    clean up after. `write_token` cleaned up from an `OSError` handler, and a
+    write can stop for something that is not a filesystem failure at all — an
+    interrupt most of all — so a token already written to the temporary file
+    was left in the clear beside the credential it was to replace until the
+    process ended. The cleanup is a `finally` now, reached however the write
+    stopped, and the descriptor close stays where it belongs: it is this
+    call's to make only when `os.fdopen` refused before it took the descriptor
+    over. The case that pins it makes the rename raise `KeyboardInterrupt` and
+    asserts both halves: the temporary name is gone, and the credential is
+    still the previous one, because the interrupt arrived before the rename
+    could publish the new token. It was checked against the defect rather than
+    the fix — with the cleanup back in the `OSError` handler the case fails on
+    the stray temporary file. The round's other request against the same lines
+    asks for the same change, so the major and one minor are one fix.
+  - The one request whose form is declined is a suppression spelling. The
+    review asked that two existing suppressions be rewritten as `# noqa: S404`
+    and `# noqa: S603`, each with its justification moved to the line above.
+    The justification move is implemented, and it is what the request was
+    really about: both justifications had been written at the end of the line
+    they explain, which is what pushed the subprocess call's line past the
+    column limit. The spelling is not: this repository's ruff configuration
+    turns on the preview rule `RUF105` — the one that reports a `noqa` comment
+    used in place of `ruff: ignore` — so a `# noqa:` comment is itself a lint
+    failure here. The tree keeps `# ruff: ignore[<rule-name>]`, and names the
+    rules rather than their codes, because that is the form the rest of the
+    repository's suppressions are in.
+  - The status dispatch is a `match`, and the four statuses it names are
+    members of a private enum. The request asked for the dispatch by name; the
+    names cannot stay bare module constants, because a `case` written as a
+    bare name is a capture pattern, which matches every status and leaves
+    every case below it unreachable, so the names a case compares against have
+    to be dotted. They are `_Status` members now — an `IntEnum`, so the
+    messages that spell the status still render `HTTP 401` and the range guard
+    still compares against `500`.
+  - The identity helper moved to the module that owns the format.
+    `identity_text` was `wheresat_payload`'s and `wheresat_gates` had a copy
+    of its own; how a pull request is spelled is the shared record's business
+    rather than the payload reader's, so the function sits beside
+    `PullRequestIdentity` in `stack_records` now and every caller goes through
+    it — the gates, the reports, the writes, the shared-record renderer, and
+    the payload reader that used to define it. The gate that compares a
+    resolved parent to the one that was asked for spells both the way the
+    report that quotes them does.
+  - The round's three smaller requests are shapes. The assessment case
+    asserted that a _value_ of `EXIT_CODES` is one of its values, which is
+    true of whatever the mapping holds; it asserts that the verdict's type is
+    a key of the mapping now, which is the claim its message makes. The
+    fixture writer in `tests/git_repo_helpers.py` names the encoding its bytes
+    are written in, as the rest of that file's file access does. And the
+    scenario that leaves two inferred candidates unresolved runs the step that
+    builds the restored checkout before the step that reads the evidence, so
+    the claim that only a content comparison can name the lost boundary is
+    made about the repository the run actually uses.
+  - One sub-request of the status-dispatch finding is reversed on the evidence
+    of a gate, and it is the only part of the round that is. The review asked
+    for the `is not None` comparison before the server-error range to be
+    removed as unnecessary, and the first version of the fix removed it; `make
+    typecheck` then refused the guarded case, because `requests` types a
+    status code as optional and `status >= _Status.SERVER_ERROR` is therefore
+    a comparison against `None` as far as ty 0.0.79 is concerned. The guard is
+    back inside the case, with a comment saying why, so the next round does not
+    ask for its removal again. The failure was a regression rather than a
+    long-standing one and the red log is kept at
+    `/tmp/typecheck-red-r12-git-donkey-git-wheresat-sub-command.out`; the
+    runtime suite passed 986 cases with the guard gone, so the type checker
+    was the only thing that could have caught it. That is the round's own
+    lesson about the class of finding a review cannot be trusted on alone: a
+    claim that a comparison "can never fail" is a claim about a type, and this
+    estate has a gate that reads types.
+  - The nine checks are green over the tree the fixes were made in, which is
+    what round 12 is pushed as, at `6404544`: `build` resolved 80 packages and
+    checked 78; `check-fmt` found 177 files already formatted and `mdtablefix`
+    left its 29 unchanged; `lint` reached all seven of its stages, with the
+    built-in and df12 pylint passes both at 10.00/10 and `ambrleaks` and
+    `skylos` clean; `typecheck` passed under ty 0.0.79 with no diagnostics, the
+    red run being the one the bullet above describes; `test` reported 986
+    passed, 233 warnings and 22 snapshots; `spelling` was clean and its helper
+    tests passed 16 at 93.75% coverage, with the regenerated `typos.toml`
+    byte-identical to the one it replaced; `markdownlint` linted 30 files with
+    0 errors; `nixie` validated its 6 diagrams over the 29 files it visited;
+    and `cs delta origin/main` found no issues over the branch. This entry,
+    including this bullet, is Markdown written once those numbers were known,
+    so the Markdown gates are re-run over it.
+  - The disposition is posted on the pull request (round 12,
+    `#issuecomment-5691812275`), naming for each request the file it changed
+    and what changed there, so a reader can check the claim against the diff
+    rather than against this paragraph.
+
 ## Surprises & discoveries
 
 - Observation: this repository has no roadmap document.
