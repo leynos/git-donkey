@@ -103,10 +103,14 @@ class _Status(enum.IntEnum):
     them in a ``match``: a case written as a bare name is a capture pattern,
     which matches every status and leaves the cases below it unreachable, so
     the names a case compares against have to be dotted.
+
+    A ``429`` is GitHub's secondary rate limit, which is refused for the reason
+    a rate-limited ``403`` is, so one case weighs both.
     """
 
     UNAUTHORIZED = 401
     FORBIDDEN = 403
+    RATE_LIMITED = 429
     NOT_FOUND = 404
     SERVER_ERROR = 500
 
@@ -616,8 +620,8 @@ def _status_reason(response: requests.Response, url: str) -> str:
                 f"(HTTP {_Status.UNAUTHORIZED}); the token may have been "
                 "revoked or expired"
             )
-        case _Status.FORBIDDEN:
-            return _forbidden_reason(response, url)
+        case _Status.FORBIDDEN | _Status.RATE_LIMITED:
+            return _refusal_reason(response, url)
         case _Status.NOT_FOUND:
             return (
                 f"GitHub has nothing at {url} (HTTP {_Status.NOT_FOUND}); a "
@@ -636,47 +640,75 @@ def _status_reason(response: requests.Response, url: str) -> str:
     return f"GitHub answered {url} with HTTP {status}, which is not an answer"
 
 
-def _forbidden_reason(response: requests.Response, url: str) -> str:
-    """Return why a ``403`` is not an answer, telling the two causes apart.
+def _refusal_reason(response: requests.Response, url: str) -> str:
+    """Return why a ``403`` or a ``429`` is not an answer, naming the cause.
 
     A rate limit and a missing scope are both ``403``, and they need opposite
     responses from an operator: one is answered by waiting, the other never is.
     What tells them apart is ``Retry-After`` or an exhausted remaining count —
     GitHub sends ``X-RateLimit-Reset`` on every answer, so its presence alone
-    says nothing. The headers are reported verbatim rather than converted,
-    because they are the numbers the operator will be reconciling against
-    GitHub's own rate-limit page.
+    says nothing. A ``429`` needs neither header to be read as a rate limit, so
+    the status answers for it. The headers are reported verbatim rather than
+    converted, because they are the numbers the operator will be reconciling
+    against GitHub's own rate-limit page.
 
     Parameters
     ----------
     response : requests.Response
-        The ``403`` GitHub answered with.
+        The ``403`` or ``429`` GitHub answered with.
     url : str
         Request the answer belongs to.
 
     Returns
     -------
     str
-        The reason, naming the rate limit when the headers say so.
+        The reason, naming the rate limit when the status or the headers say
+        so.
 
     """
+    status = response.status_code
     headers = {
         name: value
         for name in _RATE_LIMIT_HEADERS
         if (value := response.headers.get(name)) is not None
     }
-    if (
-        headers.get("Retry-After") is None
-        and headers.get("X-RateLimit-Remaining") != "0"
-    ):
+    if status != _Status.RATE_LIMITED and not _headers_name_a_limit(headers):
         return (
-            f"GitHub refused the request for {url} (HTTP 403); the credential "
+            f"GitHub refused the request for {url} (HTTP {status}); the credential "
             "may lack the scopes this needs"
         )
-    facts = ", ".join(f"{name} {value}" for name, value in headers.items())
+    facts = (
+        ", ".join(f"{name} {value}" for name, value in headers.items())
+        or "no rate-limit headers were sent"
+    )
     return (
-        f"GitHub rate limited the credential for {url} (HTTP 403); {facts}; "
+        f"GitHub rate limited the credential for {url} (HTTP {status}); {facts}; "
         "the question went unanswered"
+    )
+
+
+def _headers_name_a_limit(headers: cabc.Mapping[str, str]) -> bool:
+    """Return whether a refusal's headers say the credential is rate limited.
+
+    ``Retry-After`` is sent beside a limit, and an exhausted remaining count is
+    the other way GitHub says the same thing. ``X-RateLimit-Reset`` is sent
+    with every answer, so its presence alone says nothing: it is reported to the
+    operator but not read here.
+
+    Parameters
+    ----------
+    headers : collections.abc.Mapping[str, str]
+        The rate-limit headers the answer carried, which may be none of them.
+
+    Returns
+    -------
+    bool
+        Whether the headers name a limit rather than a missing scope.
+
+    """
+    return (
+        headers.get("Retry-After") is not None
+        or headers.get("X-RateLimit-Remaining") == "0"
     )
 
 

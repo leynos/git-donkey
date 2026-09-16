@@ -19,7 +19,7 @@ from __future__ import annotations
 import dataclasses
 import typing as typ
 
-from git import GitCommandError, Repo
+from git import BadName, GitCommandError, Repo
 
 from git_donkey import (
     helpers,
@@ -381,9 +381,11 @@ def _add_worktree_for_new_branch(
         )
         # The branch starts from the commit the base was already resolved to, so
         # the worktree and any record of it name one commit however the base
-        # moved in the meantime. A base that resolved to nothing is put to Git
-        # by name, which refuses it in Git's own words rather than in a
-        # traceback from a revision lookup.
+        # moved in the meantime. A base that resolved to nothing is resolved
+        # again by name here, which is a lookup that can refuse the name itself
+        # — GitPython's ``BadName`` — before ``git worktree add`` is reached at
+        # all: both refusals are reported below as a failed ``worktree add``
+        # rather than as a traceback out of this module.
         start_point = request.base_commit
         if start_point is None:
             start_point = context.repo_home.commit(request.base_branch).hexsha
@@ -397,7 +399,7 @@ def _add_worktree_for_new_branch(
             str(request.target_path),
             start_point,
         )
-    except (GitCommandError, ValueError) as exc:
+    except (BadName, GitCommandError, ValueError) as exc:
         helpers._die(_GIT_DONKEY_PREFIX, f"worktree add failed: {exc}", 1)
 
     # The record is written after the branch exists, because the anchor is a

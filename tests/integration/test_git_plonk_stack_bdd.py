@@ -68,11 +68,22 @@ def _rescuable(scenario: PlonkStackScenario) -> tuple[str, ...]:
 def _assert_reported(output: str, heading: str, entry: str) -> None:
     """Assert ``output`` reports ``entry`` under ``heading``.
 
-    The entry is matched as a whole bullet rather than as a substring, so a
-    branch that shares a prefix with another is not reported as the one named.
+    The entry is matched as a whole bullet, and only among the bullets of the
+    heading's own section: the summary appends each section as a heading
+    followed by its bullets and nothing between them, so the section ends at
+    the first line that is not a bullet — the next heading. A branch that
+    shares a prefix with another is therefore not read as the one named, and
+    neither is a branch the summary reports under a different heading.
     """
     assert heading in output, f"expected {heading!r} in the git plonk summary"
-    assert f"- {entry}\n" in f"{output}\n", (
+    bullets: list[str] = []
+    for line in output.partition(heading)[2].splitlines():
+        if not line.strip():
+            continue
+        if not line.startswith("- "):
+            break
+        bullets.append(line)
+    assert f"- {entry}" in bullets, (
         f"expected the summary to report {entry!r} under {heading!r}"
     )
 

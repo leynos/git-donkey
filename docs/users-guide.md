@@ -352,7 +352,7 @@ Requirements:
 
 - `git`
 - `copier`, when scaffolding from a language template
-- A GitHub token (`GITHUB_TOKEN` or `GH_TOKEN`) *or* an interactive terminal
+- A GitHub token (`GITHUB_TOKEN` or `GH_TOKEN`) _or_ an interactive terminal
   for device flow
 
 Repository creation is handled via the github3.py API, so the token must have
@@ -526,7 +526,7 @@ Tombstones do not accumulate. Every completed run prunes the tombstones written
 before `stack.tombstoneExpire`, a Git date expression defaulting to
 `90.days.ago`, which is the same horizon as Git's own `gc.reflogExpire`. A
 value Git cannot parse stops the run before anything is touched, because Git
-reads an unparsable date as *now* and would prune every tombstone in the
+reads an unparsable date as _now_ and would prune every tombstone in the
 repository. The [shared stack record](stack-records.md) design documents the
 full lifecycle.
 
@@ -564,7 +564,7 @@ It exits with one of four statuses:
 | `2`    | a usage, configuration, or startup error, or a failed write, with no assessment behind it              |
 | `3`    | indeterminate: the repository could not answer a question the procedure asked, so no answer is claimed |
 
-*Table 1: the four exit statuses.*
+_Table 1: The four exit statuses._
 
 A missing or unusable GitHub credential is not status `2`. A run that reaches
 the forge reads the refusal as a question it could not ask, reports

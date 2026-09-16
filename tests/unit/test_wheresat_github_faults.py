@@ -1,11 +1,12 @@
 """INV-5 at the GitHub boundary: a fault is never read as an answer.
 
-Seven ways a request can fail to produce an answer — HTTP 401, a rate-limited
-403, a forbidden 403, 404, a server error, a connection timeout, and a name
-that will not resolve — are one class, because the run does one thing with all
-of them: the question went unanswered, so the gate that asked it is
-indeterminate and the run exits ``3``. Each is driven through the same session
-stub. The two ``403``s are kept apart on purpose, because they are the pair an
+Eight ways a request can fail to produce an answer — HTTP 401, a rate-limited
+403, a rate-limited 429, a forbidden 403, 404, a server error, a connection
+timeout, and a name that will not resolve — are one class, because the run does
+one thing with all of them: the question went unanswered, so the gate that
+asked it is indeterminate and the run exits ``3``. Each is driven through the
+same session stub. The refusals a rate limit can arrive as are kept apart from
+the one a missing scope arrives as on purpose, because they are the pair an
 operator has to act on differently — one is answered by waiting and the other
 never is — so the forbidden case asserts that its refusal does _not_ claim a
 rate limit.
@@ -37,6 +38,7 @@ from __future__ import annotations
 import dataclasses
 import sys
 import time
+import types
 import typing as typ
 
 import github3.session as github3_session
@@ -63,11 +65,11 @@ _IDENTITY = stack_records.PullRequestIdentity(repository="leynos/git-donkey", nu
 _URL = "https://api.github.com/repos/leynos/git-donkey/pulls/80"
 _STACKS_URL = "https://api.github.com/repos/leynos/git-donkey/stacks"
 _COMMIT = "0e1d2c3b4a5968778695a4b3c2d1e0f1a2b3c4d5"
-_RATE_LIMIT_HEADERS: typ.Final = {
+_RATE_LIMIT_HEADERS: typ.Final = types.MappingProxyType({
     "Retry-After": "60",
     "X-RateLimit-Remaining": "0",
     "X-RateLimit-Reset": "1757850000",
-}
+})
 _DNS_MESSAGE = (
     "HTTPSConnectionPool(host='api.github.com', port=443): Max retries exceeded "
     "with url: /repos/leynos/git-donkey/pulls/80 (Caused by "
@@ -198,6 +200,15 @@ _FAULTS: typ.Final = (
             body={"message": "API rate limit exceeded"},
         ),
         "rate limited",
+    ),
+    _Fault(
+        "rate-limited-secondary",
+        _StubResponse(
+            429,
+            body={"message": "You have exceeded a secondary rate limit"},
+        ),
+        "rate limited",
+        forbidden="refused the request",
     ),
     _Fault(
         "forbidden",

@@ -261,7 +261,9 @@ def _facts(
         range_minus_parent=_without_some(contents, draw),
         landed_twins=_twins(contents, landed, draw),
         child_history=CommitRange(commits),
-        cumulative_patch={commit: draw(_PATCH_IDENTIFIERS) for commit in placed},
+        cumulative_patch={
+            commit: draw(_PATCH_IDENTIFIERS) for commit in dict.fromkeys(placed)
+        },
         landed_patch=draw(st.one_of(st.none(), st.just(LANDED_PATCH))),
         record_recorded_from=draw(st.one_of(st.none(), st.sampled_from(commits))),
     )

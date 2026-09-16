@@ -46,7 +46,10 @@ _OBJECT_IDS = st.one_of(
 _RECORDS = st.builds(SharedRecord, parent=_IDENTITIES, boundary=_OBJECT_IDS)
 
 
-def _block(parent: str = "octocat/demo-repo#7", boundary: str = _BOUNDARY) -> str:
+def _block(
+    parent: str = stack_records.identity_text(_PARENT),
+    boundary: str = _BOUNDARY,
+) -> str:
     """Return a body carrying both lines of a shared record.
 
     Parameters

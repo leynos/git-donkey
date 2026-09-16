@@ -293,8 +293,8 @@ def _git_directory(scenario: WheresatScenario, branch: str) -> Path:
 class TestTheMatrix:
     """The matrix: every vector answers what it must."""
 
-    @pytest.mark.parametrize("label", tuple(_VECTORS))
     @staticmethod
+    @pytest.mark.parametrize("label", tuple(_VECTORS))
     def test_every_vector_leaves_the_repository_alone(
         label: str,
         scenario: WheresatScenario,

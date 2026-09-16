@@ -60,7 +60,11 @@ _EXPECTATIONS: typ.Final = (Ancestry.ANCESTOR, Ancestry.NOT_ANCESTOR)
 """The two polarities a gate can hold, which nothing in the table may omit."""
 
 
-# The gates a run that named no parent pull request never applies.
+# The two gates a run that named no parent pull request never applies: the ones
+# about the parent pull request itself, which are what :data:`PARENT_GATES`
+# counts. It is deliberately not every gate such a run leaves out — the gate
+# about the parent's integration is left out for a second reason, which
+# :data:`_INAPPLICABLE_WITHOUT_PARENT` below is the set that states.
 _ABSENT_PARENT_GATES = frozenset({
     GateName.PARENT_IDENTITY_MATCHES,
     GateName.PARENT_MERGED,

@@ -21,12 +21,14 @@ import typing as typ
 
 import pytest
 
+from git_donkey import stack_records
 from git_donkey import wheresat_report as report
 from git_donkey.wheresat_records import (
     COMMIT_ABBREVIATION,
     EXIT_CODES,
     EXIT_USAGE,
     Assessment,
+    AttestedCandidate,
     BoundaryRequest,
     Established,
     EvidenceKind,
@@ -43,6 +45,8 @@ from tests.unit.wheresat_helpers import (
     MERGE_BASE_SOURCE,
     OLD_BASE,
     OTHER_BASE,
+    PARENT_HEAD,
+    PR_IDENTITY,
     RECORD_SOURCE,
     Case,
     assessment_of,
@@ -340,6 +344,60 @@ def test_json_envelope_agrees_with_the_text_report(name: str) -> None:
         "and the target the child would be replayed onto"
     )
     assert payload["error"] is None, "a completed run reports no error"
+
+
+def _fetched_head(commit: str) -> AttestedCandidate:
+    """Return the candidate a run collects for the parent head it fetched."""
+    return attested(
+        commit,
+        EvidenceKind.PULL_REQUEST_HEAD,
+        source=f"the head of {stack_records.identity_text(PR_IDENTITY)}",
+    )
+
+
+def test_the_envelope_names_the_parent_head_the_evidence_carries() -> None:
+    """A run that fetched a parent head reports it, rather than null.
+
+    ``parentHead`` is not a field of an assessment: it is the commit a
+    ``PULL_REQUEST_HEAD`` candidate names. Both established snapshots carry
+    null because neither calls for that evidence — the first consulted no
+    parent, and the second's support is the record's birth boundary alone — so
+    the populated case, where the head the run fetched is the boundary the run
+    established, is pinned here.
+    """
+    case = dataclasses.replace(
+        parented(),
+        candidates=(
+            attested(OLD_BASE, EvidenceKind.STACK_RECORD_BIRTH),
+            _fetched_head(OLD_BASE),
+        ),
+    )
+    assessment = assessment_of(case)
+    assert isinstance(assessment, Established), "the case is built to establish"
+    payload = json.loads(report.render_json(assessment, case.request))
+
+    assert payload["parentHead"] == OLD_BASE, (
+        "an established run names the head its evidence carries"
+    )
+    assert payload["oldBase"] == OLD_BASE, "and the boundary it was established at"
+
+
+def test_an_unestablished_run_names_the_parent_head_it_read() -> None:
+    """The head a run read is reported even when nothing was established.
+
+    It is the same evidence read the other way round: the run fetched the
+    parent's head, the gates could not accept it as a boundary, and the
+    envelope names what the run read rather than the null of a run that read
+    nothing.
+    """
+    case = dataclasses.replace(parented(), candidates=(_fetched_head(PARENT_HEAD),))
+    assessment = assessment_of(case)
+    assert isinstance(assessment, Indeterminate), "the case answers no boundary"
+    payload = json.loads(report.render_json(assessment, case.request))
+
+    assert payload["parentHead"] == PARENT_HEAD, (
+        "an unestablished run names the head it read, rather than reporting nothing"
+    )
 
 
 def test_error_envelope_carries_every_key_a_completed_one_does() -> None:
