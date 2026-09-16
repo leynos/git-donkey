@@ -101,6 +101,40 @@ def _record(observation: Observation) -> None:
     observability.get_recorder().record(observation)
 
 
+def _refusal_kind(exc: BaseException) -> observability.ErrorKind | None:
+    """Return the kind of failure a refused birth-record write reports.
+
+    Four failures can reach the caller from one write, and an operator reads
+    them differently: a conflict says the branch already had a record, a
+    malformed record says the record could not be read back or the branch name
+    would be unsafe in a ref path, a Git error says a write the store does not
+    wrap failed, and any other store error says only that the write did not
+    happen. The conflict is named through its own class rather than the base
+    error it derives from, because an existing record and an anchor write that
+    lost the race are the same finding.
+
+    Parameters
+    ----------
+    exc : BaseException
+        The error the store raised, or that escaped it unwrapped.
+
+    Returns
+    -------
+    observability.ErrorKind | None
+        The kind to record, or ``None`` for a store error that says nothing
+        beyond the write having failed. The vocabulary has no kind for that, and
+        one is not invented here: the step's outcome carries the finding.
+
+    """
+    if isinstance(exc, stack_store.StackRecordConflictError):
+        return "stack_record_conflict"
+    if isinstance(exc, ValueError):
+        return "stack_record_malformed"
+    if isinstance(exc, GitCommandError):
+        return "git_command_error"
+    return None
+
+
 def _birth_record(
     *,
     branch: str,
@@ -129,9 +163,17 @@ def _birth_record(
     ------
     stack_store.StackRecordConflictError
         Propagated from the store when the branch already has a record or the
-        anchor ref could not be created. The caller reports it as a run that
-        created the branch but could not record it, because by this point the
-        branch exists and undoing it would discard the user's request.
+        anchor ref could not be created.
+    stack_store.StackRecordError
+        Propagated from the store for any other refusal, which is recorded
+        without a kind because the store's error says no more than that the
+        write failed.
+    ValueError
+        If the record is not one this package's reader reads back, or the branch
+        name would be unsafe in a ref path.
+    GitCommandError
+        If a write the store does not wrap fails, which is the store's own
+        documented gap rather than a decision made here.
 
     """
     _record(Observation(operation="stack_record_write", outcome="started"))
@@ -146,16 +188,16 @@ def _birth_record(
                     evidence=stack_records.EVIDENCE_BIRTH,
                 )
             )
-        # The conflict is named rather than the base error it derives from,
-        # because a conflict is the only failure ``create`` reports through the
-        # kind below: an existing record and an anchor write that lost the race
-        # are the same finding, and anything else reaching here is not one.
-        except stack_store.StackRecordConflictError:
+        # Every refusal is recorded, because every one of them leaves a branch
+        # whose record was not written. Catching the store's base error beside
+        # the two shapes that escape it unwrapped is what keeps this step from
+        # ending in ``started`` with no outcome after it.
+        except (stack_store.StackRecordError, GitCommandError, ValueError) as exc:
             _record(
                 Observation(
                     operation="stack_record_write",
                     outcome="failure",
-                    error_kind="stack_record_conflict",
+                    error_kind=_refusal_kind(exc),
                 )
             )
             raise

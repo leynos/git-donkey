@@ -58,9 +58,12 @@ from hypothesis.stateful import (
     run_state_machine_as_test,
 )
 
-from git_donkey import donkey, stack_records, stack_store
+from git_donkey import donkey, observability, stack_records, stack_store
 from tests import git_repo_helpers
 from tests.integration import donkey_helpers
+
+if typ.TYPE_CHECKING:
+    from tests.observability_helpers import RecordingRecorder
 
 pytestmark = pytest.mark.timeout(120)
 
@@ -576,9 +579,11 @@ def _refuse_writes(monkeypatch: pytest.MonkeyPatch, failure: Exception) -> None:
     monkeypatch : pytest.MonkeyPatch
         Patcher the refusal is installed with.
     failure : Exception
-        Error every write is to raise, standing for the two ways the store
-        refuses one: its own error, and the ``ValueError`` its ref-path
-        validation raises.
+        Error every write is to raise, standing for the four ways a write is
+        refused: the conflict the store names as its own class, the broader
+        error the store reports for any other refusal, the ``ValueError`` its
+        ref-path validation raises, and the ``GitCommandError`` a write it does
+        not wrap leaves unwrapped.
 
     """
 
@@ -605,30 +610,122 @@ def _stack_a_parent(repo: Repo) -> None:
     repo.git.checkout(_TRUNK)
 
 
-@pytest.mark.parametrize(
-    "failure",
-    [
-        stack_store.StackRecordError("the store refused the record"),
-        ValueError("the branch name is not a ref path component"),
-    ],
-    ids=["store-error", "value-error"],
+@dataclasses.dataclass(frozen=True, slots=True)
+class _Refusal:
+    """One of the four ways a record write is refused, and how it is recorded.
+
+    Parameters
+    ----------
+    failure : Exception
+        Error every write raises, standing for one way a store refuses.
+    kind : observability.ErrorKind | None
+        The kind the run records the refusal as, or ``None`` where the
+        vocabulary has no kind for the failure.
+
+    """
+
+    failure: Exception
+    kind: observability.ErrorKind | None
+
+
+_REFUSALS: typ.Final = (
+    _Refusal(
+        failure=stack_store.StackRecordConflictError("the branch already has a record"),
+        kind="stack_record_conflict",
+    ),
+    _Refusal(
+        failure=stack_store.StackRecordError("the store refused the record"),
+        kind=None,
+    ),
+    _Refusal(
+        failure=ValueError("the branch name is not a ref path component"),
+        kind="stack_record_malformed",
+    ),
+    _Refusal(
+        failure=GitCommandError("git", 128, b"", b"fatal: unable to write ref"),
+        kind="git_command_error",
+    ),
 )
-def test_a_refused_record_write_is_reported_as_a_failed_record(
+"""The four refusals, in the order the cases are named."""
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class _RefusedBirth:
+    """A clone whose record writes are refused, and the refusal that refuses them.
+
+    Parameters
+    ----------
+    scenario : donkey_helpers.DonkeyScenario
+        The clone the command is run in, with its parent branch already stacked.
+    refusal : _Refusal
+        The failure this case injects, and the kind it is recorded as.
+
+    """
+
+    scenario: donkey_helpers.DonkeyScenario
+    refusal: _Refusal
+
+
+@pytest.fixture
+def refused_birth(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    request: pytest.FixtureRequest,
+) -> _RefusedBirth:
+    """Return a clone whose record writes raise the case's failure.
+
+    The refusal is installed into the store rather than into a writer this test
+    builds, so what runs is the whole command: the writer the record is handed
+    to is the one ``git donkey`` constructed for itself. The case comes from the
+    test's own parametrization, so the four refusals stay four named cases
+    rather than becoming a loop inside one test.
+
+    Parameters
+    ----------
+    tmp_path : Path
+        Directory the clone and its bare remote are created under.
+    monkeypatch : pytest.MonkeyPatch
+        Patcher the working directory and the refusal are installed with.
+    request : pytest.FixtureRequest
+        The parametrized case this fixture was asked for.
+
+    Returns
+    -------
+    _RefusedBirth
+        The clone, with a stacked parent and the refusal installed.
+
+    """
+    refusal = typ.cast("_Refusal", request.param)
+    scenario = donkey_helpers.new_scenario(tmp_path, monkeypatch, "child")
+    _stack_a_parent(scenario.repo)
+    _refuse_writes(monkeypatch, refusal.failure)
+    return _RefusedBirth(scenario=scenario, refusal=refusal)
+
+
+@pytest.mark.parametrize(
+    "refused_birth",
+    _REFUSALS,
+    ids=["conflict", "store-error", "value-error", "git-error"],
+    indirect=True,
+)
+def test_a_refused_record_write_is_reported_as_a_failed_record(
     capsys: pytest.CaptureFixture[str],
-    failure: Exception,
+    recording_recorder: RecordingRecorder,
+    refused_birth: _RefusedBirth,
 ) -> None:
     """A record refused after the branch exists is not reported as a bad birth.
 
-    The write is refused twice: once with the store's own error and once with
-    the ``ValueError`` its ref-path validation raises. Both leave the branch
-    created, so both must be reported as a birth whose record could not be
-    written rather than as a worktree that could not be added.
+    The write is refused four ways: with the conflict the store names as its own
+    class, with the store's base error, with the ``ValueError`` its ref-path
+    validation raises, and with the ``GitCommandError`` a write it does not wrap
+    leaves unwrapped. All four leave the branch created and the record unwritten,
+    so all four are reported as a birth whose record could not be written rather
+    than as a worktree that could not be added — and all four are recorded, so
+    the write step says how it ended rather than stopping at ``started``.
     """
-    scenario = donkey_helpers.new_scenario(tmp_path, monkeypatch, "child")
-    _stack_a_parent(scenario.repo)
-    _refuse_writes(monkeypatch, failure)
+    scenario = refused_birth.scenario
+    failure = refused_birth.refusal.failure
+    expected_kind = refused_birth.refusal.kind
 
     with pytest.raises(SystemExit) as excinfo:
         donkey.run_git_donkey(scenario.branch, "parent", no_pull=True)
@@ -644,4 +741,12 @@ def test_a_refused_record_write_is_reported_as_a_failed_record(
     )
     assert scenario.branch in scenario.repo.heads, (
         "the message is true: the branch really was created"
+    )
+    assert recording_recorder.outcomes("stack_record_write") == [
+        "started",
+        "failure",
+    ], "the refused write is recorded as a failure, not left in its started state"
+    recorded = recording_recorder.error_kinds("stack_record_write")
+    assert recorded == ([] if expected_kind is None else [expected_kind]), (
+        f"the refusal is recorded as {expected_kind}, got: {recorded}"
     )
