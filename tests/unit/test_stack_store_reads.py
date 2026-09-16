@@ -322,6 +322,25 @@ def test_the_reader_answers_every_read_the_store_declares(tmp_path: Path) -> Non
     )
 
 
+@pytest.mark.parametrize("branch", ["--upload-pack=x", "main~1", "a..b"])
+def test_a_branch_tip_read_refuses_a_name_unsafe_in_a_ref_path(
+    tmp_path: Path, branch: str
+) -> None:
+    """A name that would reach Git as an option or a revision is refused first.
+
+    ``branch_tip`` assembles ``refs/heads/<branch>`` from the caller's name, so
+    the name is validated before the ref is built: a caller either gets a commit
+    or a refusal, and Git is never asked a question the name made up. The three
+    names here are the three the validator refuses and ``rev-parse`` would
+    otherwise act on — one Git reads as an option, and two it reads as an
+    expression about some other commit.
+    """
+    reader = stack_store.GitStackRecordReader(make_repo(tmp_path))
+
+    with pytest.raises(ValueError, match="invalid ref path component"):
+        reader.branch_tip(branch)
+
+
 def test_expiry_defaults_to_the_documented_window(tmp_path: Path) -> None:
     """An unset key is not an error: it is the ninety day window."""
     repo = make_repo(tmp_path)

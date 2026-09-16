@@ -126,42 +126,6 @@ def _record(observation: Observation) -> None:
     observability.get_recorder().record(observation)
 
 
-def _refusal_kind(exc: BaseException) -> observability.ErrorKind | None:
-    """Return the kind of failure a refused birth-record write reports.
-
-    Four failures can reach the caller from one write, and an operator reads
-    them differently: a conflict says the branch already had a record, a
-    malformed record says the record could not be read back or the branch name
-    would be unsafe in a ref path, a Git error says a write the store does not
-    wrap failed, and any other store error says only that the write did not
-    happen. The conflict is named through its own class rather than the base
-    error it derives from, because an existing record and an anchor write that
-    lost the race are the same finding.
-
-    Parameters
-    ----------
-    exc : BaseException
-        The error the store raised, or that escaped it unwrapped.
-
-    Returns
-    -------
-    observability.ErrorKind | None
-        The kind to record, or ``None`` for a store error that says nothing
-        beyond the write having failed. The vocabulary has no kind for that, and
-        one is not invented here: the step's outcome carries the finding.
-
-    """
-    match exc:
-        case stack_store.StackRecordConflictError():
-            return "stack_record_conflict"
-        case ValueError():
-            return "stack_record_malformed"
-        case GitCommandError():
-            return "git_command_error"
-        case _:
-            return None
-
-
 def _birth_record(
     *,
     branch: str,
@@ -224,7 +188,7 @@ def _birth_record(
                 Observation(
                     operation="stack_record_write",
                     outcome="failure",
-                    error_kind=_refusal_kind(exc),
+                    error_kind=stack_writes.refusal_kind(exc),
                 )
             )
             raise

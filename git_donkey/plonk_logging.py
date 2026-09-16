@@ -135,13 +135,36 @@ def _record_step(
     )
 
 
-def _record_failure(operation: observability.Operation, mode: _PlonkMode) -> None:
-    """Record a step where Git refused an action git-plonk asked for."""
+def _record_failure(
+    operation: observability.Operation,
+    mode: _PlonkMode,
+    *,
+    error_kind: observability.ErrorKind | None,
+) -> None:
+    """Record a step the run could not take, naming how it failed.
+
+    The caller names the failure because only it knows which refusal it met: a
+    branch Git would not delete and a record the store would not read are both
+    failures of this run, but an operator reads them differently. The kind is
+    keyword-only and has no default, so a new call site has to say which one it
+    is rather than inheriting the commonest by silence.
+
+    Parameters
+    ----------
+    operation : observability.Operation
+        Step that failed.
+    mode : _PlonkMode
+        Mode the run was in, translated to its label here.
+    error_kind : observability.ErrorKind | None
+        What the failure was, chosen by the caller that caught it, or ``None``
+        for a refusal that says no more than the step not having happened.
+
+    """
     observability.get_recorder().record(
         observability.Observation(
             operation=operation,
             outcome="failure",
             mode=_MODE_LABELS[mode],
-            error_kind="git_command_error",
+            error_kind=error_kind,
         )
     )

@@ -73,7 +73,7 @@ def with_ancestry(key: tuple[str, str], answer: Ancestry | None) -> GraphFacts:
     facts = permissive_facts()
     answers = dict(facts.ancestry)
     if answer is None:
-        del answers[key]
+        answers.pop(key, None)
     else:
         answers[key] = answer
     return dataclasses.replace(facts, ancestry=answers)
@@ -143,7 +143,7 @@ def with_landed_twins(key: str, twins: tuple[str, ...] | None) -> GraphFacts:
     facts = permissive_facts()
     compared = dict(facts.landed_twins)
     if twins is None:
-        del compared[key]
+        compared.pop(key, None)
     else:
         compared[key] = twins
     return dataclasses.replace(facts, landed_twins=compared)
@@ -299,7 +299,7 @@ def _one_range(
     """
     updated = dict(listed)
     if contents is None:
-        del updated[key]
+        updated.pop(key, None)
     else:
         updated[key] = contents
     return updated

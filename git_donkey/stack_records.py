@@ -570,8 +570,7 @@ def render_parent(parent: StackParent) -> str:
     if parent.branch is not None:
         return f"{RECORD_VERSION}:branch:{parent.branch}"
     if parent.pull_request is not None:
-        identity = parent.pull_request
-        return f"{RECORD_VERSION}:pr:{identity.repository}#{identity.number}"
+        return f"{RECORD_VERSION}:pr:{identity_text(parent.pull_request)}"
     msg = "a stack parent names a branch or a pull request"
     raise ValueError(msg)
 
@@ -779,8 +778,11 @@ def reconcile(
             "what a branch rename leaves behind"
         )
     record = _parse_record(branch, values)
-    if isinstance(record, RecordMalformed):
-        return record
+    match record:
+        case RecordMalformed():
+            return record
+        case StackRecord():
+            pass
     if anchor is not None and anchor != record.base:
         return RecordMalformed(
             f"the anchor for {branch!r} names {anchor} but the configuration "

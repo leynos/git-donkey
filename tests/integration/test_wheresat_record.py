@@ -121,7 +121,9 @@ def _record(
 
 def _stored(scenario: WheresatScenario) -> stack_records.StackRecord:
     """Return the child's record as the store reads it back."""
-    match stack_store.GitStackRecordReader(scenario.repo).read(CHILD):
+    with scenario.repo() as repo:
+        result = stack_store.GitStackRecordReader(repo).read(CHILD)
+    match result:
         case stack_records.StackRecord() as record:
             return record
         case other:
@@ -184,9 +186,10 @@ def _restack_the_child(scenario: WheresatScenario) -> None:
     is still written down but no longer describes where the branch came from —
     which is the state the command has to read it as evidence for.
     """
-    child = scenario.worktree_repo()
-    trunk = scenario.repo.heads[_TRUNK].commit.hexsha
-    child.git.rebase("--onto", trunk, scenario.boundary, CHILD)
+    with scenario.repo() as repo:
+        trunk = repo.heads[_TRUNK].commit.hexsha
+    with scenario.worktree_repo() as child:
+        child.git.rebase("--onto", trunk, scenario.boundary, CHILD)
 
 
 @dataclasses.dataclass(frozen=True, slots=True)

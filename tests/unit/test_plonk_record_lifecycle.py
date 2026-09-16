@@ -17,6 +17,8 @@ builders all three share in ``plonk_cleanup_helpers``.
 
 from __future__ import annotations
 
+import typing as typ
+
 import pytest
 
 from git_donkey import plonk, stack_store
@@ -32,6 +34,9 @@ from tests.unit.plonk_cleanup_helpers import (
     marker_for,
     run_cleanup,
 )
+
+if typ.TYPE_CHECKING:
+    from tests.observability_helpers import RecordingRecorder
 
 # Exit codes a record step reports with when it could not be taken, and when
 # the run was never usable at all.
@@ -90,6 +95,7 @@ def test_a_refused_deletion_keeps_the_record_beside_the_branch() -> None:
 
 def test_a_record_that_cannot_be_cleared_is_reported_and_the_run_continues(
     capsys: pytest.CaptureFixture[str],
+    recording_recorder: RecordingRecorder,
 ) -> None:
     """A refused clear leaves an orphan for the sweep, so it is not fatal.
 
@@ -97,7 +103,9 @@ def test_a_record_that_cannot_be_cleared_is_reported_and_the_run_continues(
     and a refusal leaves a record with no branch — the INV-9 violation the next
     run's sweep repairs. The run reports it and carries on: the branch this
     candidate named is gone, so the work the run owes is done, and stopping
-    here would leave the rest of the candidates untouched.
+    here would leave the rest of the candidates untouched. The refused clear is
+    recorded as a failure of the step that owns it rather than only logged, so
+    an operator sees it in the same place as every other refusal.
     """
     cleaned = candidate(WORKTREE_BRANCH, 123)
     records = RecordingStackStore(clear_failures=[cleaned.branch_name])
@@ -122,6 +130,9 @@ def test_a_record_that_cannot_be_cleared_is_reported_and_the_run_continues(
     )
     assert cleaned.branch_name in capsys.readouterr().err, (
         "and the refusal is reported where the run reports its other refusals"
+    )
+    assert recording_recorder.outcomes("stack_record_sweep") == ["failure"], (
+        "the refused clear is recorded as the failure it is"
     )
 
 
@@ -290,7 +301,7 @@ def test_a_sweep_separates_the_orphan_it_rescued_from_the_one_it_cleared() -> No
     rescued, cleared = "issue-456-orphaned", "issue-789-cleared"
     records = RecordingStackStore(
         orphaned=(rescued, cleared),
-        preservable={rescued},
+        preservable=(rescued,),
     )
     adapter = RecordingGitAdapter([marker_for(completed)])
 
@@ -364,6 +375,7 @@ def test_an_unusable_window_stops_the_run_before_anything_is_touched(
 @pytest.mark.parametrize("dry_run", [True, False], ids=["dry-run", "sweep"])
 def test_an_orphan_name_the_store_cannot_read_stops_the_run(
     capsys: pytest.CaptureFixture[str],
+    recording_recorder: RecordingRecorder,
     *,
     dry_run: bool,
 ) -> None:
@@ -375,6 +387,10 @@ def test_an_orphan_name_the_store_cannot_read_stops_the_run(
     rather than reporting an orphan. The sweep is repository-wide, so the raise
     has to stop the run before a single worktree is removed — and a dry run
     reads every orphan's anchor too, so it stops on exactly the same name.
+
+    The failure is recorded as a malformed record rather than as a Git command
+    error, because that is what the name is: the record was written for a
+    branch whose name the anchor path cannot spell.
     """
     completed = candidate(WORKTREE_BRANCH, 123)
     records = UnnameableStackStore(orphaned=("--upload-pack=x",))
@@ -395,3 +411,6 @@ def test_an_orphan_name_the_store_cannot_read_stops_the_run(
     assert "the stack record sweep failed" in capsys.readouterr().err, (
         "the error says which step could not finish"
     )
+    assert recording_recorder.error_kinds("stack_record_sweep") == [
+        "stack_record_malformed"
+    ], "a name the store will not read is recorded as the malformed record it is"

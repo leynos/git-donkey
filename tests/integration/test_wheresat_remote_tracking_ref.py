@@ -256,8 +256,9 @@ def _publish_parent(scenario: WheresatScenario) -> None:
         The checkout whose parent branch is published.
 
     """
-    scenario.repo.git.push("origin", scenario.parent)
-    scenario.repo.git.fetch("origin")
+    with scenario.repo() as repo:
+        repo.git.push("origin", scenario.parent)
+        repo.git.fetch("origin")
 
 
 def _rewrite_parent(scenario: WheresatScenario) -> None:
@@ -275,16 +276,16 @@ def _rewrite_parent(scenario: WheresatScenario) -> None:
         The checkout whose parent branch is rewritten.
 
     """
-    repo = scenario.repo
-    tip = repo.heads[scenario.parent].commit.hexsha
-    trunk = repo.heads["main"].commit.hexsha
-    tree = repo.git.rev_parse(f"{tip}^{{tree}}")
-    rebuilt = str(
-        repo.git.commit_tree(tree, "-p", trunk, "-m", "Rework the parent commit")
-    ).strip()
-    repo.git.update_ref(f"refs/heads/{scenario.parent}", rebuilt)
-    repo.git.push("--force", "origin", scenario.parent)
-    repo.git.fetch("origin")
+    with scenario.repo() as repo:
+        tip = repo.heads[scenario.parent].commit.hexsha
+        trunk = repo.heads["main"].commit.hexsha
+        tree = repo.git.rev_parse(f"{tip}^{{tree}}")
+        rebuilt = str(
+            repo.git.commit_tree(tree, "-p", trunk, "-m", "Rework the parent commit")
+        ).strip()
+        repo.git.update_ref(f"refs/heads/{scenario.parent}", rebuilt)
+        repo.git.push("--force", "origin", scenario.parent)
+        repo.git.fetch("origin")
 
 
 @pytest.fixture
@@ -366,17 +367,18 @@ def test_a_rewritten_parent_is_not_served_as_the_boundary(
     so the parent-history gate cannot refute a merge-base candidate and is not
     the rejection point for an advanced or rewritten parent.
     """
-    repo = rewritten.repo
     ref = f"refs/remotes/origin/{rewritten.parent}"
-    remote_tip = repo.rev_parse(ref).hexsha
 
-    assert remote_tip != rewritten.boundary, "the parent must have moved"
-    assert repo.heads[rewritten.parent].commit.hexsha == remote_tip, (
-        "the local branch was rewritten too, so the push had something to send"
-    )
-    assert not git_repo_helpers.is_ancestor(repo, rewritten.boundary, remote_tip), (
-        "the rewrite must put the recorded boundary out of the parent's reach"
-    )
+    with rewritten.repo() as repo:
+        remote_tip = repo.rev_parse(ref).hexsha
+
+        assert remote_tip != rewritten.boundary, "the parent must have moved"
+        assert repo.heads[rewritten.parent].commit.hexsha == remote_tip, (
+            "the local branch was rewritten too, so the push had something to send"
+        )
+        assert not git_repo_helpers.is_ancestor(repo, rewritten.boundary, remote_tip), (
+            "the rewrite must put the recorded boundary out of the parent's reach"
+        )
 
     run = run_wheresat_in(rewritten, wheresat.WheresatOptions(explain=True), capsys)
     lines = report_tokens(run.stdout)

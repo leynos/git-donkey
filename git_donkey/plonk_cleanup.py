@@ -138,7 +138,9 @@ def _swept(
             return records.rescuable(orphans)
         return records.sweep(orphans)
     except (stack_store.StackRecordError, GitCommandError, ValueError) as exc:
-        _record_failure("stack_record_sweep", mode)
+        _record_failure(
+            "stack_record_sweep", mode, error_kind=stack_writes.refusal_kind(exc)
+        )
         helpers._die(GIT_PLONK_PREFIX, f"the stack record sweep failed: {exc}", 1)
 
 
@@ -184,7 +186,9 @@ def _sweep_orphans(
     try:
         orphans = records.orphans()
     except (stack_store.StackRecordError, GitCommandError, ValueError) as exc:
-        _record_failure("stack_record_sweep", mode)
+        _record_failure(
+            "stack_record_sweep", mode, error_kind=stack_writes.refusal_kind(exc)
+        )
         helpers._die(GIT_PLONK_PREFIX, f"listing the stack records failed: {exc}", 1)
     if not orphans:
         return (), ()
@@ -242,7 +246,9 @@ def _prune_tombstones(
     try:
         pruned = tuple(records.expired(expire) if dry_run else records.prune(expire))
     except (stack_store.StackRecordError, GitCommandError, ValueError) as exc:
-        _record_failure("stack_record_prune", mode)
+        _record_failure(
+            "stack_record_prune", mode, error_kind=stack_writes.refusal_kind(exc)
+        )
         helpers._die(GIT_PLONK_PREFIX, f"pruning tombstones failed: {exc}", 1)
     if not pruned:
         return ()
@@ -280,7 +286,7 @@ def _preserve_tip(
     tip: str,
     records: stack_writes.StackRecordWriter,
     mode: _PlonkMode,
-) -> bool:
+) -> Exception | None:
     """Preserve ``candidate``'s tip as a tombstone, before the branch goes.
 
     The tombstone is written while the branch still exists, because the
@@ -300,8 +306,11 @@ def _preserve_tip(
 
     Returns
     -------
-    bool
-        ``True`` when a tombstone now names the tip, otherwise ``False``.
+    Exception | None
+        The refusal that kept the tombstone from being written, or ``None``
+        when one now names the tip. The refusal is answered rather than only
+        reported, so the caller can record which of the store's documented
+        refusals it met instead of guessing one.
 
     """
     _LOGGER.info(
@@ -327,8 +336,8 @@ def _preserve_tip(
             f"{GIT_PLONK_PREFIX}: failed to preserve the tip of "
             f"'{candidate.branch_name}': {exc}"
         )
-        return False
-    return True
+        return exc
+    return None
 
 
 def _clear_record(
@@ -342,7 +351,10 @@ def _clear_record(
     clear is the anchor ref the record was written through. A refusal leaves a
     record with no branch — the INV-9 violation the sweep exists to repair — so
     it is reported and the run carries on rather than abandoning the candidates
-    after this one.
+    after this one. The exception is logged with its traceback, because the
+    refusal it names is what an operator has to read to repair the record, and
+    it is recorded as a failure of this step as well: a line on its own leaves
+    the run's own observation saying the sweep succeeded.
 
     Parameters
     ----------
@@ -357,13 +369,16 @@ def _clear_record(
     try:
         records.clear_record(candidate.branch_name)
     except (stack_store.StackRecordError, ValueError) as exc:
-        _LOGGER.warning(
+        _LOGGER.exception(
             "Failed to clear the record of a deleted git-plonk branch",
             extra={
                 "mode": mode.value,
                 "operation": "stack_record_sweep",
                 "branch": candidate.branch_name,
             },
+        )
+        _record_failure(
+            "stack_record_sweep", mode, error_kind=stack_writes.refusal_kind(exc)
         )
         helpers._eprint(
             f"{GIT_PLONK_PREFIX}: the record of '{candidate.branch_name}' could "
@@ -416,14 +431,17 @@ def _delete_completed_branch(
     if tip is None:
         # The branch has already gone, so there is no tip to preserve and
         # nothing here to delete; the run reports the deletion it could not do.
-        _record_failure("branch_deletion", mode)
+        _record_failure("branch_deletion", mode, error_kind="git_command_error")
         return _CandidateOutcome(branch_deletion_failed=True)
-    if not _preserve_tip(candidate, tip, records, mode):
-        _record_failure("stack_record_entomb", mode)
+    refusal = _preserve_tip(candidate, tip, records, mode)
+    if refusal is not None:
+        _record_failure(
+            "stack_record_entomb", mode, error_kind=stack_writes.refusal_kind(refusal)
+        )
         return _CandidateOutcome(entomb_failed=True)
     _record_step("stack_record_entomb", "success", mode)
     if not adapter.delete_branch(candidate.branch_name):
-        _record_failure("branch_deletion", mode)
+        _record_failure("branch_deletion", mode, error_kind="git_command_error")
         return _CandidateOutcome(branch_deletion_failed=True, entombed=True)
     _record_step("branch_deletion", "success", mode)
     _clear_record(candidate, records, mode)
@@ -481,7 +499,7 @@ def _clean_completed_candidate(
     if not dry_run:
         if not adapter.remove_worktree(candidate.worktree_path):
             _log_skipped_candidate(candidate, _SkipReason.REMOVAL_FAILED, mode)
-            _record_failure("worktree_removal", mode)
+            _record_failure("worktree_removal", mode, error_kind="git_command_error")
             return _CandidateOutcome(skip_reason=_SkipReason.REMOVAL_FAILED)
         _record_step("worktree_removal", "success", mode)
 

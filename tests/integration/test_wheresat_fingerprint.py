@@ -3,7 +3,7 @@
 ``test_wheresat_read_only.py`` compares two readings of a whole repository and
 claims they agree. This module is what stops that claim from being a statement
 about two readings of anything: every edit below is aimed at one reading of
-:class:`~tests.integration.wheresat_helpers.Fingerprint` — the refs and the
+:class:`~tests.integration.wheresat_fingerprint.Fingerprint` — the refs and the
 commits they name, the index, the working tree, the stash, the local
 configuration, ``FETCH_HEAD`` — and is required to move it, so a reading that
 had stopped observing its part of the repository would fail here rather than let
@@ -29,7 +29,7 @@ from git import Repo
 
 from git_donkey.wheresat_refs import per_run_ref
 from tests import git_repo_helpers
-from tests.integration.wheresat_helpers import fingerprint
+from tests.integration.wheresat_fingerprint import fingerprint
 
 if typ.TYPE_CHECKING:
     import collections.abc as cabc
@@ -55,7 +55,7 @@ class Change:
     label : str
         Name of the edit, which is how a failing example identifies itself.
     reading : str
-        Reading of :class:`~tests.integration.wheresat_helpers.Fingerprint` the
+        Reading of :class:`~tests.integration.wheresat_fingerprint.Fingerprint` the
         edit must be visible in.
     edit : _Edit
         The edit itself, taking a working tree and its repository.

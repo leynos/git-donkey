@@ -1,4 +1,4 @@
-"""The checkout the ``git wheresat`` integration suites read, and its fingerprint.
+"""The checkout the ``git wheresat`` integration suites read, and the runs in it.
 
 Both suites start from one repository shape: a child branch whose stack record
 names a parent that is itself one commit ahead of the trunk, so the boundary the
@@ -15,13 +15,11 @@ and in the record suite's binder take the artefacts back out of Git — the anch
 ref with ``rev-parse``, the record's values with ``config --list`` — so what the
 suites assert on is the repository, not the run's account of it.
 
-The fingerprint is the suites' shared measurement, and it is deliberately wider
-than any one test's interest: INV-1 is a claim about a whole repository — every
-ref and the commit it names, the index and the working tree, the stash, the
-local configuration, and ``FETCH_HEAD`` — so the suites compare a reading of all
-of it rather than the handful of refs a test happened to think of. Its
-sensitivity is checked separately, by mutating a repository one reading at a
-time and requiring the comparison to report it.
+The reading the read-only suites compare lives apart, in
+:mod:`tests.integration.wheresat_fingerprint`: what a whole repository's state
+is measured as, and the one ref namespace a run may add to, are that module's
+business rather than this one's. Here are the checkout, the runs made against
+it, and the artefacts read back out of it.
 """
 
 from __future__ import annotations
@@ -29,10 +27,8 @@ from __future__ import annotations
 import contextlib
 import dataclasses
 import enum
-import hashlib
 import json
 import typing as typ
-from pathlib import Path
 
 from git import Repo
 
@@ -44,9 +40,11 @@ from tests.integration.plonk_helpers import (
     branch_ahead_of_trunk,
     create_stacked_git_donkey_worktree,
 )
+from tests.integration.wheresat_fingerprint import Fingerprint, fingerprint
 
 if typ.TYPE_CHECKING:
     import collections.abc as cabc
+    from pathlib import Path
 
     import pytest
 
@@ -58,15 +56,6 @@ CHILD: typ.Final = "child"
 
 PARENT: typ.Final = "parent"
 """Branch the child was cut from, one commit ahead of the trunk."""
-
-EVIDENCE_NAMESPACE: typ.Final = "refs/wheresat/"
-"""The one namespace a run without ``--record`` may add refs to (INV-1)."""
-
-_GIT_ENTRY: typ.Final = ".git"
-"""Git's own directory, which a fingerprint skips."""
-
-_FETCH_HEAD: typ.Final = "FETCH_HEAD"
-"""The file a fetch writes, which INV-1 promises is unchanged."""
 
 
 class Status(enum.IntEnum):
@@ -145,10 +134,24 @@ class WheresatScenario:
     child: str = CHILD
     parent: str = PARENT
 
-    @property
-    def repo(self) -> Repo:
-        """The primary working checkout of the scenario repository."""
-        return Repo(self.local_path)
+    @contextlib.contextmanager
+    def repo(self) -> cabc.Iterator[Repo]:
+        """Yield the scenario's primary working checkout, closed at block end.
+
+        The repository is opened for the reads made inside the block and closed
+        when it ends, rather than handed out for the caller to close: a suite
+        reads the same repository on both sides of a run, and a repository left
+        open holds its object database open behind the reading.
+
+        Yields
+        ------
+        git.Repo
+            The checkout ``git donkey`` was run in, holding the branches, the
+            record's configuration, and the anchor ref the suites assert on.
+
+        """
+        with Repo(self.local_path) as repo:
+            yield repo
 
     @property
     def worktree_root(self) -> Path:
@@ -156,16 +159,63 @@ class WheresatScenario:
         return worktree_root(self.local_path)
 
     def worktree_path(self, branch_name: str | None = None) -> Path:
-        """Return the worktree ``git donkey`` created for ``branch_name``."""
+        """Return the worktree ``git donkey`` created for ``branch_name``.
+
+        Parameters
+        ----------
+        branch_name : str | None, optional
+            Branch whose worktree is named, defaulting to the scenario's child,
+            which is the branch every suite here asks about.
+
+        Returns
+        -------
+        pathlib.Path
+            The directory that branch's worktree would occupy. It is computed
+            rather than read, so a suite can name a worktree that was never
+            created — which is how it shows that nothing created one.
+
+        """
         return self.worktree_root / (branch_name or self.child)
 
-    def worktree_repo(self, branch_name: str | None = None) -> Repo:
-        """Open the worktree ``git donkey`` created for ``branch_name``."""
-        return Repo(self.worktree_path(branch_name))
+    @contextlib.contextmanager
+    def worktree_repo(self, branch_name: str | None = None) -> cabc.Iterator[Repo]:
+        """Yield the worktree ``git donkey`` created for ``branch_name``.
+
+        The worktree is opened in its own right, because a linked worktree is a
+        second working tree of the same repository: its status and its Git
+        directory answer about that checkout rather than about the one the
+        command was run in.
+
+        Parameters
+        ----------
+        branch_name : str | None, optional
+            Branch whose worktree is opened, defaulting to the scenario's child.
+
+        Yields
+        ------
+        git.Repo
+            The worktree's own handle on the repository, closed at block end.
+
+        """
+        with Repo(self.worktree_path(branch_name)) as repo:
+            yield repo
 
     def worktree_head(self, branch_name: str | None = None) -> str:
-        """Return the commit the worktree for ``branch_name`` is checked out at."""
-        return self.worktree_repo(branch_name).head.commit.hexsha
+        """Return the commit the worktree for ``branch_name`` is checked out at.
+
+        Parameters
+        ----------
+        branch_name : str | None, optional
+            Branch whose worktree is read, defaulting to the scenario's child.
+
+        Returns
+        -------
+        str
+            The commit that worktree's ``HEAD`` names.
+
+        """
+        with self.worktree_repo(branch_name) as repo:
+            return repo.head.commit.hexsha
 
 
 def stacked_child(root: Path) -> WheresatScenario:
@@ -199,12 +249,19 @@ def stacked_child(root: Path) -> WheresatScenario:
         boundary=boundary,
         tip=boundary,
     )
-    git_repo_helpers.advance(scenario.worktree_repo(), message=f"work on {CHILD}")
+    with scenario.worktree_repo() as worktree:
+        git_repo_helpers.advance(worktree, message=f"work on {CHILD}")
     return dataclasses.replace(scenario, tip=scenario.worktree_head())
 
 
 def reading(scenario: WheresatScenario) -> Fingerprint:
     """Return the fingerprint of both of the scenario's working trees.
+
+    Parameters
+    ----------
+    scenario : WheresatScenario
+        Scenario whose two working trees are read: the checkout the command was
+        run in and the worktree ``git donkey`` made for the child.
 
     Returns
     -------
@@ -213,11 +270,12 @@ def reading(scenario: WheresatScenario) -> Fingerprint:
         together as one reading by :func:`fingerprint`.
 
     """
-    return fingerprint(
-        scenario.local_path,
-        scenario.worktree_path(),
-        repo=scenario.repo,
-    )
+    with scenario.repo() as repo:
+        return fingerprint(
+            scenario.local_path,
+            scenario.worktree_path(),
+            repo=repo,
+        )
 
 
 def anchor(scenario: WheresatScenario, branch: str = CHILD) -> str | None:
@@ -227,19 +285,30 @@ def anchor(scenario: WheresatScenario, branch: str = CHILD) -> str | None:
     a branch the scenario has no record for is asked about explicitly, which is
     how a suite shows that a run wrote nothing for it.
 
+    Parameters
+    ----------
+    scenario : WheresatScenario
+        Scenario whose repository the ref is read from.
+    branch : str, optional
+        Branch whose anchor ref is read, defaulting to the child.
+
     Returns
     -------
     str | None
         The commit the ref names, or ``None`` when the branch has no anchor ref.
 
     """
-    return git_repo_helpers.ref_value(
-        scenario.repo, stack_records.base_ref_path(branch)
-    )
+    with scenario.repo() as repo:
+        return git_repo_helpers.ref_value(repo, stack_records.base_ref_path(branch))
 
 
 def configuration(scenario: WheresatScenario) -> dict[str, str]:
     """Return the child's branch configuration, read from Git directly.
+
+    Parameters
+    ----------
+    scenario : WheresatScenario
+        Scenario whose repository the configuration is read from.
 
     Returns
     -------
@@ -248,7 +317,8 @@ def configuration(scenario: WheresatScenario) -> dict[str, str]:
         ``branch.<child>.`` prefix, as Git's own ``--list`` reports them.
 
     """
-    return git_repo_helpers.config_section(scenario.repo, CHILD)
+    with scenario.repo() as repo:
+        return git_repo_helpers.config_section(repo, CHILD)
 
 
 def forget_anchor(scenario: WheresatScenario, branch: str = CHILD) -> None:
@@ -266,7 +336,8 @@ def forget_anchor(scenario: WheresatScenario, branch: str = CHILD) -> None:
         Branch whose anchor ref is deleted.
 
     """
-    scenario.repo.git.update_ref("-d", stack_records.base_ref_path(branch))
+    with scenario.repo() as repo:
+        repo.git.update_ref("-d", stack_records.base_ref_path(branch))
 
 
 def forget_record(scenario: WheresatScenario, branch: str = CHILD) -> None:
@@ -287,13 +358,14 @@ def forget_record(scenario: WheresatScenario, branch: str = CHILD) -> None:
         Branch whose record is removed.
 
     """
-    for key in stack_records.RecordKey:
-        scenario.repo.git.config(
-            "--local",
-            "--unset-all",
-            f"branch.{branch}.{key.value}",
-            with_exceptions=False,
-        )
+    with scenario.repo() as repo:
+        for key in stack_records.RecordKey:
+            repo.git.config(
+                "--local",
+                "--unset-all",
+                f"branch.{branch}.{key.value}",
+                with_exceptions=False,
+            )
     forget_anchor(scenario, branch)
 
 
@@ -595,188 +667,3 @@ def report_tokens(output: str) -> set[tuple[str, ...]]:
 
     """
     return {tuple(line.split()) for line in output.splitlines()}
-
-
-@dataclasses.dataclass(frozen=True, slots=True)
-class Fingerprint:
-    """Everything about a repository and its working trees that a run may not change.
-
-    Attributes
-    ----------
-    refs : tuple[str, ...]
-        Every ref and the commit it names, as ``git for-each-ref`` lists them.
-    status : tuple[str, ...]
-        ``git status --porcelain=v2 --branch`` for each working tree read, with
-        the tree's own directory name prefixed so two trees cannot be confused
-        for one.
-    stashes : tuple[str, ...]
-        ``git stash list``.
-    config : tuple[str, ...]
-        ``git config --local --list``.
-    fetch_head : tuple[str, ...]
-        A digest of each working tree's ``FETCH_HEAD``, or that it has none,
-        with the tree's own directory name prefixed like ``status``, because
-        each tree has a file of its own to leave alone.
-    files : tuple[str, ...]
-        Every file each working tree holds, with its digest, named by the tree
-        it belongs to.
-
-    """
-
-    refs: tuple[str, ...]
-    status: tuple[str, ...]
-    stashes: tuple[str, ...]
-    config: tuple[str, ...]
-    fetch_head: tuple[str, ...]
-    files: tuple[str, ...]
-
-    def differences(
-        self,
-        other: Fingerprint,
-        *,
-        allowed: str = EVIDENCE_NAMESPACE,
-    ) -> tuple[str, ...]:
-        """Return how ``other`` differs from this fingerprint.
-
-        Parameters
-        ----------
-        other : Fingerprint
-            Reading taken later — after a run, or after whatever else the
-            caller is measuring.
-        allowed : str, optional
-            Ref namespace a change to which is not a difference. A run without
-            ``--record`` may write evidence refs of its own, and nothing else:
-            this is the whole of INV-1's permitted difference.
-
-        Returns
-        -------
-        tuple[str, ...]
-            One description per reading that differs, naming what was removed
-            and what was added — or that the reading holds the same entries in
-            a different order, which is a difference neither list shows — so a
-            failure says which part of the repository a run touched rather
-            than only that something did.
-
-        """
-        differences = []
-        for label, mine, theirs in (
-            ("refs", _outside(self.refs, allowed), _outside(other.refs, allowed)),
-            ("status", self.status, other.status),
-            ("stashes", self.stashes, other.stashes),
-            ("config", self.config, other.config),
-            ("fetch-head", self.fetch_head, other.fetch_head),
-            ("files", self.files, other.files),
-        ):
-            if mine == theirs:
-                continue
-            removed = sorted(set(mine) - set(theirs))
-            added = sorted(set(theirs) - set(mine))
-            if not removed and not added:
-                differences.append(f"{label}: reordered")
-                continue
-            differences.append(f"{label}: removed {removed}, added {added}")
-        return tuple(differences)
-
-
-def fingerprint(*roots: Path, repo: Repo) -> Fingerprint:
-    """Return everything about ``repo`` and ``roots`` a read-only run must leave alone.
-
-    Parameters
-    ----------
-    roots : Path
-        Working trees to measure. Each one's index, working tree, and files are
-        read separately, because a linked worktree is a second working tree of
-        the same repository and a run could disturb either.
-    repo : git.Repo
-        Repository the refs, stash, and local configuration are read from. It is
-        named rather than derived from a root, because several working trees
-        share one repository.
-
-    Returns
-    -------
-    Fingerprint
-        The readings, comparable with :meth:`Fingerprint.differences`.
-
-    """
-    statuses: list[str] = []
-    files: list[str] = []
-    fetch_heads: list[str] = []
-    for root in roots:
-        working = Repo(root)
-        statuses += [
-            f"{root.name}: {line}"
-            for line in _lines(
-                working.git.status("--porcelain=v2", "--branch"),
-            )
-        ]
-        fetch_heads += [f"{root.name}: {_fetch_head(working)}"]
-        files += [f"{root.name}/{name} {digest}" for name, digest in _files(root)]
-    return Fingerprint(
-        refs=_lines(repo.git.for_each_ref("--format=%(refname) %(objectname)")),
-        status=tuple(statuses),
-        stashes=_lines(repo.git.stash("list")),
-        config=_lines(repo.git.config("--local", "--list")),
-        fetch_head=tuple(fetch_heads),
-        files=tuple(files),
-    )
-
-
-def _outside(refs: cabc.Iterable[str], namespace: str) -> tuple[str, ...]:
-    """Return the refs that are not inside ``namespace``."""
-    return tuple(ref for ref in refs if not ref.startswith(namespace))
-
-
-def _lines(output: str) -> tuple[str, ...]:
-    """Return Git's output as the non-empty lines it holds."""
-    return tuple(line for line in str(output).splitlines() if line)
-
-
-def _files(root: Path) -> cabc.Iterator[tuple[str, str]]:
-    """Yield the path and digest of every file in the working tree at ``root``.
-
-    Git's own directory is skipped. The index and its caches are rewritten by
-    reads as well as by writes, so comparing them would report changes that hold
-    nothing; everything else in the tree is digested, tracked or not, because a
-    run that reads must not leave a file behind either.
-
-    Yields
-    ------
-    tuple[str, str]
-        The path relative to ``root``, and the digest of its contents.
-
-    """
-    for directory, subdirectories, names in root.walk():
-        subdirectories[:] = sorted(
-            name for name in subdirectories if name != _GIT_ENTRY
-        )
-        for name in sorted(names):
-            if name == _GIT_ENTRY:
-                continue
-            path = directory / name
-            yield path.relative_to(root).as_posix(), _digest(path)
-
-
-def _digest(path: Path) -> str:
-    """Return the digest of the file at ``path``."""
-    return hashlib.sha256(path.read_bytes()).hexdigest()
-
-
-def _fetch_head(repo: Repo) -> str:
-    """Return a digest of ``repo``'s ``FETCH_HEAD``, or that it has none.
-
-    A fetch writes this file even when its refspec names a destination, so it is
-    part of what INV-1 promises is unchanged. It is read from the Git directory
-    the repository resolves to, which for a linked worktree is that worktree's
-    own directory rather than the main checkout's: a run that fetched in one
-    working tree would otherwise leave the other's file untouched and pass.
-    :func:`fingerprint` therefore reads it once per working tree it measures,
-    beside that tree's status and files, rather than once for the repository.
-
-    Returns
-    -------
-    str
-        The digest, or ``absent`` when the repository has no ``FETCH_HEAD``.
-
-    """
-    path = Path(repo.git.rev_parse("--absolute-git-dir")) / _FETCH_HEAD
-    return _digest(path) if path.is_file() else "absent"

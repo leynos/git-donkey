@@ -37,10 +37,9 @@ from pytest_bdd import given, parsers, scenarios, then, when
 from git_donkey import stack_records, wheresat, wheresat_records, wheresat_refs
 from tests import git_repo_helpers
 from tests.integration import wheresat_helpers, wheresat_scenarios
+from tests.integration.wheresat_fingerprint import EVIDENCE_NAMESPACE, Fingerprint
 from tests.integration.wheresat_helpers import (
     CHILD,
-    EVIDENCE_NAMESPACE,
-    Fingerprint,
     WheresatRun,
     anchor,
     configuration,
@@ -224,17 +223,17 @@ def parent_was_squash_merged(scenario: WheresatJourney) -> None:
     child could have been cut from rather than an ordinary ancestor.
     """
     journey = scenario.journey
-    repo = journey.scenario.repo
 
-    assert git_repo_helpers.is_ancestor(repo, journey.landed, journey.trunk_tip), (
-        "the squash commit must be reachable from the trunk"
-    )
-    assert not git_repo_helpers.is_ancestor(
-        repo, journey.parent_head, journey.trunk_tip
-    ), "the squash must not have merged the parent's own head into the trunk"
-    assert git_repo_helpers.is_ancestor(
-        repo, journey.inherited_head, journey.scenario.tip
-    ), "the child must reach the head it inherited"
+    with journey.scenario.repo() as repo:
+        assert git_repo_helpers.is_ancestor(repo, journey.landed, journey.trunk_tip), (
+            "the squash commit must be reachable from the trunk"
+        )
+        assert not git_repo_helpers.is_ancestor(
+            repo, journey.parent_head, journey.trunk_tip
+        ), "the squash must not have merged the parent's own head into the trunk"
+        assert git_repo_helpers.is_ancestor(
+            repo, journey.inherited_head, journey.scenario.tip
+        ), "the child must reach the head it inherited"
 
 
 @given("a stack record naming the inherited boundary")
@@ -283,9 +282,10 @@ def parent_head_is_an_ancestor(scenario: WheresatJourney) -> None:
     assert journey.forge.pull.head_sha == journey.parent_head, (
         "the forge must answer with the head this journey is about"
     )
-    assert git_repo_helpers.is_ancestor(
-        journey.scenario.repo, journey.parent_head, journey.scenario.tip
-    ), "the pull request head must be an ancestor of the child branch"
+    with journey.scenario.repo() as repo:
+        assert git_repo_helpers.is_ancestor(
+            repo, journey.parent_head, journey.scenario.tip
+        ), "the pull request head must be an ancestor of the child branch"
 
 
 def _replaced(scenario: WheresatJourney, journey: Journey) -> None:
@@ -310,14 +310,14 @@ def parent_was_rebased(scenario: WheresatJourney, tmp_path: Path) -> None:
     """
     journey = wheresat_scenarios.rewritten(tmp_path / "rebased")
     _replaced(scenario, journey)
-    repo = journey.scenario.repo
 
-    assert not git_repo_helpers.is_ancestor(
-        repo, journey.inherited_head, journey.parent_head
-    ), "the rewritten parent must no longer reach the head the child inherited"
-    assert git_repo_helpers.is_ancestor(
-        repo, journey.inherited_head, journey.scenario.tip
-    ), "the child must still reach the head it inherited"
+    with journey.scenario.repo() as repo:
+        assert not git_repo_helpers.is_ancestor(
+            repo, journey.inherited_head, journey.parent_head
+        ), "the rewritten parent must no longer reach the head the child inherited"
+        assert git_repo_helpers.is_ancestor(
+            repo, journey.inherited_head, journey.scenario.tip
+        ), "the child must still reach the head it inherited"
 
 
 @given("only content-comparison evidence remains")
@@ -329,12 +329,13 @@ def only_content_evidence(scenario: WheresatJourney) -> None:
     rung left is the one that compares what commits carry.
     """
     journey = scenario.journey
-    repo = journey.scenario.repo
-    reaching = str(
-        repo.git.for_each_ref(
-            "--contains", journey.inherited_head, "--format=%(refname)"
-        )
-    ).split()
+
+    with journey.scenario.repo() as repo:
+        reaching = str(
+            repo.git.for_each_ref(
+                "--contains", journey.inherited_head, "--format=%(refname)"
+            )
+        ).split()
 
     assert anchor(journey.scenario) is None, "no record may name the boundary"
     assert reaching == [f"refs/heads/{CHILD}"], (
@@ -377,13 +378,14 @@ def two_commits_match(scenario: WheresatJourney, tmp_path: Path) -> None:
     """
     journey = wheresat_scenarios.restored(tmp_path / "restored")
     _replaced(scenario, journey)
-    repo = journey.scenario.repo
-    landed_tree = repo.git.rev_parse(f"{journey.landed}^{{tree}}")
-    matching = [
-        commit
-        for commit in repo.git.rev_list(journey.scenario.tip).split()
-        if repo.git.rev_parse(f"{commit}^{{tree}}") == landed_tree
-    ]
+
+    with journey.scenario.repo() as repo:
+        landed_tree = repo.git.rev_parse(f"{journey.landed}^{{tree}}")
+        matching = [
+            commit
+            for commit in repo.git.rev_list(journey.scenario.tip).split()
+            if repo.git.rev_parse(f"{commit}^{{tree}}") == landed_tree
+        ]
 
     assert len(matching) == _CANDIDATE_COUNT, (
         f"expected exactly two commits at the landed tree, got {matching}"
@@ -428,11 +430,11 @@ def history_is_shallow(scenario: WheresatJourney, tmp_path: Path) -> None:
     """
     journey = wheresat_scenarios.grafted(tmp_path / "shallow")
     _replaced(scenario, journey)
-    repo = journey.scenario.repo
 
-    assert repo.git.rev_parse("--is-shallow-repository") == "true", (
-        "the graft must leave the repository shallow"
-    )
+    with journey.scenario.repo() as repo:
+        assert repo.git.rev_parse("--is-shallow-repository") == "true", (
+            "the graft must leave the repository shallow"
+        )
     assert anchor(journey.scenario) == journey.scenario.boundary, (
         "the record must still name the boundary the graft put out of reach"
     )
@@ -657,10 +659,12 @@ def the_head_is_fetched_from_the_fork(scenario: WheresatJourney) -> None:
     """
     journey = scenario.journey
     cached = wheresat_refs.parent_head_ref(journey.identity)
-    repo = journey.scenario.repo
-    named = str(
-        repo.git.rev_parse("--verify", "--quiet", cached, with_exceptions=False) or ""
-    )
+
+    with journey.scenario.repo() as repo:
+        named = str(
+            repo.git.rev_parse("--verify", "--quiet", cached, with_exceptions=False)
+            or ""
+        )
 
     assert named == journey.parent_head, (
         f"expected the fetched head to be cached at {cached}, which names {named}"

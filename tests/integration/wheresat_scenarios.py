@@ -42,13 +42,12 @@ from git import GitCommandError, Repo
 from git_donkey import stack_records, wheresat_github
 from git_donkey.wheresat_records import ParentPullRequest
 from tests import git_repo_helpers
+from tests.integration.wheresat_fingerprint import Fingerprint, fingerprint
 from tests.integration.wheresat_helpers import (
     CHILD,
     PARENT,
-    Fingerprint,
     WheresatScenario,
     examined_and_found_none,
-    fingerprint,
     reading,
     run_wheresat_at,
     stacked_child,
@@ -257,7 +256,8 @@ def reading_of(journey: Journey) -> Fingerprint:
     scenario = journey.scenario
     if journey.where == "worktree":
         return reading(scenario)
-    return fingerprint(scenario.local_path, repo=scenario.repo)
+    with scenario.repo() as repo:
+        return fingerprint(scenario.local_path, repo=repo)
 
 
 def branch_head(path: Path, branch: str) -> str:
@@ -398,35 +398,35 @@ def squashed(root: Path) -> Journey:
 
     """
     scenario = stacked_child(root)
-    repo = scenario.repo
-    parent_head = git_repo_helpers.ref_value(repo, f"refs/heads/{PARENT}")
-    if parent_head is None:
-        # The fixture built this branch a few lines above, so its absence is the
-        # fixture being wrong about the repository rather than a journey shape.
-        msg = f"the fixture's branch {PARENT} must exist to be merged"
-        raise AssertionError(msg)
-    worktree = scenario.worktree_repo()
-    git_repo_helpers.commit_file(
-        worktree,
-        scenario.worktree_path() / _CHILD_WORK,
-        "child work",
-        "Child work",
-    )
-    tip = scenario.worktree_head()
-    repo.git.checkout("main")
-    repo.git.merge("--squash", PARENT)
-    repo.git.commit("-m", "Squash-merge the parent")
-    landed = repo.head.commit.hexsha
-    trunk_tip = git_repo_helpers.advance(
-        repo, message="Advance the trunk after the squash"
-    )
-    repo.git.push("origin", "main:main", f"{PARENT}:{PARENT}")
-    _publish(repo)
-    _name_github_repository(repo, "origin", REPOSITORY, scenario.remote_path)
-    _expect(
-        git_repo_helpers.is_ancestor(repo, landed, trunk_tip),
-        "the squash commit must be on the trunk it merged into",
-    )
+    with scenario.repo() as repo:
+        parent_head = git_repo_helpers.ref_value(repo, f"refs/heads/{PARENT}")
+        if parent_head is None:
+            # The fixture built this branch a few lines above, so its absence is
+            # the fixture being wrong about the repository rather than a shape.
+            msg = f"the fixture's branch {PARENT} must exist to be merged"
+            raise AssertionError(msg)
+        with scenario.worktree_repo() as worktree:
+            git_repo_helpers.commit_file(
+                worktree,
+                scenario.worktree_path() / _CHILD_WORK,
+                "child work",
+                "Child work",
+            )
+        tip = scenario.worktree_head()
+        repo.git.checkout("main")
+        repo.git.merge("--squash", PARENT)
+        repo.git.commit("-m", "Squash-merge the parent")
+        landed = repo.head.commit.hexsha
+        trunk_tip = git_repo_helpers.advance(
+            repo, message="Advance the trunk after the squash"
+        )
+        repo.git.push("origin", "main:main", f"{PARENT}:{PARENT}")
+        _publish(repo)
+        _name_github_repository(repo, "origin", REPOSITORY, scenario.remote_path)
+        _expect(
+            git_repo_helpers.is_ancestor(repo, landed, trunk_tip),
+            "the squash commit must be on the trunk it merged into",
+        )
     return Journey(
         scenario=dataclasses.replace(scenario, tip=tip),
         landed=landed,
@@ -517,14 +517,17 @@ def restored(root: Path) -> Journey:
 
     """
     journey = rewritten(root)
-    repo = journey.scenario.repo
     root_path = journey.scenario.local_path
-    repo.git.rm(git_repo_helpers.CHILD_FILE)
-    repo.git.commit("-m", _RESTORING)
-    git_repo_helpers.commit_file(repo, root_path / _LATER, "later work", "Later work")
+    with journey.scenario.repo() as repo:
+        repo.git.rm(git_repo_helpers.CHILD_FILE)
+        repo.git.commit("-m", _RESTORING)
+        git_repo_helpers.commit_file(
+            repo, root_path / _LATER, "later work", "Later work"
+        )
+        tip = repo.head.commit.hexsha
     return dataclasses.replace(
         journey,
-        scenario=dataclasses.replace(journey.scenario, tip=repo.head.commit.hexsha),
+        scenario=dataclasses.replace(journey.scenario, tip=tip),
     )
 
 
@@ -548,12 +551,12 @@ def forked(root: Path) -> Journey:
 
     """
     journey = squashed(root)
-    repo = journey.scenario.repo
     fork_path = _bare_repository(root / "fork")
-    repo.create_remote("upstream", fork_path.as_posix())
-    _name_github_repository(repo, "upstream", FORK, fork_path)
-    repo.git.push("upstream", f"{PARENT}:{PARENT}", "main:main")
-    repo.git.push("origin", f":refs/heads/{PARENT}")
+    with journey.scenario.repo() as repo:
+        repo.create_remote("upstream", fork_path.as_posix())
+        _name_github_repository(repo, "upstream", FORK, fork_path)
+        repo.git.push("upstream", f"{PARENT}:{PARENT}", "main:main")
+        repo.git.push("origin", f":refs/heads/{PARENT}")
     _expect(
         branch_head(fork_path, PARENT) == journey.parent_head,
         "the fork must hold the head the pull request records",
@@ -591,18 +594,18 @@ def grafted(root: Path) -> Journey:
 
     """
     journey = squashed(root)
-    repo = journey.scenario.repo
-    repo.git.push("origin", f"{CHILD}:{CHILD}")
-    repo.git.fetch("--depth=1", "origin", CHILD)
-    _expect(
-        repo.git.rev_parse("--is-shallow-repository") == "true",
-        "the fetch at depth one must leave the repository shallow",
-    )
-    _expect(
-        journey.scenario.boundary
-        not in repo.git.rev_list("--end-of-options", journey.scenario.tip).split(),
-        "the boundary must fall outside the shallow history it was cut from",
-    )
+    with journey.scenario.repo() as repo:
+        repo.git.push("origin", f"{CHILD}:{CHILD}")
+        repo.git.fetch("--depth=1", "origin", CHILD)
+        _expect(
+            repo.git.rev_parse("--is-shallow-repository") == "true",
+            "the fetch at depth one must leave the repository shallow",
+        )
+        _expect(
+            journey.scenario.boundary
+            not in repo.git.rev_list("--end-of-options", journey.scenario.tip).split(),
+            "the boundary must fall outside the shallow history it was cut from",
+        )
     return journey
 
 
@@ -621,6 +624,6 @@ def reflog_lines(scenario: WheresatScenario) -> tuple[str, ...]:
         the repository has no reflog left to read.
 
     """
-    with contextlib.suppress(GitCommandError):
-        return tuple(str(scenario.repo.git.reflog("--all")).splitlines())
+    with contextlib.suppress(GitCommandError), scenario.repo() as repo:
+        return tuple(str(repo.git.reflog("--all")).splitlines())
     return ()

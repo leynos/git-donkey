@@ -60,7 +60,7 @@ import typing as typ
 
 from git import GitCommandError
 
-from git_donkey import stack_records, stack_store
+from git_donkey import observability, stack_records, stack_store
 
 if typ.TYPE_CHECKING:
     import collections.abc as cabc
@@ -119,6 +119,44 @@ def _git_failure(exc: GitCommandError) -> str:
     return f"git exited with status {exc.status}"
 
 
+def refusal_kind(exc: BaseException) -> observability.ErrorKind | None:
+    """Return the kind of failure a refused stack-record operation reports.
+
+    Four failures can reach a caller from one operation, and an operator reads
+    them differently: a conflict says the branch already had a record or the
+    anchor moved under the write, a malformed record says the record could not
+    be read back or the branch name would be unsafe in a ref path, a Git error
+    says a command the store does not wrap failed, and any other store error
+    says only that the operation did not happen. The conflict is named through
+    its own class rather than the base error it derives from, because an
+    existing record and an anchor write that lost the race are the same
+    finding.
+
+    Parameters
+    ----------
+    exc : BaseException
+        The error the store raised, or that escaped it unwrapped.
+
+    Returns
+    -------
+    observability.ErrorKind | None
+        The kind to record, or ``None`` for a store error that says nothing
+        beyond the operation having failed. The vocabulary has no kind for
+        that, and one is not invented here: the step's outcome carries the
+        finding.
+
+    """
+    match exc:
+        case stack_store.StackRecordConflictError():
+            return "stack_record_conflict"
+        case ValueError():
+            return "stack_record_malformed"
+        case GitCommandError():
+            return "git_command_error"
+        case _:
+            return None
+
+
 @dataclasses.dataclass(frozen=True, slots=True)
 class GitStackRecordWriter(stack_store.GitStackRecordReader):
     """Git-backed writes of stack records, anchors, and tombstones.
@@ -174,12 +212,15 @@ class GitStackRecordWriter(stack_store.GitStackRecordReader):
 
         """
         values = stack_records.record_values(record)
-        if not isinstance(self.read(record.branch), stack_records.RecordAbsent):
-            msg = (
-                f"the branch {record.branch!r} already has a stack record; "
-                "an existing record is refreshed with its expected old value"
-            )
-            raise stack_store.StackRecordConflictError(msg)
+        match self.read(record.branch):
+            case stack_records.RecordAbsent():
+                pass
+            case _:
+                msg = (
+                    f"the branch {record.branch!r} already has a stack record; "
+                    "an existing record is refreshed with its expected old value"
+                )
+                raise stack_store.StackRecordConflictError(msg)
         self._write_anchor(record, expected_old="")
         try:
             self._write_configuration(record, values)

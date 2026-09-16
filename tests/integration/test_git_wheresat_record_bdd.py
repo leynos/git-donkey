@@ -29,7 +29,6 @@ from pytest_bdd import given, parsers, scenarios, then, when
 from git_donkey import stack_records, wheresat
 from tests.integration.wheresat_helpers import (
     PARENT,
-    Fingerprint,
     Status,
     WheresatRun,
     WheresatScenario,
@@ -45,6 +44,8 @@ if typ.TYPE_CHECKING:
     from pathlib import Path
 
     import pytest
+
+    from tests.integration.wheresat_fingerprint import Fingerprint
 
 
 _RECORDED_FROM: typ.Final = stack_records.RecordKey.RECORDED_FROM.value

@@ -260,12 +260,12 @@ class RecordingStackStore:
     """
 
     branch_tips: dict[str, str | None] = dataclasses.field(default_factory=dict)
-    orphaned: cabc.Iterable[str] = ()
-    preservable: cabc.Iterable[str] = ()
-    stale: cabc.Iterable[str] = ()
+    orphaned: cabc.Sequence[str] = ()
+    preservable: cabc.Sequence[str] = ()
+    stale: cabc.Sequence[str] = ()
     expire: str = stack_records.DEFAULT_TOMBSTONE_EXPIRE
-    entomb_failures: cabc.Iterable[str] = ()
-    clear_failures: cabc.Iterable[str] = ()
+    entomb_failures: cabc.Sequence[str] = ()
+    clear_failures: cabc.Sequence[str] = ()
     unusable_expiry: bool = False
     entombed: list[tuple[str, str]] = dataclasses.field(default_factory=list)
     cleared: list[str] = dataclasses.field(default_factory=list)

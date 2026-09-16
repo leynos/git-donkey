@@ -250,9 +250,12 @@ restores the alias for the branches created afterwards.
 
 The record is written after the branch exists, so a store that refuses it
 leaves the branch in place and stops the run with status `1`, reporting that
-the branch was created but its stack record was not written. The branch is
-usable; only its birth boundary is unrecorded, and `git wheresat` has to
-establish one from the surviving evidence instead.
+the branch was created but its stack record was not written. The refusal ends
+the run there, before the template overlay is applied: the branch and its
+worktree exist, but the steps after them do not run, so a template's files may
+be missing and the run does not print the line reporting the worktree as
+created. The branch is usable; only its birth boundary is unrecorded, and
+`git wheresat` has to establish one from the surviving evidence instead.
 
 Writing the record changes nothing about tracking — the new branch is still
 created with `--no-track` and inherits nothing. The record is local to one

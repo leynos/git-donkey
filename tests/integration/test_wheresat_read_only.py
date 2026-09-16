@@ -287,7 +287,8 @@ def _git_directory(scenario: WheresatScenario, branch: str) -> Path:
         the state of an operation in progress there.
 
     """
-    return Path(scenario.worktree_repo(branch).git.rev_parse("--absolute-git-dir"))
+    with scenario.worktree_repo(branch) as worktree:
+        return Path(worktree.git.rev_parse("--absolute-git-dir"))
 
 
 class TestTheMatrix:
@@ -428,9 +429,10 @@ class TestThePathsTheVectorsReach:
         assert {("parent_identification", "found"), ("evidence_fetch", "success")} <= (
             reached
         ), f"expected the parent to be answered for and fetched, got {observations}"
-        assert (
-            answerable.scenario.repo.git.rev_parse(cache) == answerable.parent_head
-        ), "the fetched head is cached as the head the pull request records"
+        with answerable.scenario.repo() as repo:
+            assert repo.git.rev_parse(cache) == answerable.parent_head, (
+                "the fetched head is cached as the head the pull request records"
+            )
         assert not before.differences(after), (
             "the evidence ref is the only thing the run wrote"
         )
@@ -669,16 +671,16 @@ def _stop_a_rebase(scenario: WheresatScenario) -> None:
         The checkout whose child worktree is left mid-rebase.
 
     """
-    worktree = scenario.worktree_repo()
-    _commit(worktree, scenario.worktree_path(), "child side\n", "Child rewrites it")
-    repo = scenario.repo
-    previous = repo.head.ref.name
-    repo.git.checkout(scenario.parent)
-    _commit(repo, scenario.local_path, "parent side\n", "Parent rewrites it")
-    repo.git.checkout(previous)
-    status, _, stderr = worktree.git.rebase(
-        scenario.parent, with_extended_output=True, with_exceptions=False
-    )
+    with scenario.worktree_repo() as worktree:
+        _commit(worktree, scenario.worktree_path(), "child side\n", "Child rewrites it")
+        with scenario.repo() as repo:
+            previous = repo.head.ref.name
+            repo.git.checkout(scenario.parent)
+            _commit(repo, scenario.local_path, "parent side\n", "Parent rewrites it")
+            repo.git.checkout(previous)
+        status, _, stderr = worktree.git.rebase(
+            scenario.parent, with_extended_output=True, with_exceptions=False
+        )
 
     assert status != 0, f"expected the rebase to conflict, but it did not: {stderr}"
 

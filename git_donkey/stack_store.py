@@ -251,6 +251,11 @@ class GitStackRecordReader:
         from the branch itself rather than from any record of it, because the
         record describes a boundary and the tombstone must name a commit.
 
+        The name is validated before the ref is built, because the ref is
+        assembled from it: a name Git would read as an option or as an
+        expression about some other commit is refused here rather than handed
+        to the read, so a caller either gets a commit or a refusal.
+
         Parameters
         ----------
         branch : str
@@ -262,8 +267,15 @@ class GitStackRecordReader:
             The commit ``refs/heads/<branch>`` names, or ``None`` when the
             branch does not exist.
 
+        Raises
+        ------
+        ValueError
+            If the branch name would be unsafe in a ref path.
+
         """
-        return self._ref_value(f"refs/heads/{branch}")
+        return self._ref_value(
+            f"refs/heads/{stack_records.validate_ref_component(branch)}"
+        )
 
     def rescuable(self, orphans: cabc.Sequence[str]) -> tuple[str, ...]:
         """Return the orphans whose recorded tip is still readable.
@@ -502,8 +514,9 @@ class GitStackRecordReader:
         # the orphan state is the caller's list and what the sweep wants here
         # is the parsed record, not the orphan report.
         result = stack_records.reconcile(branch, config, anchor, branch_exists=True)
-        if isinstance(result, stack_records.StackRecord):
-            return result.recorded_from
+        match result:
+            case stack_records.StackRecord(recorded_from=tip):
+                return tip
         return None
 
     def _configured_expire(self) -> str:

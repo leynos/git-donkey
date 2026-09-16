@@ -163,7 +163,8 @@ def _assert_the_evidence_names(
     """
     width = wheresat_records.COMMIT_ABBREVIATION
     boundary = plonked.boundary[:width]
-    target = plonked.repo.heads["main"].commit.hexsha[:width]
+    with plonked.repo() as repo:
+        target = repo.heads["main"].commit.hexsha[:width]
 
     assert run.exit_code == Status.ESTABLISHED, run.stderr
     assert not run.stderr, "a successful run writes nothing to the error stream"
@@ -225,7 +226,8 @@ def _assert_the_plan_is_pasteable(
 
     """
     width = wheresat_records.COMMIT_ABBREVIATION
-    full_target = plonked.repo.heads["main"].commit.hexsha
+    with plonked.repo() as repo:
+        full_target = repo.heads["main"].commit.hexsha
     backup = wheresat_records.backup_ref(CHILD)
 
     assert ("git", "update-ref", backup, plonked.tip) in lines, (
@@ -259,20 +261,20 @@ def test_the_sweep_leaves_the_boundary_to_the_record_and_the_tombstone(
     parent branch survived or the sweep never ran, which would test nothing
     about a plonked stack.
     """
-    repo = plonked.repo
     tombstone = stack_records.tombstone_ref_path(PARENT)
     anchor = stack_records.base_ref_path(CHILD)
 
-    assert PARENT not in repo.heads, "expected the sweep to delete the parent"
-    assert not plonked.worktree_path(PARENT).exists(), (
-        "expected the sweep to remove the parent's worktree"
-    )
-    assert repo.git.rev_parse(tombstone) == plonked.boundary, (
-        "the tombstone ref names the boundary the sweep recorded"
-    )
-    assert repo.git.rev_parse(anchor) == plonked.boundary, (
-        "and the child's anchor names the same commit"
-    )
+    with plonked.repo() as repo:
+        assert PARENT not in repo.heads, "expected the sweep to delete the parent"
+        assert not plonked.worktree_path(PARENT).exists(), (
+            "expected the sweep to remove the parent's worktree"
+        )
+        assert repo.git.rev_parse(tombstone) == plonked.boundary, (
+            "the tombstone ref names the boundary the sweep recorded"
+        )
+        assert repo.git.rev_parse(anchor) == plonked.boundary, (
+            "and the child's anchor names the same commit"
+        )
 
 
 def test_the_boundary_comes_back_from_the_record_and_the_tombstone(
