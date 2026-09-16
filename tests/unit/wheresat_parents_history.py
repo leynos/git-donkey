@@ -52,9 +52,8 @@ class History:
 
         The window is taken from the tip, as the real reader takes it, so a
         read of a history longer than the bound answers with the commits a
-        squash could have landed rather than with the oldest ones. A ``limit``
-        of zero keeps no commits at all, which ``self.commits[-0:]`` would
-        otherwise read as keeping every one of them.
+        squash could have landed rather than with the oldest ones. Which
+        commits that leaves is decided by ``_history_window``.
 
         Parameters
         ----------
@@ -75,14 +74,34 @@ class History:
         self.limits.append(limit)
         if self.refusal is not None:
             raise self.refusal
-        if limit is None:
-            window = self.commits
-        elif limit <= 0:
-            window = ()
-        else:
-            window = self.commits[-limit:]
+        window = _history_window(self.commits, limit)
         self.windows.append(window)
         return window
+
+
+def _history_window(commits: tuple[str, ...], limit: int | None) -> tuple[str, ...]:
+    """Return the window a read of ``commits`` bounded by ``limit`` answers with.
+
+    Parameters
+    ----------
+    commits : tuple[str, ...]
+        Commits the history holds, oldest first.
+    limit : int | None
+        How many of the newest commits to keep, or ``None`` for all of them. A
+        limit of zero keeps no commits at all, which ``commits[-0:]`` would
+        otherwise read as keeping every one of them.
+
+    Returns
+    -------
+    tuple[str, ...]
+        The commits kept, oldest first.
+
+    """
+    if limit is None:
+        return commits
+    if limit <= 0:
+        return ()
+    return commits[-limit:]
 
 
 def graph_over(*commits: str) -> History:
