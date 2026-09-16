@@ -33,6 +33,7 @@ extend-ignore-re = [
     "(?s)```.*?```",
     "\\b[0-9][0-9a-f]{6,39}\\b",
     "\\brust-analyzer\\b",
+    "`--no-color`",
     "`color`",
 ]
 

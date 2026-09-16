@@ -236,6 +236,15 @@ A branch created from the trunk is not recorded, whatever it is named. That is
 deliberate: a record would make it look stacked, and would offer a boundary for
 a branch that never had a parent.
 
+Recording compares the base against the trunk from local refs only, and an
+explicit base is qualified against the remote's own
+`refs/remotes/<remote>/HEAD` alias rather than the advertised default. A
+repository carrying no such alias therefore has no trunk to compare against:
+the branch is still created, and is simply left unrecorded, even when its base
+is a reachable non-trunk branch. `git wheresat` then establishes that branch's
+boundary from the surviving evidence, and `git remote set-head <remote> --auto`
+restores the alias for the branches created afterwards.
+
 The record is written after the branch exists, so a store that refuses it
 leaves the branch in place and stops the run with status `1`, reporting that
 the branch was created but its stack record was not written. The branch is

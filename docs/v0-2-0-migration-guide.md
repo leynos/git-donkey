@@ -143,6 +143,14 @@ branch created from the trunk is unaffected, and a branch created before this
 change has no record and is not expected to. Readers treat a missing record as
 ordinary, not an error.
 
+The trunk is resolved without contacting the remote, and a base named
+explicitly is qualified against `refs/remotes/<remote>/HEAD`. A repository
+without that alias has no trunk to compare against, so a branch cut from an
+explicit non-trunk base is created and left unrecorded;
+`git remote set-head <remote> --auto` restores the alias, and until it is
+restored `git wheresat` has to establish the boundary from the surviving
+evidence.
+
 Remove a record by hand with:
 
 ```shell
