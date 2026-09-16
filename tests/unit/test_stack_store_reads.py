@@ -158,8 +158,9 @@ def test_a_tombstone_is_not_an_orphan(tmp_path: Path) -> None:
     base = repo.head.commit.hexsha
     repo.git.branch(CHILD, base)
     store = make_writer(repo)
-    store.entomb(CHILD, base)
+    store.preserve_tip(CHILD, base)
     delete_branch(repo, CHILD, "-D")
+    store.clear_record(CHILD)
 
     assert not store.orphans(), "a tombstone is not a record with a missing branch"
 
@@ -172,7 +173,8 @@ def test_expired_reports_a_tombstone_past_the_window_without_deleting_it(
     base = repo.head.commit.hexsha
     repo.git.branch(CHILD, base)
     store = make_writer(repo)
-    store.entomb(CHILD, base)
+    store.preserve_tip(CHILD, base)
+    store.clear_record(CHILD)
     backdate_tombstone(repo, CHILD, days=100)
 
     assert store.expired(EXPIRE) == (CHILD,), "the tombstone is past the window"
@@ -196,7 +198,8 @@ def test_a_tombstone_that_vanished_before_it_was_read_is_kept(
     base = repo.head.commit.hexsha
     repo.git.branch(CHILD, base)
     store = make_writer(repo)
-    store.entomb(CHILD, base)
+    store.preserve_tip(CHILD, base)
+    store.clear_record(CHILD)
     backdate_tombstone(repo, CHILD, days=100)
     monkeypatch.setattr(
         stack_store.GitStackRecordReader,
@@ -217,8 +220,10 @@ def test_expired_agrees_with_prune_on_every_tombstone(tmp_path: Path) -> None:
     repo.git.branch(CHILD, base)
     repo.git.branch(NEIGHBOUR, base)
     store = make_writer(repo)
-    store.entomb(CHILD, base)
-    store.entomb(NEIGHBOUR, base)
+    store.preserve_tip(CHILD, base)
+    store.clear_record(CHILD)
+    store.preserve_tip(NEIGHBOUR, base)
+    store.clear_record(NEIGHBOUR)
     backdate_tombstone(repo, NEIGHBOUR, days=100)
 
     reported = store.expired(EXPIRE)
@@ -301,7 +306,8 @@ def test_the_reader_answers_every_read_the_store_declares(tmp_path: Path) -> Non
     )
     assert reader.branch_tip(CHILD) is None, "a deleted branch has no tip to read"
 
-    store.entomb(CHILD, base)
+    store.preserve_tip(CHILD, base)
+    store.clear_record(CHILD)
     backdate_tombstone(repo, CHILD, days=100)
 
     assert reader.tombstone(CHILD) == base, "the reader reads the tombstone"

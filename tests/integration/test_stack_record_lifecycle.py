@@ -424,9 +424,10 @@ class _Lifecycle(RuleBasedStateMachine):
         self._settle()
 
     def _entomb(self, branch: _Branch) -> None:
-        """Preserve ``branch``'s tip, then delete it."""
-        self.store.entomb(branch.name, branch.tip)
+        """Preserve ``branch``'s tip, delete the branch, then clear its record."""
+        self.store.preserve_tip(branch.name, branch.tip)
         self.repo.git.branch("-D", branch.name)
+        self.store.clear_record(branch.name)
         del self.live[branch.name]
         self.reached.add("tombstone")
         self._settle()

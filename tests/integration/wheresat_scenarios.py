@@ -280,7 +280,8 @@ def branch_head(path: Path, branch: str) -> str:
         The commit, or ``""`` when the repository has no such branch.
 
     """
-    commit = git_repo_helpers.ref_value(Repo(path), f"refs/heads/{branch}")
+    with Repo(path) as repo:
+        commit = git_repo_helpers.ref_value(repo, f"refs/heads/{branch}")
     return "" if commit is None else commit
 
 
@@ -294,8 +295,8 @@ def _bare_repository(root: Path) -> Path:
 
     """
     root.mkdir(parents=True, exist_ok=True)
-    repo = Repo.init(root, bare=True)
-    repo.git.symbolic_ref("HEAD", "refs/heads/main")
+    with Repo.init(root, bare=True) as repo:
+        repo.git.symbolic_ref("HEAD", "refs/heads/main")
     return root
 
 

@@ -156,9 +156,10 @@ def _remote_tracked_head(
         ref = graph.remote_tracking_ref(branch)
         if ref is None:
             return None, None
-        return ParentHead(graph.resolve(ref), ref), None
+        commit = graph.resolve(ref)
     except WheresatGraphError as exc:
         return None, f"the remote-tracking ref for {branch} could not be read: {exc}"
+    return ParentHead(commit, ref), None
 
 
 def parent_branch(record: stack_records.RecordResult) -> str | None:

@@ -658,7 +658,9 @@ def the_head_is_fetched_from_the_fork(scenario: WheresatJourney) -> None:
     journey = scenario.journey
     cached = wheresat_refs.parent_head_ref(journey.identity)
     repo = journey.scenario.repo
-    named = str(repo.git.rev_parse("--verify", "--quiet", cached) or "")
+    named = str(
+        repo.git.rev_parse("--verify", "--quiet", cached, with_exceptions=False) or ""
+    )
 
     assert named == journey.parent_head, (
         f"expected the fetched head to be cached at {cached}, which names {named}"

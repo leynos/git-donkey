@@ -64,16 +64,18 @@ _BOUNDARY_NAMESPACE: typ.Final = "refs/wheresat/boundary"
 _SLUG_COMPONENTS: typ.Final = 2
 """Number of components an ``owner/name`` repository slug is made of."""
 
-_OP_ID_PATTERN: typ.Final = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}\Z")
-"""What an operation id's alphabet is, with nothing else permitted.
+_OP_ID_PATTERN: typ.Final = re.compile(r"\A[A-Za-z0-9][A-Za-z0-9._-]{0,63}\Z")
+r"""What an operation id's alphabet is, with nothing else permitted.
 
 The pattern is anchored at both ends by construction rather than by the
-caller's use of :func:`re.match`, and it settles the character set, the length,
-and the first character between them: a nested namespace, a leading hyphen a
-command line could read as another option, a colon, and whitespace are all
-refused here. It does not settle how the dots may be arranged — ``a..b`` and
-``a.`` are named by this alphabet — so :func:`validate_op_id` applies Git's own
-ref rules as well.
+caller's use of :func:`re.match`, so an id is the whole of what it is matched
+against however it is applied: with ``\Z`` alone a search over ``a b`` would
+find ``b`` inside it and call that an id. It settles the character set, the
+length, and the first character between them: a nested namespace, a leading
+hyphen a command line could read as another option, a colon, and whitespace
+are all refused here. It does not settle how the dots may be arranged —
+``a..b`` and ``a.`` are named by this alphabet — so :func:`validate_op_id`
+applies Git's own ref rules as well.
 """
 
 

@@ -6,13 +6,16 @@ window is resolved, orphaned records are swept into tombstones, and stale
 tombstones are pruned before the first worktree is touched, so a window that
 cannot be read stops the run while the candidates are still whole. Sweeping
 here is also what keeps the deletions below from orphaning anything, since each
-hard-mode branch is entombed before it is deleted.
+hard-mode branch has its tip preserved before it is deleted and its record
+cleared after.
 
 Every candidate contributes its own outcome, and no refusal is fatal: a dirty
 worktree is skipped, a branch Git kept is reported beside the worktree that
 really did go, and a tip that could not be preserved keeps its branch. The
 command entry point that resolves the repository state and renders the summary
-lives in :mod:`git_donkey.plonk`.
+lives in :mod:`git_donkey.plonk`, and the lines a run logs and the observations
+it records are emitted through :mod:`git_donkey.plonk_logging`, so this module
+holds the workflow and its decisions alone.
 
 """
 
@@ -26,14 +29,20 @@ from git import GitCommandError
 
 from git_donkey import (
     helpers,
-    observability,
     plonk_policy,
     stack_store,
     stack_writes,
 )
 from git_donkey._constants import GIT_PLONK_PREFIX
+from git_donkey.plonk_logging import (
+    _log_planned_step,
+    _log_plonk_candidates_selected,
+    _log_plonk_cleanup_start,
+    _log_skipped_candidate,
+    _record_failure,
+    _record_step,
+)
 from git_donkey.plonk_records import (
-    _MODE_LABELS,
     _SKIP_REASON_LABELS,
     _CandidateOutcome,
     _CleanupTally,
@@ -51,123 +60,6 @@ if typ.TYPE_CHECKING:
     from git_donkey.plonk_records import _PlonkCandidate
 
 _LOGGER = logging.getLogger(__name__)
-
-
-def _log_plonk_cleanup_start(mode: _PlonkMode, context: _PlonkContext) -> None:
-    """Log the start of completed git-plonk cleanup."""
-    _LOGGER.info(
-        "Starting git-plonk completed cleanup",
-        extra={
-            "mode": mode.value,
-            "worktrees_root": context.worktrees_root.as_posix(),
-            "trunk_ref": context.trunk_ref,
-        },
-    )
-
-
-def _log_plonk_candidates_selected(
-    mode: _PlonkMode,
-    candidates: cabc.Sequence[_PlonkCandidate],
-    completed_candidates: cabc.Sequence[_PlonkCandidate],
-    removable_candidates: cabc.Sequence[_PlonkCandidate],
-) -> None:
-    """Log candidate selection counts for completed git-plonk cleanup."""
-    _LOGGER.info(
-        "Selected git-plonk completion candidates",
-        extra={
-            "mode": mode.value,
-            "candidate_count": len(candidates),
-            "completed_count": len(completed_candidates),
-            "excluded_invocation_count": len(completed_candidates)
-            - len(removable_candidates),
-        },
-    )
-
-
-def _log_planned_step(
-    candidate: _PlonkCandidate,
-    mode: _PlonkMode,
-    *,
-    dry_run: bool,
-    removing_worktree: bool,
-) -> None:
-    """Log one planned or taken step against a completed candidate.
-
-    The two steps the cleanup takes against a candidate — removing its
-    worktree and deleting its branch — are logged by the same shape, so the
-    fields every such line carries are assembled in one place. Only the step
-    that removes the worktree names the path it removes.
-    """
-    subject = "worktree" if removing_worktree else "branch"
-    if dry_run:
-        message = (
-            f"Planning completed git-plonk {subject} "
-            f"{'removal' if removing_worktree else 'deletion'}"
-        )
-    else:
-        message = (
-            f"{'Removing' if removing_worktree else 'Deleting'} completed "
-            f"git-plonk {subject}"
-        )
-    fields: dict[str, object] = {
-        "mode": mode.value,
-        "operation": "remove_worktree" if removing_worktree else "delete_branch",
-        "dry_run": dry_run,
-        "branch": candidate.branch_name,
-        "marker": candidate.marker,
-    }
-    if removing_worktree:
-        fields["worktree"] = candidate.worktree_path.as_posix()
-    _LOGGER.info(message, extra=fields)
-
-
-def _log_skipped_candidate(
-    candidate: _PlonkCandidate,
-    reason: _SkipReason,
-    mode: _PlonkMode,
-) -> None:
-    """Log a completed candidate that git-plonk left in place."""
-    _LOGGER.info(
-        "Skipping git-plonk candidate",
-        extra={
-            "mode": mode.value,
-            "operation": "skip_worktree",
-            "branch": candidate.branch_name,
-            "marker": candidate.marker,
-            "worktree": candidate.worktree_path.as_posix(),
-            "reason": reason.value,
-        },
-    )
-
-
-def _record_step(
-    operation: observability.Operation,
-    outcome: observability.Outcome,
-    mode: _PlonkMode,
-    *,
-    skip_reason: observability.SkipReasonLabel | None = None,
-) -> None:
-    """Record one bounded cleanup step, translating ``mode`` to its label."""
-    observability.get_recorder().record(
-        observability.Observation(
-            operation=operation,
-            outcome=outcome,
-            mode=_MODE_LABELS[mode],
-            skip_reason=skip_reason,
-        )
-    )
-
-
-def _record_failure(operation: observability.Operation, mode: _PlonkMode) -> None:
-    """Record a step where Git refused an action git-plonk asked for."""
-    observability.get_recorder().record(
-        observability.Observation(
-            operation=operation,
-            outcome="failure",
-            mode=_MODE_LABELS[mode],
-            error_kind="git_command_error",
-        )
-    )
 
 
 def _configured_expiry(records: stack_writes.StackRecordWriter) -> str:
@@ -383,7 +275,7 @@ class _CleanupSurfaces:
     records: stack_writes.StackRecordWriter
 
 
-def _entomb_branch(
+def _preserve_tip(
     candidate: _PlonkCandidate,
     tip: str,
     records: stack_writes.StackRecordWriter,
@@ -392,8 +284,8 @@ def _entomb_branch(
     """Preserve ``candidate``'s tip as a tombstone, before the branch goes.
 
     The tombstone is written while the branch still exists, because the
-    ``git branch -D`` that follows is forced: the reverse order would take the
-    only record of that commit with it.
+    ``git branch -D`` that follows takes the tip with it if Git lets it: the
+    reverse order would lose the only record of that commit outright.
 
     Parameters
     ----------
@@ -422,7 +314,7 @@ def _entomb_branch(
         },
     )
     try:
-        records.entomb(candidate.branch_name, tip)
+        records.preserve_tip(candidate.branch_name, tip)
     except (stack_store.StackRecordError, ValueError) as exc:
         _LOGGER.exception(
             "Failed to entomb git-plonk branch",
@@ -439,6 +331,46 @@ def _entomb_branch(
     return True
 
 
+def _clear_record(
+    candidate: _PlonkCandidate,
+    records: stack_writes.StackRecordWriter,
+    mode: _PlonkMode,
+) -> None:
+    """Clear the live record of a branch this run has just deleted.
+
+    The deletion takes the branch's configuration with it, so what is left to
+    clear is the anchor ref the record was written through. A refusal leaves a
+    record with no branch — the INV-9 violation the sweep exists to repair — so
+    it is reported and the run carries on rather than abandoning the candidates
+    after this one.
+
+    Parameters
+    ----------
+    candidate : _PlonkCandidate
+        Completed candidate whose branch has been deleted.
+    records : stack_writes.StackRecordWriter
+        Store the record is cleared through.
+    mode : _PlonkMode
+        Cleanup mode, carried into the observability record.
+
+    """
+    try:
+        records.clear_record(candidate.branch_name)
+    except (stack_store.StackRecordError, ValueError) as exc:
+        _LOGGER.warning(
+            "Failed to clear the record of a deleted git-plonk branch",
+            extra={
+                "mode": mode.value,
+                "operation": "stack_record_sweep",
+                "branch": candidate.branch_name,
+            },
+        )
+        helpers._eprint(
+            f"{GIT_PLONK_PREFIX}: the record of '{candidate.branch_name}' could "
+            f"not be cleared after its deletion: {exc}"
+        )
+
+
 def _delete_completed_branch(
     candidate: _PlonkCandidate,
     surfaces: _CleanupSurfaces,
@@ -453,6 +385,10 @@ def _delete_completed_branch(
     branch Git refuses to delete is reported separately, because that
     candidate's worktree really did go, and a branch whose tip could not be
     preserved is not deleted at all.
+
+    The live record is cleared last, once the deletion has happened. A refusal
+    to delete therefore leaves the branch with the record that attests its own
+    boundary, beside the tombstone that names the tip the run preserved.
 
     Parameters
     ----------
@@ -482,7 +418,7 @@ def _delete_completed_branch(
         # nothing here to delete; the run reports the deletion it could not do.
         _record_failure("branch_deletion", mode)
         return _CandidateOutcome(branch_deletion_failed=True)
-    if not _entomb_branch(candidate, tip, records, mode):
+    if not _preserve_tip(candidate, tip, records, mode):
         _record_failure("stack_record_entomb", mode)
         return _CandidateOutcome(entomb_failed=True)
     _record_step("stack_record_entomb", "success", mode)
@@ -490,6 +426,7 @@ def _delete_completed_branch(
         _record_failure("branch_deletion", mode)
         return _CandidateOutcome(branch_deletion_failed=True, entombed=True)
     _record_step("branch_deletion", "success", mode)
+    _clear_record(candidate, records, mode)
     return _CandidateOutcome(entombed=True)
 
 
@@ -629,7 +566,7 @@ def _sweep_records(
     expression it cannot parse as *now*, so a window that cannot be read stops
     the run while the candidates are still whole. Sweeping here is also what
     keeps the removals that follow from orphaning anything, since each of them
-    entombs its branch before deleting it.
+    preserves its branch's tip before deleting it and clears its record after.
 
     Parameters
     ----------

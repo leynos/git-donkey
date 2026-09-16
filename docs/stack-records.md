@@ -122,23 +122,25 @@ is what it is, and never as a name to be looked up in one particular namespace.
   evidence, validates it against everything else it can observe, and under
   `--record` refreshes it after a restack, with an expected-old check so a
   concurrent writer loses rather than silently overwriting.
-- **Death — `git plonk`.** Before deleting a branch it writes
-  `refs/stack-tombstones/<branch>` naming that branch's tip, then removes the
-  live record. On every run it sweeps records orphaned by a plain
-  `git branch -d`, and prunes tombstones older than the retention window.
-  Cleanup is already plonk's job; this makes it the garbage collector for the
-  stack namespace too.
+- **Death — `git plonk`.** Before deleting a branch it preserves that branch's
+  tip by writing `refs/stack-tombstones/<branch>`, deletes the branch, and
+  clears the live record once the branch has gone. On every run it sweeps
+  records orphaned by a plain `git branch -d`, and prunes tombstones older than
+  the retention window. Cleanup is already plonk's job; this makes it the
+  garbage collector for the stack namespace too.
 
 A branch with no record of its own is still entombed. That is the common case,
 not an edge case: a parent created from the trunk is not itself stacked, so it
-has no record, yet its tip is exactly what a surviving child needs. Placing the
-tombstone write before the branch deletion is required rather than optional.
-`git branch -D` bypasses the merged-status check, so it is the deletion that
-loses the tip when no tombstone precedes it, but a refusal is still possible:
-Git refuses a branch that another worktree holds checked out, and a
-reference-transaction hook can refuse any deletion at all. A tombstone written
-first is what makes the tip recoverable either way, and a refused deletion is
-reported rather than treated as a fatal error.
+has no record, yet its tip is exactly what a surviving child needs. Preserving
+the tip is required rather than optional, because `git branch -D` bypasses the
+merged-status check, so it is the deletion that loses the tip when no tombstone
+precedes it. A refusal is still possible: Git refuses a branch that another
+worktree holds checked out, and a reference-transaction hook can refuse any
+deletion at all. The three writes are therefore ordered around the deletion —
+the tombstone while the branch still names its tip, then the deletion, then the
+clear — so a refused deletion leaves the branch with the record that attests
+its own boundary, and a run reports that refusal rather than treating it as a
+fatal error.
 
 ## Reconciliation
 

@@ -75,11 +75,19 @@ the vocabulary a recorder stores cannot drift apart: dropping ``error`` from
 typecheck here rather than ship a verdict no consumer knows.
 """
 
-_HEADLINES: typ.Final[cabc.Mapping[type, str]] = types.MappingProxyType({
-    Unresolved: "git wheresat: no boundary could be established for",
-    Indeterminate: "git wheresat: could not tell where",
+_HEADLINES: typ.Final[cabc.Mapping[type, tuple[str, str]]] = types.MappingProxyType({
+    Unresolved: ("git wheresat: no boundary could be established for", ""),
+    Indeterminate: ("git wheresat: could not tell where the work of", "begins"),
 })
-"""How a run that established nothing opens its report."""
+"""How a run that established nothing opens its report.
+
+Each entry is what the line says before the branch name and what it says after
+it, so the heading states what the verdict is about rather than leaving the
+sentence half-written: a run that established nothing has no boundary for the
+branch, and a run that could not tell has a boundary whose place it could not
+pin down. The name is joined between the two halves rather than formatted into
+them, because a branch name may hold braces.
+"""
 
 _NOT_APPLICABLE: typ.Final = "not applicable"
 """How the gate table renders a gate whose subject the run never set out to use."""
@@ -110,7 +118,7 @@ def worktree_warnings(branch: str, state: WorktreeState) -> tuple[str, ...]:
         the operation first, then the changes that would also stop a replay.
 
     """
-    warnings = []
+    warnings: list[str] = []
     if state.operation is not None:
         warnings.append(
             f"a {state.operation.value} is already in progress in the worktree "
@@ -365,7 +373,8 @@ def _text_refused(
     warnings: cabc.Sequence[str] = (),
 ) -> list[str]:
     """Render a refusal or an indeterminate result with its reasons."""
-    lines = [f"{_HEADLINES[type(assessment)]} {request.branch}"]
+    prefix, suffix = _HEADLINES[type(assessment)]
+    lines = [" ".join(part for part in (prefix, request.branch, suffix) if part)]
     lines += _text_warnings(warnings)
     lines += _text_candidates(assessment)
     lines += _text_gates(assessment)

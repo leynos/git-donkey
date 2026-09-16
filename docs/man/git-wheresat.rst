@@ -20,9 +20,10 @@ SYNOPSIS
 DESCRIPTION
 ===========
 
-Report where a branch was replayed over: the commit it should be rebased onto
-so that work already landed upstream is dropped and the work it still carries
-is kept.
+Report where a branch was replayed over: the old base its own work sits on,
+which a rebase passes as its upstream argument while rebasing onto the target,
+so that work already landed upstream is dropped and the work the branch still
+carries is kept.
 Run the command inside a Git repository, and by default it reads the branch
 currently checked out.
 

@@ -5,10 +5,10 @@ before it looks at any worktree — check the configured tombstone window, sweep
 the records of branches that no longer exist, and prune the tombstones the
 window has reached. It then shows how the run decides whether a completed
 worktree is removed, and when it is left in place with a reason instead, then
-how a hard-mode branch is entombed before it is deleted and how one Git refuses
-to delete is reported separately under `Failed branch deletions:`; a branch
-whose entombment fails is kept, the worktree stays removed, the sweep
-continues, and the run exits 1.
+how a hard-mode branch's tip is preserved before the branch is deleted and its
+record cleared, and how a deletion Git refuses is reported separately under
+`Failed branch deletions:`; a branch whose tip could not be preserved is kept,
+the worktree stays removed, the sweep continues, and the run exits 1.
 
 ```mermaid
 flowchart TD
@@ -24,11 +24,12 @@ flowchart TD
     Remove -->|refused| SkipFailed["skip: worktree removal failed"]
     Remove -->|removed| Mode{"hard mode?"}
     Mode -->|no| Done["worktree removed"]
-    Mode -->|yes| Entomb["entomb the branch: write its tip as a tombstone ref"]
+    Mode -->|yes| Entomb["preserve the tip: write its tombstone ref"]
+    Entomb -->|refused| SkipEntomb["tip not preserved: branch kept"]
     Entomb -->|written| Delete["delete local branch"]
-    Entomb -->|refused| SkipEntomb["entombment failed: branch kept"]
-    Delete -->|deleted| Done
-    Delete -->|refused| ReportFailed["branch deletion failed"]
+    Delete -->|refused| ReportFailed["branch deletion failed: record kept"]
+    Delete -->|deleted| Clear["clear the branch's live record"]
+    Clear --> Entombed["branch entombed"]
 ```
 
 _Figure 1: git-plonk completed-worktree decision flow._
@@ -102,25 +103,29 @@ both.
 `git donkey` writes a stack record when it creates a branch from another
 branch, and `git plonk` owns the end of that record's life: it is the command
 that deletes branches, so it is the command that can preserve what the deletion
-would otherwise take with it. Before a hard-mode branch is deleted, its tip is
-written to the tombstone ref `refs/stack-tombstones/<branch>` and the live
-record is then cleared — the four `branch.<name>.stack*` keys and the
-`refs/stack-bases/<branch>` anchor. The tombstone is written first and the
-branch is deleted second, because the reverse order loses the tip outright: the
-branch's reflog and its whole `branch.<name>` configuration section go with the
-ref. A crash between the two steps therefore leaves a tombstone beside a live
-record, with the branch itself still there.
+would otherwise take with it. A hard-mode branch's tip is written to the
+tombstone ref `refs/stack-tombstones/<branch>` while the branch still names it,
+the branch is then deleted, and the live record — the four
+`branch.<name>.stack*` keys and the `refs/stack-bases/<branch>` anchor — is
+cleared last, once the branch has gone. The tombstone is written before the
+deletion because the reverse order loses the tip outright: the branch's reflog
+and its whole `branch.<name>` configuration section go with the ref. A crash
+between the steps therefore leaves a tombstone beside a live record, with the
+branch itself still there.
 
 That state is benign rather than something to repair. The branch keeps the
 record that attests its own boundary, and the tombstone beside it is evidence
-that a deletion started, not that it finished. The sweep leaves it alone,
-because the sweep resolves only records whose branch is gone: clearing a live
-branch's record in the name of tidying up would destroy the only attestation of
-that branch's boundary, and leave the branch in place. The state resolves
-itself in whichever direction the branch's fate takes — a later completed run
-that deletes the branch rewrites the tombstone with the tip that deletion
-observed, and a branch that is kept leaves a tombstone that expires on the
-usual horizon like any other.
+that a deletion started, not that it finished. It is reached deliberately as
+well as by a crash: when Git refuses the deletion — the branch is held by
+another worktree, or a reference-transaction hook says no — the run stops
+before the record is cleared. The sweep leaves it alone, because the sweep
+resolves only records whose branch is gone: clearing a live branch's record in
+the name of tidying up would destroy the only attestation of that branch's
+boundary, and leave the branch in place. The state resolves itself in whichever
+direction the branch's fate takes — a later completed run that deletes the
+branch rewrites the tombstone with the tip that deletion observed, and a branch
+that is kept leaves a tombstone that expires on the usual horizon like any
+other.
 
 For the same reason, a branch whose entombment fails is not deleted at all. The
 tip is the one thing the deletion was about to make unrecoverable.
@@ -194,14 +199,16 @@ repositories for a tracked modification, a staged change, an untracked file,
 ignored build output, and mixed clean and dirty batches.
 
 The record lifecycle is covered at both levels. Unit tests pin the ordering —
-the tombstone is written while the branch still names the tip, and a branch
-whose entombment failed is not deleted — that a failed entombment keeps the
-branch and exits 1, that a sweep reports the orphan whose tip it preserved
-apart from the one it cleared, that a prune reports the window it applied, and
-that an unusable window stops the run before any write. The store itself is
-exercised against real repositories, including the read half `git wheresat`
-shares, the refusal of an empty expiry, and the rule that a tombstone whose age
-cannot be read is kept. Behavioural tests in
+the tombstone is written while the branch still names the tip, and the record
+is cleared only once the branch has gone — that a branch whose tip could not be
+preserved is not deleted and exits 1, that a refused deletion keeps the record
+beside the branch, that a record Git will not clear after its branch has gone
+is reported and the run carries on, that a sweep reports the orphan whose tip
+it preserved apart from the one it cleared, that a prune reports the window it
+applied, and that an unusable window stops the run before any write. The store
+itself is exercised against real repositories, including the read half
+`git wheresat` shares, the refusal of an empty expiry, and the rule that a
+tombstone whose age cannot be read is kept. Behavioural tests in
 `tests/integration/test_git_plonk_stack_bdd.py` run the command over real
 repositories and assert the artefacts a sweep leaves behind — the tombstone
 naming the tip the branch held, the anchor and record cleared with it, the

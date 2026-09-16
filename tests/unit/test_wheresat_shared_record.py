@@ -77,13 +77,15 @@ def test_both_lines_are_the_record() -> None:
 
 
 @pytest.mark.parametrize(
-    "decoration",
-    ["- ", "* ", "> ", "**", "  "],
+    ("prefix", "suffix"),
+    [("- ", ""), ("* ", ""), ("> ", ""), ("**", "**"), ("  ", "")],
     ids=["bulleted", "starred", "quoted", "emboldened", "indented"],
 )
-def test_decoration_around_a_line_is_not_part_of_the_record(decoration: str) -> None:
+def test_decoration_around_a_line_is_not_part_of_the_record(
+    prefix: str, suffix: str
+) -> None:
     """A body may embolden or bullet the record without changing it."""
-    body = "\n".join(f"{decoration}{line}" for line in _block().splitlines())
+    body = "\n".join(f"{prefix}{line}{suffix}" for line in _block().splitlines())
 
     assert parse_shared_record(body) == SharedRecord(
         parent=_PARENT, boundary=_BOUNDARY

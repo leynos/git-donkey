@@ -93,7 +93,7 @@ def test_sweep_clears_an_anchor_left_by_a_deletion_through_git(
 
 
 def test_sweep_keeps_a_tombstone_that_already_exists(tmp_path: Path) -> None:
-    """The crash window between entomb's two writes is repaired, not relabelled."""
+    """A tombstone already written is kept, not replaced by the boundary read."""
     repo = make_repo(tmp_path)
     base = repo.head.commit.hexsha
     repo.git.branch(CHILD, base)
@@ -113,16 +113,18 @@ def test_sweep_keeps_a_tombstone_that_already_exists(tmp_path: Path) -> None:
 
 
 def test_a_tombstone_beside_a_live_branch_survives_a_sweep(tmp_path: Path) -> None:
-    """The crash window inside ``entomb`` is left alone rather than tidied up.
+    """The state a refused deletion leaves is left alone rather than tidied up.
 
-    ``entomb`` writes the tombstone first and clears the record second, so an
-    interruption leaves both, with the branch itself still there. Clearing that
-    in the sweep would look symmetrical and would be wrong: the sweep resolves
-    only records whose branch is gone, because a live branch's record is the
-    only attestation of that branch's boundary, and clearing it would destroy
-    the attestation while leaving the branch in place. The state is benign, and
-    resolves itself when the branch is next selected for deletion, so a run
-    reports it as neither an orphan nor anything to sweep.
+    A caller preserves the tip, asks Git to delete the branch, and clears the
+    record only once the deletion has happened, so a deletion Git refuses
+    leaves the tombstone and the record together, with the branch itself still
+    there. Clearing that record in the sweep would look symmetrical and would
+    be wrong: the sweep resolves only records whose branch is gone, because a
+    live branch's record is the only attestation of that branch's boundary, and
+    clearing it would destroy the attestation while leaving the branch in
+    place. The state is benign, and resolves itself when the branch is next
+    selected for deletion, so a run reports it as neither an orphan nor
+    anything to sweep.
     """
     repo = make_repo(tmp_path)
     base = repo.head.commit.hexsha
@@ -130,14 +132,15 @@ def test_a_tombstone_beside_a_live_branch_survives_a_sweep(tmp_path: Path) -> No
     store = make_writer(repo)
     store.create(make_record(CHILD, base))
     tip = commit_on(repo, CHILD)
-    repo.git.update_ref("--create-reflog", stack_records.tombstone_ref_path(CHILD), tip)
+
+    store.preserve_tip(CHILD, tip)
 
     assert not store.orphans(), (
         "a branch that still exists is not an orphan, whatever else is written"
     )
     assert not store.sweep(store.orphans()), "so the sweep has nothing to convert"
 
-    assert store.tombstone(CHILD) == tip, "the tombstone the crash left is kept"
+    assert store.tombstone(CHILD) == tip, "the tombstone the refusal left is kept"
     assert isinstance(store.read(CHILD), stack_records.StackRecord), (
         "the live record still attests the branch's boundary"
     )
@@ -174,7 +177,8 @@ def test_prune_keeps_a_tombstone_inside_the_retention_window(tmp_path: Path) -> 
     base = repo.head.commit.hexsha
     repo.git.branch(CHILD, base)
     store = make_writer(repo)
-    store.entomb(CHILD, base)
+    store.preserve_tip(CHILD, base)
+    store.clear_record(CHILD)
 
     assert not store.prune(EXPIRE), "a fresh tombstone is inside the ninety day window"
     assert store.tombstone(CHILD) == base, "the tip is still preserved"
@@ -186,7 +190,8 @@ def test_prune_deletes_a_tombstone_older_than_the_window(tmp_path: Path) -> None
     base = repo.head.commit.hexsha
     repo.git.branch(CHILD, base)
     store = make_writer(repo)
-    store.entomb(CHILD, base)
+    store.preserve_tip(CHILD, base)
+    store.clear_record(CHILD)
     backdate_tombstone(repo, CHILD, days=100)
 
     assert store.prune(EXPIRE) == (CHILD,), "a tombstone past the window is pruned"
@@ -204,8 +209,10 @@ def test_prune_deletes_only_the_tombstones_past_the_cutoff(tmp_path: Path) -> No
     repo.git.branch(CHILD, base)
     repo.git.branch(NEIGHBOUR, base)
     store = make_writer(repo)
-    store.entomb(CHILD, base)
-    store.entomb(NEIGHBOUR, base)
+    store.preserve_tip(CHILD, base)
+    store.clear_record(CHILD)
+    store.preserve_tip(NEIGHBOUR, base)
+    store.clear_record(NEIGHBOUR)
     backdate_tombstone(repo, NEIGHBOUR, days=100)
 
     assert store.prune(EXPIRE) == (NEIGHBOUR,), (
@@ -222,7 +229,8 @@ def test_prune_keeps_a_tombstone_whose_age_cannot_be_read(tmp_path: Path) -> Non
     base = repo.head.commit.hexsha
     repo.git.branch(CHILD, base)
     store = make_writer(repo)
-    store.entomb(CHILD, base)
+    store.preserve_tip(CHILD, base)
+    store.clear_record(CHILD)
     tombstone_log(repo, CHILD).unlink()
     future = str(int(time.time()) + 60)
 
@@ -239,7 +247,8 @@ def test_prune_deletes_a_tombstone_written_before_an_explicit_instant(
     base = repo.head.commit.hexsha
     repo.git.branch(CHILD, base)
     store = make_writer(repo)
-    store.entomb(CHILD, base)
+    store.preserve_tip(CHILD, base)
+    store.clear_record(CHILD)
     future = str(int(time.time()) + 60)
 
     assert store.prune(future) == (CHILD,), (

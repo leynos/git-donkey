@@ -4,8 +4,9 @@ The summary is the command's user-visible contract, so it is pinned exactly:
 literal assertions for the shape of a report, and snapshots for the composite
 cases. Snapshots capture absolute worktree paths, which the path matcher below
 redacts at record time so no local path is committed for ``ambrleaks`` to flag.
-Candidate selection is covered by ``test_plonk_selection.py`` and the cleanup
-behaviour the summaries describe by ``test_plonk_cleanup.py``.
+Candidate selection is covered by ``test_plonk_selection.py``, and the cleanup
+and record behaviour the summaries describe by ``test_plonk_cleanup.py`` and
+``test_plonk_record_lifecycle.py``.
 """
 
 from __future__ import annotations

@@ -865,7 +865,7 @@
 # ---
 # name: test_text_report_matches_snapshot[indeterminate]
   '''
-  git wheresat: could not tell where child
+  git wheresat: could not tell where the work of child begins
   
   Evidence
     attested  stack-record-birth       8888888  stack record

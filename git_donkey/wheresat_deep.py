@@ -22,9 +22,12 @@ of the target are read, and the listing asks for one commit more than the
 window holds, so the scan can tell a window that reached the end of the history
 from one that did not: a commit older than the window is a commit whose twin
 was never looked for, and the run says so. That is a caveat and never a fault.
-What the scan would have found is inferred evidence, so a question it could not
-answer is one no verdict rested on, and a fault would make ``--deep`` change
-the verdict it is documented never to change.
+So is a pass that could not run at all: the tree pass answers without the
+change pass, so a change pass that fails is reported beside the twins the tree
+pass found rather than in place of them. What the scan would have found is
+inferred evidence, so a question it could not answer is one no verdict rested
+on, and a fault would make ``--deep`` change the verdict it is documented never
+to change.
 """
 
 from __future__ import annotations
@@ -217,6 +220,10 @@ def scan(graph: WheresatGraph, *, target: str, child_tip: str, window: int) -> S
         could not put. What the scan cannot answer is a caveat rather than a
         fault, because inferred evidence never establishes a boundary and a
         fault would turn ``--deep`` into the semantics switch it must not be.
+        A change pass that could not be taken keeps the twins the tree pass
+        found and adds a caveat of its own, because the tree pass answers
+        without it and discarding that answer would lose evidence the scan had
+        already read.
 
     """
     if window < 1:
@@ -231,9 +238,16 @@ def scan(graph: WheresatGraph, *, target: str, child_tip: str, window: int) -> S
         children = graph.commits_in_range(target, child_tip)
         by_tree = _index(windowed, graph.tree_of)
         tree, unmatched = _claim(children, by_tree, graph.tree_of)
-        patch = _changed(graph, unmatched, windowed, target=target)
     except WheresatGraphError as exc:
         return Scan(warnings=(f"the deep scan could not be taken: {exc}",))
+    try:
+        patch = _changed(graph, unmatched, windowed, target=target)
+    except WheresatGraphError as exc:
+        caveat = (
+            f"the deep scan could not take the change pass, so a twin the tree "
+            f"pass left unmatched was not looked for: {exc}"
+        )
+        return Scan(tree=tree, warnings=(*_caveats(listing, window), caveat))
     return Scan(tree=tree, patch=patch, warnings=_caveats(listing, window))
 
 

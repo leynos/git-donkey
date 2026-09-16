@@ -1,14 +1,15 @@
 """Doubles and builders shared by the ``git-plonk`` completed-cleanup suites.
 
-The cleanup workflow is exercised twice over: ``test_plonk_cleanup.py`` pins the
-contract with readable one- and two-candidate examples, and
-``test_plonk_cleanup_properties.py`` generalises the same rules over generated
-batches. Both compose one Git double and one stack record double, so the rules
-the doubles enforce — hard mode deletes a branch only once its worktree is gone
-and only after its tip has been preserved — hold for every example and every
-generated batch alike. A change to how a candidate or a record is described
-therefore cannot leave the two suites asserting against differently shaped
-adapters.
+The cleanup workflow is exercised three ways over: ``test_plonk_cleanup.py``
+pins the workflow contract with readable one- and two-candidate examples,
+``test_plonk_record_lifecycle.py`` pins what the writes around a finished
+branch owe each other, and ``test_plonk_cleanup_properties.py`` generalises the
+batch rules over generated batches. All three compose one Git double and one
+stack record double, so the rules the doubles enforce — hard mode deletes a
+branch only once its worktree is gone and only after its tip has been preserved
+— hold for every example and every generated batch alike. A change to how a
+candidate or a record is described therefore cannot leave the suites asserting
+against differently shaped adapters.
 """
 
 from __future__ import annotations
@@ -149,9 +150,10 @@ class FailingStackStore:
 
     A dry run must classify orphans and expired tombstones with reads alone, so
     the reads report work to plan — one orphan whose record still parses, and
-    one tombstone past every window — while ``entomb``, ``sweep``, and ``prune``
-    fail the test if the planner reaches them. A dry run that reports neither
-    the sweep nor the prune has quietly skipped the classification.
+    one tombstone past every window — while ``preserve_tip``, ``clear_record``,
+    ``sweep``, and ``prune`` fail the test if the planner reaches them. A dry
+    run that reports neither the sweep nor the prune has quietly skipped the
+    classification.
     """
 
     @staticmethod
@@ -180,9 +182,14 @@ class FailingStackStore:
         return (PLANNED_STALE_TOMBSTONE,)
 
     @staticmethod
-    def entomb(branch: str, tip: str) -> None:
+    def preserve_tip(branch: str, tip: str) -> None:
         """Fail the test unconditionally — a dry run writes no tombstone."""
         pytest.fail(f"dry run should not entomb {branch} at {tip}")
+
+    @staticmethod
+    def clear_record(branch: str) -> None:
+        """Fail the test unconditionally — a dry run clears no record."""
+        pytest.fail(f"dry run should not clear the record of {branch}")
 
     @staticmethod
     def sweep(orphans: cabc.Sequence[str]) -> tuple[str, ...]:
@@ -198,10 +205,12 @@ class FailingStackStore:
 class EntombFirstAdapter(RecordingGitAdapter):
     """Adapter that refuses to delete a branch the store has not entombed.
 
-    The order of the two writes is the whole point of entombing before deleting
-    — the tip is only readable while the branch names it — and neither double
-    can observe the order alone. This one carries the store, so the rule is
-    checked at the moment Git is asked for the deletion.
+    The order of the writes is the whole point of preserving a tip before
+    deleting the branch that names it — the tip is only readable while the
+    branch names it, and the record is only safe to clear once the branch has
+    gone — and neither double can observe the order alone. This one carries the
+    store, so both rules are checked at the moment Git is asked for the
+    deletion.
     """
 
     def __init__(
@@ -215,10 +224,13 @@ class EntombFirstAdapter(RecordingGitAdapter):
         self.records = records
 
     def delete_branch(self, branch_name: str) -> bool:
-        """Assert this branch's own tombstone exists, then delete the branch."""
+        """Assert the tip is preserved and the record intact, then delete."""
         entombed = [branch for branch, _ in self.records.entombed]
         if branch_name not in entombed:
             msg = "hard mode preserves a branch's tip before deleting it"
+            raise AssertionError(msg)
+        if branch_name in self.records.cleared:
+            msg = "a branch's live record outlives the deletion that clears it"
             raise AssertionError(msg)
         return super().delete_branch(branch_name)
 
@@ -233,9 +245,11 @@ class RecordingStackStore:
     ``preservable`` names the orphans whose record still parses, so one sweep
     can mix the orphan it rescues with the one it only clears. ``stale`` names
     the tombstones the retention window reaches, so a test configures the
-    answer to that comparison rather than a clock. ``entomb`` refuses the names
-    the writer's own validator refuses, which is the other way a store refuses a
-    tombstone: with ``ValueError`` rather than with a failed write.
+    answer to that comparison rather than a clock. ``preserve_tip`` refuses the
+    names the writer's own validator refuses, which is the other way a store
+    refuses a tombstone: with ``ValueError`` rather than with a failed write.
+    ``entomb_failures`` and ``clear_failures`` put a refusal on either half of
+    the entombment, which the writer's two writes can fail independently.
     ``unusable_expiry`` makes ``expiry`` refuse the configured window, which is
     the one read a run cannot recover from.
 
@@ -251,8 +265,10 @@ class RecordingStackStore:
     stale: cabc.Iterable[str] = ()
     expire: str = stack_records.DEFAULT_TOMBSTONE_EXPIRE
     entomb_failures: cabc.Iterable[str] = ()
+    clear_failures: cabc.Iterable[str] = ()
     unusable_expiry: bool = False
     entombed: list[tuple[str, str]] = dataclasses.field(default_factory=list)
+    cleared: list[str] = dataclasses.field(default_factory=list)
     swept: list[tuple[str, ...]] = dataclasses.field(default_factory=list)
     pruned: list[str] = dataclasses.field(default_factory=list)
 
@@ -282,7 +298,7 @@ class RecordingStackStore:
         """Return the stale tombstones as the tuple the protocol answers with."""
         return tuple(self.stale)
 
-    def entomb(self, branch: str, tip: str) -> None:
+    def preserve_tip(self, branch: str, tip: str) -> None:
         """Record a tombstone, refusing what the writer refuses, in its order.
 
         The writer builds the tombstone's ref path before it writes anything, so
@@ -302,6 +318,24 @@ class RecordingStackStore:
             msg = f"cannot write the tombstone for {branch!r}"
             raise stack_store.StackRecordError(msg)
         self.entombed.append((branch, tip))
+
+    def clear_record(self, branch: str) -> None:
+        """Record a cleared live record, refusing the configured branches.
+
+        Raises
+        ------
+        stack_store.StackRecordError
+            If the record cannot be cleared, for the configured branches. The
+            writer reports a refused ref deletion this way, so a caller that
+            has already deleted the branch sees the same exception it would
+            have seen from the store.
+
+        """
+        if branch in self.clear_failures:
+            ref = stack_records.base_ref_path(branch)
+            msg = f"cannot delete {ref!r}: the ref is locked"
+            raise stack_store.StackRecordError(msg)
+        self.cleared.append(branch)
 
     def sweep(self, orphans: cabc.Sequence[str]) -> tuple[str, ...]:
         """Record a sweep, preserving the orphans whose record still parses."""

@@ -8001,8 +8001,8 @@ class StackRecordWriter(StackRecordReader, typ.Protocol):
     def refresh(self, record: StackRecord, expected_old: str) -> None:
         """Update an existing record, requiring the current anchor value."""
 
-    def entomb(self, branch: str, tip: str) -> None:
-        """Write the tombstone and remove the live record, in that order.
+    def preserve_tip(self, branch: str, tip: str) -> None:
+        """Write `branch`'s tombstone, which preserves `tip` for its children.
 
         A tombstone is written whether or not `branch` had a record of its
         own. That is the common case, not an edge case: a parent created from
@@ -8010,15 +8010,26 @@ class StackRecordWriter(StackRecordReader, typ.Protocol):
         exactly what a surviving child needs for the
         `parent-history-intact` gate.
 
-        Ordering matters: the reverse ordering would lose the tip outright,
-        because the `git branch -D` that follows an entombment always succeeds.
-        A crash between the two steps is benign — a tombstone beside a live
-        record, on a branch that is still there. The sweep resolves only
-        records whose branch is gone, so it leaves that state alone: the live
-        branch keeps the record that attests its own boundary, and a tombstone
-        is evidence that a deletion started, not that it finished. `reconcile`
-        reads the configuration and the anchor and never consults tombstones,
-        so it does not report the state either.
+        A caller about to delete the branch writes this first, because the tip
+        is only readable while the branch names it and the deletion is not
+        forced: Git refuses a branch another worktree holds checked out, and a
+        reference-transaction hook can refuse any deletion at all.
+        """
+
+    def clear_record(self, branch: str) -> None:
+        """Remove `branch`'s live record: its anchor ref and its values.
+
+        A caller clears this only once the branch has gone. A successful
+        `git branch -D` takes the branch's `branch.<name>.*` configuration
+        with it, so what is left to clear is the anchor ref. Preserving a tip
+        and clearing a live record are two writes rather than one because the
+        deletion between them can be refused: a caller that cleared first
+        would lose the tip outright, and a caller left with an uncleared
+        record has a branch that still attests its own boundary. A refused
+        clear leaves a record with no branch, which `orphans` reports and the
+        next sweep repairs (INV-9); `reconcile` reads the configuration and
+        the anchor without consulting tombstones, so it does not report
+        either state.
         """
 
     def sweep(self, orphans: typ.Sequence[str]) -> tuple[str, ...]:
@@ -8028,11 +8039,11 @@ class StackRecordWriter(StackRecordReader, typ.Protocol):
         """Delete tombstones older than `expire`; return those deleted."""
 ```
 
-`git donkey` uses `create`. `git plonk` uses `entomb`, `sweep`, and `prune`.
-`git wheresat` uses `StackRecordReader`, and `StackRecordWriter.refresh` only
-under `--record`. Every writer is constructed from
-`git_donkey/stack_writes.py`, which is where `StackRecordWriter` and its Git
-implementation live.
+`git donkey` uses `create`. `git plonk` uses `preserve_tip`, `clear_record`,
+`sweep`, and `prune`. `git wheresat` uses `StackRecordReader`, and
+`StackRecordWriter.refresh` only under `--record`. Every writer is constructed
+from `git_donkey/stack_writes.py`, which is where `StackRecordWriter` and its
+Git implementation live.
 
 ### `git_donkey/wheresat_records.py`
 
@@ -9038,13 +9049,16 @@ automatically.
   `git worktree add --no-track -b` writes no `branch.<name>` section at all.
 - `git_donkey/donkey.py`: pass the trunk already resolved for base selection
   into the record decision, so the trunk is not discovered twice.
-- `git_donkey/plonk.py`: in `_clean_completed_candidate`, call `entomb` before
-  `adapter.delete_branch`, and do not delete the branch when `entomb` raises;
-  `_GitWorktreeAdapter.delete_branch` itself is unchanged (see Decision log for
-  why the call sits in the orchestration rather than in the adapter). In
-  `_run_completed_cleanup`, resolve and validate the configured expiry before
-  the candidate loop, then sweep and prune, all guarded by the existing
-  `dry_run` flag in the same way every other mutation is.
+- `git_donkey/plonk.py`: in `_clean_completed_candidate`, call `preserve_tip`
+  before `adapter.delete_branch`, and do not delete the branch when it raises;
+  once the deletion has happened, call `clear_record`, whose refusal is
+  reported without abandoning the run (round 20 split the store's `entomb` into
+  those two writes). `_GitWorktreeAdapter.delete_branch` itself is unchanged
+  (see Decision log for why the calls sit in the orchestration rather than in
+  the adapter). In `_run_completed_cleanup`, resolve and validate the
+  configured expiry before the candidate loop, then sweep and prune, all
+  guarded by the existing `dry_run` flag in the same way every other mutation
+  is.
 - `git_donkey/plonk_records.py`: extend `_PlonkResult` with
   `entombed_branches`, `failed_entombments`, `swept_records`,
   `unrescuable_records`, and `pruned_tombstones`, each a `tuple[str, ...]`

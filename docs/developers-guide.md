@@ -984,12 +984,13 @@ builders both suites compose: `PlonkScenario`, `commit_completion_marker()`,
 `stage_tracked_change()`, and the `TRACKED_FILE`, `MODIFIED_CONTENT`, and
 `STAGED_CONTENT` constants. On the unit side, `tests/unit/test_plonk.py` keeps
 summary rendering, `tests/unit/test_plonk_selection.py` covers selection,
-`tests/unit/test_plonk_cleanup.py` the completed cleanup workflow, and
-`tests/unit/test_plonk_worktree_adapter.py` the worktree adapter against real
-Git; `tests/unit/test_plonk_soft_mode.py` covers the soft pass and
-`tests/unit/test_cli_plonk.py` the CLI flags. The split exists because it runs
-along the production boundaries each module verifies and keeps every module
-below CodeScene's Low Cohesion threshold of four.
+`tests/unit/test_plonk_cleanup.py` the completed cleanup workflow,
+`tests/unit/test_plonk_record_lifecycle.py` the record lifecycle each finished
+branch leaves behind, and `tests/unit/test_plonk_worktree_adapter.py` the
+worktree adapter against real Git; `tests/unit/test_plonk_soft_mode.py` covers
+the soft pass and `tests/unit/test_cli_plonk.py` the CLI flags. The split
+exists because it runs along the production boundaries each module verifies and
+keeps every module below CodeScene's Low Cohesion threshold of four.
 
 ## Manual pages
 

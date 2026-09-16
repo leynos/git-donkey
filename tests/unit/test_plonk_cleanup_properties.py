@@ -1,11 +1,12 @@
 """Property tests for the ``git-plonk`` completed-cleanup batch rules.
 
-``test_plonk_cleanup.py`` pins the cleanup contract with readable examples; the
-rules themselves are about a *batch*, so these tests generalise them over
-generated batches: every candidate is classified on its own, a skip or a refusal
-never shortens the sweep or reorders the rest, hard mode deletes a branch only
-once its worktree is gone, a refused deletion is neither a skip nor a removed
-branch, and a dry run reports the plan without mutating anything.
+``test_plonk_cleanup.py`` and ``test_plonk_record_lifecycle.py`` pin the cleanup
+contract with readable examples; the rules themselves are about a *batch*, so
+these tests generalise them over generated batches: every candidate is
+classified on its own, a skip or a refusal never shortens the sweep or reorders
+the rest, hard mode deletes a branch only once its worktree is gone, a refused
+deletion is neither a skip nor a removed branch, and a dry run reports the plan
+without mutating anything.
 
 Each example draws one state per candidate, feeds the matching doubles, and
 compares the run against a reference model of what those states should produce:

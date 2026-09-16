@@ -26,12 +26,20 @@ Three properties are maintained here rather than left to the callers.
   and moves the anchor back. A record with an anchor and an incomplete set of
   values is one the reader reports as malformed, which is the state this
   prevents.
-- **A tombstone is written before the branch it names is deleted.** ``entomb``
-  writes the tombstone first, because the ``git branch -D`` that follows always
-  succeeds and there is no refusal to fall back on; the reverse order would
-  lose the tip outright. The reverse case is ``create``, which retires any
-  tombstone still naming the branch, so no pair of artefacts ever describes one
-  branch as both live and deleted (INV-10).
+- **A tombstone is written before the branch it names is deleted.** Preserving
+  a tip and clearing a live record are separate writes because the deletion
+  they surround is not forced: Git refuses a branch another worktree holds
+  checked out, and a reference-transaction hook can refuse any deletion at all.
+  A caller writes the tombstone while the branch still names the tip, deletes
+  the branch, and clears the record only once the branch has gone, so a refused
+  deletion leaves a branch that still attests its own boundary. Clearing first
+  would lose the tip outright. A tombstone beside a live record, on a branch
+  that is still there, is the state an interrupted deletion leaves, and the
+  sweep leaves it alone: a live branch keeps the record that attests its own
+  boundary, and a tombstone is evidence that a deletion started, not that it
+  finished. The reverse case is ``create``, which retires any tombstone still
+  naming the branch, so no pair of artefacts ever describes one branch as both
+  live and deleted (INV-10).
 
 See ``docs/stack-records.md`` for the contract these methods implement, and
 ``docs/adr-004-shared-stack-records.md`` for why the record is shared.
@@ -73,14 +81,27 @@ class StackRecordWriter(stack_store.StackRecordReader, typ.Protocol):
     def refresh(self, record: stack_records.StackRecord, expected_old: str) -> None:
         """Update an existing record, requiring the current anchor value."""
 
-    def entomb(self, branch: str, tip: str) -> None:
-        """Write the tombstone and remove the live record, in that order.
+    def preserve_tip(self, branch: str, tip: str) -> None:
+        """Write ``branch``'s tombstone, which preserves ``tip`` for its children.
 
         A tombstone is written whether or not ``branch`` had a record of its
         own. That is the common case, not an edge case: a parent created from
         the trunk is not itself stacked and so has no record, yet its tip is
         exactly what a surviving child needs for the ``parent-history-intact``
         gate.
+
+        A caller about to delete the branch writes this first, because the tip
+        is only readable while the branch names it.
+        """
+
+    def clear_record(self, branch: str) -> None:
+        """Remove ``branch``'s live record: its anchor ref and configured values.
+
+        A caller that deletes the branch calls this only after the deletion has
+        happened, so a refusal to delete leaves the record beside the branch it
+        describes. Clearing a record whose branch has already gone removes the
+        anchor the deletion left behind, and is not an error when there is
+        nothing left to clear.
         """
 
     def sweep(self, orphans: cabc.Sequence[str]) -> tuple[str, ...]:
@@ -208,38 +229,6 @@ class GitStackRecordWriter(stack_store.GitStackRecordReader):
             self._undo_write(record, expected_old=expected_old, previous=previous)
             raise
 
-    def entomb(self, branch: str, tip: str) -> None:
-        """Preserve ``tip`` as ``branch``'s tombstone, then clear its record.
-
-        The tombstone is written first and is written whether or not the branch
-        has a record, because the deletion that follows is forced and always
-        succeeds. A crash between the two steps leaves a tombstone beside a live
-        record, and the branch itself is still there. The sweep does not touch
-        that state, because it resolves only records whose branch is gone: a
-        live branch keeps the record that attests its own boundary, and a
-        tombstone is evidence that a deletion started, not that it finished. The
-        reverse order would lose the tip.
-
-        Parameters
-        ----------
-        branch : str
-            Branch about to be deleted.
-        tip : str
-            Commit the branch names now, to preserve for its surviving
-            children.
-
-        Raises
-        ------
-        stack_store.StackRecordError
-            If the tombstone cannot be written. The caller must not delete the
-            branch when this is raised.
-        ValueError
-            If the branch name would be unsafe in a ref path.
-
-        """
-        self._write_tombstone(branch, tip)
-        self._remove_live_record(branch)
-
     def sweep(self, orphans: cabc.Sequence[str]) -> tuple[str, ...]:
         """Clear the records of branches that no longer exist.
 
@@ -333,8 +322,8 @@ class GitStackRecordWriter(stack_store.GitStackRecordReader):
 
         """
         if tip is not None and self.tombstone(branch) is None:
-            self._write_tombstone(branch, tip)
-        self._remove_live_record(branch)
+            self.preserve_tip(branch, tip)
+        self.clear_record(branch)
         return tip is not None
 
     def _write_anchor(
@@ -436,8 +425,28 @@ class GitStackRecordWriter(stack_store.GitStackRecordReader):
                 with contextlib.suppress(GitCommandError):
                     self.repo.git.config("--local", key_path, previous[key.value])
 
-    def _write_tombstone(self, branch: str, tip: str) -> None:
-        """Write the tombstone ref for ``branch``, with a reflog to age it by."""
+    def preserve_tip(self, branch: str, tip: str) -> None:
+        """Write the tombstone ref for ``branch``, with a reflog to age it by.
+
+        Parameters
+        ----------
+        branch : str
+            Branch whose tip is preserved. The ref is written whether or not
+            the branch has a record of its own.
+        tip : str
+            Commit the branch names now, which a surviving child reads as the
+            parent head.
+
+        Raises
+        ------
+        stack_store.StackRecordError
+            If Git refuses the write. The caller must not delete the branch
+            when this is raised: the tombstone is the only evidence of the tip
+            that would survive the deletion.
+        ValueError
+            If the branch name would be unsafe in a ref path.
+
+        """
         ref = stack_records.tombstone_ref_path(branch)
         try:
             self.repo.git.update_ref("--create-reflog", ref, tip)
@@ -446,8 +455,26 @@ class GitStackRecordWriter(stack_store.GitStackRecordReader):
             msg = f"cannot write the tombstone for {branch!r}: {detail}"
             raise stack_store.StackRecordError(msg) from exc
 
-    def _remove_live_record(self, branch: str) -> None:
-        """Remove the anchor ref and the configuration values, if present."""
+    def clear_record(self, branch: str) -> None:
+        """Remove the anchor ref and the configuration values, if present.
+
+        Parameters
+        ----------
+        branch : str
+            Branch whose live record is cleared. A branch that never had a
+            record, and one whose deletion took the configuration with it, are
+            both the state this call asks for rather than errors.
+
+        Raises
+        ------
+        stack_store.StackRecordError
+            If Git refuses the anchor deletion or a value's unset. A caller
+            that has already deleted the branch reports this rather than
+            reading it as a deletion that failed.
+        ValueError
+            If the branch name would be unsafe in a ref path.
+
+        """
         self._delete_ref(stack_records.base_ref_path(branch))
         for key in stack_records.RecordKey:
             self._unset_configuration(f"branch.{branch}.{key.value}")

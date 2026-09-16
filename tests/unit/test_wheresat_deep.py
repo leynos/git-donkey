@@ -485,6 +485,38 @@ def test_a_child_the_repository_would_not_list_is_a_caveat() -> None:
     )
 
 
+def test_a_refused_change_pass_keeps_the_twins_the_tree_pass_found() -> None:
+    """The tree pass stands without the change pass, so its twin is kept.
+
+    The change pass is asked only about what the tree pass left unmatched, and
+    it is not what made the tree pass's answer evidence: a child commit the
+    tree pass matched carried a tree the window holds whatever happens next, so
+    a change pass that could not run costs the scan its own comparison and not
+    the one already made.
+    """
+    graph = _Graph(
+        commits=(_WINDOW_OLDEST, _WINDOW_NEWEST),
+        children=(_CHILD_BELOW, _CHILD_TIP),
+        trees={_CHILD_BELOW: _TREE_ONE, _WINDOW_NEWEST: _TREE_ONE},
+        bases={_CHILD_TIP: (_WINDOW_OLDEST,)},
+        refusals={_Question.PATCH: WheresatGraphError("cannot identify the change")},
+    )
+
+    found = _scan(graph)
+
+    assert found.tree == (_twin(_CHILD_BELOW, _WINDOW_NEWEST),), (
+        "the twin the tree pass matched is kept rather than discarded"
+    )
+    assert not found.patch, "the pass that could not be taken names no twin"
+    assert len(found.warnings) == 1, "and its failure is carried as a caveat"
+    assert "change pass" in found.warnings[0], (
+        "the caveat names the pass that could not be taken"
+    )
+    assert "cannot identify the change" in found.warnings[0], (
+        "and quotes what the repository said, as every fault does"
+    )
+
+
 def test_a_twin_names_the_comparison_that_found_it_and_the_commit_it_matched() -> None:
     """A candidate's source says which comparison, and which commit, it was."""
     twin = _twin(_CHILD_TIP, _WINDOW_NEWEST)

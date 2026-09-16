@@ -240,7 +240,7 @@ def test_a_refresh_that_cannot_write_a_value_restores_the_record_it_found(
     )
 
 
-def test_an_entomb_that_cannot_clear_a_value_reports_the_store_error(
+def test_a_clear_that_cannot_unset_a_value_reports_the_store_error(
     tmp_path: Path,
 ) -> None:
     """A value Git refuses to unset is a record that could not be cleared.
@@ -248,9 +248,9 @@ def test_an_entomb_that_cannot_clear_a_value_reports_the_store_error(
     The refusal is a configuration lock held by another writer, which is the
     state a concurrent ``git config`` leaves behind. Git answers it with a
     status of its own, so the store must not read it as the absent key it also
-    answers with: a caller deciding whether to stop a run needs to be told the
-    record is still there, which is a fact about the record rather than about
-    the command that failed to clear it.
+    answers with: a caller deciding what to report needs to be told the record
+    is still there, which is a fact about the record rather than about the
+    command that failed to clear it.
     """
     repo = make_repo(tmp_path)
     base = repo.head.commit.hexsha
@@ -258,10 +258,11 @@ def test_an_entomb_that_cannot_clear_a_value_reports_the_store_error(
     store = make_writer(repo)
     store.create(make_record(CHILD, base))
     key = next(iter(stack_records.RecordKey))
+    store.preserve_tip(CHILD, base)
     _lock_configuration(repo)
 
     with pytest.raises(stack_store.StackRecordError) as excinfo:
-        store.entomb(CHILD, base)
+        store.clear_record(CHILD)
 
     message = str(excinfo.value)
     assert message.startswith(f"cannot unset 'branch.{CHILD}.{key.value}': "), (
@@ -296,7 +297,8 @@ def test_a_prune_that_cannot_delete_a_tombstone_reports_the_store_error(
     base = repo.head.commit.hexsha
     repo.git.branch(CHILD, base)
     store = make_writer(repo)
-    store.entomb(CHILD, base)
+    store.preserve_tip(CHILD, base)
+    store.clear_record(CHILD)
     backdate_tombstone(repo, CHILD, days=100)
     ref = stack_records.tombstone_ref_path(CHILD)
     _lock_ref(repo, ref)

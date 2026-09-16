@@ -173,7 +173,9 @@ def test_refresh_with_an_empty_expectation_refuses_an_existing_anchor(
         store.refresh(make_record(CHILD, base), expected_old="")
 
 
-def test_entomb_preserves_the_tip_and_clears_the_live_record(tmp_path: Path) -> None:
+def test_an_entombment_preserves_the_tip_and_clears_the_live_record(
+    tmp_path: Path,
+) -> None:
     """The tombstone survives the branch it describes; the live record does not."""
     repo = make_repo(tmp_path)
     base = repo.head.commit.hexsha
@@ -181,25 +183,29 @@ def test_entomb_preserves_the_tip_and_clears_the_live_record(tmp_path: Path) -> 
     store = make_writer(repo)
     store.create(make_record(CHILD, base))
 
-    store.entomb(CHILD, base)
+    store.preserve_tip(CHILD, base)
     delete_branch(repo, CHILD, "-D")
+    store.clear_record(CHILD)
 
     assert store.tombstone(CHILD) == base, "the tip is preserved for the children"
     assert store.read(CHILD) == stack_records.RecordAbsent(), (
         "the live record went with the branch"
     )
     assert namespace_violations(repo) == set(), (
-        "entomb clears the anchor too, so INV-9 holds after a plonk deletion"
+        "clearing the record removes the anchor the deletion left behind, so "
+        "INV-9 holds after a plonk deletion"
     )
 
 
-def test_entomb_records_the_tip_of_a_branch_with_no_record(tmp_path: Path) -> None:
+def test_preserving_a_tip_records_it_for_a_branch_with_no_record(
+    tmp_path: Path,
+) -> None:
     """A parent created from the trunk has no record, yet its tip matters."""
     repo = make_repo(tmp_path)
     base = repo.head.commit.hexsha
     repo.git.branch(CHILD, base)
 
-    make_writer(repo).entomb(CHILD, base)
+    make_writer(repo).preserve_tip(CHILD, base)
 
     assert make_writer(repo).tombstone(CHILD) == base, (
         "the common case is a branch with no record of its own"
@@ -214,7 +220,8 @@ def test_creating_a_record_retires_a_tombstone_for_the_same_branch(
     base = repo.head.commit.hexsha
     repo.git.branch(CHILD, base)
     store = make_writer(repo)
-    store.entomb(CHILD, base)
+    store.preserve_tip(CHILD, base)
+    store.clear_record(CHILD)
 
     store.create(make_record(CHILD, base))
 
@@ -267,7 +274,8 @@ def test_a_record_round_trips_whatever_shape_the_branch_name_has(
     assert store.read(branch) == record, "the name round-trips through the store"
     assert not store.orphans(), "the configuration section is matched exactly"
     assert namespace_violations(repo) == set(), "INV-9 holds for the nested name"
-    store.entomb(branch, base)
+    store.preserve_tip(branch, base)
+    store.clear_record(branch)
     assert store.tombstone(branch) == base, "the tombstone mirrors the same layout"
 
 
@@ -276,7 +284,7 @@ def test_a_record_round_trips_whatever_shape_the_branch_name_has(
     [
         ("create-a-second-record", set()),
         ("refresh", set()),
-        ("entomb-without-deleting", set()),
+        ("preserve-without-deleting", set()),
         ("delete-through-plonk", set()),
         ("delete-through-git", {CHILD}),
         ("delete-by-ref-surgery", {CHILD}),
@@ -315,8 +323,8 @@ def _perform(
             store.create(make_record(NEIGHBOUR, base))
         case "refresh":
             store.refresh(make_record(CHILD, base), expected_old=base)
-        case "entomb-without-deleting":
-            store.entomb(CHILD, base)
+        case "preserve-without-deleting":
+            store.preserve_tip(CHILD, base)
         case _:
             _perform_destructive(store, repo, base, operation)
 
@@ -330,8 +338,9 @@ def _perform_destructive(
     """Apply one named operation that removes the child's branch or its ref."""
     match operation:
         case "delete-through-plonk":
-            store.entomb(CHILD, base)
+            store.preserve_tip(CHILD, base)
             delete_branch(repo, CHILD, "-D")
+            store.clear_record(CHILD)
         case "delete-through-git":
             delete_branch(repo, CHILD)
         case "delete-by-ref-surgery":
