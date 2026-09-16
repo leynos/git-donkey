@@ -136,6 +136,28 @@ class _Trunk:
     commit: str
 
 
+@dataclasses.dataclass(frozen=True, slots=True)
+class _Base:
+    """The base a new branch is created from, as this run resolved it.
+
+    The ref and the commit travel together because they are one observation: a
+    worktree started from one while the record names the other would describe a
+    birth that never happened.
+
+    Parameters
+    ----------
+    ref
+        Ref the base was selected by, as the selection named it.
+    commit
+        Commit that ref resolved to, or ``None`` when no ref of that name
+        exists here.
+
+    """
+
+    ref: str
+    commit: str | None
+
+
 def _fetch_remote_default_ref(context: _DonkeyContext) -> tuple[str, str]:
     """Fetch the principal remote's advertised default branch.
 
@@ -181,7 +203,6 @@ def _local_trunk(
     context: _DonkeyContext,
     *,
     default_branch: str,
-    base_branch: str,
 ) -> _Trunk | None:
     """Return the trunk from local refs only, or ``None`` when it is unknown.
 
@@ -189,6 +210,10 @@ def _local_trunk(
     default when the workflow selected the base itself, and from the remote's
     own ``HEAD`` alias otherwise, so that a branch created by an explicit base
     costs no network beyond the fetch every run already performs.
+
+    Whether a base *is* the trunk is not decided here: a base named for the
+    default branch still goes to the comparison, because a local branch and the
+    remote-tracking ref of one name are two refs that can disagree.
 
     An unknown trunk is not an error. It is the absence of the comparison that
     decides whether a branch is stacked, and an unverifiable record is worse
@@ -203,9 +228,6 @@ def _local_trunk(
     default_branch : str
         Name of the branch that would be the trunk, as discovered or as the
         remote's ``HEAD`` alias names it.
-    base_branch : str
-        Ref the new branch's base was selected by. A base that is the default
-        branch by name needs no further comparison.
 
     Returns
     -------
@@ -213,7 +235,7 @@ def _local_trunk(
         The trunk and its commit, or ``None`` when either is unknown.
 
     """
-    if not default_branch or base_branch == default_branch:
+    if not default_branch:
         return None
     trunk_ref = f"refs/remotes/{context.remote}/{default_branch}"
     if not helpers._ref_exists(context.repo_home, trunk_ref):
@@ -513,12 +535,12 @@ def _stack_context(
     context: _DonkeyContext,
     *,
     trunk: _Trunk | None,
-    base_branch: str,
+    base: _Base,
 ) -> donkey_worktrees._StackContext | None:
-    """Return what to record for a branch created from ``base_branch``.
+    """Return what to record for a branch created from ``base``.
 
     A branch created at the trunk commit is not stacked (INV-11), so it is not
-    recorded and no writer is constructed for it. A base that resolves to no
+    recorded and no writer is constructed for it. A base that resolved to no
     commit at all is not recorded either: there is no start point to compare
     against the trunk, and the creation step is about to refuse the name.
     Every other base is the parent the record names, as the caller selected it.
@@ -530,8 +552,8 @@ def _stack_context(
         written to.
     trunk : _Trunk | None
         The resolved trunk, or ``None`` when it could not be resolved.
-    base_branch : str
-        Ref the new branch's base was selected by.
+    base : _Base
+        The base as this run resolved it, frozen before the worktree exists.
 
     Returns
     -------
@@ -539,17 +561,12 @@ def _stack_context(
         The record to write, or ``None`` when the branch is not stacked.
 
     """
-    if trunk is None:
+    if trunk is None or base.commit is None:
         return None
-    base_commit = _base_commit(context, base_branch)
-    if base_commit is None:
-        return None
-    if not stack_records.should_record(
-        base_branch, base_commit, trunk.ref, trunk.commit
-    ):
+    if not stack_records.should_record(base.ref, base.commit, trunk.ref, trunk.commit):
         return None
     return donkey_worktrees._StackContext(
-        parent=base_branch,
+        parent=base.ref,
         writer=stack_store.GitStackRecordWriter(context.repo_home),
     )
 
@@ -558,7 +575,7 @@ def _create_worktree(
     context: _DonkeyContext,
     *,
     branch_name: str,
-    base_branch: str,
+    base: _Base,
     trunk: _Trunk | None,
 ) -> Path:
     """Create the worktree for ``branch_name`` and return where it was created.
@@ -569,10 +586,8 @@ def _create_worktree(
     about where the worktree is.
 
     The stack record to write is decided here, from the resolved trunk and the
-    base's resolved commit. Deciding it here rather than inside the creation
-    step keeps the one place that resolves the base and the one place that
-    freezes the start point adjacent, so neither can observe a different commit
-    from the other.
+    base. Both travel with the request, so the commit the record names is the
+    commit the worktree is started from, however the base moves in between.
 
     Parameters
     ----------
@@ -581,8 +596,8 @@ def _create_worktree(
         created under.
     branch_name : str
         Branch the new worktree checks out.
-    base_branch : str
-        Ref the new branch is created from.
+    base : _Base
+        Ref the new branch is created from, and the commit it resolved to.
     trunk : _Trunk | None
         Trunk the base is compared against to decide whether a record is
         written, or ``None`` when the trunk could not be identified.
@@ -603,9 +618,10 @@ def _create_worktree(
     target_path = (context.worktrees_root / branch_name).resolve()
     request = donkey_worktrees._WorktreeRequest(
         branch_name=branch_name,
-        base_branch=base_branch,
+        base_branch=base.ref,
+        base_commit=base.commit,
         target_path=target_path,
-        stack=_stack_context(context, trunk=trunk, base_branch=base_branch),
+        stack=_stack_context(context, trunk=trunk, base=base),
     )
     worktree_context = donkey_worktrees._WorktreeContext(
         repo_home=context.repo_home,
@@ -750,11 +766,7 @@ def run_git_donkey(
     else:
         base_branch = choose_base_branch(saved_cwd_branch, origin_branch)
         default_branch = _remote_head_alias(context)
-    trunk = _local_trunk(
-        context,
-        default_branch=default_branch,
-        base_branch=base_branch,
-    )
+    trunk = _local_trunk(context, default_branch=default_branch)
 
     _maybe_update_base_branch(
         context,
@@ -763,12 +775,18 @@ def run_git_donkey(
         base_kind=base_kind,
     )
 
+    # The base is resolved once, after the pull that may have moved it, and that
+    # one commit is both the start point the worktree is created from and the
+    # boundary its birth record keeps, so neither can name a commit the other
+    # never saw. A base that resolves to nothing records nothing.
+    base = _Base(ref=base_branch, commit=_base_commit(context, base_branch))
+
     context.worktrees_root.mkdir(parents=True, exist_ok=True)
 
     target_path = _create_worktree(
         context,
         branch_name=branch_name,
-        base_branch=base_branch,
+        base=base,
         trunk=trunk,
     )
 

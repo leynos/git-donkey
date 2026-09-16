@@ -53,10 +53,10 @@ class _WorktreeContext:
 class _StackContext:
     """What a branch born from a non-trunk base records about its parent.
 
-    ``git donkey`` resolves both values before the worktree is created, so the
-    decision to record is made once, from the same frozen base commit the
-    worktree is started from, rather than from a second observation that could
-    disagree with it.
+    ``git donkey`` resolves the base's commit before the worktree is created and
+    carries it on the request, so the decision to record and the start point the
+    branch is created from are one observation rather than two that could
+    disagree.
 
     Parameters
     ----------
@@ -84,6 +84,11 @@ class _WorktreeRequest:
         Existing branch or fully qualified remote ref used for a new branch.
     target_path
         Filesystem path for the new worktree checkout.
+    base_commit
+        Commit the base resolved to, frozen before the worktree was created, or
+        ``None`` when no ref of that name is in this repository. It is the one
+        commit the branch is started from and recorded at, so a base that moves
+        while the branch is being created cannot split the two.
     stack
         What to record at branch birth, or ``None`` when the resolved base is
         the trunk and the branch is therefore not stacked.
@@ -93,6 +98,7 @@ class _WorktreeRequest:
     branch_name: str
     target_path: Path
     base_branch: str
+    base_commit: str | None = None
     stack: _StackContext | None = None
 
 
@@ -367,9 +373,16 @@ def _add_worktree_for_new_branch(
             context=context,
             base_branch=request.base_branch,
         )
-        # Freeze the selected ref once and never track the remote default branch
-        # from a new feature branch, even with branch.autoSetupMerge enabled.
-        start_point = context.repo_home.commit(request.base_branch).hexsha
+        # The branch starts from the commit the base was already resolved to, so
+        # the worktree and any record of it name one commit however the base
+        # moved in the meantime. A base that resolved to nothing is put to Git
+        # by name, which refuses it in Git's own words rather than in a
+        # traceback from a revision lookup.
+        start_point = request.base_commit
+        if start_point is None:
+            start_point = context.repo_home.commit(request.base_branch).hexsha
+        # Never track the remote default branch from a new feature branch, even
+        # with branch.autoSetupMerge enabled.
         context.repo_home.git.worktree(
             "add",
             "--no-track",
@@ -383,12 +396,15 @@ def _add_worktree_for_new_branch(
 
     # The record is written after the branch exists, because the anchor is a
     # ref and the record's whole point is to keep the boundary reachable for as
-    # long as the branch it belongs to.
-    if request.stack is not None:
+    # long as the branch it belongs to. Its boundary is the frozen commit rather
+    # than the start point above, and a stack context is only built when there
+    # was one: a boundary resolved after the branch existed would be evidence
+    # about a different birth.
+    if request.stack is not None and request.base_commit is not None:
         _write_birth_record(
             branch=request.branch_name,
             stack=request.stack,
-            base=start_point,
+            base=request.base_commit,
         )
 
 

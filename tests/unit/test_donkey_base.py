@@ -115,7 +115,11 @@ def test_a_base_the_repository_does_not_hold_is_not_recorded(
     """A base that resolves to no commit is refused by Git, not by a traceback."""
     context = _context(tmp_path)
 
-    stack = donkey._stack_context(context, trunk=_TRUNK, base_branch="no-such-branch")
+    stack = donkey._stack_context(
+        context,
+        trunk=_TRUNK,
+        base=donkey._Base(ref="no-such-branch", commit=None),
+    )
 
     assert stack is None, (
         "a base with no start point to freeze is one no record can be written from"
@@ -127,10 +131,17 @@ def test_a_base_only_a_remote_tracking_ref_names_is_resolved(
 ) -> None:
     """A base that is a remote-tracking ref resolves through that ref."""
     context = _context(tmp_path)
-    base = context.repo_home.head.commit.hexsha
-    context.repo_home.git.update_ref("refs/remotes/origin/feature", base)
+    head = context.repo_home.head.commit.hexsha
+    context.repo_home.git.update_ref("refs/remotes/origin/feature", head)
 
-    stack = donkey._stack_context(context, trunk=_TRUNK, base_branch="feature")
+    stack = donkey._stack_context(
+        context,
+        trunk=_TRUNK,
+        base=donkey._Base(
+            ref="feature",
+            commit=donkey._base_commit(context, "feature"),
+        ),
+    )
 
     assert stack is not None, (
         "the branch was created from a base that exists, so the record is owed"
@@ -138,6 +149,38 @@ def test_a_base_only_a_remote_tracking_ref_names_is_resolved(
     assert stack.parent == "feature", (
         "the parent the record names is the base the caller selected"
     )
-    assert donkey._base_commit(context, "feature") == base, (
+    assert donkey._base_commit(context, "feature") == head, (
         "and the commit the record freezes is the one the remote-tracking ref names"
+    )
+
+
+def test_a_base_named_for_the_trunk_is_still_weighed_by_commit(
+    tmp_path: Path,
+) -> None:
+    """A base named as the default branch is recorded when its commit differs.
+
+    The default branch is discovered from the remote, and a local branch of that
+    name is a different ref that may hold commits the remote's does not. The
+    branch is then created from a commit the trunk does not have, which is what
+    being stacked means here, so the record is owed rather than skipped on the
+    strength of the two refs sharing a name.
+    """
+    context = _context(tmp_path)
+    head = context.repo_home.head.commit.hexsha
+    trunk = donkey._Trunk(
+        ref=f"refs/remotes/{context.remote}/main",
+        commit="f" * 40,
+    )
+
+    stack = donkey._stack_context(
+        context,
+        trunk=trunk,
+        base=donkey._Base(ref="main", commit=head),
+    )
+
+    assert stack is not None, (
+        "a base at a commit the trunk does not have is a parent to record"
+    )
+    assert stack.parent == "main", (
+        "the parent is the name the caller selected, which is the branch they hold"
     )
