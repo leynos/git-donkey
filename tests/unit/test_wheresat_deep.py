@@ -25,6 +25,7 @@ where the caveats are rendered — is pinned by the command-line suites in
 from __future__ import annotations
 
 import dataclasses
+import enum
 import typing as typ
 
 from git_donkey import wheresat_deep
@@ -59,6 +60,24 @@ _PATCH_TWO = "d" * 40
 _WIDE = 200
 
 
+class _Question(enum.StrEnum):
+    """The five questions the comparison puts, each of which a case may refuse.
+
+    The double answers the port by question, so a case that wants the
+    comparison to meet a failure has to name one. Naming it as a member rather
+    than as a bare string is what keeps a case about a refusal honest: a
+    question spelled wrong is then a missing member rather than a refusal the
+    double would never have raised, which would leave the case passing while
+    the comparison took the path it was supposed to be stopped on.
+    """
+
+    HISTORY = "history"
+    RANGE = "range"
+    TREE = "tree"
+    BASES = "bases"
+    PATCH = "patch"
+
+
 @dataclasses.dataclass(frozen=True, slots=True)
 class _Graph:
     """A graph whose history answers the case supplies, recording its questions.
@@ -84,9 +103,8 @@ class _Graph:
     patches : collections.abc.Mapping[str, str | None]
         Patch identifier per commit, as the diff pipeline would report it. A
         commit the case left out has no patch to identify.
-    refusals : collections.abc.Mapping[str, Exception]
-        Failure to raise per question, named by the question: ``history``,
-        ``range``, ``tree``, ``bases``, or ``patch``.
+    refusals : collections.abc.Mapping[_Question, Exception]
+        Failure to raise per question, keyed by the member naming it.
     limits : list[int | None]
         The ``limit`` of every history read, in the order the reads were made.
     ranges : list[tuple[str, str]]
@@ -103,7 +121,9 @@ class _Graph:
     trees: cabc.Mapping[str, str] = dataclasses.field(default_factory=dict)
     bases: cabc.Mapping[str, tuple[str, ...]] = dataclasses.field(default_factory=dict)
     patches: cabc.Mapping[str, str | None] = dataclasses.field(default_factory=dict)
-    refusals: cabc.Mapping[str, Exception] = dataclasses.field(default_factory=dict)
+    refusals: cabc.Mapping[_Question, Exception] = dataclasses.field(
+        default_factory=dict
+    )
     limits: list[int | None] = dataclasses.field(default_factory=list)
     ranges: list[tuple[str, str]] = dataclasses.field(default_factory=list)
     merges: list[tuple[str, str]] = dataclasses.field(default_factory=list)
@@ -124,7 +144,7 @@ class _Graph:
         }
         object.__setattr__(self, "trees", generated | dict(self.trees))
 
-    def _refuse(self, question: str) -> None:
+    def _refuse(self, question: _Question) -> None:
         """Raise the failure the case named for ``question``, if it named one."""
         refusal = self.refusals.get(question)
         if refusal is not None:
@@ -143,7 +163,7 @@ class _Graph:
             The commits the bound keeps, oldest first.
 
         """
-        self._refuse("history")
+        self._refuse(_Question.HISTORY)
         self.limits.append(limit)
         if limit is None:
             return self.commits
@@ -159,13 +179,13 @@ class _Graph:
         not_reachable_from: str | None = None,
     ) -> tuple[str, ...]:
         """Return the child's own commits, which the case supplies."""
-        self._refuse("range")
+        self._refuse(_Question.RANGE)
         self.ranges.append((exclude, include))
         return self.children
 
     def tree_of(self, rev: str) -> str:
         """Return the tree the case gave ``rev``, or refuse the question."""
-        self._refuse("tree")
+        self._refuse(_Question.TREE)
         try:
             return self.trees[rev]
         except KeyError as exc:
@@ -174,13 +194,13 @@ class _Graph:
 
     def merge_bases(self, left: str, right: str) -> tuple[str, ...]:
         """Return the best common ancestors the case gave ``left``."""
-        self._refuse("bases")
+        self._refuse(_Question.BASES)
         self.merges.append((left, right))
         return self.bases.get(left, ())
 
     def cumulative_patch_identifier(self, base: str, tip: str) -> str | None:
         """Return the patch identifier the case gave ``tip``."""
-        self._refuse("patch")
+        self._refuse(_Question.PATCH)
         self.diffs.append((base, tip))
         return self.patches.get(tip)
 
@@ -424,7 +444,9 @@ def test_a_target_the_repository_would_not_list_is_a_caveat() -> None:
     graph = _Graph(
         commits=(_WINDOW_NEWEST,),
         children=(_CHILD_TIP,),
-        refusals={"history": ShallowHistoryError("graft: deepen the clone and retry")},
+        refusals={
+            _Question.HISTORY: ShallowHistoryError("graft: deepen the clone and retry")
+        },
     )
 
     found = _scan(graph)
@@ -442,7 +464,9 @@ def test_a_child_the_repository_would_not_list_is_a_caveat() -> None:
     graph = _Graph(
         commits=(_WINDOW_NEWEST,),
         children=(_CHILD_TIP,),
-        refusals={"range": WheresatGraphError("cannot list the child's commits")},
+        refusals={
+            _Question.RANGE: WheresatGraphError("cannot list the child's commits")
+        },
     )
 
     found = _scan(graph)
