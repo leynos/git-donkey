@@ -392,9 +392,7 @@ def test_an_established_boundary_passed_every_gate_it_applied(case: Case) -> Non
     """INV-4: the gates are a conjunction, and the verdict is what it says."""
     assessment = assessment_of(case)
 
-    assert EXIT_CODES[type(assessment)] in set(EXIT_CODES.values()), (
-        "every verdict has an exit status of its own"
-    )
+    assert type(assessment) in EXIT_CODES, "every verdict has an exit status of its own"
     if not isinstance(assessment, Established):
         return
     refused = [

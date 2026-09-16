@@ -31,8 +31,8 @@ Feature: Locate the replay boundary for a squash-merged parent
   Scenario: Two inferred candidates remain unresolved
     Given no stack record
     And the parent branch was rebased before it was merged
-    And only content-comparison evidence remains
     And two distinct commits match the squashed parent change
+    And only content-comparison evidence remains
     When I run git wheresat with deep scanning enabled
     Then the report lists both candidates with their evidence tier
     And the report states the unresolved distinction between them

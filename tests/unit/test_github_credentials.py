@@ -60,6 +60,11 @@ def _refuse_at(
     monkeypatch.setattr(target, name, refuse)
 
 
+def _interrupt(*args: object, **kwargs: object) -> typ.NoReturn:
+    """Report the interrupt a case makes the write meet."""
+    raise KeyboardInterrupt
+
+
 def _is_open(descriptor: int) -> bool:
     """Return whether ``descriptor`` is still open in this process."""
     try:
@@ -139,6 +144,32 @@ def test_a_write_that_cannot_open_leaves_no_copy_of_the_new_token(
     assert not _is_open(typ.cast("int", opened[0])), (
         "the descriptor the temporary file was opened with is closed, so "
         "nothing can read the token through the removed file"
+    )
+
+
+def test_an_interrupted_write_leaves_no_copy_of_the_new_token(
+    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A write stopped by anything at all is cleaned up like one that failed.
+
+    An interrupt is not an ``OSError``, so cleanup reached only from an
+    ``OSError`` handler would leave the temporary file — and the token in the
+    clear inside it — beside the credential until the process ended. The
+    previous credential is still the one in place, because the interrupt
+    arrived before the rename could publish the new token.
+    """
+    path = _stored(tmp_path)
+    monkeypatch.setattr(pathlib.Path, "replace", _interrupt)
+
+    with pytest.raises(KeyboardInterrupt):
+        github_credentials.write_token(path, _INCOMING, None)
+
+    assert _beside(path) == [path.name], (
+        "the temporary file is removed however the write stopped, so the token "
+        "is not left in the clear beside the credential"
+    )
+    assert path.read_text(encoding="utf-8") == f"{_PREVIOUS}\n", (
+        "an interrupt before the rename leaves the credential it was to replace"
     )
 
 

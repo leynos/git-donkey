@@ -72,7 +72,7 @@ def commit_file(repo: Repo, path: Path, text: str, message: str) -> str:
         The ID of the commit that wrote the file.
 
     """
-    path.write_text(text)
+    path.write_text(text, encoding="utf-8")
     repo.git.add(path.as_posix())
     repo.git.commit("-m", message)
     return repo.head.commit.hexsha

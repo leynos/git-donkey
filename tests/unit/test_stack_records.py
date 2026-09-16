@@ -14,7 +14,9 @@ is covered in ``test_stack_store.py``; the lifecycle they compose into is in
 from __future__ import annotations
 
 import shutil
-import subprocess  # ruff: ignore[suspicious-subprocess-import] - Git's own ref checker is the only oracle for what Git accepts.
+
+# Git's own ref checker is the only oracle for what Git accepts.
+import subprocess  # ruff: ignore[suspicious-subprocess-import]
 
 import pytest
 
@@ -378,7 +380,8 @@ def _git_accepts_ref(ref: str) -> bool:
     git = shutil.which("git")
     if git is None:
         pytest.fail("this test requires Git on PATH to be an oracle")
-    completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] - resolved executable, no shell
+    # Resolved executable, no shell.
+    completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true]
         [git, "check-ref-format", ref],
         capture_output=True,
         check=False,
