@@ -426,7 +426,7 @@ names = []
 [tool.skylos.whitelist.documented]
 
 [build-system]
-requires = ["hatchling", "hatch-build-scripts>=1.0.0,<2", "docutils>=0.22.4,<0.24"]
+requires = ["hatchling", "hatch-build-scripts>=1.0.0,<2", "docutils>=0.23,<0.24"]
 build-backend = "hatchling.build"
 
 # Generate manuals in the isolated build environment, not at installation time.
