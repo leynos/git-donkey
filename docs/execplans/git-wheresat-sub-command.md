@@ -4969,9 +4969,9 @@ REQ-identities     -> DES-evidence-model-> EP-M6  -> test_wheresat_policy.py::te
 REQ-record-read    -> DES-stack-record  -> EP-M6  -> test_wheresat_policy.py::test_a_record_outranks_computed_evidence_naming_another_commit
 REQ-integration    -> DES-gates         -> EP-M6  -> test_wheresat_gates.py::test_one_gate_failing_alone_refuses_the_boundary
 REQ-patch-caveat   -> DES-gates         -> EP-M6  -> test_wheresat_properties.py::test_inferred_evidence_never_changes_the_verdict
-REQ-read-only      -> DES-safety        -> EP-M7  -> test_wheresat_read_only.py::test_every_vector_leaves_the_repository_alone
+REQ-read-only      -> DES-safety        -> EP-M7  -> test_wheresat_read_only.py::TestTheMatrix::test_every_vector_leaves_the_repository_alone
 REQ-fork-point     -> DES-evidence-model-> EP-M8  -> test_wheresat_policy.py::test_two_independent_derived_sources_may_establish
-REQ-refusal        -> DES-gates         -> EP-M8  -> test_wheresat_read_only.py::test_a_refused_run_names_its_gate_and_prints_no_replay_command
+REQ-refusal        -> DES-gates         -> EP-M8  -> test_wheresat_read_only.py::TestThePathsTheVectorsReach::test_a_refused_run_names_its_gate_and_prints_no_replay_command
 REQ-parent-pr      -> DES-github-adapter-> EP-M10 -> test_wheresat_github.py::test_parent_metadata_contract
 REQ-pr-head        -> DES-evidence-model-> EP-M10 -> git_wheresat.feature::"Established by pull request head"
 ```
@@ -5817,12 +5817,15 @@ unrecorded request fails;
 error classes. Conformance check: no live network access in the suite; the
 `Authorization` header is filtered from every cassette; the association search
 is bounded and reports truncation; no cassette was hand-edited. Recovery:
-revert; cassettes are additive files. Remaining gaps: the report's rebase plan
-is completed here — the backup ref the ``backupRef`` key has been holding a
-place for, the statement of the child tip the answer was computed against, and
-the full 40-character object IDs the design review requires, which the text
-rendering currently abbreviates while the envelope carries them (see the
-Decision log, EP-M9).
+revert; cassettes are additive files. Remaining gaps: none for the rebase plan,
+which the text report now carries in full. The backup ref the ``backupRef`` key
+held a place for, the statement of the child tip the answer was computed
+against, and the full 40-character object IDs the design review requires are
+rendered in the text report as well as in the envelope: the commands a reader
+pastes name the target, the boundary, and the child tip in full, because an
+abbreviation is resolved against whatever the repository holds when it is read
+and a replay runs later than the run that proposed it (see the Decision log,
+EP-M9).
 
 ## Concrete steps
 
