@@ -353,14 +353,16 @@ def test_a_stack_member_this_version_cannot_read_refuses() -> None:
         _URL: _StubResponse(200, body={"stack": {"position": 3}}),
         _STACKS_URL: _StubResponse(
             200,
-            body={
-                "pull_requests": [
-                    "a member this version cannot read",
-                    {"number": 79},
-                    {"number": 80},
-                    {"number": 81},
-                ]
-            },
+            body=[
+                {
+                    "pull_requests": [
+                        "a member this version cannot read",
+                        {"number": 79},
+                        {"number": 80},
+                        {"number": 81},
+                    ]
+                }
+            ],
         ),
     })
 
@@ -374,6 +376,45 @@ def test_a_stack_member_this_version_cannot_read_refuses() -> None:
     assert "does not understand" in str(raised.value), (
         "the refusal should say the body could not be read rather than name a "
         f"parent; it says {raised.value!r}"
+    )
+
+
+def test_a_stack_member_that_names_no_number_refuses() -> None:
+    """A member naming no number would answer with nothing, so it refuses.
+
+    A member that is readable but names no pull request resolves to ``None``,
+    which is the same answer as a pull request GitHub records no stack for.
+    Reading it as the bottom of a stack would report a parent this run never
+    found, and name a different pull request than the one below, so the member
+    is refused where it is resolved rather than answered.
+    """
+    session = _RoutedSession({
+        _URL: _StubResponse(200, body={"stack": {"position": 3}}),
+        _STACKS_URL: _StubResponse(
+            200,
+            body=[
+                {
+                    "pull_requests": [
+                        {"number": 79},
+                        {"title": "a member that names no pull request"},
+                        {"number": 81},
+                        {"number": 82},
+                    ]
+                }
+            ],
+        ),
+    })
+
+    with pytest.raises(WheresatGitHubError) as raised:
+        _client(session).stack_parent(_IDENTITY)
+
+    assert session.calls == [_URL, _STACKS_URL], (
+        "the refusal should come from the stack the pull request names; "
+        f"the adapter asked for {session.calls!r}"
+    )
+    assert "position 2" in str(raised.value), (
+        "the refusal should name the position that answered nothing; "
+        f"it says {raised.value!r}"
     )
 
 

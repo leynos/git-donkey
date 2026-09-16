@@ -452,7 +452,10 @@ def test_a_window_that_cut_the_scan_short_says_so_and_changes_nothing(
         "child's content does not match"
     )
     assert len(_caveats(run)) == 1, "the window that cut the scan short is stated once"
-    assert "1" in _caveats(run)[0], "the caveat names the window the run asked for"
+    assert str(narrow.window) in _caveats(run)[0].split(), (
+        "the caveat names the window the run asked for, as the token that names it "
+        "rather than as a substring any longer number would also carry"
+    )
     assert not _caveats(whole), "the wider window had nothing to report"
     assert run.exit_code == whole.exit_code, (
         "a comparison that read less may not change the verdict: what it would "

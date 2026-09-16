@@ -54,6 +54,7 @@ from tests.unit.wheresat_parents_helpers import (
     CHILD_BRANCH,
     CHILD_IDENTITY,
     DECOY_IDENTITY,
+    FOREIGN_IDENTITY,
     PARENT_IDENTIFICATION,
     PARENT_IDENTITY,
     SECOND_CHILD_IDENTITY,
@@ -81,7 +82,7 @@ def test_a_named_parent_is_read_from_the_forge(
     recording_recorder: RecordingRecorder,
 ) -> None:
     """A parent the user named is the whole of the ladder's work."""
-    forge = Forge(payloads={PR_IDENTITY.number: parent_pull_request()})
+    forge = Forge(payloads={PR_IDENTITY: parent_pull_request()})
     opener = Opener(forge=forge)
     records = Records(record=stacked_on(PR_IDENTITY))
 
@@ -96,7 +97,7 @@ def test_a_named_parent_is_read_from_the_forge(
         "the run should answer about the pull request it was told to consult"
     )
     assert identified.faults == (), "a parent the forge named is no fault"
-    assert forge.read == [PR_IDENTITY.number], (
+    assert forge.read == [PR_IDENTITY], (
         "a named parent should be the only pull request read"
     )
     assert not records.reads, (
@@ -104,6 +105,48 @@ def test_a_named_parent_is_read_from_the_forge(
     )
     assert recording_recorder.outcomes(PARENT_IDENTIFICATION) == ["found"], (
         "the identification should be recorded as found"
+    )
+
+
+def test_a_named_parent_carries_the_answer_its_own_repository_holds(
+    recording_recorder: RecordingRecorder,
+) -> None:
+    """A pull request number names a pull request only within its repository.
+
+    The child's own pull request and the parent named here share a number and
+    differ in repository, so the forge holds two answers that a mapping keyed by
+    number could not hold at once: a question about either would be answered
+    with the other's payload. The named parent is the shortest rung that reaches
+    a payload, so it is where the two are told apart, and the child's answer is
+    seeded last so that a forge holding one answer for the shared number would
+    be holding that one.
+    """
+    foreign_head = "parent-of-another-repository"
+    forge = Forge(
+        payloads={
+            FOREIGN_IDENTITY: parent_pull_request(
+                identity=FOREIGN_IDENTITY,
+                head_ref=foreign_head,
+                head_repository=FOREIGN_IDENTITY.repository,
+            ),
+            CHILD_IDENTITY: child_payload(),
+        }
+    )
+
+    identified = ask(
+        boundary_request(parent=FOREIGN_IDENTITY),
+        search_bounds(),
+        run=Run(opener=Opener(forge=forge)),
+    )
+
+    assert identified.parent is not None, "the named parent should have been read"
+    assert identified.parent.head_ref == foreign_head, (
+        "the payload read is the one held for the repository the number was "
+        "asked under, not the child's payload for the same number"
+    )
+    assert forge.read == [FOREIGN_IDENTITY], (
+        "the question is recorded as the pull request whole, so two repositories "
+        "that share a number are two questions rather than one"
     )
 
 
@@ -309,11 +352,11 @@ def test_the_childs_own_pull_request_is_walked_past(
     """
     forge = Forge(
         payloads={
-            CHILD_IDENTITY.number: child_payload(),
-            PARENT_IDENTITY.number: parent_payload(),
+            CHILD_IDENTITY: child_payload(),
+            PARENT_IDENTITY: parent_payload(),
         },
-        stacks={CHILD_IDENTITY.number: None},
-        bodies={CHILD_IDENTITY.number: SILENT_BODY},
+        stacks={CHILD_IDENTITY: None},
+        bodies={CHILD_IDENTITY: SILENT_BODY},
         page=association_page({
             CHILD_TIP: (CHILD_IDENTITY,),
             CHILD_BELOW: (PARENT_IDENTITY,),
@@ -331,11 +374,14 @@ def test_the_childs_own_pull_request_is_walked_past(
     assert identified.parent.identity == PARENT_IDENTITY, (
         "the parent is the association that is not the child's own pull request"
     )
-    assert forge.read == [CHILD_IDENTITY.number, PARENT_IDENTITY.number], (
+    assert forge.read == [CHILD_IDENTITY, PARENT_IDENTITY], (
         "the child's own pull request is read before the parent's"
     )
-    assert forge.bodies_read == [CHILD_IDENTITY.number], (
+    assert forge.bodies_read == [CHILD_IDENTITY], (
         "the child's body is read once, before the walk continues past the child"
+    )
+    assert history.revisions == [CHILD_TIP], (
+        "the walk should read the history from the child's own tip"
     )
     assert identified.faults == (), "a parent the search found is no fault"
 
@@ -346,10 +392,10 @@ def test_a_native_stack_names_the_parent_before_the_walk_continues(
     """A stack GitHub records is a statement, and outranks an inference."""
     forge = Forge(
         payloads={
-            CHILD_IDENTITY.number: child_payload(stacked=True),
-            PARENT_IDENTITY.number: parent_payload(),
+            CHILD_IDENTITY: child_payload(stacked=True),
+            PARENT_IDENTITY: parent_payload(),
         },
-        stacks={CHILD_IDENTITY.number: PARENT_IDENTITY},
+        stacks={CHILD_IDENTITY: PARENT_IDENTITY},
         page=association_page({
             CHILD_TIP: (CHILD_IDENTITY,),
             CHILD_BELOW: (DECOY_IDENTITY,),
@@ -367,7 +413,7 @@ def test_a_native_stack_names_the_parent_before_the_walk_continues(
     assert identified.parent.identity == PARENT_IDENTITY, (
         "the pull request below the child in the stack is the parent"
     )
-    assert DECOY_IDENTITY.number not in forge.read, (
+    assert DECOY_IDENTITY not in forge.read, (
         "the association below the child should not be reached once the stack answers"
     )
     assert not forge.bodies_read, "a stronger rung answered, so no body should be read"
@@ -385,13 +431,13 @@ def test_a_second_child_head_is_not_asked_for_a_stack(
     """
     forge = Forge(
         payloads={
-            CHILD_IDENTITY.number: child_payload(),
-            SECOND_CHILD_IDENTITY.number: parent_pull_request(
+            CHILD_IDENTITY: child_payload(),
+            SECOND_CHILD_IDENTITY: parent_pull_request(
                 identity=SECOND_CHILD_IDENTITY, head_ref=CHILD_BRANCH
             ),
         },
-        stacks={CHILD_IDENTITY.number: None},
-        bodies={CHILD_IDENTITY.number: SILENT_BODY},
+        stacks={CHILD_IDENTITY: None},
+        bodies={CHILD_IDENTITY: SILENT_BODY},
         page=association_page({
             CHILD_TIP: (CHILD_IDENTITY,),
             CHILD_BELOW: (SECOND_CHILD_IDENTITY,),
@@ -409,11 +455,14 @@ def test_a_second_child_head_is_not_asked_for_a_stack(
         "neither child pull request should be reported as the parent"
     )
     assert identified.faults == (), "reading two child pull requests is no fault"
-    assert forge.read == [CHILD_IDENTITY.number, SECOND_CHILD_IDENTITY.number], (
+    assert forge.read == [CHILD_IDENTITY, SECOND_CHILD_IDENTITY], (
         "both pull requests the branch heads should be read, newest association first"
     )
-    assert forge.bodies_read == [CHILD_IDENTITY.number], (
+    assert forge.bodies_read == [CHILD_IDENTITY], (
         "only the child whose stack was asked about should have its body read"
+    )
+    assert history.revisions == [CHILD_TIP], (
+        "reading two child pull requests is still one history question"
     )
     assert recording_recorder.outcomes(PARENT_IDENTIFICATION) == ["empty"], (
         "the walk should run out of associations without a stack answer"
@@ -484,6 +533,9 @@ def test_the_window_is_capped_by_the_adapter_ceiling(
 
     assert history.limits == [wheresat_github.ASSOCIATION_SEARCH_LIMIT + 1], (
         "the search should be bounded by the adapter's ceiling"
+    )
+    assert history.revisions == [CHILD_TIP], (
+        "the bounded history should still be read from the child's tip"
     )
 
 

@@ -167,14 +167,10 @@ def test_a_base_named_for_the_trunk_is_still_weighed_by_commit(
     """
     context = _context(tmp_path)
     head = context.repo_home.head.commit.hexsha
-    trunk = donkey._Trunk(
-        ref=f"refs/remotes/{context.remote}/main",
-        commit="f" * 40,
-    )
 
     stack = donkey._stack_context(
         context,
-        trunk=trunk,
+        trunk=_TRUNK,
         base=donkey._Base(ref="main", commit=head),
     )
 

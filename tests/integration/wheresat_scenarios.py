@@ -511,7 +511,7 @@ def restored(root: Path) -> Journey:
     journey = rewritten(root)
     repo = journey.scenario.repo
     root_path = journey.scenario.local_path
-    repo.git.rm("child.txt")
+    repo.git.rm(git_repo_helpers.CHILD_FILE)
     repo.git.commit("-m", _RESTORING)
     git_repo_helpers.commit_file(repo, root_path / _LATER, "later work", "Later work")
     return dataclasses.replace(

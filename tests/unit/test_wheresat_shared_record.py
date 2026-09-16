@@ -40,7 +40,7 @@ _IDENTITIES = st.builds(
     number=st.integers(min_value=1, max_value=10**6),
 )
 _OBJECT_IDS = st.one_of(
-    st.text(alphabet="0123456789abcdef", min_size=40, max_size=40),
+    st.text(alphabet=string.hexdigits, min_size=40, max_size=40),
     st.text(alphabet=string.hexdigits, min_size=64, max_size=64),
 )
 _RECORDS = st.builds(SharedRecord, parent=_IDENTITIES, boundary=_OBJECT_IDS)

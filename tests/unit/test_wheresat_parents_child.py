@@ -75,7 +75,7 @@ def test_the_childs_own_record_names_the_parent_before_the_search(
 ) -> None:
     """A record written after the parent was opened answers the question outright."""
     forge = Forge(
-        payloads={PARENT_IDENTITY.number: parent_payload()},
+        payloads={PARENT_IDENTITY: parent_payload()},
         page=association_page({CHILD_TIP: (DECOY_IDENTITY,)}),
     )
 
@@ -94,7 +94,7 @@ def test_the_childs_own_record_names_the_parent_before_the_search(
         "the pull request the record names is the parent"
     )
     assert identified.faults == (), "a record that names a parent is no fault"
-    assert forge.read == [PARENT_IDENTITY.number], (
+    assert forge.read == [PARENT_IDENTITY], (
         "a record naming a pull request should leave the search unasked"
     )
     assert not forge.bodies_read, "no body should be read once the record answers"
@@ -106,11 +106,11 @@ def test_a_record_that_names_a_branch_leaves_the_search_to_answer(
     """A record written at birth names a branch, and a branch is not a pull request."""
     forge = Forge(
         payloads={
-            CHILD_IDENTITY.number: child_payload(),
-            PARENT_IDENTITY.number: parent_payload(),
+            CHILD_IDENTITY: child_payload(),
+            PARENT_IDENTITY: parent_payload(),
         },
-        stacks={CHILD_IDENTITY.number: None},
-        bodies={CHILD_IDENTITY.number: SILENT_BODY},
+        stacks={CHILD_IDENTITY: None},
+        bodies={CHILD_IDENTITY: SILENT_BODY},
         page=association_page({
             CHILD_TIP: (CHILD_IDENTITY,),
             CHILD_BELOW: (PARENT_IDENTITY,),
@@ -140,11 +140,11 @@ def test_a_record_that_cannot_be_read_does_not_fault_the_ladder(
     """The collection phase reports a broken record; the ladder must not also."""
     forge = Forge(
         payloads={
-            CHILD_IDENTITY.number: child_payload(),
-            PARENT_IDENTITY.number: parent_payload(),
+            CHILD_IDENTITY: child_payload(),
+            PARENT_IDENTITY: parent_payload(),
         },
-        stacks={CHILD_IDENTITY.number: None},
-        bodies={CHILD_IDENTITY.number: SILENT_BODY},
+        stacks={CHILD_IDENTITY: None},
+        bodies={CHILD_IDENTITY: SILENT_BODY},
         page=association_page({
             CHILD_TIP: (CHILD_IDENTITY,),
             CHILD_BELOW: (PARENT_IDENTITY,),
@@ -197,11 +197,11 @@ def test_the_childs_body_names_the_parent_when_no_stack_does(
     """A claim pasted into the child's body is a rung, and it rides to collection."""
     forge = Forge(
         payloads={
-            CHILD_IDENTITY.number: child_payload(),
-            PARENT_IDENTITY.number: parent_payload(),
+            CHILD_IDENTITY: child_payload(),
+            PARENT_IDENTITY: parent_payload(),
         },
-        stacks={CHILD_IDENTITY.number: None},
-        bodies={CHILD_IDENTITY.number: shared_body(PARENT_IDENTITY.number)},
+        stacks={CHILD_IDENTITY: None},
+        bodies={CHILD_IDENTITY: shared_body(PARENT_IDENTITY.number)},
         page=association_page({
             CHILD_TIP: (CHILD_IDENTITY,),
             CHILD_BELOW: (DECOY_IDENTITY,),
@@ -221,7 +221,7 @@ def test_the_childs_body_names_the_parent_when_no_stack_does(
     assert identified.parent.identity == PARENT_IDENTITY, (
         "the pull request the body names is the parent"
     )
-    assert DECOY_IDENTITY.number not in forge.read, (
+    assert DECOY_IDENTITY not in forge.read, (
         "the association below the child should not be reached once the body answers"
     )
     assert identified.shared_record == wheresat_shared_record.SharedRecord(
@@ -236,11 +236,11 @@ def test_a_body_that_claims_nothing_leaves_the_walk_to_continue(
     """Prose that names no label is not a claim, and not a fault either."""
     forge = Forge(
         payloads={
-            CHILD_IDENTITY.number: child_payload(),
-            PARENT_IDENTITY.number: parent_payload(),
+            CHILD_IDENTITY: child_payload(),
+            PARENT_IDENTITY: parent_payload(),
         },
-        stacks={CHILD_IDENTITY.number: None},
-        bodies={CHILD_IDENTITY.number: SILENT_BODY},
+        stacks={CHILD_IDENTITY: None},
+        bodies={CHILD_IDENTITY: SILENT_BODY},
         page=association_page({
             CHILD_TIP: (CHILD_IDENTITY,),
             CHILD_BELOW: (PARENT_IDENTITY,),
@@ -271,9 +271,9 @@ def test_a_body_that_cannot_be_read_stops_the_ladder(
     """A claim this run cannot take up is a fault, not a reason to walk on."""
     half = shared_body(PARENT_IDENTITY.number).splitlines()[0]
     forge = Forge(
-        payloads={CHILD_IDENTITY.number: child_payload()},
-        stacks={CHILD_IDENTITY.number: None},
-        bodies={CHILD_IDENTITY.number: half},
+        payloads={CHILD_IDENTITY: child_payload()},
+        stacks={CHILD_IDENTITY: None},
+        bodies={CHILD_IDENTITY: half},
         page=association_page({
             CHILD_TIP: (CHILD_IDENTITY,),
             CHILD_BELOW: (DECOY_IDENTITY,),
@@ -297,7 +297,7 @@ def test_a_body_that_cannot_be_read_stops_the_ladder(
     assert identified.error_kind == "stack_record_malformed", (
         "a record this version cannot read is the stack-record class of fault"
     )
-    assert DECOY_IDENTITY.number not in forge.read, (
+    assert DECOY_IDENTITY not in forge.read, (
         "the walk should stop rather than fall back to a weaker rung"
     )
     assert recording_recorder.outcomes(PARENT_IDENTIFICATION) == ["unavailable"], (
@@ -323,9 +323,9 @@ def test_a_body_that_supports_several_readings_names_every_reading(
         shared_body(DECOY_IDENTITY.number, boundary=OTHER_BOUNDARY),
     ))
     forge = Forge(
-        payloads={CHILD_IDENTITY.number: child_payload()},
-        stacks={CHILD_IDENTITY.number: None},
-        bodies={CHILD_IDENTITY.number: body},
+        payloads={CHILD_IDENTITY: child_payload()},
+        stacks={CHILD_IDENTITY: None},
+        bodies={CHILD_IDENTITY: body},
         page=association_page({
             CHILD_TIP: (CHILD_IDENTITY,),
             CHILD_BELOW: (DECOY_IDENTITY,),

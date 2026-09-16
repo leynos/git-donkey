@@ -100,7 +100,23 @@ DEFAULT_WINDOW = 200
 
 @dataclasses.dataclass(frozen=True, slots=True)
 class Case:
-    """One assessment input: the run's question and every answer it reads."""
+    """One assessment input: the run's question and every answer it reads.
+
+    Attributes
+    ----------
+    request : BoundaryRequest
+        What the run set out to answer, resolved before any question was put.
+    candidates : tuple[Candidate, ...]
+        Every candidate the evidence sources produced, in any order, which the
+        gates are asked about rather than the case choosing among them.
+    facts : GraphFacts
+        The graph answers the gates read, built by the case rather than asked
+        of a repository.
+    parent : ParentPullRequest | None
+        The parent pull request, when one was resolved, which is what decides
+        whether the gates about a parent are applicable.
+
+    """
 
     request: BoundaryRequest
     candidates: tuple[Candidate, ...]
@@ -202,6 +218,30 @@ class ParentPullRequestOverrides(typ.TypedDict, total=False):
     builder keeps its defaults for the rest. Naming them, with their types, is
     what lets a type checker reject an override that is misspelled or of the
     wrong type, which a bare ``**overrides: object`` could not.
+
+    Attributes
+    ----------
+    identity : stack_records.PullRequestIdentity
+        Repository slug and number the parent is named by.
+    merged : bool
+        Whether the parent has landed, which the merge-state gate reads.
+    merged_at : str | None
+        When it merged, or ``None`` for a parent that has not.
+    head_sha : str
+        Commit the parent's head ref named when the metadata was read.
+    head_ref : str
+        Branch the parent's head is on, in the repository it was opened from.
+    head_repository : str
+        Slug of the repository the pull request reports its head in.
+    head_fetched_from : str | None
+        Repository the head ref was actually read from, which gate 1 weighs
+        against ``head_repository``; ``None`` when it was never fetched.
+    landed : str | None
+        Commit the parent's work landed as, or ``None`` when the metadata
+        named none.
+    stacked : bool
+        Whether GitHub records the parent as part of a stack.
+
     """
 
     identity: stack_records.PullRequestIdentity

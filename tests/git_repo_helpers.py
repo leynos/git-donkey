@@ -27,6 +27,11 @@ from git import GitCommandError, Repo
 if typ.TYPE_CHECKING:
     from pathlib import Path
 
+# The file the child's own work is committed to, named here because a scenario
+# that has to undo that work removes the file by name rather than by the path
+# it happens to have been written to.
+CHILD_FILE = "child.txt"
+
 
 def configure_repo(repo: Repo) -> None:
     """Configure the commit identity required to create commits.
@@ -524,9 +529,9 @@ def _child_work(repo: Repo, repo_path: Path, *, child: str, base: str) -> str:
     """Cut ``child`` from ``base``, commit its work, and leave it checked out."""
     repo.git.branch(child, base)
     repo.git.checkout(child)
-    commit_file(repo, repo_path / "child.txt", "child work", "Child work")
+    commit_file(repo, repo_path / CHILD_FILE, "child work", "Child work")
     return commit_file(
-        repo, repo_path / "child.txt", "child work, revised", "More child work"
+        repo, repo_path / CHILD_FILE, "child work, revised", "More child work"
     )
 
 

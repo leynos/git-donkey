@@ -58,6 +58,15 @@ DECOY_IDENTITY: typ.Final = stack_records.PullRequestIdentity(
 )
 """A pull request on an older commit, which a stronger rung should pre-empt."""
 
+FOREIGN_IDENTITY: typ.Final = stack_records.PullRequestIdentity(
+    repository="someone/elsewhere", number=PARENT_IDENTITY.number
+)
+"""A pull request in another repository, numbering the same as the parent.
+
+It is what tells a forge keyed by the pull request whole from one keyed by its
+number: the two answers cannot both be held by the latter.
+"""
+
 BOUNDARY: typ.Final = "d" * 40
 """The boundary a body's shared record names."""
 
@@ -96,6 +105,10 @@ class History:
         Failure the read raises instead of answering.
     limits : list[int | None]
         The ``limit`` of every read, in the order the reads were made.
+    revisions : list[str]
+        The ``rev`` of every read, in the order the reads were made, so a test
+        can hold the ladder to the commit it was asked about rather than to
+        whichever one the history happens to hold.
     windows : list[tuple[str, ...]]
         The commits every read returned, in the order the reads were made.
 
@@ -104,6 +117,7 @@ class History:
     commits: tuple[str, ...] = ()
     refusal: Exception | None = None
     limits: list[int | None] = dataclasses.field(default_factory=list)
+    revisions: list[str] = dataclasses.field(default_factory=list)
     windows: list[tuple[str, ...]] = dataclasses.field(default_factory=list)
 
     def history(self, rev: str, *, limit: int | None = None) -> tuple[str, ...]:
@@ -118,7 +132,8 @@ class History:
         Parameters
         ----------
         rev : str
-            Revision the history is read from, which this double ignores.
+            Revision the history is read from, which this double records
+            without reading: the commits it holds stand for that revision.
         limit : int | None
             How many of the newest commits to keep, or ``None`` for all of
             them.
@@ -129,6 +144,7 @@ class History:
             The commits kept, oldest first.
 
         """
+        self.revisions.append(rev)
         self.limits.append(limit)
         if self.refusal is not None:
             raise self.refusal
@@ -195,9 +211,16 @@ class Records:
 
 
 def _supplied[Supplied](
-    provided: cabc.Mapping[int, Supplied], number: int, *, asking: str
+    provided: cabc.Mapping[stack_records.PullRequestIdentity, Supplied],
+    identity: stack_records.PullRequestIdentity,
+    *,
+    asking: str,
 ) -> Supplied:
-    """Return what the test supplied for ``number``, or refuse to answer.
+    """Return what the test supplied for ``identity``, or refuse to answer.
+
+    The answer is keyed by the pull request whole rather than by its number,
+    because a number names a pull request only within its repository: a stack
+    that crossed repositories could otherwise be answered for the wrong one.
 
     A question the test did not provide for is a defect in the test rather than
     an answer of nothing: which questions the ladder puts is half of what these
@@ -208,28 +231,29 @@ def _supplied[Supplied](
 
     Parameters
     ----------
-    provided : collections.abc.Mapping[int, Supplied]
-        What the test supplied, keyed by pull request number.
-    number : int
-        Pull request number the ladder asked about.
+    provided : collections.abc.Mapping[stack_records.PullRequestIdentity, Supplied]
+        What the test supplied, keyed by the pull request's repository and
+        number.
+    identity : stack_records.PullRequestIdentity
+        Pull request the ladder asked about.
     asking : str
         Question the ladder put, phrased to read after ``the ladder``.
 
     Returns
     -------
     Supplied
-        What the test supplied for ``number``.
+        What the test supplied for ``identity``.
 
     Raises
     ------
     NotImplementedError
-        If the test supplied nothing for ``number``.
+        If the test supplied nothing for ``identity``.
 
     """
     try:
-        return provided[number]
+        return provided[identity]
     except KeyError as exc:
-        msg = f"the ladder {asking} {number}, unprovided"
+        msg = f"the ladder {asking} {identity.repository}#{identity.number}, unprovided"
         raise NotImplementedError(msg) from exc
 
 
@@ -244,17 +268,21 @@ class Forge(wheresat_github.WheresatGitHub):
 
     Attributes
     ----------
-    payloads : cabc.Mapping[int, ParentPullRequest]
-        What ``pull_request`` answers, keyed by pull request number.
-    stacks : cabc.Mapping[int, stack_records.PullRequestIdentity | None]
-        What ``stack_parent`` answers, keyed by pull request number.
-    bodies : cabc.Mapping[int, str]
-        What ``pull_request_body`` answers, keyed by pull request number.
+    payloads : cabc.Mapping[stack_records.PullRequestIdentity, ParentPullRequest]
+        What ``pull_request`` answers, keyed by the pull request's repository
+        and number, because a number alone names one only within a repository.
+    stacks : cabc.Mapping[
+        stack_records.PullRequestIdentity, stack_records.PullRequestIdentity | None
+    ]
+        What ``stack_parent`` answers, keyed the same way, answering the bottom
+        of a stack with ``None``.
+    bodies : cabc.Mapping[stack_records.PullRequestIdentity, str]
+        What ``pull_request_body`` answers, keyed the same way.
     page : wheresat_github.AssociationPage
         What the association search answers.
-    read : list[int]
+    read : list[stack_records.PullRequestIdentity]
         Every pull request read, in the order it was asked about.
-    bodies_read : list[int]
+    bodies_read : list[stack_records.PullRequestIdentity]
         Every body read, in the order it was asked about. It is kept apart from
         ``read`` because the body is a second question about the child, and a
         rung that answered before it was put should leave this list empty.
@@ -264,20 +292,26 @@ class Forge(wheresat_github.WheresatGitHub):
 
     """
 
-    payloads: cabc.Mapping[int, ParentPullRequest] = dataclasses.field(
-        default_factory=dict
-    )
-    stacks: cabc.Mapping[int, stack_records.PullRequestIdentity | None] = (
+    payloads: cabc.Mapping[stack_records.PullRequestIdentity, ParentPullRequest] = (
         dataclasses.field(default_factory=dict)
     )
-    bodies: cabc.Mapping[int, str] = dataclasses.field(default_factory=dict)
+    stacks: cabc.Mapping[
+        stack_records.PullRequestIdentity, stack_records.PullRequestIdentity | None
+    ] = dataclasses.field(default_factory=dict)
+    bodies: cabc.Mapping[stack_records.PullRequestIdentity, str] = dataclasses.field(
+        default_factory=dict
+    )
     page: wheresat_github.AssociationPage = dataclasses.field(
         default_factory=lambda: wheresat_github.AssociationPage(
             associations={}, commits_examined=0, truncated=False
         )
     )
-    read: list[int] = dataclasses.field(default_factory=list)
-    bodies_read: list[int] = dataclasses.field(default_factory=list)
+    read: list[stack_records.PullRequestIdentity] = dataclasses.field(
+        default_factory=list
+    )
+    bodies_read: list[stack_records.PullRequestIdentity] = dataclasses.field(
+        default_factory=list
+    )
     searches: list[tuple[str, tuple[str, ...]]] = dataclasses.field(
         default_factory=list
     )
@@ -291,22 +325,22 @@ class Forge(wheresat_github.WheresatGitHub):
         Parameters
         ----------
         identity : stack_records.PullRequestIdentity
-            Pull request read, whose number the double records.
+            Pull request read, which the double records.
 
         Returns
         -------
         ParentPullRequest
-            The payload the test supplied for that number.
+            The payload the test supplied for that pull request.
 
         Raises
         ------
         NotImplementedError
-            If the test supplied nothing for that number, which is a defect in
-            the test rather than an answer of nothing.
+            If the test supplied nothing for that pull request, which is a
+            defect in the test rather than an answer of nothing.
 
         """
-        self.read.append(identity.number)
-        return _supplied(self.payloads, identity.number, asking="read pull request")
+        self.read.append(identity)
+        return _supplied(self.payloads, identity, asking="read pull request")
 
     @typ.override
     def pull_request_body(self, identity: stack_records.PullRequestIdentity) -> str:
@@ -315,21 +349,21 @@ class Forge(wheresat_github.WheresatGitHub):
         Parameters
         ----------
         identity : stack_records.PullRequestIdentity
-            Pull request whose body is read, whose number the double records.
+            Pull request whose body is read, which the double records.
 
         Returns
         -------
         str
-            The body the test supplied for that number.
+            The body the test supplied for that pull request.
 
         Raises
         ------
         NotImplementedError
-            If the test supplied no body for that number.
+            If the test supplied no body for that pull request.
 
         """
-        self.bodies_read.append(identity.number)
-        return _supplied(self.bodies, identity.number, asking="read the body of")
+        self.bodies_read.append(identity)
+        return _supplied(self.bodies, identity, asking="read the body of")
 
     @typ.override
     def stack_parent(
@@ -351,12 +385,10 @@ class Forge(wheresat_github.WheresatGitHub):
         Raises
         ------
         NotImplementedError
-            If the test supplied no answer for that number.
+            If the test supplied no answer for that pull request.
 
         """
-        return _supplied(
-            self.stacks, identity.number, asking="asked about the stack of"
-        )
+        return _supplied(self.stacks, identity, asking="asked about the stack of")
 
     @typ.override
     def associated_pull_requests(
@@ -368,6 +400,14 @@ class Forge(wheresat_github.WheresatGitHub):
         walk asks about is half of what these tests assert: a search put to the
         wrong repository, or one whose window is empty or wider than the bound
         the run set, would otherwise answer with a page no test looks behind.
+
+        Parameters
+        ----------
+        repository : str
+            ``OWNER/REPOSITORY`` slug the search was put to, which must be the
+            one the run names.
+        commits : collections.abc.Sequence[str]
+            Commits the search asked about, newest first.
 
         Returns
         -------

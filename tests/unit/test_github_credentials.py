@@ -28,14 +28,45 @@ _INCOMING = "ghu_the-token-the-failed-write-was-to-store"
 _FULL_DISK = "No space left on device"
 
 
-def _refuse_at(monkeypatch: pytest.MonkeyPatch, target: object, name: str) -> None:
-    """Make ``name`` on ``target`` report the failure a full disk reports."""
+def _refuse_at(
+    monkeypatch: pytest.MonkeyPatch,
+    target: object,
+    name: str,
+    *,
+    arguments: list[object] | None = None,
+) -> None:
+    """Make ``name`` on ``target`` report the failure a full disk reports.
+
+    Parameters
+    ----------
+    monkeypatch : pytest.MonkeyPatch
+        Fixture that undoes the substitution after the case.
+    target : object
+        Object the failing step is reached through.
+    name : str
+        Attribute of ``target`` to make fail.
+    arguments : list[object], optional
+        List the failing call's first positional argument is appended to, for
+        a case that has something to assert about what it was handed.
+
+    """
 
     def refuse(*args: object, **kwargs: object) -> typ.NoReturn:
         """Report the failure the failing step is being made to have."""
+        if arguments is not None and args:
+            arguments.append(args[0])
         raise OSError(28, _FULL_DISK)
 
     monkeypatch.setattr(target, name, refuse)
+
+
+def _is_open(descriptor: int) -> bool:
+    """Return whether ``descriptor`` is still open in this process."""
+    try:
+        os.fstat(descriptor)
+    except OSError:
+        return False
+    return True
 
 
 def _stored(tmp_path: pathlib.Path) -> pathlib.Path:
@@ -83,9 +114,16 @@ def test_a_write_that_cannot_publish_leaves_no_copy_of_the_new_token(
 def test_a_write_that_cannot_open_leaves_no_copy_of_the_new_token(
     tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A failure before the rename removes the file the payload went to."""
+    """A failure before the rename removes the file the payload went to.
+
+    The file the descriptor names is removed, but removing a name does not
+    release the bytes behind it: the descriptor the temporary file was opened
+    with is the one thing that can still read the token until it is closed, so
+    a write that stopped here closes it as well as unlinking the path.
+    """
     path = _stored(tmp_path)
-    _refuse_at(monkeypatch, os, "fdopen")
+    opened: list[object] = []
+    _refuse_at(monkeypatch, os, "fdopen", arguments=opened)
 
     with pytest.raises(OSError, match=_FULL_DISK):
         github_credentials.write_token(path, _INCOMING, None)
@@ -93,6 +131,14 @@ def test_a_write_that_cannot_open_leaves_no_copy_of_the_new_token(
     assert _beside(path) == [path.name], (
         "a write that stopped before the rename is cleaned up like one that "
         "stopped at it"
+    )
+    assert len(opened) == 1, (
+        "the write should have had one descriptor to open, so the assertion "
+        "below is about the file the token was written to"
+    )
+    assert not _is_open(typ.cast("int", opened[0])), (
+        "the descriptor the temporary file was opened with is closed, so "
+        "nothing can read the token through the removed file"
     )
 
 

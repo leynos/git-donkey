@@ -88,12 +88,10 @@ _PARENT = stack_records.StackParent(
 
 _RECORD_SUFFIXES: typ.Final = frozenset(key.value for key in stack_records.RecordKey)
 
-# The evidence kind and the retention expression this module writes. Both are
-# the values the commands will pass, spelled here rather than imported because
-# the store takes whatever it is handed: the production constant for each lands
-# with the command that first has a reason to name it.
-_REFRESH_EVIDENCE: typ.Final = "stack-record-refreshed"
-_EXPIRE: typ.Final = "90.days.ago"
+# The evidence kind and the retention expression the commands themselves pass,
+# so a change to either is a change to what this module exercises.
+_REFRESH_EVIDENCE: typ.Final = stack_records.EVIDENCE_REFRESHED
+_EXPIRE: typ.Final = stack_records.DEFAULT_TOMBSTONE_EXPIRE
 
 _unrecorded = Bundle("unrecorded")
 _recorded = Bundle("recorded")
