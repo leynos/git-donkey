@@ -161,6 +161,10 @@ def test_a_base_that_moves_mid_run_cannot_move_the_branch(
     assert scenario.exit_code == 0, (
         f"the base exists, so the branch is created; git donkey said: {scenario.stderr}"
     )
+    assert repo.commit("refs/heads/feature/base").hexsha == moved, (
+        "the patched step ran and moved the base, so the branch had a newer "
+        "commit to be born away from than the one it resolved"
+    )
     assert scenario.worktree_head() == resolved, (
         "the branch starts at the commit the base resolved to, not at the commit "
         "it moved to while the worktree was being created"

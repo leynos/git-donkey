@@ -10,8 +10,13 @@ repositories.
 
 The stack-record scenarios in ``test_git_plonk_stack_bdd.py`` need one thing
 those builders do not provide: a branch stacked on another branch, which is what
-``git donkey`` records a boundary for. They add the builders below, which grow a
-parent ahead of the trunk so that a record has something to describe.
+``git donkey`` records a boundary for. The builders below add it, and they place
+the parent by what the scenario is about. A scenario whose subject is the tip a
+branch reached grows the parent a commit ahead of the trunk, so that the tip is
+a commit the boundary does not name. A scenario whose subject is the record
+itself, the orphan routes included, leaves the parent at the trunk and writes
+the record through the store, because what is asserted there is the record a
+birth would have left rather than where the parent had got to.
 """
 
 from __future__ import annotations

@@ -403,7 +403,10 @@ def test_a_window_that_cut_the_scan_short_is_a_caveat() -> None:
 
     assert not found.tree, "the commit the child matches is below the window"
     assert len(found.warnings) == 1, "the window is stated once"
-    assert "2" in found.warnings[0], "the caveat names the window that was scanned"
+    assert "the target's newest 2 commits" in found.warnings[0], (
+        "the caveat names the window that was scanned, and not only the bound "
+        "as a digit that could be a commit count or a duration"
+    )
 
 
 def test_a_window_that_reached_the_end_of_the_history_is_no_caveat() -> None:
@@ -436,7 +439,10 @@ def test_a_window_of_nothing_compares_nothing_and_reads_nothing() -> None:
     )
     assert not graph.ranges, "and the child's own commits are not listed either"
     assert len(found.warnings) == 1, "the empty window is stated once"
-    assert "0" in found.warnings[0], "the caveat names the window that was scanned"
+    assert "--heuristic-window is 0" in found.warnings[0], (
+        "the caveat names the option and the window it was given, so the "
+        "operator is told which bound to raise"
+    )
 
 
 def test_a_target_the_repository_would_not_list_is_a_caveat() -> None:

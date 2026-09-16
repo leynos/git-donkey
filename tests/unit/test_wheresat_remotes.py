@@ -53,6 +53,11 @@ _NOT_GITHUB: typ.Final = (
     "/srv/git/widget.git",
     "https://github.com/acme",
     "file:///srv/git/widget.git",
+    # A host that carries the name without being it. The first hides the real
+    # name behind a label the reader does not own and the second contains it as
+    # a substring, so a match on either would fetch from a stranger's host.
+    "https://github.com.acme.example/acme/widget.git",
+    "https://notgithub.com/acme/widget.git",
 )
 
 _ORPHAN_FETCH: typ.Final = "+refs/heads/*:refs/remotes/orphan/*"

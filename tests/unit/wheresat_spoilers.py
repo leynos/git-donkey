@@ -52,7 +52,24 @@ if typ.TYPE_CHECKING:
 
 
 def with_ancestry(key: tuple[str, str], answer: Ancestry | None) -> GraphFacts:
-    """Return the permissive facts with one ancestry answer set or unasked."""
+    """Return the permissive facts with one ancestry answer set or unasked.
+
+    Parameters
+    ----------
+    key : tuple[str, str]
+        The two commits the question was put to, which is how the facts index
+        an ancestry answer.
+    answer : Ancestry | None
+        The answer to record, or ``None`` to leave the pair out of the facts
+        entirely: a pair the facts do not hold is a question the run never
+        asked.
+
+    Returns
+    -------
+    GraphFacts
+        The permissive facts, with that pair answered or unrecorded.
+
+    """
     facts = permissive_facts()
     answers = dict(facts.ancestry)
     if answer is None:
@@ -63,7 +80,22 @@ def with_ancestry(key: tuple[str, str], answer: Ancestry | None) -> GraphFacts:
 
 
 def with_range_contents(key: str, contents: CommitRange | None) -> GraphFacts:
-    """Return the permissive facts with one listed range set or unlisted."""
+    """Return the permissive facts with one listed range set or unlisted.
+
+    Parameters
+    ----------
+    key : str
+        Range key the listing was made for.
+    contents : CommitRange | None
+        The commits the range was listed with, or ``None`` to leave the range
+        out of the facts: an unlisted range is one the run never listed.
+
+    Returns
+    -------
+    GraphFacts
+        The permissive facts, with that range listed or unlisted.
+
+    """
     facts = permissive_facts()
     listed = dict(facts.range_contents)
     if contents is None:
@@ -74,7 +106,22 @@ def with_range_contents(key: str, contents: CommitRange | None) -> GraphFacts:
 
 
 def with_range_minus_parent(key: str, contents: CommitRange | None) -> GraphFacts:
-    """Return the permissive facts with one parent-free range set or unlisted."""
+    """Return the permissive facts with one parent-free range set or unlisted.
+
+    Parameters
+    ----------
+    key : str
+        Range key the listing was made for.
+    contents : CommitRange | None
+        The commits left once the parent's own are subtracted, or ``None`` to
+        leave the question unasked.
+
+    Returns
+    -------
+    GraphFacts
+        The permissive facts, with that listing recorded or unrecorded.
+
+    """
     facts = permissive_facts()
     listed = dict(facts.range_minus_parent)
     if contents is None:
@@ -111,7 +158,22 @@ def with_landed_twins(key: str, twins: tuple[str, ...] | None) -> GraphFacts:
 
 
 def with_patch(commit: str, identifier: str | None) -> GraphFacts:
-    """Return the permissive facts with one cumulative patch identifier set."""
+    """Return the permissive facts with one cumulative patch identifier set.
+
+    Parameters
+    ----------
+    commit : str
+        Commit the identifier was computed for.
+    identifier : str | None
+        The identifier, or ``None`` for a commit whose cumulative patch Git
+        could not identify.
+
+    Returns
+    -------
+    GraphFacts
+        The permissive facts, with that commit's identifier set.
+
+    """
     facts = permissive_facts()
     identifiers = dict(facts.cumulative_patch)
     identifiers[commit] = identifier
@@ -144,22 +206,73 @@ def with_recorded_from(
 
 
 def with_parent_head(commit: str | None) -> GraphFacts:
-    """Return the permissive facts with the recovered parent head set or absent."""
+    """Return the permissive facts with the recovered parent head set or absent.
+
+    Parameters
+    ----------
+    commit : str | None
+        Commit the parent's head was recovered at, or ``None`` where the run
+        recovered none.
+
+    Returns
+    -------
+    GraphFacts
+        The permissive facts, with the parent head named or absent.
+
+    """
     return dataclasses.replace(permissive_facts(), parent_head=commit)
 
 
 def with_landed(commit: str | None) -> GraphFacts:
-    """Return the permissive facts with the integration commit set or absent."""
+    """Return the permissive facts with the integration commit set or absent.
+
+    Parameters
+    ----------
+    commit : str | None
+        The commit the child's work was found integrated in, or ``None`` where
+        the run found none.
+
+    Returns
+    -------
+    GraphFacts
+        The permissive facts, with the integration commit set or absent.
+
+    """
     return dataclasses.replace(permissive_facts(), landed=commit)
 
 
 def with_child_history(contents: CommitRange) -> GraphFacts:
-    """Return the permissive facts with the child's own history relisted."""
+    """Return the permissive facts with the child's own history relisted.
+
+    Parameters
+    ----------
+    contents : CommitRange
+        The child's own commits, as the listing the run is to be given.
+
+    Returns
+    -------
+    GraphFacts
+        The permissive facts, with the child's history relisted.
+
+    """
     return dataclasses.replace(permissive_facts(), child_history=contents)
 
 
 def changed(facts: GraphFacts) -> Case:
-    """Return the permissive case judged against ``facts`` instead."""
+    """Return the permissive case judged against ``facts`` instead.
+
+    Parameters
+    ----------
+    facts : GraphFacts
+        The facts the case is to be judged against, in place of the permissive
+        ones every other answer in it already agrees with.
+
+    Returns
+    -------
+    Case
+        The permissive case, re-judged against those facts.
+
+    """
     return dataclasses.replace(permissive(), facts=facts)
 
 
@@ -288,9 +401,11 @@ def spoiled(gate: GateName, outcome: GateOutcome) -> Case:
         read as coverage of the wrong answer.
 
     """
-    if outcome is GateOutcome.FAILED:
-        return _SPOILERS[gate](failed=True)
-    if outcome is GateOutcome.INDETERMINATE:
-        return _SPOILERS[gate](failed=False)
-    msg = f"a gate is spoiled as failed or unanswered, not {outcome}"
-    raise AssertionError(msg)
+    match outcome:
+        case GateOutcome.FAILED:
+            return _SPOILERS[gate](failed=True)
+        case GateOutcome.INDETERMINATE:
+            return _SPOILERS[gate](failed=False)
+        case _:
+            msg = f"a gate is spoiled as failed or unanswered, not {outcome}"
+            raise AssertionError(msg)

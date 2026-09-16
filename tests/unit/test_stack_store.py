@@ -20,8 +20,10 @@ from __future__ import annotations
 
 import time
 import typing as typ
+from pathlib import Path
 
 import pytest
+from git import Git, GitCommandError
 
 from git_donkey import stack_records, stack_store, stack_writes
 from tests.git_repo_helpers import config_section
@@ -47,8 +49,6 @@ from tests.unit.stack_store_helpers import (
 )
 
 if typ.TYPE_CHECKING:
-    from pathlib import Path
-
     from git import Repo
     from syrupy.assertion import SnapshotAssertion
 
@@ -206,6 +206,56 @@ def _refuse_after_one_value(
     raise stack_store.StackRecordError(msg)
 
 
+def _lock_ref(repo: Repo, ref: str) -> Path:
+    """Leave the lock file Git takes before it moves ``ref``.
+
+    A lock file that is already there is a writer that is mid-update, which is
+    the one way a deletion of an existing ref is refused: Git will not move a
+    ref whose lock it cannot take. Nothing short of another process can put Git
+    in that state, so the file is planted rather than provoked.
+
+    Parameters
+    ----------
+    repo : Repo
+        Repository the ref belongs to.
+    ref : str
+        Full ref name whose lock is to be left behind.
+
+    Returns
+    -------
+    Path
+        The lock file that was written, for a test to remove or assert on.
+
+    """
+    lock = Path(repo.git_dir) / f"{ref}.lock"
+    lock.parent.mkdir(parents=True, exist_ok=True)
+    lock.write_text("")
+    return lock
+
+
+def _lock_configuration(repo: Repo) -> Path:
+    """Leave the lock file Git takes before it writes the repository's config.
+
+    Every configuration write and unset needs it, so a value Git is asked to
+    clear while it is held is refused with a status of its own rather than with
+    the absent-key status the store reads as success.
+
+    Parameters
+    ----------
+    repo : Repo
+        Repository whose configuration is to be left unlocked-to.
+
+    Returns
+    -------
+    Path
+        The lock file that was written, for a test to remove or assert on.
+
+    """
+    lock = Path(repo.git_dir) / "config.lock"
+    lock.write_text("")
+    return lock
+
+
 def test_a_create_that_cannot_write_a_value_removes_what_it_wrote(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -235,6 +285,51 @@ def test_a_create_that_cannot_write_a_value_removes_what_it_wrote(
         stack_store.GitStackRecordReader(repo).read(CHILD),
         stack_records.RecordAbsent,
     ), "so the branch reads back as having no record at all"
+
+
+def test_a_repair_that_cannot_clear_a_value_still_reports_only_the_failed_write(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The undo is best effort, so its own refusal never replaces the write's.
+
+    A lock another writer takes while a create is part-way through refuses the
+    repair that follows it, because clearing a value needs the same lock the
+    refused write did. The caller is told its write failed, which is the answer
+    it can act on: a second error about a record its caller never asked to keep
+    would replace that answer with a fact about the repair instead.
+    """
+    repo = make_repo(tmp_path)
+    base = repo.head.commit.hexsha
+    repo.git.branch(CHILD, base)
+    store = make_writer(repo)
+    real_config = repo.git.config
+
+    def config_then_locked(_git: Git, *args: object, **kwargs: object) -> str:
+        """Answer every Git configuration call, refusing each unset as locked."""
+        if "--unset-all" in args:
+            msg = "fatal: could not lock config file .git/config: File exists"
+            raise GitCommandError(("git", "config"), 128, msg)
+        return real_config(*args, **kwargs)
+
+    monkeypatch.setattr(
+        stack_writes.GitStackRecordWriter,
+        "_write_configuration",
+        _refuse_after_one_value,
+    )
+    monkeypatch.setattr(Git, "config", config_then_locked, raising=False)
+
+    with pytest.raises(stack_store.StackRecordError, match="could not write the rest"):
+        store.create(make_record(CHILD, base))
+
+    assert anchor(repo, CHILD) is None, (
+        "the anchor is still taken back, so the attempted repair did run"
+    )
+    assert config_section(repo, CHILD), (
+        "and the value the repair could not clear is what it leaves behind: a "
+        "record a reader reports as malformed, which is the state the failed "
+        "write would have left had the repair not been attempted at all"
+    )
 
 
 def test_a_refresh_that_cannot_write_a_value_restores_the_record_it_found(
@@ -293,6 +388,48 @@ def test_entomb_preserves_the_tip_and_clears_the_live_record(tmp_path: Path) -> 
     )
     assert namespace_violations(repo) == set(), (
         "entomb clears the anchor too, so INV-9 holds after a plonk deletion"
+    )
+
+
+def test_an_entomb_that_cannot_clear_a_value_reports_the_store_error(
+    tmp_path: Path,
+) -> None:
+    """A value Git refuses to unset is a record that could not be cleared.
+
+    The refusal is a configuration lock held by another writer, which is the
+    state a concurrent ``git config`` leaves behind. Git answers it with a
+    status of its own, so the store must not read it as the absent key it also
+    answers with: a caller deciding whether to stop a run needs to be told the
+    record is still there, which is a fact about the record rather than about
+    the command that failed to clear it.
+    """
+    repo = make_repo(tmp_path)
+    base = repo.head.commit.hexsha
+    repo.git.branch(CHILD, base)
+    store = make_writer(repo)
+    store.create(make_record(CHILD, base))
+    key = next(iter(stack_records.RecordKey))
+    _lock_configuration(repo)
+
+    with pytest.raises(stack_store.StackRecordError) as excinfo:
+        store.entomb(CHILD, base)
+
+    message = str(excinfo.value)
+    assert message.startswith(f"cannot unset 'branch.{CHILD}.{key.value}': "), (
+        f"the refusal names the key Git would not clear, got: {message!r}"
+    )
+    assert "could not lock config file" in message, (
+        "and carries Git's own explanation of why it would not"
+    )
+    assert isinstance(excinfo.value.__cause__, GitCommandError), (
+        "the Git error is the cause, so a caller can still reach it"
+    )
+    assert store.tombstone(CHILD) == base, (
+        "the tip was preserved before the values were reached, which is the "
+        "order the record's strongest statement is written in"
+    )
+    assert config_section(repo, CHILD), (
+        "and the record the run could not clear is still there"
     )
 
 
@@ -532,6 +669,44 @@ def test_prune_refuses_an_empty_expiry(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="must not be empty"):
         make_writer(repo).prune("   ")
+
+
+def test_a_prune_that_cannot_delete_a_tombstone_reports_the_store_error(
+    tmp_path: Path,
+) -> None:
+    """A tombstone Git refuses to delete is a record that could not be cleared.
+
+    The refusal is a lock file left beside the ref, which is a writer that is
+    mid-update. Retention is repository-wide, so the caller stops the run on
+    this refusal; the deletion is asked for as part of the record lifecycle and
+    its failure has to arrive as that rather than as a bare Git command error.
+    """
+    repo = make_repo(tmp_path)
+    base = repo.head.commit.hexsha
+    repo.git.branch(CHILD, base)
+    store = make_writer(repo)
+    store.entomb(CHILD, base)
+    backdate_tombstone(repo, CHILD, days=100)
+    ref = stack_records.tombstone_ref_path(CHILD)
+    _lock_ref(repo, ref)
+
+    with pytest.raises(stack_store.StackRecordError) as excinfo:
+        store.prune(EXPIRE)
+
+    message = str(excinfo.value)
+    assert message.startswith(f"cannot delete {ref!r}: "), (
+        f"the refusal names the ref Git would not delete, got: {message!r}"
+    )
+    assert "cannot lock ref" in message, (
+        "and carries Git's own explanation of why it would not"
+    )
+    assert isinstance(excinfo.value.__cause__, GitCommandError), (
+        "the Git error is the cause, so a caller can still reach it"
+    )
+    assert store.tombstone(CHILD) == base, (
+        "the refused deletion is reported rather than passed over, so the "
+        "tombstone it could not remove is still there"
+    )
 
 
 @pytest.mark.parametrize("branch", ["feature/child", "Feature/X", "release-1.2.3"])

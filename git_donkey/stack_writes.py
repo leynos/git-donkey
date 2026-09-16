@@ -375,7 +375,10 @@ class GitStackRecordWriter(stack_store.GitStackRecordReader):
         repaired on its own for the same reason: a step that fails leaves the
         rest repaired rather than abandoning the record part way back, and the
         anchor is moved before the values are restored so that the boundary a
-        reader needs is the repair that is attempted first.
+        reader needs is the repair that is attempted first. Both the Git error
+        and the record error this class reports it as are suppressed, because a
+        ref moved by hand and a value Git refuses to unset are the same thing
+        here: a step this call could not repair.
 
         Parameters
         ----------
@@ -397,7 +400,7 @@ class GitStackRecordWriter(stack_store.GitStackRecordReader):
                 self.repo.git.update_ref("-d", ref, record.base)
         for key in stack_records.RecordKey:
             key_path = f"branch.{record.branch}.{key.value}"
-            with contextlib.suppress(GitCommandError):
+            with contextlib.suppress(GitCommandError, stack_store.StackRecordError):
                 self._unset_configuration(key_path)
             if key.value in previous:
                 with contextlib.suppress(GitCommandError):
@@ -430,13 +433,37 @@ class GitStackRecordWriter(stack_store.GitStackRecordReader):
             self._delete_ref(stack_records.tombstone_ref_path(branch))
 
     def _delete_ref(self, ref: str) -> None:
-        """Delete ``ref``, which is not an error when it does not exist."""
-        self.repo.git.update_ref("-d", ref)
+        """Delete ``ref``, which is not an error when it does not exist.
+
+        Raises
+        ------
+        stack_store.StackRecordError
+            If Git refuses the deletion, with its own explanation. A caller
+            that is prepared to leave the ref behind catches this rather than
+            the Git error, because the deletion is asked for as part of a
+            record write and its failure is that write's failure.
+
+        """
+        try:
+            self.repo.git.update_ref("-d", ref)
+        except GitCommandError as exc:
+            msg = f"cannot delete {ref!r}: {_git_failure(exc)}"
+            raise stack_store.StackRecordError(msg) from exc
 
     def _unset_configuration(self, key: str) -> None:
-        """Unset every value of ``key``, which is not an error when it is unset."""
+        """Unset every value of ``key``, which is not an error when it is unset.
+
+        Raises
+        ------
+        stack_store.StackRecordError
+            If Git refuses the unset for any reason other than the key being
+            absent, with its own explanation. The absent case is the state the
+            call asks for, so an unset configuration is not reported.
+
+        """
         try:
             self.repo.git.config("--local", "--unset-all", key)
         except GitCommandError as exc:
             if exc.status != _MISSING_CONFIG_KEY:
-                raise
+                msg = f"cannot unset {key!r}: {_git_failure(exc)}"
+                raise stack_store.StackRecordError(msg) from exc
