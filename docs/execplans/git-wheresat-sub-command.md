@@ -2836,6 +2836,136 @@ Stop and escalate rather than improvising when any of these is reached.
     it, is Markdown written once those numbers were known, so the Markdown
     gates are re-run over it.
 
+  - Review round: `coderabbit review --agent --base origin/main` reports 21
+    findings over the tree at `b7f9f77` (log
+    `/tmp/coderabbit-git-donkey-git-wheresat-sub-command-11.out`, the agent-mode
+    stream whose 21 `finding` records are kept as
+    `/tmp/coderabbit-findings-11.jsonl` for triage), taken on 2026-09-16 in one
+    attempt and without meeting a rate limit, over the 127 files the review
+    reports. The 21 are 1 major, 13 minor, and 7 trivial, and they are 16
+    distinct requests: five of them are raised twice, each pair over the same
+    lines. All sixteen are actioned.
+  - The round's one major is a question answered for the wrong repository. The
+    ladder's forge stands in for GitHub in the tests, and it answered by pull
+    request _number_: `Forge.payloads`, `Forge.stacks`, and `Forge.bodies` were
+    keyed by `identity.number`, and the doubles recorded what they had been
+    asked in `read` and `bodies_read` as numbers too. A number names a pull
+    request only within its repository, and the ladder crosses repositories by
+    construction — `pull_identity` reads a stack member's number under the
+    identity's own repository slug, and the association search may find a pull
+    request whose head lives in a fork — so the double could have answered a
+    question about `acme/widget#41` with the fixture built for another
+    repository's 41 and the suite would have reported the ladder correct. Every
+    mapping and both recordings are keyed by
+    `stack_records.PullRequestIdentity` now, and every fixture key and
+    assertion in `test_wheresat_parents.py` and
+    `test_wheresat_parents_child.py` was converted with them. The one thing
+    that stayed a number is a `shared_body(...)` argument, because a body is
+    prose and spells a number: that is the format under test rather than the
+    double's index. The association search keeps its repository string, since
+    that is what the port is asked with.
+  - A stack member that names no pull request is now refused where it is
+    resolved. `stack_parent` read the member below the position through
+    `pull_identity`, which answers `None` both for a member that names no
+    number and for the bottom of a stack, and `None` is also how this adapter
+    says GitHub records no stack at all. Reading the two alike would report a
+    parent this run never found, or silently name a different pull request than
+    the one below, so the member is refused instead: the refusal names the pull
+    request and the position the nameless member occupies in the stack it came
+    from, which is the same discipline `_stack_members` already applies to a
+    member it cannot read at all — an unreadable member is refused rather than
+    dropped, because dropping one shifts every position above it. The case
+    pinning it was the round's one test that had to be rewritten rather than
+    adjusted, and the reason is a fixture bug it exposed: the
+    neighbouring case for an unreadable member passed its stack as a bare
+    object, so `sequence` refused the shape before the member was ever reached
+    and the test asserted a message it would have printed for any body at all.
+    Both cases route through a list of stacks now, which is what the endpoint
+    answers and what makes them about the member rather than the envelope.
+  - Two exception handlers that classified by `isinstance` are ordered `except`
+    clauses. The credential path is a usage failure everywhere else in the
+    command and a fault here, and it was told apart from a transport failure by
+    asking each caught exception what class it was; the same shape appeared
+    again where a shallow clone's refusal had to be told from any other graph
+    failure. Both now put the narrower exception first and let the order carry
+    the meaning, which is what the hierarchy already says and what the reader of
+    a `try` sees without following the ladder of `isinstance` calls. In the
+    second, `ShallowHistoryError` is listed before the `WheresatGraphError` it
+    subclasses, because a handler for the superclass would otherwise swallow it.
+  - The round's smaller requests are ten shapes. `_claims` documents which
+    label a line gives its value to, and the docstring now says that a label is
+    claimed only where a line starts with it — so a body writing both labels on
+    one line gives the first the value and the second nothing — rather than
+    promising that each label is read independently of the other, which is what
+    the old text said and what `_value` does not do. `Case` and
+    `ParentPullRequestOverrides` gained the `Attributes` sections the estate's
+    style gives a dataclass's fields, and
+    `Forge.associated_pull_requests` gained the `Parameters` section naming the
+    repository slug and the commits it is asked with. The history double records
+    each requested revision beside the limits and windows it already recorded,
+    and three cases now assert that the walk reads from the child's own tip:
+    the one that walks past the child's pull request, the one that reads a
+    second pull request the child branch heads, and the one the adapter's
+    ceiling caps — each of which would pass with the walk started from the
+    wrong commit before. `_OBJECT_IDS` draws its 40-character branch from
+    `string.hexdigits`, so the property that a shared record's boundary is a
+    full object ID is exercised over the uppercase half of Git's alphabet as
+    well. The deep-comparison case that pins a window caveat asserts the token
+    rather than the digit, so window 1 can no longer be satisfied by window 10.
+    The rewritten-parent-stack fixture exports the child file it commits as
+    `CHILD_FILE`, which is what the scenario that removes it names. The
+    lifecycle suite takes the refresh evidence kind and the tombstone
+    expression from `stack_records` rather than respelling them, which is what
+    the comment beside them claimed to be waiting for and is now true. The base
+    case that builds its own trunk uses the module's `_TRUNK` fixture. And the
+    users' guide scopes the read-only ref guarantee to a run without
+    `--record`, because a run given it also refreshes the branch's stack record
+    and may recreate that record's `refs/stack-bases/<branch>` anchor.
+  - One request is a descriptor rather than a document. `write_token` writes
+    through a `tempfile.mkstemp` file beside the credential and unlinks it when
+    the write fails, but unlinking a name does not release the bytes behind it:
+    a failure between `mkstemp` and `os.fdopen` left the descriptor open, so the
+    token stayed readable through the removed file until the process ended. The
+    descriptor is closed on that path now, and the case that makes `os.fdopen`
+    refuse records the descriptor the write was handed and asserts it is closed.
+    That assertion was checked against the defect rather than the fix: with the
+    close removed the case fails on exactly that line, and the shipped tree is
+    the run that passes it.
+  - Two spellings are the estate's own: the review asked for the oxendict
+    `-ize` forms of two words that had been written with the other en-GB
+    ending, in `wheresat_facts.py` and `wheresat_records.py`, and the tree
+    spells them `memoized` and `recognizable` now. The dictionary behind the
+    spelling gate does carry that preference — the same word written the other
+    way is corrected when the gate sees it — but the gate spells only the
+    tracked Markdown files, so a word in Python source is outside its reach.
+    This is the one class of finding in the round that no gate would have
+    raised, and the reason is a target's scope rather than a gap in its rules.
+  - The gate run over the fixes found two red gates, and both were this round's
+    own work rather than anything the review missed. `make lint` stopped at its
+    first stage, ruff, over a line 102 characters long where the limit is 88:
+    the `stacks` entry this round added to the forge double's `Attributes`
+    section spells its type in full, and that type is wrapped across lines now,
+    which is how the annotation on the field itself already spells it. `make
+    check-fmt` wanted `mdtablefix`'s own reflow of the users' guide bullet this
+    round rewrote, so the wrap is the tool's rather than a hand wrap that
+    guesses at it — round 10's lesson, arriving one round later.
+  - The nine checks are green over the tree the fixes were made in, which is
+    what round 11 is pushed as, at `7660f92`: `build` resolved 80 packages and
+    checked 78; `check-fmt` found 177 files already formatted and `mdtablefix`
+    left its 29 unchanged; `lint` reached all seven of its stages, with the
+    built-in and df12 pylint passes both at 10.00/10 and `ambrleaks` and
+    `skylos` clean; `typecheck` passed under ty 0.0.79; `test` reported 985
+    passed, 233 warnings and 22 snapshots in 19.15 seconds; `spelling` was clean
+    and its helper tests passed 16 at 93.75% coverage; `markdownlint` linted 30
+    files with 0 errors; `nixie` validated its 6 diagrams over the 29 files it
+    visited; and `cs delta origin/main` found no issues over the branch. This
+    entry, including this bullet, is Markdown written once those numbers were
+    known, so the Markdown gates are re-run over it.
+  - The disposition is posted on the pull request (round 11,
+    `#issuecomment-5691509452`), naming for each request the file it changed
+    and what changed there, so a reader can check the claim against the diff
+    rather than against this paragraph.
+
 ## Surprises & discoveries
 
 - Observation: this repository has no roadmap document.
