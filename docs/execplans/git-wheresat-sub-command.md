@@ -3152,6 +3152,26 @@ Stop and escalate rather than improvising when any of these is reached.
     `plonk.run_git_plonk`'s return, the process status of a `git plonk`
     sweep rather than a `git wheresat` result, and `Status` names this
     command's lifecycle, not that one's.
+  - The nine checks are green over the tree the fixes were made in, which is
+    what round 13 is pushed as, at `7a4aebb`: `build` resolved 80 packages
+    and checked 78; `check-fmt` found 177 files already formatted and
+    `mdtablefix` left its 29 unchanged; `lint` reached all of its stages,
+    with `interrogate` at 100.0%, the built-in and df12 pylint passes both at
+    10.00/10, `pyscn` passed, and `ambrleaks` and `skylos` clean; `typecheck`
+    passed under ty 0.0.79 with no diagnostics; `test` reported 986 passed,
+    233 warnings and 22 snapshots in 18.00 seconds; `spelling` was clean and
+    its helper tests passed 16 at 93.75% coverage, with the regenerated
+    `typos.toml` byte-identical to the one it replaced; `markdownlint` linted
+    30 files with 0 errors; `nixie` validated every diagram over the 29 files
+    it visited; and `cs delta origin/main` found no issues over the branch.
+    No gate modified a tracked file, and no gate was red this round, which is
+    what distinguishes it from round 12. This entry, including this bullet,
+    is Markdown written once those numbers were known, so the Markdown gates
+    are re-run over it.
+  - The disposition is posted on the pull request (round 13,
+    `#issuecomment-5692012580`), naming for each request the file it changed
+    and what changed there, so a reader can check the claim against the diff
+    rather than against this paragraph.
 
 ## Surprises & discoveries
 
