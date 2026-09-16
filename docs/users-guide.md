@@ -19,8 +19,10 @@ these as `git <subcommand>` when `git-<subcommand>` is available on the `PATH`.
   worktree it leaves in place.
 - `git wheresat` (`git-wheresat`) prints the boundary a stacked branch should
   be rebased onto, so work already landed in the trunk is dropped. It moves no
-  branch and no worktree; the only refs it adds are evidence refs under
-  `refs/wheresat/`.
+  branch and no worktree. Without `--record` the only refs it adds are evidence
+  refs under `refs/wheresat/`; a run given `--record` also refreshes the
+  branch's [stack record](#stack-records-at-branch-birth), which may recreate
+  that record's `refs/stack-bases/<branch>` anchor ref.
 - `git donkey-template` (`git-donkey-template`) displays and creates the
   template directory for the current repository.
 
