@@ -554,10 +554,13 @@ def forked(root: Path) -> Journey:
         not branch_head(journey.scenario.remote_path, PARENT),
         "origin must not hold the parent branch any more",
     )
-    journey.forge.pull = _pull(
-        repo, journey.landed, journey.parent_head, head_repository=FORK
+    return dataclasses.replace(
+        journey,
+        forge=ScriptedForge(
+            _pull(repo, journey.landed, journey.parent_head, head_repository=FORK)
+        ),
+        fork_path=fork_path,
     )
-    return dataclasses.replace(journey, fork_path=fork_path)
 
 
 def grafted(root: Path) -> Journey:
@@ -588,7 +591,8 @@ def grafted(root: Path) -> Journey:
         "the fetch at depth one must leave the repository shallow",
     )
     _expect(
-        journey.scenario.boundary not in repo.git.rev_list(journey.scenario.tip),
+        journey.scenario.boundary
+        not in repo.git.rev_list("--end-of-options", journey.scenario.tip).split(),
         "the boundary must fall outside the shallow history it was cut from",
     )
     return journey

@@ -45,23 +45,15 @@ import re
 import typing as typ
 
 from git_donkey import stack_records, stack_writes
+from git_donkey._constants import (
+    GIT_ANSWERED_YES,
+    REF_NAME_FORMAT,
+    WHERESAT_OPERATION_NAMESPACE,
+)
 from git_donkey.wheresat_errors import failure_line
 
 if typ.TYPE_CHECKING:
     from git import Repo
-
-_ANSWERED_YES: typ.Final = 0
-"""Exit status Git reports for a question whose answer is "yes"."""
-
-_REF_NAME_FORMAT: typ.Final = "--format=%(refname)"
-"""Format asking ``git for-each-ref`` for a ref's full name and nothing else."""
-
-_OPERATION_NAMESPACE: typ.Final = "refs/wheresat/op"
-"""Refs a transported boundary would be fetched into, one namespace per run.
-
-No console run creates one: the fetch this command performs writes the durable
-cache ref, so this is the surface a run that transported a boundary would use.
-"""
 
 _CACHE_NAMESPACE: typ.Final = "refs/wheresat/parent-head"
 """Durable refs caching a fetched pull request head, one per pull request."""
@@ -230,7 +222,7 @@ def _per_run_namespace(op_id: str) -> str:
         could escape the namespace or nest another run inside it.
 
     """
-    return f"{_OPERATION_NAMESPACE}/{validate_op_id(op_id)}"
+    return f"{WHERESAT_OPERATION_NAMESPACE}/{validate_op_id(op_id)}"
 
 
 def _slug_parts(repository: str) -> tuple[str, str]:
@@ -401,7 +393,7 @@ class GitWheresatRefWriter:
             with_extended_output=True,
             with_exceptions=False,
         )
-        if status != _ANSWERED_YES:
+        if status != GIT_ANSWERED_YES:
             reported = failure_line(stderr, status)
             msg = f"cannot retain the boundary for {branch!r}: {reported}"
             raise WheresatRefError(msg)
@@ -503,7 +495,7 @@ class GitWheresatRefWriter:
             with_extended_output=True,
             with_exceptions=False,
         )
-        if status != _ANSWERED_YES:
+        if status != GIT_ANSWERED_YES:
             return None
         return str(output).strip()
 
@@ -527,7 +519,7 @@ class GitWheresatRefWriter:
             with_extended_output=True,
             with_exceptions=False,
         )
-        if status != _ANSWERED_YES:
+        if status != GIT_ANSWERED_YES:
             reported = failure_line(stderr, status)
             msg = f"cannot delete the evidence ref {ref}: {reported}"
             raise WheresatRefError(msg)
@@ -571,7 +563,7 @@ class GitWheresatRefWriter:
             with_extended_output=True,
             with_exceptions=False,
         )
-        if status != _ANSWERED_YES:
+        if status != GIT_ANSWERED_YES:
             reported = failure_line(stderr, status)
             msg = f"cannot fetch {source_ref} from {remote!r}: {reported}"
             raise WheresatRefError(msg)
@@ -579,12 +571,12 @@ class GitWheresatRefWriter:
     def _refs_under(self, namespace: str) -> tuple[str, ...]:
         """Return every ref at or below ``namespace``, in Git's own order."""
         status, output, stderr = self.repo.git.for_each_ref(
-            _REF_NAME_FORMAT,
+            REF_NAME_FORMAT,
             namespace,
             with_extended_output=True,
             with_exceptions=False,
         )
-        if status != _ANSWERED_YES:
+        if status != GIT_ANSWERED_YES:
             reported = failure_line(stderr, status)
             msg = f"cannot list the refs under {namespace}: {reported}"
             raise WheresatRefError(msg)

@@ -35,11 +35,13 @@ from tests.integration.plonk_helpers import (
     create_stacked_git_donkey_worktree,
 )
 from tests.integration.wheresat_helpers import (
+    Status,
     WheresatRun,
     WheresatScenario,
     in_directory,
     report_tokens,
     run_wheresat,
+    worktree_root,
 )
 
 if typ.TYPE_CHECKING:
@@ -110,7 +112,7 @@ def _commit_work(local_path: Path, branch: str) -> str:
         The commit the branch was left at.
 
     """
-    worktree = local_path.parent / f"{local_path.name}.worktrees" / branch
+    worktree = worktree_root(local_path) / branch
     repo = Repo(worktree)
     name = f"{branch}{_FILE_SUFFIX}"
     (worktree / name).write_text(f"work on {branch}\n")
@@ -163,7 +165,7 @@ def _assert_the_evidence_names(
     boundary = plonked.boundary[:width]
     target = plonked.repo.heads["main"].commit.hexsha[:width]
 
-    assert run.exit_code == 0, run.stderr
+    assert run.exit_code == Status.ESTABLISHED, run.stderr
     assert not run.stderr, "a successful run writes nothing to the error stream"
     assert "Included (1 commit)" in run.stdout, (
         "the child's one commit is reported as one commit"
@@ -306,7 +308,7 @@ def test_the_run_reports_no_problem_with_the_plonked_parent(
     """
     run = _run(plonked, capsys)
 
-    assert run.exit_code == 0, run.stderr
+    assert run.exit_code == Status.ESTABLISHED, run.stderr
     assert "Warnings" not in run.stdout, (
         "a swept stack is an ordinary state, so no warning section is printed"
     )

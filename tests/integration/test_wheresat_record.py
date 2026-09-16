@@ -121,11 +121,11 @@ def _record(
 
 def _stored(scenario: WheresatScenario) -> stack_records.StackRecord:
     """Return the child's record as the store reads it back."""
-    record = stack_store.GitStackRecordReader(scenario.repo).read(CHILD)
-    assert isinstance(record, stack_records.StackRecord), (
-        f"expected {CHILD!r} to hold a record, got {record!r}"
-    )
-    return record
+    match stack_store.GitStackRecordReader(scenario.repo).read(CHILD):
+        case stack_records.StackRecord() as record:
+            return record
+        case other:
+            pytest.fail(f"expected {CHILD!r} to hold a record, got {other!r}")
 
 
 def _parent_value() -> str:

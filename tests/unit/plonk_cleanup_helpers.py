@@ -327,26 +327,6 @@ class UnnameableStackStore(RecordingStackStore):
         raise ValueError(msg)
 
 
-class ForgetfulStackStore(RecordingStackStore):
-    """Store double that accepts one branch's tombstone and writes none.
-
-    Hard mode's ordering rule is about one branch: a branch must not be deleted
-    while nothing names its tip. A store that honours every write cannot tell
-    that rule apart from "something was entombed", so this double drops the
-    tombstone of the branch it was told to forget without complaining — the
-    silent write failure the adapter's guard exists to catch.
-    """
-
-    def __init__(self, forgetful: str) -> None:
-        super().__init__()
-        self.forgetful = forgetful
-
-    def entomb(self, branch: str, tip: str) -> None:
-        """Record every tombstone but the forgotten branch's."""
-        if branch != self.forgetful:
-            super().entomb(branch, tip)
-
-
 def candidate(branch_name: str, issue_number: int) -> plonk_records._PlonkCandidate:
     """Return the candidate git donkey creates for ``branch_name``.
 

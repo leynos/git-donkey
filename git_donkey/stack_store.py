@@ -50,6 +50,7 @@ import typing as typ
 from git import GitCommandError, Repo
 
 from git_donkey import stack_records
+from git_donkey._constants import REF_NAME_FORMAT
 
 if typ.TYPE_CHECKING:
     import collections.abc as cabc
@@ -61,7 +62,6 @@ _UNKNOWN_REVISION: typ.Final = 128
 """What Git exits with when a revision it was handed does not resolve."""
 TOMBSTONE_EXPIRE_KEY: typ.Final = "stack.tombstoneExpire"
 """Repository-local key naming how long a tombstone is kept."""
-_REF_NAME_FORMAT: typ.Final = "--format=%(refname)"
 _RECORD_BRANCH_KEY: typ.Final = re.compile(r"^branch\.(?P<branch>.+)\.(?P<key>[^.]+)$")
 _RELOG_ENTRY_TIME: typ.Final = re.compile(r"@\{(?P<timestamp>\d+)\}$")
 _RECORD_KEY_NAMES: typ.Final = frozenset(key.value for key in stack_records.RecordKey)
@@ -407,7 +407,7 @@ class GitStackRecordReader:
     def _refs_in(self, namespace: str) -> cabc.Iterator[str]:
         """Yield the branch names recorded under ``namespace``."""
         prefix = f"{namespace}/"
-        output = self.repo.git.for_each_ref(_REF_NAME_FORMAT, prefix)
+        output = self.repo.git.for_each_ref(REF_NAME_FORMAT, prefix)
         for line in output.splitlines():
             if line.startswith(prefix):
                 yield line[len(prefix) :]

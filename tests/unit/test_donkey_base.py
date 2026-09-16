@@ -82,20 +82,24 @@ def test_no_pull_remains_a_compatible_no_op() -> None:
 
 
 def _repository(tmp_path: Path) -> Repo:
-    """Return a fresh repository with one commit on its default branch.
+    """Return a fresh repository with one commit on ``main``.
 
     The commit identity is configured in the repository itself, so the case
-    neither depends on nor writes to the runner's own Git configuration.
+    neither depends on nor writes to the runner's own Git configuration. The
+    branch ``Repo.init`` started on is renamed to ``main``, so a case that
+    reads a local branch of that name is answered by the fixture rather than
+    by whatever ``init.defaultBranch`` happens to be set to.
 
     Returns
     -------
     Repo
-        The repository, checked out on the branch ``Repo.init`` created.
+        The repository, checked out on ``main``.
 
     """
     repo = Repo.init(tmp_path)
     git_repo_helpers.configure_repo(repo)
     repo.git.commit("--allow-empty", "-m", "the trunk")
+    repo.git.branch("-M", "main")
     return repo
 
 

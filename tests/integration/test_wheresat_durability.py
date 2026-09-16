@@ -40,10 +40,10 @@ import typing as typ
 import pytest
 from git import Repo
 
+from git_donkey._constants import WHERESAT_OPERATION_NAMESPACE
 from git_donkey.wheresat_graph import GitWheresatGraph
 from git_donkey.wheresat_refs import (
     _BOUNDARY_NAMESPACE,
-    _OPERATION_NAMESPACE,
     GitWheresatRefWriter,
     per_run_ref,
 )
@@ -205,7 +205,7 @@ def test_a_reported_boundary_survives_garbage_collection(
         retained_ref = writer.retain_boundary(case.branch, case.boundary)
         retained = case.repo.git.rev_parse(retained_ref)
     writer.release(case.op_id)
-    assert not _refs_under(case.repo, _OPERATION_NAMESPACE), (
+    assert not _refs_under(case.repo, WHERESAT_OPERATION_NAMESPACE), (
         "the run's own evidence namespace is gone"
     )
     case.repo.git.gc("--prune=now")

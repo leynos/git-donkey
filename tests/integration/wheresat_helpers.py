@@ -94,6 +94,27 @@ class Status(enum.IntEnum):
     """A question the run needed went unanswered, so it cannot say."""
 
 
+def worktree_root(checkout: Path) -> Path:
+    """Return the root ``git donkey`` puts a checkout's worktrees under.
+
+    One place names the directory, so a suite that reads a worktree directly
+    and a scenario that reports one cannot disagree about where it is.
+
+    Parameters
+    ----------
+    checkout : Path
+        Working checkout the worktrees were created for.
+
+    Returns
+    -------
+    Path
+        The directory, named after the checkout, that holds one directory per
+        branch.
+
+    """
+    return checkout.parent / f"{checkout.name}.worktrees"
+
+
 @dataclasses.dataclass(frozen=True, slots=True)
 class WheresatScenario:
     """A checkout holding a stacked child, and the boundary its record attests.
@@ -132,7 +153,7 @@ class WheresatScenario:
     @property
     def worktree_root(self) -> Path:
         """The git-donkey worktree root for the scenario repository."""
-        return self.local_path.parent / f"{self.local_path.name}.worktrees"
+        return worktree_root(self.local_path)
 
     def worktree_path(self, branch_name: str | None = None) -> Path:
         """Return the worktree ``git donkey`` created for ``branch_name``."""
@@ -631,8 +652,10 @@ class Fingerprint:
         -------
         tuple[str, ...]
             One description per reading that differs, naming what was removed
-            and what was added, so a failure says which part of the repository
-            a run touched rather than only that something did.
+            and what was added — or that the reading holds the same entries in
+            a different order, which is a difference neither list shows — so a
+            failure says which part of the repository a run touched rather
+            than only that something did.
 
         """
         differences = []
@@ -646,10 +669,12 @@ class Fingerprint:
         ):
             if mine == theirs:
                 continue
-            differences.append(
-                f"{label}: removed {sorted(set(mine) - set(theirs))}, "
-                f"added {sorted(set(theirs) - set(mine))}"
-            )
+            removed = sorted(set(mine) - set(theirs))
+            added = sorted(set(theirs) - set(mine))
+            if not removed and not added:
+                differences.append(f"{label}: reordered")
+                continue
+            differences.append(f"{label}: removed {removed}, added {added}")
         return tuple(differences)
 
 

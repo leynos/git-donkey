@@ -3065,6 +3065,94 @@ Stop and escalate rather than improvising when any of these is reached.
     and what changed there, so a reader can check the claim against the diff
     rather than against this paragraph.
 
+  - Review round: `coderabbit review --agent --base origin/main` reports 10
+    findings over the tree at `94563f0` (log
+    `/tmp/coderabbit-git-donkey-git-wheresat-sub-command-13.out`, the
+    agent-mode stream whose 10 `finding` records are kept as
+    `/tmp/coderabbit-findings-13.jsonl` for triage), taken on 2026-09-16 in
+    one attempt and without meeting a rate limit, over the 127 files the
+    review reports. The 10 are 2 minor and 8 trivial, and unlike round 12 no
+    two of them name the same lines, so every request is one disposition:
+    ten requests, ten changes. All ten are actioned, nine of them literally
+    and one in substance, which is the subject of a bullet below.
+  - The first minor is a unit fixture that read the runner's Git. The
+    repository `_repository` builds in `tests/unit/test_donkey_base.py` put
+    its seed commit on whatever branch `init.defaultBranch` names, and one
+    case reads a local `main`; the fixture now renames the branch
+    `Repo.init` started on to `main` once the commit is made, and says so in
+    its docstring, so the case is answered by the fixture rather than by the
+    environment it happens to run in.
+  - The second minor is the record-refresh paragraph in
+    `docs/users-guide.md`, which described restating without saying for
+    which record. It separates the two now: restating and writing back apply
+    to a record that is still current, and a stale record is not written
+    back at all — the local run answers from the surviving history, which is
+    nobody's declaration, and warns that nothing was recorded, so what a
+    reader finds under a restacked branch is the claim written at birth,
+    unchanged. That is what `record()` and the `RECORD_NOT_SUPERSEDED` gate
+    already do.
+  - Three duplicated constants moved to the module that owns the package's
+    shared names. `GIT_ANSWERED_YES`, `GIT_ANSWERED_NO`, `REF_NAME_FORMAT`
+    and `WHERESAT_OPERATION_NAMESPACE` are in `git_donkey/_constants.py`
+    now, beside the command prefixes that were already there; the per-run
+    prefix is derived from the namespace name —
+    `f"{WHERESAT_OPERATION_NAMESPACE}/"` — rather than restated, so the two
+    spellings of one namespace that the request named cannot drift apart.
+    `wheresat_graph`, `wheresat_refs`, `wheresat_worktrees` and
+    `stack_store` import the names. Moving names is only as complete as the
+    last reader: the durability suite imported the private
+    `_OPERATION_NAMESPACE` this deleted, which no compile check can see, so
+    the change was finished by grepping the tree for every name it removed.
+    That suite keeps its own `_ANSWERED_YES` and `_REF_NAME_FORMAT`
+    deliberately — it reads refs as a black box, and a reading that shares
+    its spelling with the code under test can agree with it by
+    construction.
+  - Two test helpers gained the shape their callers were repeating.
+    `tests/integration/wheresat_helpers.py` names the worktree root once, in
+    `worktree_root(checkout)`, which the scenario property and the
+    end-to-end suite's `_commit_work` both call, so a suite that reads a
+    worktree cannot disagree with the scenario that reports one about where
+    it is. `Fingerprint.differences` reports a reordering as one: two
+    readings holding the same entries in a different order produced an empty
+    removed list and an empty added list, which read as a difference with
+    nothing to show, and read `reordered` now.
+  - The fork journey stopped rewriting the journey it was built from.
+    `tests/integration/wheresat_scenarios.py` had assigned to
+    `journey.forge.pull`, which is the squash journey's own forge and not
+    the fork journey's to change; it hands `dataclasses.replace` a
+    replacement `ScriptedForge` now, so the squash journey is left as
+    `squashed` built it. In the same module the graft scenario's check that
+    the boundary fell outside the shallow history was a substring test over
+    `rev_list`'s output; it splits that output into revisions and asks
+    whether the boundary is among them, with `--end-of-options` so a
+    ref-shaped argument cannot be read as an option.
+  - The record suite's reader matches on the type it asked for. `_stored` in
+    `tests/integration/test_wheresat_record.py` asserts with a
+    `StackRecord` class pattern and reports anything else through
+    `pytest.fail`, which is the shape the rest of that module's readers use.
+  - The one request whose form is adapted is the entombment case. The review
+    asked for the completed lifecycle's outcome to be asserted rather than
+    the `EntombFirstAdapter` double's `AssertionError`, and for
+    `result.failed_entombments` to be asserted only if the store double
+    raises for the omitted record. Both halves are done by making the double
+    the store production has: `RecordingStackStore(entomb_failures=…)`
+    raises `stack_store.StackRecordError`, which is the error
+    `plonk_cleanup._entomb_branch` catches to report `entomb_failed`, so the
+    case asserts the run's own `failed_entombments` for the refused branch,
+    that no tombstone names its tip, that the refused branch is still there,
+    and that its sibling is not — the refusal reaches one branch.
+    `ForgetfulStackStore`, which modelled a store that silently drops a
+    write and cannot exist here, is retired; the adapter double stays as the
+    backstop it was.
+  - The status comparison is the enum's at each site that compares one. The
+    two `run.exit_code == 0` assertions in the end-to-end suite are
+    `Status.ESTABLISHED` now, the `Status` the helper module already
+    exports. The third bare zero in that file is left alone, and the reason
+    is the shape of the value rather than the size of the change: it is
+    `plonk.run_git_plonk`'s return, the process status of a `git plonk`
+    sweep rather than a `git wheresat` result, and `Status` names this
+    command's lifecycle, not that one's.
+
 ## Surprises & discoveries
 
 - Observation: this repository has no roadmap document.

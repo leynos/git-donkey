@@ -642,9 +642,12 @@ writes nothing back. Only an attested claim is written back, and the record's
 own claim is the only attested source the local path has, so a refresh restates
 the boundary the record already names — it re-anchors the commit and restates
 the tip the branch is at, so a later reader can tell the record was restated by
-a run rather than left as the claim written at birth. Moving a record to a new
-boundary needs an attested account of where the parent went, which local
-evidence cannot give.
+a run rather than left as the claim written at birth. That restating is for a
+record that is still current. A stale record is not written back: the local run
+answers from the surviving history, which is nobody's declaration, and warns
+that nothing was recorded — so what a reader finds under a restacked branch is
+the claim written at birth, unchanged. Moving a record to a new boundary needs
+an attested account of where the parent went, which local evidence cannot give.
 
 `--no-fetch` performs no Git transport, so the parent's head is not fetched and
 no cache ref is written, while queries to the forge are still permitted.

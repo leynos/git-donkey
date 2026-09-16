@@ -22,11 +22,9 @@ from pathlib import Path
 
 from git import InvalidGitRepositoryError, NoSuchPathError, Repo
 
+from git_donkey._constants import GIT_ANSWERED_YES
 from git_donkey.wheresat_errors import WheresatGraphError, failure_line
 from git_donkey.wheresat_records import GitOperation, WorktreeState
-
-_ANSWERED_YES: typ.Final = 0
-"""Exit status Git reports for a question whose answer is "yes"."""
 
 _WORKTREE_LISTING: typ.Final = "--porcelain"
 """Format asking ``git worktree list`` for one block of fields per worktree."""
@@ -165,7 +163,7 @@ def _listing(repo: Repo, branch: str) -> str | None:
         with_extended_output=True,
         with_exceptions=False,
     )
-    if status != _ANSWERED_YES:
+    if status != GIT_ANSWERED_YES:
         reported = failure_line(stderr, status)
         msg = f"cannot list the worktrees to find {branch!r}: {reported}"
         raise WheresatGraphError(msg)
@@ -328,7 +326,7 @@ def _absolute_git_dir(worktree: Repo) -> Path:
         with_extended_output=True,
         with_exceptions=False,
     )
-    if status != _ANSWERED_YES:
+    if status != GIT_ANSWERED_YES:
         reported = failure_line(stderr, status)
         msg = f"cannot locate the worktree's Git directory: {reported}"
         raise WheresatGraphError(msg)
@@ -372,7 +370,7 @@ def _dirty(worktree: Repo) -> bool:
         with_extended_output=True,
         with_exceptions=False,
     )
-    if status != _ANSWERED_YES:
+    if status != GIT_ANSWERED_YES:
         reported = failure_line(stderr, status)
         msg = f"cannot read the worktree's status: {reported}"
         raise WheresatGraphError(msg)

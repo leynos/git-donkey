@@ -46,6 +46,12 @@ import typing as typ
 
 from git import GitCommandError, Repo
 
+from git_donkey._constants import (
+    GIT_ANSWERED_NO,
+    GIT_ANSWERED_YES,
+    REF_NAME_FORMAT,
+    WHERESAT_OPERATION_NAMESPACE,
+)
 from git_donkey.wheresat_errors import (
     ShallowHistoryError,
     WheresatGraphError,
@@ -54,16 +60,7 @@ from git_donkey.wheresat_errors import (
 from git_donkey.wheresat_records import Ancestry, WorktreeState
 from git_donkey.wheresat_worktrees import worktree_state
 
-_ANSWERED_YES: typ.Final = 0
-"""Exit status Git reports for a question whose answer is "yes"."""
-
-_ANSWERED_NO: typ.Final = 1
-"""Exit status Git reports for a question whose answer is "no"."""
-
-_REF_NAME_FORMAT: typ.Final = "--format=%(refname)"
-"""Format asking ``git for-each-ref`` for a ref's full name and nothing else."""
-
-_PER_RUN_NAMESPACE: typ.Final = "refs/wheresat/op/"
+_PER_RUN_NAMESPACE: typ.Final = f"{WHERESAT_OPERATION_NAMESPACE}/"
 """Refs a transported boundary would be fetched into, one namespace per run.
 
 No console run creates one: the fetch this command performs writes the durable
@@ -207,9 +204,9 @@ class GitWheresatGraph:
             with_extended_output=True,
             with_exceptions=False,
         )
-        if status == _ANSWERED_YES:
+        if status == GIT_ANSWERED_YES:
             return Ancestry.ANCESTOR
-        if status != _ANSWERED_NO:
+        if status != GIT_ANSWERED_NO:
             question = f"cannot tell whether {ancestor} is an ancestor of {descendant}"
             msg = f"{question}: {failure_line(stderr, status)}"
             raise WheresatGraphError(msg)
@@ -255,7 +252,7 @@ class GitWheresatGraph:
             with_extended_output=True,
             with_exceptions=False,
         )
-        if status not in {_ANSWERED_YES, _ANSWERED_NO}:
+        if status not in {GIT_ANSWERED_YES, GIT_ANSWERED_NO}:
             reported = failure_line(stderr, status)
             msg = f"cannot find the merge bases of {left} and {right}: {reported}"
             raise WheresatGraphError(msg)
@@ -302,7 +299,7 @@ class GitWheresatGraph:
             with_extended_output=True,
             with_exceptions=False,
         )
-        if status not in {_ANSWERED_YES, _ANSWERED_NO}:
+        if status not in {GIT_ANSWERED_YES, GIT_ANSWERED_NO}:
             reported = failure_line(stderr, status)
             msg = f"cannot find the fork point of {head} and {upstream_ref}: {reported}"
             raise WheresatGraphError(msg)
@@ -312,7 +309,7 @@ class GitWheresatGraph:
                 f"{_SHALLOW_REFUSAL}"
             )
             raise ShallowHistoryError(msg)
-        if status == _ANSWERED_NO:
+        if status == GIT_ANSWERED_NO:
             return None
         return str(output).strip()
 
@@ -355,9 +352,9 @@ class GitWheresatGraph:
             with_extended_output=True,
             with_exceptions=False,
         )
-        if status == _ANSWERED_NO:
+        if status == GIT_ANSWERED_NO:
             return None
-        if status != _ANSWERED_YES:
+        if status != GIT_ANSWERED_YES:
             reported = failure_line(stderr, status)
             msg = f"cannot tell whether {rev!r} names a ref: {reported}"
             raise WheresatGraphError(msg)
@@ -395,9 +392,9 @@ class GitWheresatGraph:
             with_extended_output=True,
             with_exceptions=False,
         )
-        if status == _ANSWERED_NO:
+        if status == GIT_ANSWERED_NO:
             return None
-        if status != _ANSWERED_YES:
+        if status != GIT_ANSWERED_YES:
             reported = failure_line(stderr, status)
             msg = f"cannot read what {name} points at: {reported}"
             raise WheresatGraphError(msg)
@@ -449,9 +446,9 @@ class GitWheresatGraph:
                 with_extended_output=True,
                 with_exceptions=False,
             )
-            if status == _ANSWERED_YES:
+            if status == GIT_ANSWERED_YES:
                 return candidate
-            if status != _ANSWERED_NO:
+            if status != GIT_ANSWERED_NO:
                 reported = failure_line(stderr, status)
                 msg = f"cannot tell whether {candidate!r} is a ref: {reported}"
                 raise WheresatGraphError(msg)
@@ -498,7 +495,7 @@ class GitWheresatGraph:
             with_extended_output=True,
             with_exceptions=False,
         )
-        if status != _ANSWERED_YES:
+        if status != GIT_ANSWERED_YES:
             reported = failure_line(stderr, status)
             msg = f"cannot list the history of {rev}: {reported}"
             raise WheresatGraphError(msg)
@@ -558,7 +555,7 @@ class GitWheresatGraph:
             with_extended_output=True,
             with_exceptions=False,
         )
-        if status != _ANSWERED_YES:
+        if status != GIT_ANSWERED_YES:
             reported = failure_line(stderr, status)
             msg = f"cannot list the commits {exclude}..{include}: {reported}"
             raise WheresatGraphError(msg)
@@ -663,11 +660,11 @@ class GitWheresatGraph:
         """
         status, output, stderr = self.repo.git.for_each_ref(
             f"--contains={commit}",
-            _REF_NAME_FORMAT,
+            REF_NAME_FORMAT,
             with_extended_output=True,
             with_exceptions=False,
         )
-        if status != _ANSWERED_YES:
+        if status != GIT_ANSWERED_YES:
             reported = failure_line(stderr, status)
             msg = f"cannot tell whether {commit} is retained by a ref: {reported}"
             raise WheresatGraphError(msg)
@@ -772,7 +769,7 @@ class GitWheresatGraph:
             with_extended_output=True,
             with_exceptions=False,
         )
-        if status != _ANSWERED_YES:
+        if status != GIT_ANSWERED_YES:
             reported = failure_line(stderr, status)
             msg = f"cannot diff {base} against {tip}: {reported}"
             raise WheresatGraphError(msg)
@@ -792,7 +789,7 @@ class GitWheresatGraph:
                 with_extended_output=True,
                 with_exceptions=False,
             )
-        if status != _ANSWERED_YES:
+        if status != GIT_ANSWERED_YES:
             reported = failure_line(stderr, status)
             msg = f"cannot identify the patch {base}..{tip} introduces: {reported}"
             raise WheresatGraphError(msg)
