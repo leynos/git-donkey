@@ -10,7 +10,7 @@ if typ.TYPE_CHECKING:
     from pathlib import Path
 
 
-def test_make_typecheck_pins_ty_and_resolves_script_modules(
+def test_make_typecheck_pins_ty_and_omits_script_search_path(
     repository_root: Path,
     make_command: cabc.Callable[..., tuple[str, ...]],
 ) -> None:
@@ -29,7 +29,9 @@ def test_make_typecheck_pins_ty_and_resolves_script_modules(
     assert "uv tool run ty@0.0.79 --version" in result.stdout, (
         f"typecheck must verify the pinned Ty release: {result.stdout}"
     )
-    assert "uv tool run ty@0.0.79 check --extra-search-path scripts" in result.stdout, (
-        "typecheck must resolve script modules through --extra-search-path: "
-        f"{result.stdout}"
+    assert "uv tool run ty@0.0.79 check" in result.stdout, (
+        f"typecheck must run the pinned Ty release: {result.stdout}"
+    )
+    assert "--extra-search-path" not in result.stdout, (
+        f"typecheck must not reference the deleted scripts module path: {result.stdout}"
     )

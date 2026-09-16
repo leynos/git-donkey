@@ -19,12 +19,18 @@ RUFF ?= $(UV_ENV) uv tool run ruff@$(RUFF_VERSION)
 TY_VERSION ?= 0.0.79
 TY ?= $(UV_ENV) uv tool run ty@$(TY_VERSION)
 SKYLOS_VERSION ?= 4.33.2
-TYPOS_VERSION ?= 1.48.0
 TOOLS = $(MDLINT) uv
 VENV_TOOLS = pytest
 UV_ENV = UV_CACHE_DIR=.uv-cache UV_TOOL_DIR=.uv-tools
+# The spelling gate regenerates typos.toml from the live shared dictionary and
+# the typos.local.toml overlay on every run, then runs Typos itself, so no
+# separate typos pin is needed here.
+TYPOS_CONFIG_BUILDER_VERSION ?= v0.1.1
+TYPOS_CONFIG_BUILDER = $(UV_ENV) uv tool run --from \
+        "git+https://github.com/leynos/typos-config-builder.git@$(TYPOS_CONFIG_BUILDER_VERSION)" \
+        typos-config-builder
 # Pylint targets shared by both passes.
-PYLINT_TARGETS ?= git_donkey scripts tests
+PYLINT_TARGETS ?= git_donkey tests
 # Spend a tenth of the available cores on Pylint, leaving room for the other
 # agents and builds sharing this machine. The floor of two keeps the pass
 # parallel on small CI runners, whose core count never reaches the tenth.
@@ -46,7 +52,7 @@ SKYLOS_EXCLUDE_FOLDERS ?= tests
 SKYLOS_WHITELIST_LOCK ?= .skylos-whitelist.lock
 
 .PHONY: help all clean build build-release lint fmt check-fmt \
-        markdownlint nixie spelling spelling-helper-test skylos-allow test typecheck \
+        markdownlint nixie spelling skylos-allow test typecheck \
         makeutil \
         $(TOOLS) $(VENV_TOOLS)
 .PHONY: pytest test
@@ -135,37 +141,13 @@ skylos-allow: ## Document one named Skylos exception, not an entry point
 
 typecheck: build uv ## Run typechecking
 	$(TY) --version
-	# scripts/ holds PEP 723 single-file helpers that import each other by
-	# module name; ty needs them on the search path to resolve those imports.
-	$(TY) check --extra-search-path scripts
+	$(TY) check
 
 markdownlint: spelling $(MDLINT) ## Lint Markdown files and enforce spelling
 	$(MDLINT) '**/*.md'
 
-spelling: spelling-helper-test ## Enforce en-GB-oxendict spelling in Markdown prose
-	@$(UV_ENV) uv run scripts/generate_typos_config.py
-	@git ls-files -z '*.md' | \
-		xargs -0 -r env $(UV_ENV) uv tool run typos@$(TYPOS_VERSION) \
-		--config typos.toml --force-exclude
-
-spelling-helper-test: ## Validate the shared spelling-policy integration
-	@$(RUFF) format --isolated \
-		--target-version py313 --check scripts/generate_typos_config.py \
-		scripts/typos_rollout.py scripts/typos_rollout_cache.py \
-		scripts/tests/test_typos_rollout.py
-	# --extend-select S310: these helpers open URLs, and their `noqa: S310`
-	# directives carry the justification for doing so. Ruff's default set omits
-	# S310, which would leave those suppressions unused rather than earned.
-	@$(RUFF) check --isolated --extend-select S310 \
-		--target-version py313 scripts/generate_typos_config.py \
-		scripts/typos_rollout.py scripts/typos_rollout_cache.py \
-		scripts/tests/test_typos_rollout.py
-	@PYTHONPATH=scripts $(UV_ENV) uv run --no-project --python 3.13 \
-		--with pytest==9.0.2 --with pytest-cov==7.0.0 \
-		python -m pytest scripts/tests/test_typos_rollout.py \
-		-c /dev/null --rootdir=. -p no:cacheprovider \
-		--cov=generate_typos_config --cov=typos_rollout \
-		--cov=typos_rollout_cache --cov-fail-under=90
+spelling: ## Enforce en-GB-oxendict spelling in Markdown prose
+	$(TYPOS_CONFIG_BUILDER) gate --repository .
 
 nixie: ## Validate Mermaid diagrams
 	$(call ensure_tool,nixie)
