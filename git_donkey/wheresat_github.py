@@ -98,6 +98,9 @@ _RATE_LIMIT_HEADERS: typ.Final = (
     "X-RateLimit-Remaining",
 )
 
+type _PayloadCache = dict[stack_records.PullRequestIdentity, cabc.Mapping[str, object]]
+"""Decoded pull request payloads, keyed by the pull request they describe."""
+
 
 @dataclasses.dataclass(frozen=True, slots=True)
 class AssociationPage:
@@ -220,11 +223,20 @@ class ApiWheresatGitHub:
         Monotonic clock the association search measures its budget with. It is
         a parameter because a test cannot wait a minute to watch a budget run
         out, and because nothing else here reads the time.
+    payloads : _PayloadCache, optional
+        Decoded pull request payloads this adapter has already read, keyed by
+        the pull request they describe. Three questions read one pull request's
+        own payload, and an adapter answers them from one ask per pull request;
+        the field is excluded from equality and from the representation because
+        it is what the adapter has been asked, not what it is.
 
     """
 
     session: requests.Session
     clock: cabc.Callable[[], float] = time.monotonic
+    payloads: _PayloadCache = dataclasses.field(
+        default_factory=dict, compare=False, repr=False
+    )
 
     def pull_request(
         self, identity: stack_records.PullRequestIdentity
@@ -245,7 +257,7 @@ class ApiWheresatGitHub:
             rather than be told the head came from its own repository.
 
         """
-        payload = mapping(self.get(*_pull_path(identity)))
+        payload = self._payload(identity)
         merged_at = string_field(nested(payload, "merged_at")) or None
         merged = flag_field(nested(payload, "merged")) or merged_at is not None
         landed = string_field(nested(payload, "merge_commit_sha")) or None
@@ -279,7 +291,7 @@ class ApiWheresatGitHub:
             absent one means here.
 
         """
-        payload = mapping(self.get(*_pull_path(identity)))
+        payload = self._payload(identity)
         return string_field(nested(payload, "body"))
 
     def stack_parent(
@@ -310,7 +322,7 @@ class ApiWheresatGitHub:
             If GitHub reports a position the stack it names does not have.
 
         """
-        payload = mapping(self.get(*_pull_path(identity)))
+        payload = self._payload(identity)
         position = count_field(nested(payload, "stack", "position"))
         if position is None or position <= 1:
             return None
@@ -404,6 +416,37 @@ class ApiWheresatGitHub:
         encoded = tuple(_path_component(part) for part in parts)
         url = "/".join((_API_ROOT, *encoded))
         return _decoded(self._answered(url, params), url)
+
+    def _payload(
+        self, identity: stack_records.PullRequestIdentity
+    ) -> cabc.Mapping[str, object]:
+        """Return the pull request's own payload, asking GitHub at most once.
+
+        Three questions read one pull request from one endpoint — whether it
+        merged, what its body says, and where it sits in a stack — and a run
+        that asks all three would otherwise read the same resource three times.
+        The first ask is kept, so a run that asks one question spends what it
+        did before.
+
+        Parameters
+        ----------
+        identity : stack_records.PullRequestIdentity
+            Pull request whose payload is wanted.
+
+        Returns
+        -------
+        collections.abc.Mapping[str, object]
+            The decoded payload, whose fields are the callers' business.
+
+        Raises
+        ------
+        WheresatGitHubError
+            If the request did not produce a ``200`` with a JSON object body.
+
+        """
+        if identity not in self.payloads:
+            self.payloads[identity] = mapping(self.get(*_pull_path(identity)))
+        return self.payloads[identity]
 
     def _answered(
         self, url: str, params: cabc.Mapping[str, str] | None

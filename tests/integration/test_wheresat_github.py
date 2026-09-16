@@ -113,6 +113,15 @@ SEARCH_QUERY: str = "repo:leynos/git-donkey filename:pyproject.toml"
 RATE_LIMITED_URL: str = "https://api.github.com/search/code"
 """Request the refusal recording answers, for the assertion that it is named."""
 
+REQUESTS_FOR_ONE_PULL_REQUEST: int = 2
+"""What three questions about one pull request cost: its payload and its stack.
+
+Whether a pull request merged, what its body says, and where it sits in a stack
+are read from one payload, and the stack below it is the one other resource
+those questions need. A run that read the payload per question would spend four
+requests instead, which is the count this pins.
+"""
+
 
 def _session() -> github3_session.GitHubSession:
     """Return a session for the recordings, authenticated only when asked to be.
@@ -304,6 +313,41 @@ def test_a_stacked_pull_request_names_the_one_below_it(
         for request in wheresat_parent_metadata_cassette.requests
         if "/stacks?pull_request=93" in request.uri
     ], "and no stack was asked about, so the answer above cost no request"
+
+
+def test_three_questions_about_one_pull_request_cost_two_requests(
+    github: ApiWheresatGitHub,
+    wheresat_parent_metadata_cassette: Cassette,
+) -> None:
+    """One pull request's payload is read once, however many questions ask.
+
+    Whether a pull request merged, what its body says, and where it sits in a
+    stack are three facts one resource holds, and a run that asks all three
+    would otherwise spend three requests of an allowance it shares with
+    everything else the credential does. The count is what this test asserts,
+    because the cache is invisible in every answer: the stacked pull request is
+    asked about three times and its payload read once, and the stack below it
+    is the only other resource the run asks for — two requests rather than
+    three. The answers are asserted too, so a cache that answered from a stale
+    or empty payload cannot pass by spending the right number of requests.
+    """
+    before = wheresat_parent_metadata_cassette.play_count
+
+    metadata = github.pull_request(STACKED)
+    body = github.pull_request_body(STACKED)
+    parent = github.stack_parent(STACKED)
+
+    asked = wheresat_parent_metadata_cassette.play_count - before
+    assert asked == REQUESTS_FOR_ONE_PULL_REQUEST, (
+        "the pull request's own payload should be read once and the stack "
+        f"once, whatever the number of questions asked; the run made {asked}"
+    )
+    assert metadata.stacked is True, "the merge question is answered all the same"
+    assert body.startswith("## Predictable UI composition"), (
+        "and the body question reads the recorded prose rather than a title, an "
+        f"empty string, or nothing at all; it reads {body[:40]!r}"
+    )
+    assert parent == STACK_PARENT, "and so is the question about the neighbour"
 
 
 def test_the_association_search_names_the_pull_request(
