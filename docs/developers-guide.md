@@ -871,14 +871,14 @@ the request's method and URL rather than on what it carried, so a run holding a
 token and a run holding none replay the same recording, and a response header
 cannot make an interaction unfindable.
 
-A recording made before the response hook existed still carries those OAuth
-headers on disk, and it is left as it was recorded: the rule above holds for
-every recording, and a file that needs to say less is re-recorded rather than
-repaired by hand. Nothing reads them there: the hook drops them as a recording
-is loaded, which is what `tests/integration/test_wheresat_github.py` asserts,
-and a re-recording pass that writes a file strips them from it, because the
-file is written from the interactions the recorder holds rather than from the
-bytes it read.
+A recording made before the response hook existed may still carry those OAuth
+headers on disk, and a recording that does is left as it was recorded: the rule
+above holds for every recording, and a file that needs to say less is
+re-recorded rather than repaired by hand. Nothing reads them there: the hook
+drops them as a recording is loaded, which is what
+`tests/integration/test_wheresat_github.py` asserts, and a re-recording pass
+that writes a file strips them from it, because the file is written from the
+interactions the recorder holds rather than from the bytes it read.
 
 `vcrpy` 7.0.0 ships no pytest plugin, so the root `conftest.py` declares the
 `--record-mode` option itself — `none`, `once`, or `new_episodes`, defaulting to
