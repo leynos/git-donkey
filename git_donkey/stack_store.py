@@ -25,9 +25,12 @@ Two properties are maintained here rather than left to the callers.
   instant, because Git's date grammar reads an expression it cannot parse as
   *now* and a window of no length prunes every tombstone in the repository.
 
-Configuration is read once per call through ``git config --local --list -z``,
-so Git itself quotes a hierarchical branch name in the subsection and returns
-variable names in the lower case it reads them in (AXIOM-13). A tombstone's age
+Configuration is read through ``git config --local --list -z``, once per
+orphan-processing operation rather than once per branch it is asked about, and
+the listing is discarded by any write and at the start of the next operation,
+so a caller never reads a value a change has already overtaken. Git itself
+quotes a hierarchical branch name in the subsection and returns variable names
+in the lower case it reads them in (AXIOM-13). A tombstone's age
 is read from its own reflog, which is why
 :mod:`git_donkey.stack_writes` passes ``--create-reflog``: a ref outside
 ``refs/heads/`` gets no reflog by default. A tombstone whose age cannot be read
@@ -43,6 +46,7 @@ See ``docs/stack-records.md`` for the contract these methods implement, and
 
 from __future__ import annotations
 
+import contextlib
 import dataclasses
 import re
 import typing as typ
@@ -141,6 +145,9 @@ class GitStackRecordReader:
     """
 
     repo: Repo
+    _configuration: tuple[tuple[str, str], ...] | None = dataclasses.field(
+        default=None, init=False, repr=False, compare=False
+    )
 
     def read(self, branch: str) -> stack_records.RecordResult:
         """Return the record for ``branch``, or why it cannot be read.
@@ -164,12 +171,13 @@ class GitStackRecordReader:
 
         """
         anchor = self._ref_value(stack_records.base_ref_path(branch))
-        return stack_records.reconcile(
-            branch,
-            self._branch_config(branch),
-            anchor,
-            branch_exists=self._branch_exists(branch),
-        )
+        with self._one_configuration_listing():
+            return stack_records.reconcile(
+                branch,
+                self._branch_config(branch),
+                anchor,
+                branch_exists=self._branch_exists(branch),
+            )
 
     def anchor(self, branch: str) -> str | None:
         """Return the commit ``branch``'s anchor ref names, if it has one.
@@ -229,9 +237,12 @@ class GitStackRecordReader:
             Branch names with a record and no ``refs/heads/<branch>``.
 
         """
-        names = set(self._recorded_branches())
-        names.update(self._anchored_branches())
-        return tuple(sorted(name for name in names if not self._branch_exists(name)))
+        with self._one_configuration_listing():
+            names = set(self._recorded_branches())
+            names.update(self._anchored_branches())
+            return tuple(
+                sorted(name for name in names if not self._branch_exists(name))
+            )
 
     def branch_tip(self, branch: str) -> str | None:
         """Return the commit ``branch`` names now, or ``None`` when it is gone.
@@ -272,9 +283,10 @@ class GitStackRecordReader:
             no tip left to preserve and none is invented.
 
         """
-        return tuple(
-            branch for branch in orphans if self._orphan_tip(branch) is not None
-        )
+        with self._one_configuration_listing():
+            return tuple(
+                branch for branch in orphans if self._orphan_tip(branch) is not None
+            )
 
     def expired(self, expire: str) -> tuple[str, ...]:
         """Return the tombstones written before ``expire``, in sorted order.
@@ -351,8 +363,50 @@ class GitStackRecordReader:
             raise ValueError(msg)
         return expire
 
+    @contextlib.contextmanager
+    def _one_configuration_listing(self) -> cabc.Iterator[None]:
+        """Hold one local-configuration listing for the duration of one read.
+
+        The listing is the repository's whole configuration, so an operation
+        that asks about every orphan it holds — a rescuable report, a sweep —
+        would otherwise start a Git process for each name it was handed. It is
+        taken again for each operation rather than kept beside the repository,
+        because this class is not the only writer of the configuration it
+        reads: a user's ``git config``, another process, and another instance
+        of this class all change it, and the next operation must see that.
+
+        Yields
+        ------
+        None
+            The listing is held, and no value is yielded for it.
+
+        """
+        self._forget_config_entries()
+        try:
+            yield
+        finally:
+            self._forget_config_entries()
+
     def _config_entries(self) -> tuple[tuple[str, str], ...]:
-        """Return every key and value in the repository's local configuration."""
+        """Return every key and value in the repository's local configuration.
+
+        The listing is read once per operation and reused within it, so a
+        caller that asks about every orphan it holds asks Git once rather than
+        once per orphan. It is answered from a listing taken since the last
+        time one was discarded.
+
+        Returns
+        -------
+        tuple[tuple[str, str], ...]
+            Every configured key with its value, as Git reports them.
+
+        """
+        if self._configuration is None:
+            object.__setattr__(self, "_configuration", self._read_config_entries())
+        return self._configuration
+
+    def _read_config_entries(self) -> tuple[tuple[str, str], ...]:
+        """Read the repository's local configuration as Git reports it."""
         output = self.repo.git.config("--local", "--list", "-z")
         entries = []
         for entry in output.split(_ENTRY_SEPARATOR):
@@ -360,6 +414,16 @@ class GitStackRecordReader:
             if entry and separator:
                 entries.append((key, value))
         return tuple(entries)
+
+    def _forget_config_entries(self) -> None:
+        """Discard the held listing, so the next read takes a fresh one.
+
+        A writer calls this before the first value it changes, and an operation
+        discards the listing it held on the way out, so no answer is served
+        from a listing that a write here, or a change no write here made, has
+        already overtaken.
+        """
+        object.__setattr__(self, "_configuration", None)
 
     def _branch_config(self, branch: str) -> dict[str, str]:
         """Return ``branch``'s own configuration section, without its prefix."""

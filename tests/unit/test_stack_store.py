@@ -709,6 +709,80 @@ def test_a_prune_that_cannot_delete_a_tombstone_reports_the_store_error(
     )
 
 
+def test_one_listing_answers_every_orphan_an_operation_is_asked_about(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A rescuable report and a sweep each ask for the configuration once.
+
+    The listing is the repository's whole configuration, so reading it per
+    orphan costs a Git process for every record the repository holds, and a
+    sweep pays it twice over: once for the report of what it would preserve and
+    once for the write. Each operation lists it once, however many orphans it
+    is handed. The counts below are of the calls Git was actually asked to
+    make.
+    """
+    repo = make_repo(tmp_path)
+    base = repo.head.commit.hexsha
+    store = make_writer(repo)
+    for branch in (CHILD, NEIGHBOUR):
+        repo.git.branch(branch, base)
+        store.create(make_record(branch, base))
+        delete_ref_surgically(repo, branch)
+    orphans = store.orphans()
+    assert orphans == (CHILD, NEIGHBOUR), "both records are orphans"
+    listings: list[tuple[object, ...]] = []
+    real_config = repo.git.config
+
+    def counting_config(_git: Git, *args: object, **kwargs: object) -> str:
+        """Answer every configuration call, counting the full listings."""
+        if "--list" in args:
+            listings.append(args)
+        return real_config(*args, **kwargs)
+
+    monkeypatch.setattr(Git, "config", counting_config, raising=False)
+
+    assert store.rescuable(orphans) == (CHILD, NEIGHBOUR), "both tips survive"
+
+    assert len(listings) == 1, (
+        "the report lists the configuration once for both orphans rather than "
+        "once for each of them"
+    )
+    listings.clear()
+
+    assert store.sweep(orphans) == (CHILD, NEIGHBOUR), "both tips are preserved"
+
+    assert len(listings) == 1, (
+        "the sweep lists it once too, because every orphan is read before the "
+        "first record is cleared"
+    )
+
+
+def test_a_read_after_a_write_is_not_answered_from_before_it(tmp_path: Path) -> None:
+    """A write discards the listing, so the record it wrote is what reads back.
+
+    The store reads before it writes — a create lists the configuration to
+    refuse a record that is already there — so a listing that outlived the
+    write would answer the read that follows with the state the create found
+    rather than the one it left.
+    """
+    repo = make_repo(tmp_path)
+    base = repo.head.commit.hexsha
+    repo.git.branch(CHILD, base)
+    store = make_writer(repo)
+    record = make_record(CHILD, base)
+    assert isinstance(store.read(CHILD), stack_records.RecordAbsent), (
+        "the branch has no record, and reading it lists the configuration"
+    )
+
+    store.create(record)
+
+    assert store.read(CHILD) == record, (
+        "the record read back is the one the write made rather than the "
+        "configuration as it stood before it"
+    )
+
+
 @pytest.mark.parametrize("branch", ["feature/child", "Feature/X", "release-1.2.3"])
 def test_a_record_round_trips_whatever_shape_the_branch_name_has(
     tmp_path: Path, branch: str

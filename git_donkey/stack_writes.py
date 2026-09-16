@@ -250,6 +250,11 @@ class GitStackRecordWriter(stack_store.GitStackRecordReader):
         exists keeps the tombstone it has, because a tip observed before the
         deletion is never replaced by one recorded earlier.
 
+        Every orphan is read before the first record is cleared: the tips are
+        taken under one configuration listing, so the run asks Git about the
+        configuration once rather than once per name, and a name whose record
+        cannot be read stops the sweep while the records are still whole.
+
         Parameters
         ----------
         orphans : cabc.Sequence[str]
@@ -269,7 +274,9 @@ class GitStackRecordWriter(stack_store.GitStackRecordReader):
             If a branch name would be unsafe in a ref path.
 
         """
-        return tuple(branch for branch in orphans if self._sweep_one(branch))
+        with self._one_configuration_listing():
+            tips = tuple((branch, self._orphan_tip(branch)) for branch in orphans)
+        return tuple(branch for branch, tip in tips if self._sweep_one(branch, tip))
 
     def prune(self, expire: str) -> tuple[str, ...]:
         """Delete tombstones written before ``expire``.
@@ -303,9 +310,28 @@ class GitStackRecordWriter(stack_store.GitStackRecordReader):
             self._delete_ref(stack_records.tombstone_ref_path(branch))
         return expired
 
-    def _sweep_one(self, branch: str) -> bool:
-        """Clear one orphan's record, reporting whether a tombstone stands."""
-        tip = self._orphan_tip(branch)
+    def _sweep_one(self, branch: str, tip: str | None) -> bool:
+        """Clear one orphan's record, reporting whether a tombstone stands.
+
+        The tip is the one the sweep already read for ``branch``, so this call
+        writes rather than reads: everything the sweep asks Git about the
+        records is asked before the first of them is cleared.
+
+        Parameters
+        ----------
+        branch : str
+            Branch whose record is cleared.
+        tip : str | None
+            The tip the sweep read for ``branch``, or ``None`` when its record
+            carried none.
+
+        Returns
+        -------
+        bool
+            Whether a tombstone for ``branch`` stands, whether this call wrote
+            it or found one already there.
+
+        """
         if tip is not None and self.tombstone(branch) is None:
             self._write_tombstone(branch, tip)
         self._remove_live_record(branch)
@@ -332,7 +358,10 @@ class GitStackRecordWriter(stack_store.GitStackRecordReader):
 
         A Git refusal is reported as a failed record write rather than as the
         Git error itself, because both callers have already published an anchor
-        by the time this runs and both respond by undoing that anchor.
+        by the time this runs and both respond by undoing that anchor. The
+        reader's cached listing is discarded first, whether or not the write
+        reaches its last value, so no later read is answered from what the
+        configuration held before.
 
         Raises
         ------
@@ -340,6 +369,7 @@ class GitStackRecordWriter(stack_store.GitStackRecordReader):
             If a value cannot be written, with Git's own explanation.
 
         """
+        self._forget_config_entries()
         for key, value in values.items():
             try:
                 self.repo.git.config(
@@ -453,6 +483,10 @@ class GitStackRecordWriter(stack_store.GitStackRecordReader):
     def _unset_configuration(self, key: str) -> None:
         """Unset every value of ``key``, which is not an error when it is unset.
 
+        The reader's cached listing is discarded first, as it is for a write:
+        an unset changes what a later read must answer, and the key being
+        absent already is not the state a cached listing would report.
+
         Raises
         ------
         stack_store.StackRecordError
@@ -461,6 +495,7 @@ class GitStackRecordWriter(stack_store.GitStackRecordReader):
             call asks for, so an unset configuration is not reported.
 
         """
+        self._forget_config_entries()
         try:
             self.repo.git.config("--local", "--unset-all", key)
         except GitCommandError as exc:
