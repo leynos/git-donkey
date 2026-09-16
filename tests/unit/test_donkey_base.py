@@ -138,3 +138,6 @@ def test_a_base_only_a_remote_tracking_ref_names_is_resolved(
     assert stack.parent == "feature", (
         "the parent the record names is the base the caller selected"
     )
+    assert donkey._base_commit(context, "feature") == base, (
+        "and the commit the record freezes is the one the remote-tracking ref names"
+    )

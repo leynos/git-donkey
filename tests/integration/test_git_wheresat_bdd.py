@@ -565,7 +565,13 @@ def parent_history_gate_failed(scenario: WheresatJourney) -> None:
         f"expected {_PARENT_HISTORY} to be reported as failed, got:\n"
         f"{_reported(scenario).stdout}"
     )
-    detail = lines[names.index(failed) + 1]
+    position = names.index(failed) + 1
+
+    assert position < len(lines), (
+        f"expected a detail line under {_PARENT_HISTORY}, got:\n"
+        f"{_reported(scenario).stdout}"
+    )
+    detail = lines[position]
     refused = detail.split()[0]
 
     assert _NOT_AN_ANCESTOR in detail, (
