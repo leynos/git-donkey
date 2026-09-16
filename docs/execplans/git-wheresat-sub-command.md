@@ -3915,6 +3915,68 @@ Stop and escalate rather than improvising when any of these is reached.
     reported no issues. This entry, including this bullet, is Markdown written
     once those numbers were known, so the Markdown gates are re-run over it.
 
+  - Review round: `coderabbit review --agent --base origin/main` reports 7
+    findings over the tree at `c61a7bf`, the head round 20 closed on (log
+    `/tmp/coderabbit-git-donkey-git-wheresat-sub-command-21.out`, whose 7
+    `finding` records are kept as `/tmp/coderabbit-findings-21.jsonl` for
+    triage), taken on 2026-09-16 in one attempt of 425 seconds and without
+    meeting a rate limit. The 7 are 6 minor and 1 trivial, and every one is
+    taken. The round's changes are in `d53d583`.
+  - Two of the seven are behavioural, and both were delivered test-first: the
+    test was written, run red for the documented reason, and only then answered
+    by a change in the module.
+  - The first is a `BadName` a trunk read could raise and no handler caught.
+    `_local_trunk` in `git_donkey/donkey.py` caught `GitCommandError` and
+    `ValueError` around `Repo.commit`, but GitPython also reports an
+    unresolvable revision as `git.exc.BadName`, which propagated out of a helper
+    whose whole contract is to answer `None` when there is no trunk to record.
+    The three are caught together now, which is what the sibling handler at
+    `git_donkey/donkey.py:472` already does. The test plants the trunk ref and
+    makes the read raise rather than provoking the state through Git, because
+    the state is GitPython's reporting and not a repository's.
+  - The second is a create that could leave a live record beside a tombstone.
+    `GitStackRecordWriter.create` retires the branch's tombstone after the
+    anchor and the four configuration values are written, so a deletion Git
+    refuses — a lock file left beside the ref, which is a writer mid-update —
+    propagated out of the create with the anchor still standing, describing one
+    branch as both live and deleted. That is the state the create exists to end,
+    so the refusal now takes the write back before it is re-raised: the anchor
+    and the values are removed, and the branch is left described by the
+    tombstone it could not retire. The `Raises` entry and `_retire_tombstone`'s
+    docstring say so.
+  - The other five are taken as asked and are textual. Three correct the house
+    spelling, each moving one word of a test module's prose from the `-ise`
+    form the round flagged to the `-ize` form the house style requires: in
+    `tests/integration/test_wheresat_end_to_end.py`,
+    `tests/integration/test_wheresat_github.py`, and
+    `tests/integration/test_wheresat_durability.py`. The fourth is
+    `_lock_configuration`'s `repo` parameter in
+    `tests/unit/test_stack_store_refusals.py`, described as the repository whose
+    configuration is left locked rather than as one merely left alone, which is
+    what creating `config.lock` does.
+  - The `-ise` forms the round did not flag are left where they stand. The
+    spelling gate reads `git ls-files '*.md'`, so a spelling in a Python module
+    or suite is not something it can refuse, and correcting the rest would be
+    prose work the round never raised. The three words above are corrected
+    because the round named them.
+  - The fifth textual finding is the row-count assertion in the BDD step.
+    `tests/integration/test_git_wheresat_bdd.py` asserted
+    `len(rows) >= _CANDIDATE_COUNT` where the count is a fact the scenario
+    fixes, so a step that had grown a third candidate row would have passed; it
+    asserts equality now, which is what the sibling step for the same report
+    already did.
+  - The nine gates were then taken over the round's tree, in one sequential
+    pass, and all nine are green: `build` resolved 80 packages and checked 78;
+    `check-fmt` left 190 files formatted with mdtablefix's 29 unchanged; `lint`
+    reached the end of its chain, with ruff passing, interrogate holding
+    100.0%, and pylint at 10.00/10 under both configurations; `typecheck`
+    passed at ty 0.0.79; `test` passed 1010 tests with 22 snapshots; `spelling`
+    passed its 16 helper tests at 93.75% coverage; `markdownlint` linted 30
+    files with 0 errors; `nixie` validated every diagram; and
+    `cs delta origin/main` reported no issues. This entry, including this
+    bullet, is Markdown written once those numbers were known, so the Markdown
+    gates are re-run over it.
+
 ## Surprises & discoveries
 
 - Observation: this repository has no roadmap document.
