@@ -3287,6 +3287,107 @@ Stop and escalate rather than improvising when any of these is reached.
     `#issuecomment-5692245998`), naming for each request the file it changed
     and what changed there, so a reader can check the claim against the diff
     rather than against this paragraph.
+  - Review round: `coderabbit review --agent --base origin/main` reports 7
+    findings over the tree at `db340e0`, the head round 14 closed on (log
+    `/tmp/coderabbit-git-donkey-git-wheresat-sub-command-15.out`, whose 7
+    `finding` records are kept as `/tmp/coderabbit-findings-15.jsonl` for
+    triage), taken on 2026-09-16 in one attempt and without meeting a rate
+    limit, over the 127 files the review reports. The 7 are 4 minor and 3
+    trivial, and two of them name one line and ask for one change: six
+    requests, six changes, all actioned.
+  - The nine checks are green over the tree the fixes were made in, which is
+    what round 15 is pushed as, at `e5c9bf1`: `build` resolved 80 packages and
+    checked 78; `check-fmt` found 177 files already formatted and
+    `mdtablefix` left its 29 unchanged; `lint` reached all of its stages, with
+    `interrogate` at 100.0%, the built-in and df12 pylint passes both at
+    10.00/10, `pyscn` passed, and `ambrleaks` and `skylos` clean; `typecheck`
+    passed under ty 0.0.79 with no diagnostics; `test` reported 994 passed,
+    233 warnings and no snapshot update in 19.51 seconds; `spelling` was clean
+    and its helper tests passed 16 at 93.75% coverage, with the regenerated
+    `typos.toml` byte-identical to the one it replaced; `markdownlint` linted
+    30 files with 0 errors; `nixie` validated 29 files and their 6 diagrams;
+    and `cs delta origin/main` found no issues over the branch. No gate
+    modified a tracked file. This entry, including this bullet, is Markdown
+    written once those numbers were known, so the Markdown gates are re-run
+    over it.
+  - The one gate that was red was CodeScene's, and the repair was prose.
+    Round 15's fifth finding moved the `advance()` call that names the trunk's
+    final commit out of the `StackFixture(...)` constructor and bound it to a
+    local `target` in all three builders of `tests/git_repo_helpers.py`. That
+    is what the finding asked for and what the file should do, and it took the
+    module from 10.00 to 9.38: with that call written out,
+    `squash_merged_stack` and `advanced_parent_stack` became near-identical
+    token runs, and `cs check tests/git_repo_helpers.py` reported Code
+    Duplication for both. The extraction that came first — one
+    `_parent_moved_stack` helper taking `parent_moves_after_the_cut` as a
+    keyword, both builders reduced to one-line wrappers — made the score
+    _worse_ at 9.09, because the two wrappers were identical to each other and
+    the helper's five arguments raised Excess Number of Function Arguments.
+    That is the counter-example the Surprises entry for
+    `tests/unit/wheresat_helpers.py` records happening a second time, so the
+    repair applied was the one that entry found: each builder was given a
+    description of its own. The four parameter sentences all three builders
+    repeated verbatim — "Name of the trunk branch." and its siblings — became
+    text about that shape: the branch the squash commit lands on, the branch
+    whose commits it carries without naming them, the branch the parent's new
+    head cannot reach. The module is 10.00 again, with no change to a line of
+    its code, and `cs delta origin/main` reports `No issues found!` for the
+    whole branch.
+  - The disposition is posted on the pull request (round 15,
+    `#issuecomment-5692573967`), naming for each request the file it changed
+    and what changed there, so a reader can check the claim against the diff
+    rather than against this paragraph. It also records the CodeScene
+    correction above, because the two are one change.
+  - A tombstone's two refusals are one handler's business now.
+    `plonk_cleanup._entomb_branch` caught `stack_store.StackRecordError`
+    alone, while `entomb` documents `ValueError` as well, for a branch name
+    that would be unsafe in a ref path, and the two sibling sites already read
+    both: `_swept` and `_prune_tombstones`, each with
+    `except (stack_store.StackRecordError, ValueError)`. The handler catches
+    both now, so the second refusal stays non-fatal, as it must: the tip was
+    not preserved, and the deletion that would have taken the only record of
+    it does not run.
+  - The case this round adds for it is narrower than the finding implies, and
+    the reason is worth recording. `tests/unit/test_plonk_cleanup.py` gains
+    `test_hard_mode_reports_a_branch_name_the_store_will_not_read`, which runs
+    one completed candidate whose name the store refuses —
+    `issue-125-release.lock`, which follows the issue convention, so the run
+    selects it, and ends in the component Git reserves for its own lock files
+    — and asserts that the run reports a failed entombment and leaves the
+    branch where it is. No branch Git has _stored_ carries that name: every
+    rule `stack_records.validate_ref_component` applies besides the deliberate
+    leading-`-` divergence is one of Git's own, and `_ISSUE_BRANCH_PATTERN`
+    and `_ROADMAP_BRANCH_PATTERN` are anchored on a digit or a word character,
+    so a candidate name cannot begin with `-`. What the case pins, then, is
+    the handler's contract, which is written against the store's documented
+    refusals rather than against the names a run has happened to meet; a case
+    that could not fail would have said less. To keep the premise from being
+    the double's opinion, the store double lost the hand-listed `unsafe_names`
+    knob the first draft of the case gave it: its `entomb` calls the writer's
+    own validator, in the writer's order, so the refusal the run meets is the
+    store's.
+  - The rest are a spelling, a wording, a fixture's provenance, two binds and
+    a pair of kinds. `wheresat_gates._patch_identifier`'s comment carried the
+    `-ise` form of the verb for what it does to the blank, and carries the
+    `-ize` form now, which is the house spelling. The gate 5 success detail
+    said "commits" unconditionally, so a range of one commit read "holds 1
+    commits"; it says "commit(s)", which is what `wheresat_gates.py:400` and
+    `donkey.py:483` already use, and the 17
+    rendered lines it changes are absorbed in
+    `tests/unit/__snapshots__/test_wheresat_report.ambr` with nothing else in
+    that diff. `tests/integration/wheresat_scenarios.py`'s `_pull` scripted
+    `head_fetched_from=head_repository`, pre-populating the provenance the
+    fetch is meant to fill, so a journey that regressed it could have passed
+    on the fixture's value; it scripts `None` now, which is what
+    `tests/unit/test_wheresat_parent_head.py:95` already does. The three stack
+    builders in `tests/git_repo_helpers.py` bind `target = advance(repo, …)`
+    after the squash merge and pass that name, rather than making the commit's
+    creation a consequence of the constructor's argument order. And
+    `test_wheresat_policy.py`'s rival pair is built from `FORK_POINT` and
+    `MERGE_BASE`, which `TIERS` classes as derived, rather than from
+    `TREE_IDENTITY` and `PATCH_IDENTITY`, which it classes as inferred — a
+    `DerivedCandidate` carrying an inferred kind is not a shape production can
+    reach, because `candidate_for` picks the class from `TIERS`.
 
 ## Surprises & discoveries
 
