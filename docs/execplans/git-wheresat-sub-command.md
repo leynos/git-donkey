@@ -3807,6 +3807,113 @@ Stop and escalate rather than improvising when any of these is reached.
     diagram; and `cs delta origin/main` found no issues. This entry, including
     this bullet, is Markdown written once those numbers were known, so the
     Markdown gates are re-run over it.
+  - Review round: `coderabbit review --agent --base origin/main` reports 12
+    findings over the tree at `4ffa54e`, the head round 19 closed on (log
+    `/tmp/coderabbit-git-donkey-git-wheresat-sub-command-20.out`, whose 12
+    `finding` records are kept as `/tmp/coderabbit-findings-20.jsonl` for
+    triage), taken on 2026-09-16 in one attempt of 547 seconds and without
+    meeting a rate limit. The 12 are 2 major, 7 minor, and 3 trivial. Eleven
+    are taken and one is declined, with the rule it would break cited below.
+    The round's changes are in `753d204`.
+  - The first major is the record cleared before the branch is deleted.
+    `StackRecordWriter.entomb` is split into `preserve_tip(branch, tip)` and
+    `clear_record(branch)`: the orchestration writes the tombstone while the
+    branch still names the tip, asks Git for the deletion, and clears the live
+    record only once the deletion has succeeded, so a refused deletion leaves
+    the branch beside the record that attests its own boundary and the
+    tombstone stands. The handler that reported both refusals of the one call
+    now reports the tombstone's alone — the step whose failure holds the
+    branch back — and the protocol in `git_donkey/stack_writes.py`, both its
+    implementations, and every caller and test were moved with it. The three
+    writes' new order is what `docs/stack-records.md`,
+    `docs/plonk-cleanup-policy.md`, and this plan's Interfaces section now
+    describe.
+  - The second major is a `try` that covered more than the reads it was
+    written for. `git_donkey/wheresat_heads.py`'s remote-tracking lookup keeps
+    only the two graph reads and the test for an absent ref — a comparison
+    that cannot raise — inside the `try` now, so the `except` message cannot
+    describe a later failure. One deviation from the mechanism the finding
+    suggests: the construction and its return are hoisted after the
+    `try/except` rather than moved into an `else` clause, because the
+    repository's own pylint pass refuses an `else` after a returning `except`
+    with `R1705: Unnecessary "else" after "return"`, and the gates must be
+    green before a review is requested. The extent the finding asked for is
+    what the change delivers.
+  - The declined finding asks that the account identifier and the GitHub
+    request ID in
+    `tests/integration/cassettes/wheresat_rate_limited.yaml`'s recorded error
+    message be replaced with stable placeholders. That is an edit to a
+    recording by hand, which `docs/developers-guide.md:859-861` forbids:
+    "Record a real cassette only for a command that is meant to call the API,
+    and never edit a recording by hand." The same rule was applied to the
+    cassette findings in round 17, and the recorded body is a GitHub error
+    message whose identifier fields are incidental to what the cassette pins:
+    the status and the rate-limit headers the test consumes. The recording is
+    filtered for `Authorization` as every other cassette is, and the suite
+    makes no live network access.
+  - The nine remaining findings are taken as asked. The decorated-record test
+    now parametrizes its markers as a `(prefix, suffix)` pair, so the
+    emboldened case carries a matching `"**"` at both ends. The indeterminate
+    heading is built from a before/after mapping of what the line says around
+    the branch name, and its snapshot was re-recorded rather than hand-edited.
+    `tests/integration/test_git_wheresat_bdd.py` asks `rev_parse` for the ref with
+    `with_exceptions=False`, so a missing ref yields the empty result the
+    existing fallback and its ref-specific assertion handle.
+    `tests/integration/wheresat_scenarios.py` wraps its two `Repo`
+    constructions in `with` statements. `_OP_ID_PATTERN` in
+    `git_donkey/wheresat_refs.py` is anchored `\A`…`\Z`, so it is safe under a
+    search API as well as `match`. `worktree_warnings` in
+    `git_donkey/wheresat_report.py` initializes `warnings: list[str] = []`
+    rather than leaving the element type to inference. `_changed` in
+    `git_donkey/wheresat_deep.py` runs in a `try` of its own, so a refusal in
+    the change calculation no longer discards the twins the tree pass matched;
+    the failure is carried as a caveat beside the window caveats, and `patch`
+    stays unavailable. `docs/man/git-wheresat.rst` and `README.md` describe
+    the reported commit as the old base the branch's own work sits on, which a
+    rebase passes as its upstream argument, rather than as the commit to
+    rebase onto.
+  - CodeScene reviewed the round's change surface after the gates, and was red
+    on two files, both consequences of the round's own additions rather than
+    of the findings it took. `git_donkey/plonk_cleanup.py` had reached 610
+    lines of code against the 600 that the "Lines of Code in a Single File"
+    rule allows, and the twelve tests this branch added to
+    `tests/unit/test_plonk_cleanup.py` had taken it from 10.00 to 8.03 under
+    the Low Cohesion metric — "at least 21 different responsibilities amongst
+    its 21 functions, threshold = 4" — against origin/main's nine-test
+    module.
+  - The production module is split along the vocabulary/workflow seam it
+    already drew. `git_donkey/plonk_logging.py` holds the six reporting
+    helpers — the two lines a run opens with, the planned-step line, the
+    skipped-candidate line, and the two bounded observations — and
+    `git_donkey/plonk_cleanup.py` keeps the workflow and the decisions about
+    when a step is taken. The helpers were moved verbatim, on their own
+    logger, which is a child of the package logger like every other one here:
+    no module outside `plonk_cleanup` imported them, and the smoke import
+    confirms the moved functions are the same objects. The module reads 10.00
+    where the file it left read 9.38.
+  - The test module is split along the record/workflow seam the production
+    split mirrors. The twelve tests about the three writes around a finished
+    branch — the tombstone before the deletion, the clear after it, the
+    refusal of either, the orphan sweep, the tombstone prune, and the window
+    that governs it — now live in `tests/unit/test_plonk_record_lifecycle.py`,
+    and the nine workflow examples stay in `tests/unit/test_plonk_cleanup.py`.
+    Both read 10.00. The new module carries its own private
+    `_SUCCESS_EXIT_CODE` / `_FAILURE_EXIT_CODE` / `_USAGE_EXIT_CODE` constants,
+    which is the house convention the neighbouring suites follow, and the
+    references to the two suites in `tests/unit/plonk_cleanup_helpers.py`,
+    `tests/unit/test_plonk.py`, `tests/unit/test_plonk_cleanup_properties.py`,
+    and `docs/developers-guide.md` were updated with the split.
+  - The nine gates were then taken over the tree `753d204` records, in one
+    sequential pass, and all nine are green: `build` synced 80 packages;
+    `check-fmt` left 190 files formatted with mdtablefix's
+    29 unchanged; `lint` reached the end of its chain, with ruff
+    passing, interrogate holding 100.0%, and pylint at 10.00/10 under both
+    configurations; `typecheck` passed at ty 0.0.79; `test` passed
+    1008 tests with 22 snapshots; `spelling` passed its 16 helper
+    tests at 93.75% coverage; `markdownlint` linted 30 files with 0
+    errors; `nixie` validated every diagram; and `cs delta origin/main`
+    reported no issues. This entry, including this bullet, is Markdown written
+    once those numbers were known, so the Markdown gates are re-run over it.
 
 ## Surprises & discoveries
 
@@ -4711,6 +4818,22 @@ Stop and escalate rather than improvising when any of these is reached.
   one the module's own docstring already drew between the forge-side rungs and
   the child's testimony, and why the line count of every module in this
   milestone was measured against the gate rather than guessed at.
+- Observation: Low Cohesion needs both of the conditions the entry above
+  separated, and a suite can be split along the seam its production modules
+  already draw to clear it without a test being touched. Evidence:
+  `cs delta origin/main` read `tests/unit/test_plonk_cleanup.py` at 8.03 over
+  the twenty-one tests this branch's wheresat work had brought it to — "at
+  least 21 different responsibilities amongst its 21 functions, threshold = 4"
+  — and at 10.00 over `origin/main`'s nine, and both modules read 10.00 once
+  the twelve record-lifecycle tests moved to
+  `tests/unit/test_plonk_record_lifecycle.py`: the workflow module's nine tests
+  over 336 lines, and the record module's twelve over 398. Probes under
+  `/tmp/csprobe` of 19, 20, 21, and 30 trivial test functions — modules of 117
+  to 183 lines — all read 10.00, which is the size half of the pair rather than
+  a contradiction of it: a small suite of many independent tests is not
+  flagged. Impact: the lever is a split at a recognizable seam, taken early
+  enough that the hosted check never reads the flag, since the pull request's
+  CodeScene result cannot be argued down after the fact.
 
 ## Decision log
 
@@ -9059,6 +9182,16 @@ automatically.
   configured expiry before the candidate loop, then sweep and prune, all
   guarded by the existing `dry_run` flag in the same way every other mutation
   is.
+- `git_donkey/plonk_cleanup.py`: the six reporting helpers — the two lines a
+  run opens with, the planned-step and skipped-candidate lines, and the two
+  bounded observations — move verbatim into a new
+  `git_donkey/plonk_logging.py`, which is vocabulary rather than workflow, and
+  the workflow keeps the decisions about when a step is taken. The module had
+  reached 610 lines of code against the 600 the "Lines of Code in a Single
+  File" rule allows, and the extraction is what brings it back inside it (round
+  20). Every helper keeps its name, its logger (a child of the package logger
+  like every other one here), and its text; no module outside `plonk_cleanup`
+  imported them.
 - `git_donkey/plonk_records.py`: extend `_PlonkResult` with
   `entombed_branches`, `failed_entombments`, `swept_records`,
   `unrescuable_records`, and `pruned_tombstones`, each a `tuple[str, ...]`
