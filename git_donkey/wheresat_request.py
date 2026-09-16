@@ -245,13 +245,14 @@ def _target(
     Raises
     ------
     WheresatUsageError
-        If the named revision does not resolve, or if no local ref records the
-        remote's default branch.
+        If the named revision does not resolve, if Git cannot be asked which ref
+        it names, or if no local ref records the remote's default branch.
 
     """
     if options.onto is not None:
-        target = object_id(graph, options.onto, what=f"the target {options.onto}")
-        return target, graph.ref_name(options.onto)
+        what = f"the target {options.onto}"
+        target = object_id(graph, options.onto, what=what)
+        return target, _ref_name(graph, options.onto, what=what)
     remote = options.remote if options.remote is not None else _principal_remote(repo)
     ref = _default_branch_ref(remote, graph)
     target = object_id(graph, ref, what=f"the default branch of {remote!r}")
@@ -390,4 +391,43 @@ def object_id(graph: WheresatGraph, rev: str, *, what: str) -> str:
         return graph.resolve(rev)
     except WheresatGraphError as exc:
         msg = f"{what} could not be resolved: {exc}"
+        raise WheresatUsageError(msg) from exc
+
+
+def _ref_name(graph: WheresatGraph, rev: str, *, what: str) -> str | None:
+    """Return the full ref path ``rev`` names, or ``None`` when it names none.
+
+    Naming no ref is an answer rather than a fault — a revision that resolves to
+    a commit without naming a ref simply has no reflog to read — so only a
+    question Git cannot put is a failure here.
+
+    Parameters
+    ----------
+    graph : WheresatGraph
+        Graph the ref name is read through.
+    rev : str
+        Revision to look up, already resolved to a commit.
+    what : str
+        What the revision was for, phrased to read after a subject: the refusal
+        names it so the operator knows which of the run's names Git could not
+        be asked about.
+
+    Returns
+    -------
+    str | None
+        The full ref path ``rev`` names, or ``None`` when ``rev`` names none.
+
+    Raises
+    ------
+    WheresatUsageError
+        If Git cannot be asked. The ref name decides whether the fork-point
+        question can be put at all, and it is read before there is any evidence
+        to assess, so an unanswerable question is a configuration failure rather
+        than an indeterminate result.
+
+    """
+    try:
+        return graph.ref_name(rev)
+    except WheresatGraphError as exc:
+        msg = f"{what} could not be named: {exc}"
         raise WheresatUsageError(msg) from exc
