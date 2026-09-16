@@ -4691,15 +4691,15 @@ Stop and escalate rather than improvising when any of these is reached.
   Date/Author: 2026-09-14, implementation agent.
 - Decision: the reader that reads `stack.tombstoneExpire` validates it, and
   `prune` keeps its permissive contract for an explicit instant. Rationale:
-  `tests/unit/test_stack_store.py` pins `prune(<a future instant>)` pruning
-  every tombstone written before it, because an explicit instant is a statement
-  in its own right — stated as a number, never as a phrase. The EP-M4 hazard is
-  the _configured_ value, whose typo Git's date grammar reads as "now". So
-  `GitStackRecordReader.expiry()` reads the key (default `90.days.ago`), probes
-  `now` first and rejects `cutoff >= now`, and `git plonk` asks for it before
-  it touches anything: a typo exits 2 with the offending value named instead of
-  emptying the fleet's tombstones. Date/Author: 2026-09-14, implementation
-  agent.
+  `tests/unit/test_stack_store_clearing.py` pins `prune(<a future instant>)`
+  pruning every tombstone written before it, because an explicit instant is a
+  statement in its own right — stated as a number, never as a phrase. The EP-M4
+  hazard is the _configured_ value, whose typo Git's date grammar reads as
+  "now". So `GitStackRecordReader.expiry()` reads the key (default
+  `90.days.ago`), probes `now` first and rejects `cutoff >= now`, and
+  `git plonk` asks for it before it touches anything: a typo exits 2 with the
+  offending value named instead of emptying the fleet's tombstones.
+  Date/Author: 2026-09-14, implementation agent.
 - Decision: the sweep and the prune run once per completed run, before the
   first worktree is removed, and never in soft mode. Rationale: soft mode's
   contract is that it leaves Git state untouched, so neither belongs there.

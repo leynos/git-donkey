@@ -97,11 +97,7 @@ def with_range_contents(key: str, contents: CommitRange | None) -> GraphFacts:
 
     """
     facts = permissive_facts()
-    listed = dict(facts.range_contents)
-    if contents is None:
-        del listed[key]
-    else:
-        listed[key] = contents
+    listed = _one_range(facts.range_contents, key, contents)
     return dataclasses.replace(facts, range_contents=listed)
 
 
@@ -123,11 +119,7 @@ def with_range_minus_parent(key: str, contents: CommitRange | None) -> GraphFact
 
     """
     facts = permissive_facts()
-    listed = dict(facts.range_minus_parent)
-    if contents is None:
-        del listed[key]
-    else:
-        listed[key] = contents
+    listed = _one_range(facts.range_minus_parent, key, contents)
     return dataclasses.replace(facts, range_minus_parent=listed)
 
 
@@ -211,13 +203,14 @@ def with_parent_head(commit: str | None) -> GraphFacts:
     Parameters
     ----------
     commit : str | None
-        Commit the parent's head was recovered at, or ``None`` where the run
-        recovered none.
+        Commit the parent's head was recovered at. ``None`` is a recovery that
+        found no head at all, which the ``parent-history-intact`` gate reads as
+        a parent it cannot judge rather than as a question left open.
 
     Returns
     -------
     GraphFacts
-        The permissive facts, with the parent head named or absent.
+        Those facts, told where the parent's head is.
 
     """
     return dataclasses.replace(permissive_facts(), parent_head=commit)
@@ -274,6 +267,42 @@ def changed(facts: GraphFacts) -> Case:
 
     """
     return dataclasses.replace(permissive(), facts=facts)
+
+
+def _one_range(
+    listed: cabc.Mapping[str, CommitRange],
+    key: str,
+    contents: CommitRange | None,
+) -> dict[str, CommitRange]:
+    """Return a range listing with one range answered or left unlisted.
+
+    The two range edits differ in which listing they rewrite, and in nothing
+    else, so what to do with the key is decided here once: a range the caller
+    supplies is recorded under it, and a range the caller leaves out is a
+    question the run never put, which is the listing without the key at all.
+
+    Parameters
+    ----------
+    listed : cabc.Mapping[str, CommitRange]
+        Listing the edit is made to, as the permissive facts hold it.
+    key : str
+        Range key the listing was made for.
+    contents : CommitRange | None
+        The commits to record under ``key``, or ``None`` to leave the range
+        out of the listing.
+
+    Returns
+    -------
+    dict[str, CommitRange]
+        A listing of its own with that key recorded or unrecorded.
+
+    """
+    updated = dict(listed)
+    if contents is None:
+        del updated[key]
+    else:
+        updated[key] = contents
+    return updated
 
 
 def _spoil_parent_identity(*, failed: bool) -> Case:

@@ -1,7 +1,7 @@
-"""Builders and Git-state readers shared by the two ``stack_store`` suites.
+"""Builders and Git-state readers shared by the ``stack_store`` suites.
 
-The store's contract is mostly Git's own behaviour, so both suites run against
-real temporary repositories rather than a double for ``Repo``. Whether a
+The store's contract is mostly Git's own behaviour, so every suite runs against
+a real temporary repository rather than a double for ``Repo``. Whether a
 configuration subsection keeps the case and the punctuation of a branch name,
 whether a ref update can be made create-only, and what deleting a branch does
 to its configuration section are all facts about Git, so these helpers read the
@@ -9,9 +9,13 @@ repository back through ``git config``, ``git rev-parse``, and
 ``git for-each-ref`` rather than asking the store under test. A helper that
 only one suite needs stays with that suite instead.
 
-``test_stack_store.py`` covers the writer, which creates, refreshes, entombs,
-sweeps, and prunes records; ``test_stack_store_reads.py`` covers the answers
-the reader gives, which every command relies on.
+``test_stack_store.py`` covers the writer, which creates, refreshes, and
+entombs a record; ``test_stack_store_clearing.py`` covers the sweep and the
+prune, which clear what a deleted branch left behind; and
+``test_stack_store_reads.py`` covers the answers the reader gives, which every
+command relies on. A write Git refuses, and the repair that follows it, is in
+``test_stack_store_refusals.py``, which keeps the lock files it plants to
+itself.
 """
 
 from __future__ import annotations

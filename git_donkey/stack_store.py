@@ -401,9 +401,11 @@ class GitStackRecordReader:
             Every configured key with its value, as Git reports them.
 
         """
-        if self._configuration is None:
-            object.__setattr__(self, "_configuration", self._read_config_entries())
-        return self._configuration
+        entries = self._configuration
+        if entries is None:
+            entries = self._read_config_entries()
+            object.__setattr__(self, "_configuration", entries)
+        return entries
 
     def _read_config_entries(self) -> tuple[tuple[str, str], ...]:
         """Read the repository's local configuration as Git reports it."""

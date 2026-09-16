@@ -7,7 +7,7 @@ configuration keys Git will hand back in lower case, the reconciliation of
 configuration against the anchor ref, and the decision that says whether a
 branch created from a base is stacked at all. Everything here is pure — no
 repository, no Git, no filesystem. The store that puts these decisions on disk
-is covered in ``test_stack_store.py``; the lifecycle they compose into is in
+is covered by the ``stack_store`` suites; the lifecycle they compose into is in
 ``tests/integration/test_stack_record_lifecycle.py``.
 """
 

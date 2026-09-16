@@ -16,8 +16,10 @@ a double could hold.
 
 The writer's effects are covered in ``test_stack_store.py``, which owns the
 namespace invariant (INV-9) tying the two halves together, and the pure record
-format in ``test_stack_records.py``. The builders and Git-state helpers both
-suites share live in ``stack_store_helpers``.
+format in ``test_stack_records.py``. The sweep and the prune are in
+``test_stack_store_clearing.py``, and what a write Git refuses leaves behind in
+``test_stack_store_refusals.py``. The builders and Git-state helpers every
+suite shares live in ``stack_store_helpers``.
 """
 
 from __future__ import annotations
