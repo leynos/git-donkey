@@ -3976,6 +3976,112 @@ Stop and escalate rather than improvising when any of these is reached.
     `cs delta origin/main` reported no issues. This entry, including this
     bullet, is Markdown written once those numbers were known, so the Markdown
     gates are re-run over it.
+  - Review round: `coderabbit review --agent --base origin/main` reports 11
+    findings over the tree at `d53d583`, the head round 21 closed on (log
+    `/tmp/coderabbit-git-donkey-git-wheresat-sub-command-22.out`, whose 11
+    `finding` records are kept as `/tmp/coderabbit-findings-22.jsonl` for
+    triage), taken on 2026-09-16 in one attempt and without meeting a rate
+    limit. The 11 are 4 minor and 7 trivial, with no major among them, and
+    findings 3 and 11 are one request reported twice against the same lines of
+    `tests/integration/wheresat_helpers.py`: the ten distinct requests are all
+    taken, and none is declined. The round's changes are in `f8c5389`.
+  - The failure kind a refused write records was a constant. `_record_failure`
+    in `git_donkey/plonk_logging.py` named `git_command_error` for every
+    caller, so the sweep's refusal of an orphan name the store cannot read was
+    recorded as a Git failure when the refusal is the record's own. The kind is
+    the caller's now, and the classifier that decides it is
+    `stack_writes.refusal_kind` — one function the modules that catch these
+    failures share, so `donkey_worktrees` loses the private copy it had grown
+    and `plonk_cleanup` reports a refused sweep, entombment, or clear in the
+    same vocabulary as a refused birth. The parameter has no default, so a new
+    call site has to say which refusal it met. Two behaviours came with it: the
+    clearing path logs `_LOGGER.exception` rather than a warning, so the
+    traceback is not lost, and records the failure, because a line on its own
+    left the run's own observation saying the sweep had succeeded; and
+    `_preserve_tip` returns the refusal rather than a boolean, so an entomb
+    that could not preserve a tip names the store's failure instead of a Git
+    error it never saw. `tests/unit/test_plonk_record_lifecycle.py` asserts the
+    kind recorded for the unreadable orphan name, which is what makes the
+    vocabulary a contract rather than a label.
+  - A branch name that reaches Git as an expression is the next finding.
+    `GitStackRecordReader.branch_tip` interpolated its caller's name into
+    `refs/heads/<branch>`, so a name Git would read as an option, or as a
+    revision about some other commit, was handed straight to the read.
+    `stack_records.validate_ref_component` is applied before the ref is built,
+    so the caller gets a commit or a refusal, and the three names that
+    validator refuses are a parametrized test of their own in
+    `tests/unit/test_stack_store_reads.py`: `--upload-pack=x`, `main~1`, and
+    `a..b`. The docstring gained the `Raises` section the refusal owes a
+    reader.
+  - Three tests of a union named one member of it.
+    `stack_records.reconcile`, `stack_store._orphan_tip`, and
+    `stack_writes.create` each branched on `isinstance(..., RecordMalformed)`
+    or its sibling; each is a `match`/`case` over the `RecordResult` union now,
+    so a member added later is a visible gap rather than a silent fall-through.
+    The same round found the pull-request spelling of a parent in
+    `stack_records.render_parent` assembled by hand where `identity_text`
+    already renders it for the parser, so the two spellings could drift; the
+    renderer calls the helper, and the `RECORD_VERSION` and `pr` prefix are
+    unchanged.
+  - The sweep's test helper held its re-read configuration as an iterable.
+    `tests/unit/plonk_cleanup_helpers.py`'s `orphaned`, `preservable`, `stale`,
+    `entomb_failures`, and `clear_failures` are `cabc.Sequence[str]` rather
+    than `cabc.Iterable[str]`, so a value configured once can be read more than
+    once, and the one caller that passed a set passes a tuple.
+    `tests/unit/wheresat_spoilers.py`'s three removable-key branches drop
+    through `pop(key, None)`, which keeps the removal the helper is for and
+    stops an absent key from raising out of it.
+  - The documentation the helpers carry is the request reported twice.
+    `worktree_path`, `worktree_repo`, `worktree_head`, `reading`, `anchor`,
+    and `configuration`
+    in `tests/integration/wheresat_helpers.py` have the NumPy `Parameters` and
+    `Returns` sections the house style asks of a public helper, which is what
+    findings 3 and 11 both asked for.
+  - A helper that hands out a repository closed it too. The fingerprint's
+    per-root reads, `WheresatScenario.worktree_repo`, and the scenario's `repo`
+    open and close their own `Repo` through a context manager, so a suite that
+    reads a checkout no longer leaves one open behind it; `WheresatScenario`
+    is the last class here whose repository is reached that way. The
+    conversion is what `make typecheck` then caught:
+    `tests/integration/test_wheresat_end_to_end.py` still read `plonked.repo`
+    as a value in three places, which ty refused at 166, 228, 266, 270,
+    and 273. All three sites were rewritten as `with` blocks — no test's
+    assertions changed — and the rest of the tree was audited for readers of
+    the accessor, whose remaining users are the other scenario classes, which
+    hand out a plain repository and were left alone.
+  - One change here is a consequence of the round rather than a finding. The
+    docstring sections above and the context manager below took
+    `tests/integration/wheresat_helpers.py` to 869 lines against pylint's
+    800-line module limit. The whole fingerprint half moved to
+    `tests/integration/wheresat_fingerprint.py` under the decision that
+    governs such a split, along the seam the module already drew: that module
+    now holds `Fingerprint`, the `fingerprint` it is taken with, and the one
+    ref namespace a read-only run is permitted, and the four suites that weigh
+    a reading import them from there. The moved block was proved byte-identical
+    before the importers were repointed — `diff -u` over the range the old file
+    held and the file the new one is reports no difference — and the trimmed
+    module reads 672 lines. `import hashlib` left with the code that used it,
+    and `Path` and the `Fingerprint` import are behind `TYPE_CHECKING`, as the
+    linter's type-checking rule requires of an annotation-only import.
+  - The guide's account of a refused record is the last finding. The
+    `git donkey` section of `docs/users-guide.md` said a store that refuses the
+    record leaves the branch in place and stops the run; it now says where in
+    the run the refusal lands — after the branch and its worktree exist, before
+    the template overlay is applied and before the line reporting the worktree
+    as created is printed. That order was read back from `git_donkey/donkey.py`'s
+    `_write_birth_record` call and the two steps after it before the paragraph
+    was written.
+  - The nine gates were then taken over the tree `f8c5389` records, in one
+    sequential pass, and all nine are green: `build` resolved 80 packages and
+    checked 78; `check-fmt` left 190 files formatted with mdtablefix's 29
+    unchanged; `lint` reached the end of its chain, with ruff passing,
+    interrogate holding 100.0%, and pylint at 10.00/10 under both
+    configurations; `typecheck` passed at ty 0.0.79; `test` passed 1013 tests
+    with 22 snapshots; `spelling` passed its 16 helper tests at 93.75%
+    coverage; `markdownlint` linted 30 files with 0 errors; `nixie` validated
+    every diagram; and `cs delta origin/main` reported no issues. This entry,
+    including this bullet, is Markdown written once those numbers were known,
+    so the Markdown gates are re-run over it.
 
 ## Surprises & discoveries
 
