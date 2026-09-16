@@ -453,7 +453,7 @@ def _tree_of(
 
     The revision names a commit, and may name one commit's first parent
     instead: that is how a comparison asks what a commit changes, and the
-    answer is memoised against the revision it was asked for either way.
+    answer is memoized against the revision it was asked for either way.
 
     A tree is forty hexadecimal characters, so an empty one is no tree at all,
     and the reason beside it always says why the repository named none. The

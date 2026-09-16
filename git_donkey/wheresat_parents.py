@@ -319,13 +319,12 @@ def _forge(
     """
     try:
         return opener()
-    except (WheresatGitHubError, WheresatCredentialError) as exc:
-        kind = (
-            "credential_unavailable"
-            if isinstance(exc, WheresatCredentialError)
-            else "github_api_error"
+    except WheresatCredentialError as exc:
+        return faulted(
+            f"the forge could not be opened: {exc}", "credential_unavailable"
         )
-        return faulted(f"the forge could not be opened: {exc}", kind)
+    except WheresatGitHubError as exc:
+        return faulted(f"the forge could not be opened: {exc}", "github_api_error")
 
 
 def _window(
@@ -361,13 +360,14 @@ def _window(
     window = min(max(limit, 1), ASSOCIATION_SEARCH_LIMIT)
     try:
         history = graph.history(request.child_tip, limit=window + 1)
-    except WheresatGraphError as exc:
-        kind = (
-            "shallow_history"
-            if isinstance(exc, ShallowHistoryError)
-            else "git_command_error"
+    except ShallowHistoryError as exc:
+        return faulted(
+            f"the child's history could not be read: {exc}", "shallow_history"
         )
-        return faulted(f"the child's history could not be read: {exc}", kind)
+    except WheresatGraphError as exc:
+        return faulted(
+            f"the child's history could not be read: {exc}", "git_command_error"
+        )
     if len(history) > window:
         return faulted(_TOO_LONG.format(window=window), "search_incomplete")
     return tuple(reversed(history))

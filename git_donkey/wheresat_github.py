@@ -319,7 +319,8 @@ class ApiWheresatGitHub:
         Raises
         ------
         WheresatGitHubError
-            If GitHub reports a position the stack it names does not have.
+            If GitHub reports a position the stack it names does not have, or
+            lists a pull request below this one that names no number.
 
         """
         payload = self._payload(identity)
@@ -333,7 +334,14 @@ class ApiWheresatGitHub:
                 f"of a stack that lists {len(neighbours)} pull requests"
             )
             raise WheresatGitHubError(msg)
-        return pull_identity(identity.repository, neighbours[position - 2])
+        below = pull_identity(identity.repository, neighbours[position - 2])
+        if below is None:
+            msg = (
+                f"GitHub's stack for {identity_text(identity)} lists no pull "
+                f"request number at position {position - 1}"
+            )
+            raise WheresatGitHubError(msg)
+        return below
 
     def associated_pull_requests(
         self, repository: str, commits: cabc.Sequence[str]

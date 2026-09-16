@@ -105,7 +105,7 @@ def write_token(path: Path, token: str, auth_id: int | None) -> None:
     OSError
         Propagated from the filesystem when the temporary file cannot be
         written or renamed over the target, after the temporary file has been
-        removed.
+        removed and its descriptor closed.
 
     """
     path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -114,14 +114,21 @@ def write_token(path: Path, token: str, auth_id: int | None) -> None:
         payload += f"{auth_id}\n"
     temporary_handle, temporary_name = tempfile.mkstemp(dir=path.parent)
     temporary_path = Path(temporary_name)
+    opened = False
     try:
         with os.fdopen(
             temporary_handle,
             "w",
             encoding="utf-8",
         ) as fh:
+            opened = True
             fh.write(payload)
         temporary_path.replace(path)
     except OSError:
+        if not opened:
+            # ``os.fdopen`` refused before it took the descriptor over, so the
+            # descriptor is still this call's to close; unlinking the name
+            # alone would leave the token readable through it.
+            os.close(temporary_handle)
         temporary_path.unlink(missing_ok=True)
         raise

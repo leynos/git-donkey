@@ -184,10 +184,11 @@ def _claims(
 ) -> tuple[list[stack_records.PullRequestIdentity], list[str], list[str]]:
     """Return the values the body carries and the lines that did not read.
 
-    Every line is read once for each label, because a line claims one fact
-    rather than one of them: a body that writes both on one line is read the
-    same way as one that writes them on two, and a line that claims neither is
-    not a line that failed.
+    A label is claimed only where a line starts with it, once the line's
+    decoration is removed, and its value runs to the end of that line: a line
+    naming one label therefore carries that label's value and gives no value to
+    any other label it also names. A line that claims none of the labels is not
+    a line that failed.
 
     Parameters
     ----------

@@ -123,7 +123,7 @@ COMMIT_ABBREVIATION: typ.Final = 7
 
 Shorter than a full object ID by design: the renderings are for a reader who is
 about to paste one of them into Git, and every place that abbreviates a commit
-abbreviates it the same way so two renderings of one commit are recognisable as
+abbreviates it the same way so two renderings of one commit are recognizable as
 one commit.
 """
 
