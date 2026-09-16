@@ -3522,6 +3522,104 @@ Stop and escalate rather than improvising when any of these is reached.
     passed its 16 helper tests at 93.75% coverage, `markdownlint` linted 30
     files with 0 errors, `nixie` validated every diagram, and
     `cs delta origin/main` found no issues. The tree was pushed as `f4a4b6f`.
+  - Review round: `coderabbit review --agent --base origin/main` reports 20
+    findings over the tree at `d25b31a`, the head round 16 closed on (log
+    `/tmp/coderabbit-git-donkey-git-wheresat-sub-command-17.out`, whose 20
+    `finding` records are kept as `/tmp/coderabbit-findings-17.jsonl` for
+    triage), taken on 2026-09-16 in one attempt and without meeting a rate
+    limit. The 20 are 9 major, 6 minor and 5 trivial, and seven of the pairs
+    name one change twice: thirteen requests, ten of them taken as changes, one
+    arriving as a mutually contradictory pair, and two declined in full.
+  - `tests/unit/wheresat_spoilers.py` is asked for twice and both are taken.
+    Its public `with_*` helpers and `changed` gained NumPy `Parameters` and
+    `Returns` sections, and `spoiled` dispatches on `GateOutcome` through
+    `match`/`case` rather than a chain of `if`s, which is the form the write
+    path's `_attested` already uses. The `AssertionError` a `PASSED` outcome
+    must raise is the `case _` arm, so asking for a passing gate to be spoiled
+    still raises rather than building the unanswered case beneath it.
+  - `History.history` in `tests/unit/wheresat_parents_history.py` chooses its
+    window in `_history_window` now, which is the extraction round 16 made in
+    the parents helpers. The read still records the revision, the limit and the
+    window it answered with; what moved is the three cases the window is chosen
+    by — every commit for no limit, none for a limit of zero, and the newest
+    `limit` otherwise.
+  - The two `git_donkey/stack_store.py` findings are one change, made in
+    `1de9f8c`: a single local-configuration listing is held for the duration of
+    one orphan-processing operation. `_one_configuration_listing` discards the
+    held listing as it exits, `_config_entries` answers from it, and each write
+    discards it too, so a read after a write is not answered from before it.
+    The count of `--list` calls Git is asked to make over one operation is what
+    `test_one_listing_answers_every_orphan_an_operation_is_asked_about` pins.
+  - The two `git_donkey/stack_writes.py` findings are one change made twice.
+    `_delete_ref` raises `StackRecordError` naming the ref and Git's own
+    explanation, with the `GitCommandError` as its cause, and
+    `_unset_configuration` reports every status but the absent key the same
+    way, so a caller giving up on a record write is told about the record
+    rather than about the command. `test_stack_store_refusals.py` pins both by
+    planting the lock file that makes Git refuse the write.
+  - `git_donkey/cli.py` asks the parser to report its refusals in both modes
+    (`e30fd02`), so every parse failure exits with the usage status: the caller
+    who asked for `--json` gets the error envelope alone on standard output,
+    and the caller who did not gets the parser's own panel on standard error.
+  - The rest are four tests and a corpus, each taken. The test around
+    `run_donkey_without_pulling` resolves `refs/heads/feature/base` and finds
+    it at `moved`, so the patched step is shown to have moved the base rather
+    than the scenario merely exiting 0. `tests/unit/test_wheresat_deep.py`
+    asserts the caveat's own wording — `the target's newest 2 commits` and
+    `--heuristic-window is 0` — rather than that some digit appears in it.
+    `tests/unit/test_wheresat_remotes.py` gains `github.com.acme.example` and
+    `notgithub.com` in `_NOT_GITHUB`, which hold the host match to whole labels
+    at both boundaries.
+  - The contradictory pair is `tests/integration/plonk_helpers.py`, where one
+    finding asks for the `_recorded_branch` fixture to create the parent a
+    commit ahead of the trunk and the other asks the module to say accurately
+    that this builder leaves the parent at the trunk. Both cannot hold. The
+    prose was made true: the docstring now says which builder places the parent
+    where, and the fixture is unchanged, because a record scenario asserts the
+    record a birth would have left and not where the parent had got to. That is
+    `14` taken and `8` declined.
+  - Two requests are declined in full. The two cassette findings ask for
+    `746767` in `tests/integration/cassettes/wheresat_rate_limited.yaml` to be
+    replaced by a placeholder, with the `Content-Length` updated to match,
+    which would mean editing a recording by hand —
+    `docs/developers-guide.md:859-861` forbids it — and the number is the
+    repository owner's public id inside GitHub's own response body, which the
+    other cassettes carry too. The `git_donkey/wheresat_parents.py` finding
+    asks the association search to read the target-to-child range rather than
+    the child's tip: reading from the tip is what `docs/users-guide.md:589-592`
+    documents, what the 2026-09-14 decision to read the search as examining the
+    child's own history decided, and what `tests/unit/test_wheresat_parents.py`
+    pins, so the change would replace a decided behaviour rather than correct a
+    fault.
+  - The round's changes were handed to the gates, and three failed, all of them
+    in the writer's suite or beside it. `make lint` stopped in the pylint stage
+    with `C0302` — `tests/unit/test_stack_store.py` had grown back to 881 lines
+    — which aborted the rest of the chain; `make typecheck` reported
+    `invalid-return-type` at `git_donkey/stack_store.py:406`, because ty cannot
+    narrow the cached listing through `object.__setattr__`; and
+    `cs delta origin/main` scored that suite 7.55, naming low cohesion over 35
+    functions, and `tests/unit/wheresat_spoilers.py`, which the round had grown
+    by 143 lines, lost its 10.00 health with it. The suite split at the
+    seams its tests had already drawn, into itself at 341 lines,
+    `test_stack_store_refusals.py` at 320 and `test_stack_store_clearing.py` at
+    304, with collection unchanged at 40 tests and 1 snapshot; the store's
+    cached listing is bound to a local before it is returned, which is the form
+    ty narrows through; the split left one duplicated pair, the create-refusal
+    and refresh-expectation twins, which a longer docstring on the refresh test
+    separating the two took to 10.00; and the spoilers' two range edits now
+    share `_one_range`, with `with_parent_head`'s prose saying what a `None`
+    recovery means, which is the lever that file was brought to 10.00 with
+    before. The nine gates were then taken over the tree `32d0d03` records, in
+    one sequential pass, and all nine are green: `build` synced 80 packages;
+    `check-fmt` left 187 files formatted with mdtablefix's 29 unchanged;
+    `lint` reached the end of its chain, with ruff passing, interrogate holding
+    100.0%, and pylint at 10.00/10 under both configurations; `typecheck`
+    passed at ty 0.0.79; `test` passed 1001 tests with 22 snapshots;
+    `spelling` passed its 16 helper tests at 93.75% coverage; `markdownlint`
+    linted 30 files with 0 errors; `nixie` validated every diagram; and
+    `cs delta origin/main` found no issues. This entry, including this bullet,
+    is Markdown written once those numbers were known, so the Markdown gates
+    are re-run over it. The tree was pushed as `32d0d03`.
 
 ## Surprises & discoveries
 
