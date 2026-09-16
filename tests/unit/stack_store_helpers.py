@@ -160,4 +160,4 @@ def backdate_tombstone(repo: Repo, branch: str, *, days: int) -> None:
     tip = str(repo.git.rev_parse(stack_records.tombstone_ref_path(branch)))
     when = int(time.time()) - days * 24 * 60 * 60
     line = f"{tip} {tip} Test User <test@example.com> {when} +0000\tupdate-ref: seed\n"
-    tombstone_log(repo, branch).write_text(line)
+    tombstone_log(repo, branch).write_text(line, encoding="utf-8")

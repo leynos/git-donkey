@@ -17,12 +17,13 @@ these as `git <subcommand>` when `git-<subcommand>` is available on the `PATH`.
 - `git plonk` (`git-plonk`) removes completed, clean worktrees or generated
   directories from worktrees created by `git donkey`, and reports any completed
   worktree it leaves in place.
-- `git wheresat` (`git-wheresat`) prints the boundary a stacked branch should
-  be rebased onto, so work already landed in the trunk is dropped. It moves no
-  branch and no worktree. Without `--record` the only refs it adds are evidence
-  refs under `refs/wheresat/`; a run given `--record` also refreshes the
-  branch's [stack record](#stack-records-at-branch-birth), which may recreate
-  that record's `refs/stack-bases/<branch>` anchor ref.
+- `git wheresat` (`git-wheresat`) prints a stacked branch's replay boundary:
+  the old base its own commits sit on, which a rebase passes as its upstream
+  argument while rebasing onto the target, so work already landed in the trunk
+  is dropped. It moves no branch and no worktree. Without `--record` the only
+  refs it adds are evidence refs under `refs/wheresat/`; a run given `--record`
+  also refreshes the branch's [stack record](#stack-records-at-branch-birth),
+  which may recreate that record's `refs/stack-bases/<branch>` anchor ref.
 - `git donkey-template` (`git-donkey-template`) displays and creates the
   template directory for the current repository.
 

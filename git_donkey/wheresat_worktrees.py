@@ -26,6 +26,9 @@ from git_donkey._constants import GIT_ANSWERED_YES
 from git_donkey.wheresat_errors import WheresatGraphError, failure_line
 from git_donkey.wheresat_records import GitOperation, WorktreeState
 
+if typ.TYPE_CHECKING:
+    import collections.abc as cabc
+
 _WORKTREE_LISTING: typ.Final = "--porcelain"
 """Format asking ``git worktree list`` for one block of fields per worktree."""
 
@@ -120,7 +123,7 @@ class _GitExecute(typ.Protocol):
     """Name of the Git executable, which such a vector opens with."""
 
     def execute(
-        self, command: typ.Sequence[str], **kwargs: object
+        self, command: cabc.Sequence[str], **kwargs: object
     ) -> tuple[int, str, str]:
         """Run ``command`` whole, returning its status and both streams."""
 

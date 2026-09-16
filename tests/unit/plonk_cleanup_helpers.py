@@ -26,7 +26,6 @@ from git_donkey import (
     plonk_records,
     stack_records,
     stack_store,
-    stack_writes,
 )
 
 if typ.TYPE_CHECKING:
@@ -34,7 +33,7 @@ if typ.TYPE_CHECKING:
 
     from git import Repo
 
-    from git_donkey import plonk_worktree_adapter
+    from git_donkey import plonk_worktree_adapter, stack_writes
 
 # A full object ID is all the lifecycle asks of a tip, and the double reports
 # the same one for every branch, because no unit test inspects the commit a

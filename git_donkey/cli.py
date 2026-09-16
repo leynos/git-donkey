@@ -360,13 +360,14 @@ def _asks_for_json(tokens: cabc.Sequence[str]) -> bool:
 _wheresat_app = App(
     name="git wheresat",
     help=(
-        "Locate the boundary a branch was replayed over: the commit it should "
-        "be rebased onto to drop work that has already landed. Reads the stack "
-        "record git donkey wrote at the branch's birth, the parent pull "
-        "request's head, the merge base, and the fork point, and weighs them "
-        "under one precedence. Exits 0 when a boundary was established, 1 when "
-        "the evidence refused one, 2 for a usage or environment error, and 3 "
-        "when the repository could not answer. --json emits a versioned "
+        "Locate a stacked branch's replay boundary: the old base its own work "
+        "sits on, which a rebase passes as its upstream argument while "
+        "rebasing onto the target, so work already landed is dropped. Reads "
+        "the stack record git donkey wrote at the branch's birth, the parent "
+        "pull request's head, the merge base, and the fork point, and weighs "
+        "them under one precedence. Exits 0 when a boundary was established, 1 "
+        "when the evidence refused one, 2 for a usage or environment error, "
+        "and 3 when the repository could not answer. --json emits a versioned "
         "envelope on every exit code."
     ),
 )

@@ -588,5 +588,5 @@ def _squash_merge(repo: Repo, branch: str, *, trunk: str) -> str:
     """
     repo.git.checkout(trunk)
     repo.git.merge("--squash", branch)
-    repo.git.commit("-m", f"Squash-merge {branch}")
+    repo.git.commit("--no-gpg-sign", "--no-verify", "-m", f"Squash-merge {branch}")
     return repo.head.commit.hexsha

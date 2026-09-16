@@ -359,5 +359,5 @@ def test_orphans_finds_a_record_stored_under_a_dotted_branch_name(
     delete_branch(repo, "release-1.2.3")
 
     assert store.orphans() == ("release-1.2.3",), (
-        "a dotted branch name is recognised in the configuration"
+        "a dotted branch name is recognized in the configuration"
     )

@@ -191,7 +191,7 @@ def _configured_expiry(records: stack_writes.StackRecordWriter) -> str:
     """
     try:
         return records.expiry()
-    except ValueError as exc:
+    except (GitCommandError, ValueError) as exc:
         helpers._die(
             GIT_PLONK_PREFIX,
             f"the stack record retention window is unusable: {exc}",

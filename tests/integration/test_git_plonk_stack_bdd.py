@@ -69,17 +69,18 @@ def _assert_reported(output: str, heading: str, entry: str) -> None:
     """Assert ``output`` reports ``entry`` under ``heading``.
 
     The entry is matched as a whole bullet, and only among the bullets of the
-    heading's own section: the summary appends each section as a heading
-    followed by its bullets and nothing between them, so the section ends at
-    the first line that is not a bullet — the next heading. A branch that
-    shares a prefix with another is therefore not read as the one named, and
-    neither is a branch the summary reports under a different heading.
+    heading's own section. The scan starts after the line the heading was found
+    on, because the remainder of that line is the heading's own tail rather
+    than a bullet of the section, and it ends at the first line that is not a
+    bullet — a blank line included, so the bullets of one section have to be
+    consecutive for the section to be read as one. A branch that shares a prefix
+    with another is therefore not read as the one named, and neither is a branch
+    the summary reports under a different heading.
     """
     assert heading in output, f"expected {heading!r} in the git plonk summary"
+    remainder = output.partition(heading)[2].splitlines()
     bullets: list[str] = []
-    for line in output.partition(heading)[2].splitlines():
-        if not line.strip():
-            continue
+    for line in remainder[1:]:
         if not line.startswith("- "):
             break
         bullets.append(line)

@@ -27,9 +27,9 @@ warnings rather than among the faults: a fault forces the verdict
 indeterminate, and ``--deep`` may not turn a refusal into a question nobody
 could answer.
 
-The candidate set is bounded by :data:`MAX_CANDIDATES`, because a set that hit
-the bound is not known to be complete: exceeding it is reported as a fault and
-the run answers that it could not tell, rather than listing the first
+The candidate set is bounded by :data:`MAX_CANDIDATES`, because a set that
+exceeds the bound is not known to be complete: the cut is reported as a fault
+and the run answers that it could not tell, rather than listing the first
 candidates as though they were all of them.
 
 The second phase — every graph question the eight gates will read, asked once
@@ -74,7 +74,7 @@ if typ.TYPE_CHECKING:
 MAX_CANDIDATES: typ.Final = 32
 """How many boundary candidates a run will report.
 
-A set that reached this bound is not known to be complete, so the bound is
+A set that exceeded this bound is not known to be complete, so the bound is
 reported as a fault rather than applied silently: a report that lists the first
 thirty-two candidates reads as though thirty-two were all there were.
 """
@@ -593,13 +593,13 @@ def _prepared(
 def _capped(
     candidates: tuple[Candidate, ...],
 ) -> tuple[tuple[Candidate, ...], tuple[str, ...], bool]:
-    """Return the candidates within the bound, and whether the bound was reached.
+    """Return the candidates within the bound, and whether the bound was exceeded.
 
     Returns
     -------
     tuple[tuple[Candidate, ...], tuple[str, ...], bool]
         The candidates to report, the reason the set is not known to be
-        complete when the bound was reached, and whether it was. The flag is
+        complete when the bound was exceeded, and whether it was. The flag is
         what the policy reads to tell a cut set from a set some source failed
         to answer for, which is a distinction an established answer does not
         survive.

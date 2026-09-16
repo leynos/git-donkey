@@ -267,6 +267,13 @@ def branch_head(path: Path, branch: str) -> str:
     ``None``, because the callers here compare the answer with the commits a
     journey recorded and never ask whether the branch existed.
 
+    Parameters
+    ----------
+    path : Path
+        Directory holding the repository to read.
+    branch : str
+        Branch to resolve there, named as the repository names it.
+
     Returns
     -------
     str
@@ -600,6 +607,11 @@ def grafted(root: Path) -> Journey:
 
 def reflog_lines(scenario: WheresatScenario) -> tuple[str, ...]:
     """Return every reflog line of the scenario's repository.
+
+    Parameters
+    ----------
+    scenario : WheresatScenario
+        Scenario whose repository is read.
 
     Returns
     -------

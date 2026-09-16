@@ -81,7 +81,7 @@ git fafo my-new-project python
 # Remove completed git-donkey worktrees
 git plonk
 
-# Find where a stacked branch should be rebased onto
+# Find the replay boundary of a stacked branch
 git wheresat --branch feature/awesome-stuff
 
 # Set up a template directory for this repo
