@@ -229,7 +229,8 @@ output, not rules about this one command's keys:
   usage status rather than the status Cyclopts exits with, because `1` is this
   command's status for a boundary the evidence refused and not one a parser
   established; a run that did not ask for the envelope keeps Cyclopts' own
-  diagnostic and status.
+  diagnostic on standard error, and exits with the usage status just as the
+  run that did ask for one does.
 
 `git_donkey.wheresat_report` owns both renderers, and neither reads anything:
 the text report and the envelope are projections of one assessment and one

@@ -390,10 +390,14 @@ def git_wheresat() -> None:
     A failure to parse the arguments is intercepted rather than left to
     Cyclopts, which reports one as a panel on standard error and exits ``1``.
     That status is the one this command reserves for a boundary the evidence
-    refused, and it is not a status a parser established. A run that asked for
-    ``--json`` is therefore given the error envelope, alone on standard output,
-    with the usage status; a run that did not is given Cyclopts' own diagnostic
-    and status, as every other console script here is.
+    refused, and it is not a status a parser established: the report that names
+    what refused exists for a run that reached the evidence, and a refused
+    argument produces none. Every parse failure is therefore the usage status,
+    as the status table says of anything that stopped the command from running.
+    A run that asked for ``--json`` is given the error envelope, alone on
+    standard output; a run that did not is given Cyclopts' own diagnostic on
+    standard error, which is the panel every console script here reports a
+    refused argument with.
 
     Examples
     --------
@@ -408,6 +412,12 @@ def git_wheresat() -> None:
 def _wheresat_main(tokens: cabc.Sequence[str]) -> None:
     """Run the command over ``tokens``, keeping the envelope on every status.
 
+    The parser is asked to report its refusals rather than to act on them, in
+    both modes, so that one place decides the status: a panel on standard error
+    is what a caller that asked for no envelope reads, and the envelope is what
+    the caller that asked for one reads, while the status is the usage status
+    either way.
+
     Parameters
     ----------
     tokens : cabc.Sequence[str]
@@ -417,20 +427,19 @@ def _wheresat_main(tokens: cabc.Sequence[str]) -> None:
     ------
     SystemExit
         With the run's own status, or with the usage status when an argument
-        was refused and the envelope was asked for.
+        was refused.
 
     """
-    if not _asks_for_json(tokens):
-        _wheresat_app(tokens=tokens)
-        return
+    asked = _asks_for_json(tokens)
     try:
-        _wheresat_app(tokens=tokens, exit_on_error=False, print_error=False)
+        _wheresat_app(tokens=tokens, exit_on_error=False, print_error=not asked)
     except CycloptsError as exc:
-        # The parser's own sentence names the argument it refused, and prose is
-        # what the envelope's ``error`` key holds on every other path too.
-        sys.stdout.write(
-            wheresat_report.render_error_json(wheresat_records.EXIT_USAGE, str(exc))
-        )
+        if asked:
+            # The parser's own sentence names the argument it refused, and prose
+            # is what the envelope's ``error`` key holds on every other path too.
+            sys.stdout.write(
+                wheresat_report.render_error_json(wheresat_records.EXIT_USAGE, str(exc))
+            )
         raise SystemExit(wheresat_records.EXIT_USAGE) from exc
 
 

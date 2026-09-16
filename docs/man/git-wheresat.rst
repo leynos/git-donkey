@@ -63,7 +63,10 @@ The command exits with one of the following statuses:
 
 ``2``
     The command could not run, for example a branch or target that does not
-    resolve, or a malformed ``--parent``.
+    resolve, a malformed ``--parent``, or an argument the parser refuses.
+    A refused argument draws the parser's own diagnostic on standard error,
+    as it does for the other commands here, and this status rather than the
+    parser's: ``1`` is reserved for what the evidence refused.
 
 ``3``
     The result is indeterminate: a question the procedure asked could not be

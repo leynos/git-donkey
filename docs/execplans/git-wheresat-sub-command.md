@@ -5772,6 +5772,20 @@ Stop and escalate rather than improvising when any of these is reached.
   reason for it: the code that was duplicated was a computation, and the four
   steps are now the one function that owns them. Date/Author: 2026-09-15,
   implementation agent, EP-M10.
+- Decision: supersede the round-11 note that a run which did not ask for the
+  envelope "keeps Cyclopts' diagnostic and status". It keeps the diagnostic,
+  and it exits with the usage status, `wheresat_records.EXIT_USAGE`, exactly as
+  the run that did ask for the envelope does. Rationale: `1` is published — in
+  `docs/man/git-wheresat.rst`'s status list and in the users' guide's table 1 —
+  as this command's answer about evidence that refused a boundary, an answer
+  whose report names what refused. A refused argument produces no report, so
+  exiting `1` would publish a claim about evidence that no run made. The man
+  page's `--json` sentence already put a refused argument on the `2` path, and
+  the two statements agree now. The panel stays Cyclopts' own, which is what
+  every console script here reports a refused argument with, so only the status
+  moved: `_wheresat_main` asks the parser to report its refusals in both modes
+  and decides the status in one place. Date/Author: 2026-09-16, implementation
+  agent, EP-M10.
 
 ## Outcomes & retrospective
 

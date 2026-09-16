@@ -1,10 +1,13 @@
 """Exercise the argument boundary git-wheresat reports its failures through.
 
 Cyclopts reports a parse failure as a panel on standard error and exits ``1``,
-and ``1`` is this command's status for a boundary the evidence refused. The
-console entrypoint turns that failure into the error envelope when the caller
-asked for one, so these tests pin both the interception and the ordinary paths
-it must leave alone.
+and ``1`` is this command's status for a boundary the evidence refused, which
+is an answer about the evidence rather than a parser's refusal. The console
+entrypoint therefore intercepts the failure in both modes: the caller that
+asked for the envelope reads it on standard output, the caller that did not
+reads Cyclopts' own panel on standard error, and both exit with the usage
+status. These tests pin that interception and the ordinary paths it must leave
+alone.
 """
 
 from __future__ import annotations
@@ -14,9 +17,6 @@ import json
 import pytest
 
 from git_donkey import cli, wheresat, wheresat_records, wheresat_report
-
-# What Cyclopts exits with when it reports a parse failure itself.
-_CYCLOPTS_EXIT_CODE = 1
 
 # An argument the parser cannot coerce, which is the failure a caller reading a
 # stream of envelopes meets most often.
@@ -72,12 +72,19 @@ def test_an_unknown_option_asked_for_as_json_is_an_envelope(
 def test_a_parse_failure_without_json_keeps_the_parser_diagnostic(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """A run that did not ask for the envelope keeps its prose and status."""
+    """A run that did not ask for the envelope keeps its prose, not its status.
+
+    The panel is the parser's own, which is what every console script here
+    reports a refused argument with. The status is this command's usage status
+    rather than the ``1`` the parser would exit with, because ``1`` is the
+    answer a run gives about evidence that refused a boundary, and a report
+    naming what refused is what that answer carries.
+    """
     with pytest.raises(SystemExit) as exc_info:
         cli._wheresat_main(list(_COERCION))
 
-    assert exc_info.value.code == _CYCLOPTS_EXIT_CODE, (
-        "a run that did not ask for the envelope exits as it always did"
+    assert exc_info.value.code == wheresat_records.EXIT_USAGE, (
+        "a refused argument is a usage failure whether or not a report was asked for"
     )
     captured = capsys.readouterr()
     assert not captured.out, "no envelope is written unasked"
@@ -93,10 +100,14 @@ def test_json_turned_off_is_not_a_request_for_the_envelope(
     with pytest.raises(SystemExit) as exc_info:
         cli._wheresat_main([asking, *_COERCION])
 
-    assert exc_info.value.code == _CYCLOPTS_EXIT_CODE, (
-        f"{asking} leaves the parser's own status alone"
+    assert exc_info.value.code == wheresat_records.EXIT_USAGE, (
+        f"{asking} is a refused argument, and refusals carry the usage status"
     )
-    assert not capsys.readouterr().out, f"{asking} did not ask for the envelope"
+    captured = capsys.readouterr()
+    assert not captured.out, f"{asking} did not ask for the envelope"
+    assert "notanumber" in captured.err, (
+        f"{asking} leaves the parser's panel where it reports it"
+    )
 
 
 def test_a_run_that_parses_is_left_to_the_command(
