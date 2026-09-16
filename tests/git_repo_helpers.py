@@ -22,7 +22,7 @@ from __future__ import annotations
 import dataclasses
 import typing as typ
 
-from git import Repo
+from git import GitCommandError, Repo
 
 if typ.TYPE_CHECKING:
     from pathlib import Path
@@ -256,6 +256,66 @@ def merge_bases(repo: Repo, left: str, right: str) -> tuple[str, ...]:
     """
     _, output = _merge_base(repo, "--all", left, right)
     return tuple(output.split())
+
+
+def ref_value(repo: Repo, ref: str) -> str | None:
+    """Return the commit ``ref`` names, or ``None`` when it does not exist.
+
+    This is the one reader for a ref that may be absent, and it is shared
+    because the suites disagree about what absence means: a suite that asks
+    about a ref the run may have written wants ``None`` told apart from a
+    commit, and a suite that reads a ref that must exist wants the empty string
+    its comparisons are written against. The second is a caller's decision, not
+    a second reader.
+
+    Parameters
+    ----------
+    repo : Repo
+        Repository the ref is read from.
+    ref : str
+        Full ref path, or any revision Git resolves.
+
+    Returns
+    -------
+    str | None
+        The commit the ref names, or ``None`` when no such ref exists.
+
+    """
+    try:
+        return str(repo.git.rev_parse("--verify", "--quiet", ref))
+    except GitCommandError:
+        return None
+
+
+def config_section(repo: Repo, branch: str) -> dict[str, str]:
+    """Return ``branch``'s configuration section, read from Git directly.
+
+    The section is read through ``git config`` rather than through a store
+    under test, because whether a subsection keeps the case and the punctuation
+    of the branch name is a fact about Git.
+
+    Parameters
+    ----------
+    repo : Repo
+        Repository the section is read from.
+    branch : str
+        Branch whose section is wanted.
+
+    Returns
+    -------
+    dict[str, str]
+        Every ``branch.<branch>.*`` setting, keyed by the part after the
+        ``branch.<branch>.`` prefix, as Git's own ``--list`` reports them.
+
+    """
+    prefix = f"branch.{branch}."
+    return {
+        key[len(prefix) :]: value
+        for entry in repo.git.config("--local", "--list", "-z").split("\0")
+        if entry
+        for key, _, value in (entry.partition("\n"),)
+        if key.startswith(prefix)
+    }
 
 
 def _merge_base(repo: Repo, *arguments: str) -> tuple[int, str]:

@@ -13,8 +13,10 @@ than the environment's.
 
 Two things are deliberately *not* asked of a forge: a checkout that names no
 GitHub repository has no question to put, and a run told ``--offline`` may not
-put one. Both leave the search skipped, because a question the run never asked
-is not a question the forge failed to answer.
+put one. Both leave the walk skipped, because a question the run never asked is
+not a question the forge failed to answer. The offline decision comes before
+every rung, ``--parent`` included: a named parent is read from the forge as any
+other is, so a run that may not ask may not answer that one either.
 
 The two rungs that read what the child itself carries — the stack record its
 branch holds and the shared record its pull request body carries — are stated
@@ -198,6 +200,33 @@ def test_an_offline_run_asks_nothing_of_an_offered_forge(
     )
 
     assert identified.parent is None, "an offline run names no parent from the forge"
+    assert identified.faults == (), "declining to ask is not a question unanswered"
+    assert not opener.opened, "an offline run should not open the forge at all"
+    assert recording_recorder.outcomes(PARENT_IDENTIFICATION) == ["skipped"], (
+        "the skip should be recorded as such"
+    )
+
+
+def test_an_offline_run_does_not_read_a_parent_it_was_told_about(
+    recording_recorder: RecordingRecorder,
+) -> None:
+    """``--offline`` outranks ``--parent``, because a named parent is a read.
+
+    The strongest rung is still a question put to the forge — the address came
+    from the user, but the pull request it names is read as any other — so a
+    run that may not ask must not answer this one either. The parent is
+    skipped rather than read, and the walk never reaches the opener it was
+    offered.
+    """
+    opener = Opener(forge=Forge())
+
+    identified = ask(
+        boundary_request(parent=PR_IDENTITY, offline=True),
+        search_bounds(),
+        run=Run(opener=opener),
+    )
+
+    assert identified.parent is None, "an offline run names no parent, named or not"
     assert identified.faults == (), "declining to ask is not a question unanswered"
     assert not opener.opened, "an offline run should not open the forge at all"
     assert recording_recorder.outcomes(PARENT_IDENTIFICATION) == ["skipped"], (

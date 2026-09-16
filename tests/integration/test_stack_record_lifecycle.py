@@ -642,7 +642,7 @@ _REFUSALS: typ.Final = (
         kind="stack_record_malformed",
     ),
     _Refusal(
-        failure=GitCommandError("git", 128, b"", b"fatal: unable to write ref"),
+        failure=GitCommandError("git", 128, stderr=b"fatal: unable to write ref"),
         kind="git_command_error",
     ),
 )

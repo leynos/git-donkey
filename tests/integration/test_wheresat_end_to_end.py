@@ -132,9 +132,12 @@ def _run(scenario: WheresatScenario, capsys: pytest.CaptureFixture[str]) -> Wher
     Returns
     -------
     WheresatRun
-        The status and both output streams.
+        The status and both output streams, which are the run's own: the
+        scenario was built by ``git donkey`` and ``git plonk``, so the capture
+        is drained first and the streams hold only what this run reported.
 
     """
+    capsys.readouterr()
     with in_directory(scenario.worktree_path()):
         return run_wheresat(wheresat.WheresatOptions(), capsys)
 

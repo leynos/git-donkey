@@ -7,22 +7,27 @@ that matches, present with one that does not, present with none given, and a run
 whose result was unresolved. Every one of them builds its own checkout, because
 a record write is not a change a shared fixture could survive.
 
-Five further tests stand beside those. One is the invariant over the space of
+Eight further tests stand beside those. One is the invariant over the space of
 pairs rather than over five points in it: it runs every pair of whether the
 anchor ref is still there and what the run is told it holds, and holds the write
 to proceeding exactly when the two agree, so the five cases are examples of it
-rather than the whole of the claim. The other four keep the five from passing
-vacuously. One proves a boundary no record attests is never written back, which
-is the difference between refreshing a claim and inventing one. One proves that
-a record the branch has moved past is read as evidence rather than restated,
-which is what makes a birth record go stale once the parent has been integrated
-and the branch restacked. One proves a refreshed record is still read as
-attested evidence, so the write cannot poison the record it just made. One
-proves ``--record`` is the only path that builds the command's writer, which is
-what keeps the read-only promise (INV-1) a property of the code rather than of
-the flags a caller happened to pass. The observations the run records are read
-for the same reason: they say which path a run took, where the exit status
-alone would not.
+rather than the whole of the claim. The other seven keep the five from passing
+vacuously or unreported. Three are about what a run reported rather than what it
+wrote: a refusal reaches the machine-readable envelope
+(``test_the_refusal_reaches_the_machine_readable_envelope``), a refresh is
+observed as one timed write (``test_a_refresh_is_observed_as_one_timed_write``),
+and a write Git refused is observed as a conflict
+(``test_a_refused_write_is_observed_as_a_conflict``). One proves a boundary no
+record attests is never written back, which is the difference between refreshing
+a claim and inventing one. One proves a record the branch has moved past is read
+as evidence rather than restated, which is what makes a birth record go stale
+once the parent has been integrated and the branch restacked. One proves a
+refreshed record is still read as attested evidence, so the write cannot poison
+the record it just made. One proves ``--record`` is the only path that builds
+the command's writer, which is what keeps the read-only promise (INV-1) a
+property of the code rather than of the flags a caller happened to pass. The
+observations the run records are read for the same reason: they say which path
+a run took, where the exit status alone would not.
 
 The record is read back through Git — the anchor ref with ``rev-parse``, the four
 values with ``config --list`` — rather than through the value the run reported,
@@ -34,9 +39,7 @@ from __future__ import annotations
 import dataclasses
 import functools
 import itertools
-import tempfile
 import typing as typ
-from pathlib import Path
 
 import pytest
 
@@ -57,6 +60,7 @@ from tests.integration.wheresat_helpers import (
     anchor,
     configuration,
     forget_anchor,
+    forget_record,
     reading,
     run_wheresat_in,
     stacked_child,
@@ -64,6 +68,7 @@ from tests.integration.wheresat_helpers import (
 
 if typ.TYPE_CHECKING:
     import collections.abc as cabc
+    from pathlib import Path
 
     from git import Repo
 
@@ -121,18 +126,6 @@ def _stored(scenario: WheresatScenario) -> stack_records.StackRecord:
         f"expected {CHILD!r} to hold a record, got {record!r}"
     )
     return record
-
-
-def _forget_the_record(scenario: WheresatScenario) -> None:
-    """Delete both artefacts of the child's record, so it has none."""
-    for key in stack_records.RecordKey:
-        scenario.repo.git.config(
-            "--local",
-            "--unset-all",
-            f"branch.{CHILD}.{key.value}",
-            with_exceptions=False,
-        )
-    forget_anchor(scenario)
 
 
 def _parent_value() -> str:
@@ -478,7 +471,7 @@ def test_a_boundary_no_record_attests_is_not_written_back(
     point.
     """
     scenario = stacked_child(tmp_path)
-    _forget_the_record(scenario)
+    forget_record(scenario)
     before = reading(scenario)
 
     run, trace = _traced(
@@ -524,7 +517,7 @@ def test_only_a_pair_that_agrees_replaces_the_record(
     so a pair that stopped being covered would be a test that disappeared rather
     than a draw that was never made.
     """
-    scenario = stacked_child(Path(tempfile.mkdtemp(dir=tmp_path, prefix="case-")))
+    scenario = stacked_child(tmp_path)
     if not present:
         forget_anchor(scenario)
     before = reading(scenario)

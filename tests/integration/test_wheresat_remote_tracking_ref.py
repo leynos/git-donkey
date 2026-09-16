@@ -35,6 +35,7 @@ from tests import git_repo_helpers
 from tests.integration.conftest import _setup_repo
 from tests.integration.plonk_helpers import branch_ahead_of_trunk
 from tests.integration.wheresat_helpers import (
+    Status,
     WheresatScenario,
     report_tokens,
     run_wheresat_in,
@@ -335,7 +336,7 @@ def test_the_remote_tracking_ref_gives_the_parent_gate_a_head(
     run = run_wheresat_in(intact, wheresat.WheresatOptions(explain=True), capsys)
     lines = report_tokens(run.stdout)
 
-    assert run.exit_code == 0, run.stderr
+    assert run.exit_code == Status.ESTABLISHED, run.stderr
     assert ("boundary", intact.boundary[:COMMIT_ABBREVIATION]) in lines, (
         f"the recorded boundary is served, got:\n{run.stdout}"
     )

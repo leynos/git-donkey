@@ -36,7 +36,7 @@ from pytest_bdd import given, parsers, scenarios, then, when
 
 from git_donkey import stack_records, wheresat, wheresat_records, wheresat_refs
 from tests import git_repo_helpers
-from tests.integration import wheresat_scenarios
+from tests.integration import wheresat_helpers, wheresat_scenarios
 from tests.integration.wheresat_helpers import (
     CHILD,
     EVIDENCE_NAMESPACE,
@@ -54,7 +54,7 @@ if typ.TYPE_CHECKING:
 
     import pytest
 
-_BACKUP_REF: typ.Final = f"refs/wheresat-backup/{CHILD}"
+_BACKUP_REF: typ.Final = wheresat_records.backup_ref(CHILD)
 """Ref a run advises creating before it replays the child's work."""
 
 _REBASE: typ.Final = ("git", "rebase", "--onto")
@@ -263,7 +263,7 @@ def a_record_naming_the_boundary(scenario: WheresatJourney) -> None:
 def no_record(scenario: WheresatJourney) -> None:
     """Remove the child's record, and check nothing of it is left to be read."""
     checkout = scenario.journey.scenario
-    wheresat_scenarios.forget_record(checkout)
+    wheresat_helpers.forget_record(checkout)
     remaining = [key for key in configuration(checkout) if key in _RECORD_KEYS]
 
     assert anchor(checkout) is None, "the anchor ref must be gone"

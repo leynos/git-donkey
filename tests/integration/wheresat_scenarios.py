@@ -50,7 +50,6 @@ from tests.integration.wheresat_helpers import (
     examined_and_found_none,
     fingerprint,
     reading,
-    ref_value,
     run_wheresat_at,
     stacked_child,
     working_tree,
@@ -274,7 +273,7 @@ def branch_head(path: Path, branch: str) -> str:
         The commit, or ``""`` when the repository has no such branch.
 
     """
-    commit = ref_value(Repo(path), f"refs/heads/{branch}")
+    commit = git_repo_helpers.ref_value(Repo(path), f"refs/heads/{branch}")
     return "" if commit is None else commit
 
 
@@ -392,7 +391,7 @@ def squashed(root: Path) -> Journey:
     """
     scenario = stacked_child(root)
     repo = scenario.repo
-    parent_head = ref_value(repo, f"refs/heads/{PARENT}")
+    parent_head = git_repo_helpers.ref_value(repo, f"refs/heads/{PARENT}")
     if parent_head is None:
         # The fixture built this branch a few lines above, so its absence is the
         # fixture being wrong about the repository rather than a journey shape.
@@ -593,28 +592,6 @@ def grafted(root: Path) -> Journey:
         "the boundary must fall outside the shallow history it was cut from",
     )
     return journey
-
-
-def forget_record(scenario: WheresatScenario) -> None:
-    """Take the child's stack record out of the repository, ref and all.
-
-    The anchor ref and the branch configuration are the two halves of a record
-    this command reads, so both go: a run that found either would answer from a
-    record the journey does not have.
-
-    Parameters
-    ----------
-    scenario : WheresatScenario
-        The checkout whose child record is removed.
-
-    """
-    repo = scenario.repo
-    repo.git.update_ref("-d", stack_records.base_ref_path(CHILD))
-    prefix = f"branch.{CHILD}."
-    for entry in repo.git.config("--local", "--list").splitlines():
-        key = entry.partition("=")[0]
-        if key.startswith(prefix) and key[len(prefix) :].startswith("stack"):
-            repo.git.config("--local", "--unset", key)
 
 
 def reflog_lines(scenario: WheresatScenario) -> tuple[str, ...]:

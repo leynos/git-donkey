@@ -140,7 +140,7 @@ def _ancestry(
     draw: st.DrawFn,
 ) -> cabc.Mapping[tuple[str, str], Ancestry]:
     """Draw an answer, or no answer at all, for some ordered commit pairs."""
-    answers = {}
+    answers: dict[tuple[str, str], Ancestry] = {}
     for left in commits:
         for right in commits:
             if left == right:
@@ -197,7 +197,7 @@ def _without_some(
         The same ranges, with the commits the parent's head reaches left out.
 
     """
-    kept = {}
+    kept: dict[str, CommitRange] = {}
     for key, listed in contents.items():
         kept[key] = CommitRange(_masked(listed.commits, draw), listed.truncated)
     return kept
@@ -222,7 +222,7 @@ def _twins(
     """
     if landed is None:
         return {}
-    compared = {}
+    compared: dict[str, tuple[str, ...]] = {}
     for key, listed in contents.items():
         compared[key] = _masked(listed.commits, draw)
     return compared

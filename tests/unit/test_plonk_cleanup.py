@@ -32,6 +32,7 @@ from tests.unit.plonk_cleanup_helpers import (
     ForgetfulStackStore,
     RecordingGitAdapter,
     RecordingStackStore,
+    UnnameableStackStore,
     candidate,
     cleanup_surfaces,
     marker_for,
@@ -531,4 +532,40 @@ def test_an_unusable_window_stops_the_run_before_anything_is_touched(
     assert not records.entombed, "the branch is not entombed behind a broken window"
     assert stack_store.TOMBSTONE_EXPIRE_KEY in capsys.readouterr().err, (
         "the error names the configuration key the user has to fix"
+    )
+
+
+@pytest.mark.parametrize("dry_run", [True, False], ids=["dry-run", "sweep"])
+def test_an_orphan_name_the_store_cannot_read_stops_the_run(
+    capsys: pytest.CaptureFixture[str],
+    *,
+    dry_run: bool,
+) -> None:
+    """A name Git will not accept in a ref path stops the run, not the sweep.
+
+    The record namespace is not this command's alone: a ref under
+    ``refs/stack-bases/`` may begin with ``-``, which Git allows and the anchor
+    path does not, so reading that name raises ``ValueError`` from the store
+    rather than reporting an orphan. The sweep is repository-wide, so the raise
+    has to stop the run before a single worktree is removed — and a dry run
+    reads every orphan's anchor too, so it stops on exactly the same name.
+    """
+    completed = candidate(WORKTREE_BRANCH, 123)
+    records = UnnameableStackStore(orphaned=("--upload-pack=x",))
+    adapter = RecordingGitAdapter([marker_for(completed)])
+
+    with pytest.raises(SystemExit) as excinfo:
+        run_cleanup(
+            [completed],
+            cleanup_surfaces(adapter, records),
+            plonk._PlonkMode.HARD,
+            dry_run=dry_run,
+        )
+
+    assert excinfo.value.code == _FAILURE_EXIT_CODE, (
+        "a record that cannot be read is a run that did not finish"
+    )
+    assert not adapter.removed, "no worktree is removed behind an unreadable name"
+    assert "the stack record sweep failed" in capsys.readouterr().err, (
+        "the error says which step could not finish"
     )

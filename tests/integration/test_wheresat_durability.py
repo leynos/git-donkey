@@ -180,7 +180,7 @@ def _fetched_boundary(root: Path) -> EvidenceCase:
     )
 
 
-_BUILDERS: typ.Final[cabc.Mapping[str, typ.Callable[[Path], EvidenceCase]]] = {
+_BUILDERS: typ.Final[cabc.Mapping[str, cabc.Callable[[Path], EvidenceCase]]] = {
     "branch-boundary": _branch_boundary,
     "fetched-boundary": _fetched_boundary,
 }

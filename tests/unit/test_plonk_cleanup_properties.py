@@ -31,6 +31,7 @@ from tests.unit.plonk_cleanup_helpers import (
 )
 
 if typ.TYPE_CHECKING:
+    import collections.abc as cabc
     from pathlib import Path
 
 # The state each candidate is generated in. ``CLEAN`` and ``DELETION_FAILURE``
@@ -90,7 +91,7 @@ class _BranchPlan:
     refused: bool
 
 
-def _cases(states: typ.Sequence[str]) -> list[_Case]:
+def _cases(states: cabc.Sequence[str]) -> list[_Case]:
     """Return one candidate per state, with unique branch names and paths.
 
     Parameters
@@ -113,7 +114,7 @@ def _cases(states: typ.Sequence[str]) -> list[_Case]:
     ]
 
 
-def _adapter(cases: typ.Iterable[_Case]) -> RecordingGitAdapter:
+def _adapter(cases: cabc.Iterable[_Case]) -> RecordingGitAdapter:
     """Return an adapter double matching the states in ``cases``.
 
     Trunk history carries every marker but the incomplete candidate's, and each
@@ -278,7 +279,7 @@ def _branch_plan(
 
 
 def _model(
-    cases: typ.Sequence[_Case],
+    cases: cabc.Sequence[_Case],
     *,
     mode: plonk._PlonkMode,
     dry_run: bool,

@@ -24,6 +24,7 @@ import typing as typ
 import pytest
 
 from git_donkey import stack_records, stack_store
+from tests.git_repo_helpers import config_section
 from tests.unit.stack_store_helpers import (
     CHILD,
     EXPIRE,
@@ -35,7 +36,6 @@ from tests.unit.stack_store_helpers import (
     backdate_tombstone,
     branch_names_in,
     commit_on,
-    config_section,
     delete_branch,
     delete_ref_surgically,
     make_record,

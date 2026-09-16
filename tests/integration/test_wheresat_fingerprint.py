@@ -42,7 +42,7 @@ _TRACKED: typ.Final = "README.md"
 _FETCH_HEAD: typ.Final = "FETCH_HEAD"
 """File a fetch writes, which the edits write the way a fetch would."""
 
-type _Edit = typ.Callable[[Path, Repo], None]
+type _Edit = cabc.Callable[[Path, Repo], None]
 """A deliberate change to a repository, and to its working tree."""
 
 

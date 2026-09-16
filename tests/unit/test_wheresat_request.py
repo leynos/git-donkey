@@ -8,6 +8,11 @@ to start rather than an indeterminate result. The pair of cases here is exactly
 that difference: an unanswerable question ends the run as a usage failure that
 names the target, and a target that names no ref is still a target.
 
+``--branch`` is resolved here too, and a name the record's own refs cannot hold
+is refused the same way — as a usage failure raised before the run reads
+anything, rather than as a ``ValueError`` from the collection phase that would
+reach the operator as a traceback once evidence was already being read.
+
 The graph is a double because the failure is one Git only reaches when it cannot
 be asked at all — the same fault the graph's own suite injects by corrupting the
 object the quiet question has to parse. What is under test here is not that Git
@@ -107,3 +112,30 @@ def test_a_target_that_names_no_ref_is_still_a_target(tmp_path: Path) -> None:
 
     assert target == _COMMIT, "the target is the commit its name resolved to"
     assert ref is None, "a name that is not a ref has no reflog to read"
+
+
+def test_a_branch_no_ref_may_carry_is_a_usage_failure(tmp_path: Path) -> None:
+    """A branch the record's refs cannot hold is refused before anything is read.
+
+    The branch reaches two places a bare name may not: the ref path its record
+    is kept under, and the command line of the commands that write it. A value
+    such as ``--branch -d`` would otherwise fail where the anchor ref is built,
+    as an uncaught ``ValueError`` raised after the run had begun reading
+    evidence. A hierarchical name is still a branch and is still accepted.
+    """
+    repo = git_repo_helpers.seed_repo(tmp_path / "local")
+    nested = wheresat_request.WheresatOptions(branch="feature/child")
+    refused = wheresat_request.WheresatOptions(branch="-d")
+
+    with pytest.raises(WheresatUsageError) as refusal:
+        wheresat_request._branch(refused, repo)
+
+    assert "--branch cannot name a branch" in str(refusal.value), (
+        "the refusal should name the option that carried the value"
+    )
+    assert "begins with '-'" in str(refusal.value), (
+        "the refusal should carry Git's own reason for refusing the value"
+    )
+    assert wheresat_request._branch(nested, repo) == "feature/child", (
+        "a hierarchical branch name is one the record's refs may mirror"
+    )

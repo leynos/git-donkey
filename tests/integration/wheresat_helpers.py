@@ -34,7 +34,7 @@ import json
 import typing as typ
 from pathlib import Path
 
-from git import GitCommandError, Repo
+from git import Repo
 
 from git_donkey import stack_records, wheresat, wheresat_github
 from git_donkey.wheresat_errors import WheresatGitHubError
@@ -182,35 +182,6 @@ def stacked_child(root: Path) -> WheresatScenario:
     return dataclasses.replace(scenario, tip=scenario.worktree_head())
 
 
-def ref_value(repo: Repo, ref: str) -> str | None:
-    """Return the commit ``ref`` names, or ``None`` when it does not exist.
-
-    This is the one reader for a ref that may be absent, and it is shared
-    because the suites disagree about what absence means: a suite that asks
-    about a ref the run may have written wants ``None`` told apart from a
-    commit, and a suite that reads a ref that must exist wants the empty string
-    its comparisons are written against. The second is a caller's decision, not
-    a second reader.
-
-    Parameters
-    ----------
-    repo : Repo
-        Repository the ref is read from.
-    ref : str
-        Full ref path, or any revision Git resolves.
-
-    Returns
-    -------
-    str | None
-        The commit the ref names, or ``None`` when no such ref exists.
-
-    """
-    try:
-        return str(repo.git.rev_parse("--verify", "--quiet", ref))
-    except GitCommandError:
-        return None
-
-
 def reading(scenario: WheresatScenario) -> Fingerprint:
     """Return the fingerprint of both of the scenario's working trees.
 
@@ -241,7 +212,9 @@ def anchor(scenario: WheresatScenario, branch: str = CHILD) -> str | None:
         The commit the ref names, or ``None`` when the branch has no anchor ref.
 
     """
-    return ref_value(scenario.repo, stack_records.base_ref_path(branch))
+    return git_repo_helpers.ref_value(
+        scenario.repo, stack_records.base_ref_path(branch)
+    )
 
 
 def configuration(scenario: WheresatScenario) -> dict[str, str]:
@@ -254,24 +227,53 @@ def configuration(scenario: WheresatScenario) -> dict[str, str]:
         ``branch.<child>.`` prefix, as Git's own ``--list`` reports them.
 
     """
-    prefix = f"branch.{CHILD}."
-    return {
-        key[len(prefix) :]: value
-        for entry in scenario.repo.git.config("--local", "--list", "-z").split("\0")
-        if entry
-        for key, _, value in (entry.partition("\n"),)
-        if key.startswith(prefix)
-    }
+    return git_repo_helpers.config_section(scenario.repo, CHILD)
 
 
-def forget_anchor(scenario: WheresatScenario) -> None:
-    """Delete the child's anchor ref, leaving its configuration behind.
+def forget_anchor(scenario: WheresatScenario, branch: str = CHILD) -> None:
+    """Delete ``branch``'s anchor ref, leaving its configuration behind.
 
     A record whose anchor was collected is the state a refresh exists for: the
     configuration still names the boundary, and the write that makes it
     reachable again is the create-only half of INV-7.
+
+    Parameters
+    ----------
+    scenario : WheresatScenario
+        The checkout whose anchor ref is deleted.
+    branch : str, optional
+        Branch whose anchor ref is deleted.
+
     """
-    scenario.repo.git.update_ref("-d", stack_records.base_ref_path(CHILD))
+    scenario.repo.git.update_ref("-d", stack_records.base_ref_path(branch))
+
+
+def forget_record(scenario: WheresatScenario, branch: str = CHILD) -> None:
+    """Take ``branch``'s stack record out of the repository, ref and all.
+
+    The anchor ref and the branch configuration are the two halves of a record
+    a run reads, so both go: a run that found either would answer from a record
+    the journey does not have. The record's own keys are unset one at a time
+    rather than the whole section being removed, because the section is shared
+    with everything else Git keeps about the branch — its remote, its merge
+    base, and its upstream — and the journey has no business taking those.
+
+    Parameters
+    ----------
+    scenario : WheresatScenario
+        The checkout whose record is removed.
+    branch : str, optional
+        Branch whose record is removed.
+
+    """
+    for key in stack_records.RecordKey:
+        scenario.repo.git.config(
+            "--local",
+            "--unset-all",
+            f"branch.{branch}.{key.value}",
+            with_exceptions=False,
+        )
+    forget_anchor(scenario, branch)
 
 
 @contextlib.contextmanager

@@ -112,7 +112,7 @@ class RecordingGitAdapter:
         self.removed: list[Path] = []
         self.deleted: list[str] = []
 
-    def history_messages(self, ref: str) -> typ.Iterator[str]:
+    def history_messages(self, ref: str) -> cabc.Iterator[str]:
         """Assert the resolved trunk ref, then yield the configured history."""
         if ref != TRUNK_REF:
             msg = "expected configured trunk ref"
@@ -296,6 +296,34 @@ class RecordingStackStore:
         """Record a prune, deleting the tombstones the window reaches."""
         self.pruned.append(expire)
         return tuple(self.stale)
+
+
+class UnnameableStackStore(RecordingStackStore):
+    """Store double that refuses a name Git will not accept in a ref path.
+
+    A branch read out of the record namespace need not be one Git will accept
+    back: ``refs/stack-bases/-x`` is a ref Git itself would write, and the
+    anchor path built from it raises ``ValueError`` rather than reporting an
+    orphan. Both halves of the sweep read every orphan's anchor — the dry run
+    through ``rescuable`` and the run that writes through ``sweep`` — so both
+    refuse here: a run that only reports what it would do must stop on exactly
+    the names the writing run stops on.
+    """
+
+    @staticmethod
+    def _refusal(orphans: cabc.Sequence[str]) -> str:
+        """Return the refusal an anchor built from this name raises."""
+        return f"invalid ref path component {next(iter(orphans))!r}: it begins with '-'"
+
+    def rescuable(self, orphans: cabc.Sequence[str]) -> tuple[str, ...]:
+        """Refuse the orphan list in the read half of a sweep."""
+        msg = self._refusal(orphans)
+        raise ValueError(msg)
+
+    def sweep(self, orphans: cabc.Sequence[str]) -> tuple[str, ...]:
+        """Refuse the orphan list in the write half of a sweep."""
+        msg = self._refusal(orphans)
+        raise ValueError(msg)
 
 
 class ForgetfulStackStore(RecordingStackStore):

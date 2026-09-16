@@ -63,6 +63,18 @@ class CrossBases:
     commits the best common ancestors instead of one, and neither merge is an
     ancestor of the other, so neither can be the answer to the question the
     pair asks.
+
+    Attributes
+    ----------
+    left_tip : str
+        Tip of the branch merged into ``left_merge``.
+    right_tip : str
+        Tip of the branch merged into ``right_merge``.
+    left_merge : str
+        Merge commit of the left branch, which has both tips as parents.
+    right_merge : str
+        Merge commit of the right branch, which has the same two parents.
+
     """
 
     left_tip: str
@@ -81,6 +93,27 @@ class Shape:
     listing alone, and one the range does hold must remove exactly its history.
     The flag is a claim about the fixture, so the test checks it against the
     intersection it computes rather than trusting it.
+
+    Attributes
+    ----------
+    label : str
+        Name the shape is reported under when it fails.
+    repo : Repo
+        The repository the shape was built in.
+    boundary : str
+        Commit the range question is asked about, which the child does not
+        reach.
+    child_tip : str
+        Tip of the branch whose range is listed.
+    third : str | None
+        Commit handed to ``not_reachable_from``, or ``None`` when the shape
+        asks only for the range.
+    third_overlaps : bool
+        Whether ``third``'s history reaches into the range at all.
+    cross : CrossBases | None
+        The criss-cross shape's four commits and two merges, when the shape is
+        the criss-cross; ``None`` for every other shape.
+
     """
 
     label: str
@@ -245,7 +278,7 @@ def _criss_cross(root: Path) -> Shape:
     )
 
 
-_BUILDERS: typ.Final[cabc.Mapping[str, typ.Callable[[Path], Shape]]] = {
+_BUILDERS: typ.Final[cabc.Mapping[str, cabc.Callable[[Path], Shape]]] = {
     "linear": _linear,
     "forked-then-linear": _forked_then_linear,
     "advanced-parent": _advanced_parent,

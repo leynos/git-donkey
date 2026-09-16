@@ -44,7 +44,7 @@ import pytest
 
 from git_donkey import wheresat
 from git_donkey.wheresat_graph import GitWheresatGraph
-from git_donkey.wheresat_records import EvidenceKind
+from git_donkey.wheresat_records import COMMIT_ABBREVIATION, EvidenceKind
 from tests import git_repo_helpers
 from tests.integration.wheresat_helpers import (
     Status,
@@ -339,7 +339,7 @@ def _twin(scenario: DeepScenario) -> tuple[dict[str, object], ...]:
             "kind": scenario.kind.value,
             "tier": "inferred",
             "source": f"{scenario.kind.value.replace('-', ' ')} "
-            f"with {scenario.landed[:7]}",
+            f"with {scenario.landed[:COMMIT_ABBREVIATION]}",
         },
     )
 

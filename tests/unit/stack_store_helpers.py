@@ -21,7 +21,6 @@ import time
 import typing as typ
 from pathlib import Path
 
-from git import GitCommandError
 from syrupy.matchers import path_type
 
 from git_donkey import stack_records, stack_store
@@ -122,26 +121,6 @@ def commit_on(repo: Repo, branch: str) -> str:
     return git_repo_helpers.commit_on(repo, branch)
 
 
-def config_section(repo: Repo, branch: str) -> dict[str, str]:
-    """Return ``branch``'s configuration section, read from Git directly."""
-    prefix = f"branch.{branch}."
-    return {
-        key[len(prefix) :]: value
-        for entry in repo.git.config("--local", "--list", "-z").split("\0")
-        if entry
-        for key, _, value in (entry.partition("\n"),)
-        if key.startswith(prefix)
-    }
-
-
-def ref_value(repo: Repo, ref: str) -> str | None:
-    """Return the commit ``ref`` names, or ``None`` when it does not exist."""
-    try:
-        return str(repo.git.rev_parse("--verify", "--quiet", ref))
-    except GitCommandError:
-        return None
-
-
 def branch_names_in(repo: Repo, namespace: str) -> set[str]:
     """Return every branch named by a ref under ``namespace``."""
     prefix = f"{namespace}/"
@@ -153,7 +132,7 @@ def branch_names_in(repo: Repo, namespace: str) -> set[str]:
 
 def anchor(repo: Repo, branch: str) -> str | None:
     """Return the commit the anchor ref names, if the branch has one."""
-    return ref_value(repo, stack_records.base_ref_path(branch))
+    return git_repo_helpers.ref_value(repo, stack_records.base_ref_path(branch))
 
 
 def branches(repo: Repo) -> set[str]:
