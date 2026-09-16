@@ -625,7 +625,10 @@ def _status_reason(response: requests.Response, url: str) -> str:
                 "this way, so this is not evidence that the pull request or "
                 "the commit does not exist"
             )
-        case _ if status >= _Status.SERVER_ERROR:
+        # ``requests`` types a status code as optional, so the range guard
+        # names the absent case before it compares; a response carrying no
+        # status at all falls through to the message below.
+        case _ if status is not None and status >= _Status.SERVER_ERROR:
             return (
                 f"GitHub answered {url} with a server error (HTTP {status}); "
                 "the question went unanswered"
