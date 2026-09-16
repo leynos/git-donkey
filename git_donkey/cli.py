@@ -24,9 +24,11 @@ Run with::
 
 from __future__ import annotations
 
+import sys
 import typing as typ
 
 from cyclopts import App, Parameter
+from cyclopts.exceptions import CycloptsError
 
 from git_donkey import (
     donkey,
@@ -36,8 +38,13 @@ from git_donkey import (
     template_cmd,
     track,
     wheresat,
+    wheresat_records,
+    wheresat_report,
     wheresat_request,
 )
+
+if typ.TYPE_CHECKING:
+    import collections.abc as cabc
 
 _donkey_app = App(
     name="git donkey",
@@ -304,6 +311,52 @@ def git_plonk() -> None:
     _plonk_app()
 
 
+_JSON_FLAG: typ.Final = "--json"
+_NO_JSON_FLAG: typ.Final = "--no-json"
+_JSON_ASSIGNMENT: typ.Final = "--json="
+_OPTIONS_DELIMITER: typ.Final = "--"
+"""Token after which every argument is positional rather than an option."""
+_JSON_FALSE_VALUES: typ.Final = frozenset({"no", "n", "0", "false", "f"})
+"""What Cyclopts reads as a false value for a boolean flag."""
+
+
+def _asks_for_json(tokens: cabc.Sequence[str]) -> bool:
+    """Return whether the raw arguments ask for the JSON envelope.
+
+    The question is put to the arguments rather than to the parsed options,
+    because it is asked exactly when parsing has failed: a run whose argument
+    the parser refused still owes the caller who asked for JSON the document
+    that every other exit status is written in. A later flag overrides an
+    earlier one, as it does in Cyclopts, and the scan stops at ``--``, after
+    which a token is positional rather than an option. A value Cyclopts would
+    refuse to read as a boolean counts as asking for the envelope, because the
+    caller plainly meant to ask for one.
+
+    Parameters
+    ----------
+    tokens : cabc.Sequence[str]
+        The arguments as the process received them, before parsing.
+
+    Returns
+    -------
+    bool
+        Whether the envelope was asked for.
+
+    """
+    asked = False
+    for token in tokens:
+        if token == _OPTIONS_DELIMITER:
+            break
+        if token == _JSON_FLAG:
+            asked = True
+        elif token == _NO_JSON_FLAG:
+            asked = False
+        elif token.startswith(_JSON_ASSIGNMENT):
+            value = token.removeprefix(_JSON_ASSIGNMENT).strip().lower()
+            asked = value not in _JSON_FALSE_VALUES
+    return asked
+
+
 _wheresat_app = App(
     name="git wheresat",
     help=(
@@ -332,8 +385,53 @@ def _wheresat_cli(
 
 
 def git_wheresat() -> None:
-    """Console entrypoint for git-wheresat."""
-    _wheresat_app()
+    """Console entrypoint for git-wheresat.
+
+    A failure to parse the arguments is intercepted rather than left to
+    Cyclopts, which reports one as a panel on standard error and exits ``1``.
+    That status is the one this command reserves for a boundary the evidence
+    refused, and it is not a status a parser established. A run that asked for
+    ``--json`` is therefore given the error envelope, alone on standard output,
+    with the usage status; a run that did not is given Cyclopts' own diagnostic
+    and status, as every other console script here is.
+
+    Examples
+    --------
+    ::
+
+        $ git-wheresat --json --limit 30
+
+    """
+    _wheresat_main(tuple(sys.argv[1:]))
+
+
+def _wheresat_main(tokens: cabc.Sequence[str]) -> None:
+    """Run the command over ``tokens``, keeping the envelope on every status.
+
+    Parameters
+    ----------
+    tokens : cabc.Sequence[str]
+        The arguments to parse, as the process received them.
+
+    Raises
+    ------
+    SystemExit
+        With the run's own status, or with the usage status when an argument
+        was refused and the envelope was asked for.
+
+    """
+    if not _asks_for_json(tokens):
+        _wheresat_app(tokens=tokens)
+        return
+    try:
+        _wheresat_app(tokens=tokens, exit_on_error=False, print_error=False)
+    except CycloptsError as exc:
+        # The parser's own sentence names the argument it refused, and prose is
+        # what the envelope's ``error`` key holds on every other path too.
+        sys.stdout.write(
+            wheresat_report.render_error_json(wheresat_records.EXIT_USAGE, str(exc))
+        )
+        raise SystemExit(wheresat_records.EXIT_USAGE) from exc
 
 
 _template_app = App(

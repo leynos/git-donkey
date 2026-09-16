@@ -223,6 +223,13 @@ output, not rules about this one command's keys:
   prints prose; the run renders the error envelope instead. The envelope goes
   to standard output on every path, including this one, because a consumer
   reading the stream is reading one document and not a mixture of two.
+- An argument the parser refuses never reaches the run, so its envelope is
+  written at the console-script boundary in `git_donkey/cli.py`, which is the
+  only place that sees the arguments as they arrived. That path reports the
+  usage status rather than the status Cyclopts exits with, because `1` is this
+  command's status for a boundary the evidence refused and not one a parser
+  established; a run that did not ask for the envelope keeps Cyclopts' own
+  diagnostic and status.
 
 `git_donkey.wheresat_report` owns both renderers, and neither reads anything:
 the text report and the envelope are projections of one assessment and one

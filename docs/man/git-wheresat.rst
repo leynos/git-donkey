@@ -169,7 +169,9 @@ OPTIONS
 
 --json
     Emit the versioned machine-readable envelope on standard output instead of
-    the text report, on every exit status including ``2``.
+    the text report, on every exit status including ``2``, for an argument the
+    parser refuses as well as for a run that fails later. Without it, a refused
+    argument is reported by the parser on standard error as it is elsewhere.
     Adding an envelope key in a later revision is permitted; removing or
     retyping one requires a new schema string.
 
