@@ -413,7 +413,7 @@ def _entomb_branch(
     )
     try:
         records.entomb(candidate.branch_name, tip)
-    except stack_store.StackRecordError as exc:
+    except (stack_store.StackRecordError, ValueError) as exc:
         _LOGGER.exception(
             "Failed to entomb git-plonk branch",
             extra={

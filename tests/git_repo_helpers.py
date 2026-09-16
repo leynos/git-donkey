@@ -373,16 +373,17 @@ def squash_merged_stack(
     repo_path : Path
         Directory to create the repository in.
     trunk : str, optional
-        Name of the trunk branch.
+        Branch the squash commit lands on, and the one left checked out.
     parent : str, optional
-        Name of the parent branch.
+        Branch whose commits the squash commit carries without naming them.
     child : str, optional
-        Name of the child branch.
+        Branch cut from the parent's head, before the squash merge.
 
     Returns
     -------
     StackFixture
-        The repository and the commits the shape is described by.
+        The fixture, whose ``inherited_head`` is the parent's head and whose
+        ``expected_old_base`` is therefore that same commit.
 
     """
     repo = seed_repo(repo_path, branch=trunk)
@@ -394,6 +395,7 @@ def squash_merged_stack(
     )
     child_tip = _child_work(repo, repo_path, child=child, base=parent_head)
     landed = _squash_merge(repo, parent, trunk=trunk)
+    target = advance(repo, message="Advance the trunk after the squash")
     return StackFixture(
         repo=repo,
         trunk=trunk,
@@ -403,7 +405,7 @@ def squash_merged_stack(
         parent_head=parent_head,
         inherited_head=parent_head,
         landed=landed,
-        target=advance(repo, message="Advance the trunk after the squash"),
+        target=target,
         expected_old_base=parent_head,
     )
 
@@ -427,16 +429,17 @@ def advanced_parent_stack(
     repo_path : Path
         Directory to create the repository in.
     trunk : str, optional
-        Name of the trunk branch.
+        Branch the parent is squash-merged onto, once it has moved on.
     parent : str, optional
-        Name of the parent branch.
+        Branch that commits again while the child sits on its first commit.
     child : str, optional
-        Name of the child branch.
+        Branch left where it was cut, which the parent's new head cannot reach.
 
     Returns
     -------
     StackFixture
-        The repository and the commits the shape is described by.
+        The fixture, whose ``inherited_head`` is the parent's first commit and
+        whose ``parent_head`` is absent from the child's history.
 
     """
     repo = seed_repo(repo_path, branch=trunk)
@@ -451,6 +454,7 @@ def advanced_parent_stack(
         repo, repo_path / "parent.txt", "parent work, revised", "More parent work"
     )
     landed = _squash_merge(repo, parent, trunk=trunk)
+    target = advance(repo, message="Advance the trunk after the squash")
     return StackFixture(
         repo=repo,
         trunk=trunk,
@@ -460,7 +464,7 @@ def advanced_parent_stack(
         parent_head=parent_head,
         inherited_head=inherited_head,
         landed=landed,
-        target=advance(repo, message="Advance the trunk after the squash"),
+        target=target,
         expected_old_base=inherited_head,
     )
 
@@ -511,6 +515,7 @@ def rewritten_parent_stack(
     child_tip = _child_work(repo, repo_path, child=child, base=inherited_head)
     parent_head = _rewrite_parent(repo, repo_path, trunk=trunk, parent=parent)
     landed = _squash_merge(repo, parent, trunk=trunk)
+    target = advance(repo, message="Advance the trunk after the squash")
     return StackFixture(
         repo=repo,
         trunk=trunk,
@@ -520,7 +525,7 @@ def rewritten_parent_stack(
         parent_head=parent_head,
         inherited_head=inherited_head,
         landed=landed,
-        target=advance(repo, message="Advance the trunk after the squash"),
+        target=target,
         expected_old_base=None,
     )
 

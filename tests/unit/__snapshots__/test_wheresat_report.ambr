@@ -30,7 +30,7 @@
     passed          boundary-is-ancestor-of-child
                     8888888 is an ancestor of 1111111
     passed          replay-range-non-empty
-                    the replay range 8888888888888888888888888888888888888888..1111111111111111111111111111111111111111 holds 2 commits
+                    the replay range 8888888888888888888888888888888888888888..1111111111111111111111111111111111111111 holds 2 commit(s)
     passed          parent-history-intact
                     8888888 is an ancestor of 5555555
     passed          replay-range-excludes-landed-work
@@ -79,7 +79,7 @@
     passed          boundary-is-ancestor-of-child
                     8888888 is an ancestor of 1111111
     passed          replay-range-non-empty
-                    the replay range 8888888888888888888888888888888888888888..1111111111111111111111111111111111111111 holds 2 commits
+                    the replay range 8888888888888888888888888888888888888888..1111111111111111111111111111111111111111 holds 2 commit(s)
     passed          parent-history-intact
                     8888888 is an ancestor of 5555555
     passed          replay-range-excludes-landed-work
@@ -172,7 +172,7 @@
           {
             "name": "replay-range-non-empty",
             "outcome": "passed",
-            "detail": "the replay range 8888888888888888888888888888888888888888..1111111111111111111111111111111111111111 holds 2 commits",
+            "detail": "the replay range 8888888888888888888888888888888888888888..1111111111111111111111111111111111111111 holds 2 commit(s)",
             "applicable": true
           },
           {
@@ -274,7 +274,7 @@
           {
             "name": "replay-range-non-empty",
             "outcome": "passed",
-            "detail": "the replay range 8888888888888888888888888888888888888888..1111111111111111111111111111111111111111 holds 2 commits",
+            "detail": "the replay range 8888888888888888888888888888888888888888..1111111111111111111111111111111111111111 holds 2 commit(s)",
             "applicable": true
           },
           {
@@ -371,7 +371,7 @@
           {
             "name": "replay-range-non-empty",
             "outcome": "passed",
-            "detail": "the replay range 8888888888888888888888888888888888888888..1111111111111111111111111111111111111111 holds 2 commits",
+            "detail": "the replay range 8888888888888888888888888888888888888888..1111111111111111111111111111111111111111 holds 2 commit(s)",
             "applicable": true
           },
           {
@@ -510,7 +510,7 @@
           {
             "name": "replay-range-non-empty",
             "outcome": "passed",
-            "detail": "the replay range 8888888888888888888888888888888888888888..1111111111111111111111111111111111111111 holds 2 commits",
+            "detail": "the replay range 8888888888888888888888888888888888888888..1111111111111111111111111111111111111111 holds 2 commit(s)",
             "applicable": true
           },
           {
@@ -624,7 +624,7 @@
           {
             "name": "replay-range-non-empty",
             "outcome": "passed",
-            "detail": "the replay range 8888888888888888888888888888888888888888..1111111111111111111111111111111111111111 holds 2 commits",
+            "detail": "the replay range 8888888888888888888888888888888888888888..1111111111111111111111111111111111111111 holds 2 commit(s)",
             "applicable": true
           },
           {
@@ -672,7 +672,7 @@
           {
             "name": "replay-range-non-empty",
             "outcome": "passed",
-            "detail": "the replay range 8888888888888888888888888888888888888888..1111111111111111111111111111111111111111 holds 2 commits",
+            "detail": "the replay range 8888888888888888888888888888888888888888..1111111111111111111111111111111111111111 holds 2 commit(s)",
             "applicable": true
           },
           {
@@ -720,7 +720,7 @@
           {
             "name": "replay-range-non-empty",
             "outcome": "passed",
-            "detail": "the replay range 9999999999999999999999999999999999999999..1111111111111111111111111111111111111111 holds 2 commits",
+            "detail": "the replay range 9999999999999999999999999999999999999999..1111111111111111111111111111111111111111 holds 2 commit(s)",
             "applicable": true
           },
           {
@@ -768,7 +768,7 @@
           {
             "name": "replay-range-non-empty",
             "outcome": "passed",
-            "detail": "the replay range 9999999999999999999999999999999999999999..1111111111111111111111111111111111111111 holds 2 commits",
+            "detail": "the replay range 9999999999999999999999999999999999999999..1111111111111111111111111111111111111111 holds 2 commit(s)",
             "applicable": true
           },
           {
@@ -880,7 +880,7 @@
     passed          boundary-is-ancestor-of-child
                     8888888 is an ancestor of 1111111
     passed          replay-range-non-empty
-                    the replay range 8888888888888888888888888888888888888888..1111111111111111111111111111111111111111 holds 2 commits
+                    the replay range 8888888888888888888888888888888888888888..1111111111111111111111111111111111111111 holds 2 commit(s)
     passed          parent-history-intact
                     8888888 is an ancestor of 5555555
     passed          replay-range-excludes-landed-work
@@ -926,7 +926,7 @@
     passed          boundary-is-ancestor-of-child
                     8888888 is an ancestor of 1111111
     passed          replay-range-non-empty
-                    the replay range 8888888888888888888888888888888888888888..1111111111111111111111111111111111111111 holds 2 commits
+                    the replay range 8888888888888888888888888888888888888888..1111111111111111111111111111111111111111 holds 2 commit(s)
     passed          parent-history-intact
                     8888888 is an ancestor of 5555555
     passed          replay-range-excludes-landed-work
@@ -942,7 +942,7 @@
     passed          boundary-is-ancestor-of-child
                     8888888 is an ancestor of 1111111
     passed          replay-range-non-empty
-                    the replay range 8888888888888888888888888888888888888888..1111111111111111111111111111111111111111 holds 2 commits
+                    the replay range 8888888888888888888888888888888888888888..1111111111111111111111111111111111111111 holds 2 commit(s)
     passed          parent-history-intact
                     8888888 is an ancestor of 5555555
     passed          replay-range-excludes-landed-work
@@ -958,7 +958,7 @@
     passed          boundary-is-ancestor-of-child
                     9999999 is an ancestor of 1111111
     passed          replay-range-non-empty
-                    the replay range 9999999999999999999999999999999999999999..1111111111111111111111111111111111111111 holds 2 commits
+                    the replay range 9999999999999999999999999999999999999999..1111111111111111111111111111111111111111 holds 2 commit(s)
     passed          parent-history-intact
                     9999999 is an ancestor of 5555555
     passed          replay-range-excludes-landed-work
@@ -974,7 +974,7 @@
     passed          boundary-is-ancestor-of-child
                     9999999 is an ancestor of 1111111
     passed          replay-range-non-empty
-                    the replay range 9999999999999999999999999999999999999999..1111111111111111111111111111111111111111 holds 2 commits
+                    the replay range 9999999999999999999999999999999999999999..1111111111111111111111111111111111111111 holds 2 commit(s)
     passed          parent-history-intact
                     9999999 is an ancestor of 5555555
     passed          replay-range-excludes-landed-work
@@ -1004,7 +1004,7 @@
     passed          boundary-is-ancestor-of-child
                     8888888 is an ancestor of 1111111
     passed          replay-range-non-empty
-                    the replay range 8888888888888888888888888888888888888888..1111111111111111111111111111111111111111 holds 2 commits
+                    the replay range 8888888888888888888888888888888888888888..1111111111111111111111111111111111111111 holds 2 commit(s)
     passed          parent-history-intact
                     8888888 is an ancestor of 5555555
     passed          replay-range-excludes-landed-work
@@ -1088,7 +1088,7 @@
       {
         "name": "replay-range-non-empty",
         "outcome": "passed",
-        "detail": "the replay range 8888888888888888888888888888888888888888..1111111111111111111111111111111111111111 holds 2 commits",
+        "detail": "the replay range 8888888888888888888888888888888888888888..1111111111111111111111111111111111111111 holds 2 commit(s)",
         "applicable": true
       },
       {

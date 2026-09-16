@@ -346,7 +346,9 @@ def _pull(
     Returns
     -------
     ParentPullRequest
-        The metadata a run reads before fetching the head it names.
+        The metadata a run reads before fetching the head it names, with the
+        provenance the fetch fills left unset: what a run reports about where
+        the head came from is the adapter's answer, not the fixture's.
 
     """
     return ParentPullRequest(
@@ -356,7 +358,8 @@ def _pull(
         head_sha=parent_head,
         head_ref=PARENT,
         head_repository=head_repository,
-        head_fetched_from=head_repository,
+        # The adapter has not fetched the head at this point.
+        head_fetched_from=None,
         base_ref="main",
         base_repository=REPOSITORY,
         landed=landed,

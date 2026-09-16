@@ -181,7 +181,7 @@ def _patch_identifier(value: str | None) -> str | None:
     An empty identifier is not evidence of a difference and not evidence of an
     agreement: ``git patch-id`` prints nothing for a diff that produces no
     patch, and a configured external diff driver makes it print nothing for
-    every diff. Normalising the blank here is what keeps those two cases from
+    every diff. Normalizing the blank here is what keeps those two cases from
     reading as a comparison that was made.
 
     Returns
@@ -348,7 +348,7 @@ def _replay_range_gate(inputs: _GateInputs) -> GateResult:
         name,
         GateOutcome.PASSED,
         f"the replay range {range_key(commit, child_tip)} holds "
-        f"{len(contents.commits)} commits",
+        f"{len(contents.commits)} commit(s)",
     )
 
 

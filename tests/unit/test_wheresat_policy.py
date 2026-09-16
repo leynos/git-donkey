@@ -520,16 +520,16 @@ def test_two_computed_boundaries_are_still_an_ambiguity() -> None:
     """Precedence decides between ranks, and never between equals.
 
     With no deliberate statement in the corpus, two corroborated commits are as
-    close to an answer as the evidence gets, and the run refuses: the fork point
-    and the tree identity are the same kind of computed evidence, so nothing
-    ranks one of them above the other.
+    close to an answer as the evidence gets, and the run refuses: both commits
+    are named by computations ``TIERS`` classes alike, so nothing ranks one of
+    them above the other.
     """
     case = with_candidates(
         permissive(),
         derived(OLD_BASE, EvidenceKind.FORK_POINT, source=FORK_POINT_SOURCE),
         derived(OLD_BASE, EvidenceKind.MERGE_BASE, source=MERGE_BASE_SOURCE),
-        derived(OTHER_BASE, EvidenceKind.TREE_IDENTITY, source=TREE_SOURCE),
-        derived(OTHER_BASE, EvidenceKind.PATCH_IDENTITY, source=PATCH_SOURCE),
+        derived(OTHER_BASE, EvidenceKind.FORK_POINT, source=FORK_POINT_SOURCE),
+        derived(OTHER_BASE, EvidenceKind.MERGE_BASE, source=MERGE_BASE_SOURCE),
     )
     assessment = assessment_of(case)
 

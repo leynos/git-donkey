@@ -53,6 +53,14 @@ _FORGOTTEN_BRANCH = "issue-124-forgotten"
 _ALREADY_ENTOMBED = "issue-100-already-entombed"
 """Branch whose tombstone the store already holds, so the guard cannot pass."""
 
+_UNSAFE_BRANCH = "issue-125-release.lock"
+"""Completed branch whose name the record store refuses in a ref path.
+
+The name follows the issue convention, so the run selects it, and ends in a
+component Git reserves for its own lock files, which is the shape
+``stack_records.validate_ref_component`` refuses with ``ValueError``.
+"""
+
 
 def test_dirty_candidate_does_not_abandon_its_clean_siblings() -> None:
     """A skipped worktree should not stop the batch, or the sweep is pointless."""
@@ -400,6 +408,39 @@ def test_hard_mode_refuses_a_branch_whose_own_tip_was_not_preserved() -> None:
     )
     assert preserved.branch_name in adapter.deleted, (
         "and the refusal reaches only the branch whose own tombstone is missing"
+    )
+
+
+def test_hard_mode_reports_a_branch_name_the_store_will_not_read() -> None:
+    """A name the record store refuses is one more failed entombment.
+
+    ``entomb`` documents two refusals — a tombstone Git would not write, and a
+    branch name that would be unsafe in a ref path — and the cleanup answers
+    both the same way: the tip was not preserved, so the branch is left where it
+    is and the run reports the tombstone it could not make rather than ending on
+    it. The name here is one the writer's own validator refuses, so the refusal
+    the run meets is the store's rather than the double's opinion of a name.
+
+    No branch Git has stored carries the name — Git reserves the suffix, so the
+    selection cannot presently produce it — and what is pinned here is the
+    handler's contract, which is written against the store's documented
+    refusals rather than against the names a run has happened to meet.
+    """
+    unsafe = candidate(_UNSAFE_BRANCH, 125)
+    records = RecordingStackStore()
+    adapter = EntombFirstAdapter([marker_for(unsafe)], records)
+
+    result = run_cleanup(
+        [unsafe],
+        cleanup_surfaces(adapter, records),
+        plonk._PlonkMode.HARD,
+    )
+
+    assert result.failed_entombments == (unsafe.branch_name,), (
+        "a name the store refuses is reported as a failed entombment"
+    )
+    assert unsafe.branch_name not in adapter.deleted, (
+        "and the branch nothing preserves is left where it is"
     )
 
 

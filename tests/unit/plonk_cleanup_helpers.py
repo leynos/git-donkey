@@ -234,9 +234,11 @@ class RecordingStackStore:
     ``preservable`` names the orphans whose record still parses, so one sweep
     can mix the orphan it rescues with the one it only clears. ``stale`` names
     the tombstones the retention window reaches, so a test configures the
-    answer to that comparison rather than a clock. ``unusable_expiry`` makes
-    ``expiry`` refuse the configured window, which is the one read a run cannot
-    recover from.
+    answer to that comparison rather than a clock. ``entomb`` refuses the names
+    the writer's own validator refuses, which is the other way a store refuses a
+    tombstone: with ``ValueError`` rather than with a failed write.
+    ``unusable_expiry`` makes ``expiry`` refuse the configured window, which is
+    the one read a run cannot recover from.
 
     The fields are named for what the reader reports rather than for the
     methods that report them: ``orphaned`` and ``stale`` cannot both be a field
@@ -282,7 +284,21 @@ class RecordingStackStore:
         return tuple(self.stale)
 
     def entomb(self, branch: str, tip: str) -> None:
-        """Record a tombstone, reporting failure for the configured branches."""
+        """Record a tombstone, refusing what the writer refuses, in its order.
+
+        The writer builds the tombstone's ref path before it writes anything, so
+        a name unsafe in a ref path is refused ahead of any write failure, and
+        the two refusals reach a caller as different exceptions.
+
+        Raises
+        ------
+        ValueError
+            If the branch name would be unsafe in a ref path.
+        stack_store.StackRecordError
+            If the tombstone cannot be written, for the configured branches.
+
+        """
+        stack_records.validate_ref_component(branch)
         if branch in self.entomb_failures:
             msg = f"cannot write the tombstone for {branch!r}"
             raise stack_store.StackRecordError(msg)
