@@ -12,10 +12,7 @@ from __future__ import annotations
 
 import pytest
 
-from git_donkey.wheresat_policy import (
-    apply_collection_faults,
-    may_establish,
-)
+from git_donkey.wheresat_policy import may_establish
 from git_donkey.wheresat_records import (
     EXIT_CODES,
     EXIT_USAGE,
@@ -701,53 +698,6 @@ def test_a_history_cut_short_says_so() -> None:
         "a history cut short still names a boundary and still establishes"
     )
     assert assessment.excluded_truncated, "the excluded side was cut short"
-
-
-def test_a_collection_fault_turns_a_refusal_into_could_not_tell() -> None:
-    """INV-5: a source that could not answer leaves the answer unknown.
-
-    A refusal is a claim about the repository — that nothing in it names a
-    boundary — and a run that could not read one of its sources has not earned
-    that claim. The fault is reported first, so a reader sees what went wrong
-    before the reasons that follow from it.
-    """
-    refused = assessment_of(with_candidates(permissive()))
-    assert isinstance(refused, Unresolved), "the corpus starts from a refusal"
-
-    fault = "the shared record could not be read"
-    forced = apply_collection_faults(refused, (fault,))
-
-    assert isinstance(forced, Indeterminate), (
-        "an incomplete evidence set cannot refuse the boundary"
-    )
-    assert forced.reasons[0] == fault, "the fault is what the report leads with"
-    assert forced.reasons[1:] == refused.reasons, (
-        "the reasons the refusal reached are kept behind the fault"
-    )
-    assert forced.candidates == refused.candidates, "the evidence set is unchanged"
-    assert forced.gates == refused.gates, "and so are the gates it was judged by"
-
-
-def test_a_collection_fault_leaves_an_established_boundary_alone() -> None:
-    """An established boundary survives: its gates were all answered."""
-    established = assessment_of(permissive())
-    assert isinstance(established, Established), "the corpus starts established"
-
-    forced = apply_collection_faults(established, ("another source was unreadable",))
-
-    assert forced is established, (
-        "the candidate that established the boundary passed every gate it "
-        "needed, and a fault in another source neither checked nor unchecked it"
-    )
-
-
-def test_a_run_that_found_no_fault_is_unchanged() -> None:
-    """The absence of faults is not a fault of its own."""
-    refused = assessment_of(with_candidates(permissive()))
-
-    assert apply_collection_faults(refused, ()) is refused, (
-        "an empty fault list changes nothing, not even the object identity"
-    )
 
 
 @pytest.mark.parametrize(

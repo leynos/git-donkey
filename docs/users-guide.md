@@ -183,7 +183,7 @@ overlay files if a template directory exists for the repository. Template
 directories are stored under the platform-specific user data directory for
 git-donkey:
 
-```text
+```plaintext
 <user-data-dir>/git-donkey/template/<repo-url-slug>
 ```
 
@@ -208,7 +208,7 @@ applying them to all new worktrees.
 
 Example template structure:
 
-```text
+```plaintext
 <user-data-dir>/git-donkey/template/
   myrepo-a1b2c3d4/
     .editorconfig
@@ -470,7 +470,7 @@ git plonk --hard --dry-run
 Every run ends with a summary. Removals are listed under their own headings,
 and each skipped worktree is listed with the reason it was left alone:
 
-```text
+```plaintext
 git-plonk: mode=hard
 Removed worktrees:
 - /home/user/demo.worktrees/issue-123-fix
@@ -511,7 +511,7 @@ configuration went with the branch is cleared without inventing anything in its
 place. The summary keeps the two apart, because reporting them alike would
 claim a rescue that did not happen:
 
-```text
+```plaintext
 Entombed branches:
 - issue-123-fix
 Swept records (tip preserved):
@@ -651,10 +651,10 @@ an attested account of where the parent went, which local evidence cannot give.
 
 `--no-fetch` performs no Git transport, so the parent's head is not fetched and
 no cache ref is written, while queries to the forge are still permitted.
-`--offline` performs no network access of any kind, so no forge query runs: the
-run answers from the stack record and local ancestry, and a parent
-identification it declined to put is reported as skipped rather than as a
-question it could not answer. `--deep` derives the tree-identity and
+`--offline` performs no network access of any kind, so no forge query runs and
+no parent is identified: the run answers from the stack record and local
+ancestry, and reports the identification as skipped rather than as a parent it
+could not find. `--deep` derives the tree-identity and
 cumulative-patch-identity candidates by comparing the child against the
 target's content; those are inferred evidence, so the option can add candidates
 to the report and can never change the verdict.

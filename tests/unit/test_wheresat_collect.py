@@ -54,6 +54,7 @@ from git_donkey.wheresat_records import (
     EvidenceTier,
 )
 from tests import git_repo_helpers
+from tests.unit.wheresat_candidates import derived
 from tests.unit.wheresat_helpers import (
     DEFAULT_WINDOW,
     PR_IDENTITY,
@@ -400,3 +401,56 @@ def test_a_claim_the_ladder_refused_is_not_reported_twice(
     assert collected.faults == wheresat_collect.collect_evidence(quiet).faults, (
         "the refusal is reported where the ladder found it, not a second time here"
     )
+
+
+def _crowded(
+    context: wheresat_collect.CollectionContext,
+) -> wheresat_collect.CollectionResult:
+    """Return one more candidate than the bound allows, no two of them alike."""
+    return wheresat_collect.CollectionResult(
+        candidates=tuple(
+            derived(f"{index:040x}", EvidenceKind.MERGE_BASE)
+            for index in range(wheresat_collect.MAX_CANDIDATES + 1)
+        )
+    )
+
+
+def test_a_rung_that_fills_the_bound_is_reported_as_a_cut_set(tmp_path: Path) -> None:
+    """Reaching the bound is reported, because a cut set is not a whole one.
+
+    The rung below offers more candidates than any history question here can,
+    which is why the pipeline takes its rungs as an argument at all: the cut is
+    what this case is about, and it could not be built from a repository small
+    enough to read. The flag is what tells a reader the evidence stopped at the
+    bound rather than at the end of the evidence, and the reason travels beside
+    it, so an operator is not left looking for a source that failed instead of a
+    bound that was reached.
+    """
+    repo = git_repo_helpers.seed_repo(tmp_path / "repo")
+    context = _context(repo, parent=parent_pull_request(), head=None)
+
+    collected = wheresat_collect.collect_evidence(
+        context, ((EvidenceKind.MERGE_BASE, _crowded),)
+    )
+
+    assert collected.capped, "reaching the bound is reported, not passed over"
+    assert len(collected.candidates) == wheresat_collect.MAX_CANDIDATES, (
+        "the set is cut to the bound rather than reported whole"
+    )
+    assert len(_crowded(context).candidates) > wheresat_collect.MAX_CANDIDATES, (
+        "the rung offered more than the bound, so a cut is what was measured"
+    )
+    bound = str(wheresat_collect.MAX_CANDIDATES)
+    assert any(bound in fault for fault in collected.faults), (
+        "the reason names the bound the set was cut at"
+    )
+
+
+def test_a_run_within_the_bound_reports_no_cut(tmp_path: Path) -> None:
+    """The flag is false for a set that never reached the bound."""
+    repo = git_repo_helpers.seed_repo(tmp_path / "repo")
+    context = _context(repo, parent=parent_pull_request(), head=None)
+
+    collected = wheresat_collect.collect_evidence(context)
+
+    assert not collected.capped, "a complete evidence set is not reported as cut"

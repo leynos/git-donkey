@@ -164,7 +164,27 @@ def _ancestry(facts: GraphFacts, left: str, right: str) -> Ancestry:
 
 
 def listed_range(facts: GraphFacts, base: str, tip: str) -> CommitRange | None:
-    """Return the listed contents of ``base..tip``, if the run listed them."""
+    """Return the listed contents of ``base..tip``, if the run listed them.
+
+    Parameters
+    ----------
+    facts : GraphFacts
+        Answers the run recorded for the graph questions its gates read.
+    base : str
+        Commit the range starts after.
+    tip : str
+        Commit the range ends at.
+
+    Returns
+    -------
+    CommitRange | None
+        What was listed for ``base..tip``, or ``None`` when the run recorded no
+        listing of it. The two are not the same answer: an empty range is a
+        listing that came back with nothing in it, and a reader that took the
+        unlisted range for an empty one would decide from a question the run
+        never put.
+
+    """
     return facts.range_contents.get(range_key(base, tip))
 
 
@@ -233,7 +253,26 @@ def _ancestor_gate(
 
 
 def not_applicable(name: GateName, why: str) -> GateResult:
-    """Return the result for a gate whose subject the run never set out to use."""
+    """Return the result for a gate whose subject the run never set out to use.
+
+    The outcome is ``INDETERMINATE`` because such a gate did not pass, and
+    ``applicable`` is what tells a reader it was never put rather than left
+    unanswered.
+
+    Parameters
+    ----------
+    name : GateName
+        Gate this result belongs to.
+    why : str
+        Why the gate's subject does not apply to this candidate.
+
+    Returns
+    -------
+    GateResult
+        The gate's result, marked inapplicable and carrying ``why`` as its
+        detail.
+
+    """
     return GateResult(name, GateOutcome.INDETERMINATE, why, applicable=False)
 
 

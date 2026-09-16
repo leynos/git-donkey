@@ -324,7 +324,6 @@ def _name_github_repository(repo: Repo, remote: str, slug: str, path: Path) -> N
 
 
 def _pull(
-    repo: Repo,
     landed: str,
     parent_head: str,
     *,
@@ -334,8 +333,6 @@ def _pull(
 
     Parameters
     ----------
-    repo : git.Repo
-        Repository the pull request is about.
     landed : str
         The squash commit the parent merged as.
     parent_head : str
@@ -429,7 +426,7 @@ def squashed(root: Path) -> Journey:
         parent_head=parent_head,
         inherited_head=scenario.boundary,
         identity=stack_records.PullRequestIdentity(REPOSITORY, NUMBER),
-        forge=ScriptedForge(_pull(repo, landed, parent_head)),
+        forge=ScriptedForge(_pull(landed, parent_head)),
         where="worktree",
     )
 
@@ -484,7 +481,7 @@ def rewritten(root: Path) -> Journey:
         parent_head=fixture.parent_head,
         inherited_head=fixture.inherited_head,
         identity=stack_records.PullRequestIdentity(REPOSITORY, NUMBER),
-        forge=ScriptedForge(_pull(fixture.repo, fixture.landed, fixture.parent_head)),
+        forge=ScriptedForge(_pull(fixture.landed, fixture.parent_head)),
         where="checkout",
     )
 
@@ -560,7 +557,7 @@ def forked(root: Path) -> Journey:
     return dataclasses.replace(
         journey,
         forge=ScriptedForge(
-            _pull(repo, journey.landed, journey.parent_head, head_repository=FORK)
+            _pull(journey.landed, journey.parent_head, head_repository=FORK)
         ),
         fork_path=fork_path,
     )

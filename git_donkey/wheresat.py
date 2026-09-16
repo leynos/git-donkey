@@ -443,6 +443,7 @@ def _assess(
         wheresat_policy.apply_collection_faults(
             assessment,
             session.parent_faults + evidence.faults + facts.faults,
+            capped=evidence.capped,
         ),
         evidence.warnings,
     )

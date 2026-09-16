@@ -82,7 +82,8 @@ def test_no_pull_remains_a_compatible_no_op() -> None:
     )
 
 
-def _repository(tmp_path: Path) -> Repo:
+@pytest.fixture
+def repository(tmp_path: Path) -> Repo:
     """Return a fresh repository with one commit on ``main``.
 
     The seeding is the shared helper's, so the repository a case here is handed
@@ -102,10 +103,11 @@ def _repository(tmp_path: Path) -> Repo:
     return git_repo_helpers.seed_repo(tmp_path, branch="main")
 
 
-def _context(tmp_path: Path) -> donkey._DonkeyContext:
+@pytest.fixture
+def context(repository: Repo, tmp_path: Path) -> donkey._DonkeyContext:
     """Return a context over a fresh repository, with no remote configured."""
     return donkey._DonkeyContext(
-        repo_home=_repository(tmp_path),
+        repo_home=repository,
         remote="origin",
         branch_to_worktree={},
         worktrees_root=tmp_path / "worktrees",
@@ -113,11 +115,9 @@ def _context(tmp_path: Path) -> donkey._DonkeyContext:
 
 
 def test_a_base_the_repository_does_not_hold_is_not_recorded(
-    tmp_path: Path,
+    context: donkey._DonkeyContext,
 ) -> None:
     """A base that resolves to no commit is refused by Git, not by a traceback."""
-    context = _context(tmp_path)
-
     stack = donkey._stack_context(
         context,
         trunk=_TRUNK,
@@ -130,10 +130,9 @@ def test_a_base_the_repository_does_not_hold_is_not_recorded(
 
 
 def test_a_base_only_a_remote_tracking_ref_names_is_resolved(
-    tmp_path: Path,
+    context: donkey._DonkeyContext,
 ) -> None:
     """A base that is a remote-tracking ref resolves through that ref."""
-    context = _context(tmp_path)
     head = context.repo_home.head.commit.hexsha
     context.repo_home.git.update_ref("refs/remotes/origin/feature", head)
 
@@ -158,7 +157,7 @@ def test_a_base_only_a_remote_tracking_ref_names_is_resolved(
 
 
 def test_a_base_named_for_the_trunk_is_still_weighed_by_commit(
-    tmp_path: Path,
+    context: donkey._DonkeyContext,
 ) -> None:
     """A base named as the default branch is recorded when its commit differs.
 
@@ -168,7 +167,6 @@ def test_a_base_named_for_the_trunk_is_still_weighed_by_commit(
     being stacked means here, so the record is owed rather than skipped on the
     strength of the two refs sharing a name.
     """
-    context = _context(tmp_path)
     head = context.repo_home.head.commit.hexsha
 
     stack = donkey._stack_context(

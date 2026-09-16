@@ -666,15 +666,23 @@ def assess(
 
 
 def apply_collection_faults(
-    assessment: Assessment, faults: cabc.Sequence[str]
+    assessment: Assessment, faults: cabc.Sequence[str], *, capped: bool = False
 ) -> Assessment:
     """Return the assessment a collection fault forces, if it forces one.
 
     A fault means the evidence set is not known to be complete, so a refusal
     cannot be read as "nothing in this repository names a boundary" and the run
-    answers that it could not tell instead. An established boundary survives: its
-    candidate passed every gate it needed, and a fault in a source that neither
-    checked nor unchecked it cannot make the answer wrong.
+    answers that it could not tell instead. An established boundary survives a
+    source that could not answer: its candidate passed every gate it needed, and
+    a fault in a source that neither checked nor unchecked it cannot make the
+    answer wrong.
+
+    A set cut at the candidate bound is not that case. Truncation removed
+    candidates rather than failing to read them, so the strongest rank present
+    among the survivors may not be the strongest the repository holds, and two
+    candidates at one rank may have been one candidate too many. An established
+    answer therefore does not survive it, and the run answers that it could not
+    tell.
 
     Parameters
     ----------
@@ -682,6 +690,8 @@ def apply_collection_faults(
         What the assessment made of the evidence that was collected.
     faults : collections.abc.Sequence[str]
         What each source that could not answer reported.
+    capped : bool, optional
+        Whether the candidate set was cut at the collection bound.
 
     Returns
     -------
@@ -689,10 +699,46 @@ def apply_collection_faults(
         The assessment, or the indeterminate result the faults force.
 
     """
-    if not faults or isinstance(assessment, Established):
+    if capped:
+        return _faulted(assessment, faults)
+    if isinstance(assessment, Established) or not faults:
         return assessment
-    return Indeterminate(
-        candidates=assessment.candidates,
-        gates=assessment.gates,
-        reasons=tuple(faults) + assessment.reasons,
-    )
+    return _faulted(assessment, faults)
+
+
+def _faulted(assessment: Assessment, faults: cabc.Sequence[str]) -> Indeterminate:
+    """Return the "could not tell" result an incomplete evidence set forces.
+
+    What changes is the verdict and not the evidence it was read from: the
+    candidates and the gates are carried over from whatever the assessment
+    held. An established result contributes the support that carried it, which
+    is the candidate list its own report renders, and no reasons — it reached
+    none. A refusal or an indeterminate result contributes both, with the
+    faults reported ahead of the reasons they undermine.
+
+    Parameters
+    ----------
+    assessment : Assessment
+        What the assessment made of the evidence that was collected.
+    faults : collections.abc.Sequence[str]
+        What each source that could not answer reported, or the reason the
+        candidate set was cut.
+
+    Returns
+    -------
+    Indeterminate
+        The result to report in place of the assessment.
+
+    """
+    match assessment:
+        case Established(support=support, gates=gates):
+            return Indeterminate(candidates=support, gates=gates, reasons=tuple(faults))
+        case (
+            Unresolved(candidates=candidates, gates=gates, reasons=reasons)
+            | Indeterminate(candidates=candidates, gates=gates, reasons=reasons)
+        ):
+            return Indeterminate(
+                candidates=candidates,
+                gates=gates,
+                reasons=tuple(faults) + reasons,
+            )

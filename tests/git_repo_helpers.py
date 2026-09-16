@@ -5,7 +5,10 @@ and what ``git worktree remove`` refuses to discard — is Git's own. A Python
 double for ``Repo`` would assert the test author's belief about Git rather than
 Git itself, so these helpers build the smallest real repository that exhibits
 the behaviour, configuring each one with a local commit identity so tests never
-depend on, or write to, the runner's global Git configuration.
+depend on, or write to, the runner's global Git configuration. The commits the
+builders make pass ``--no-gpg-sign`` and ``--no-verify`` for the same reason:
+a runner's signing configuration or commit hook must not be able to fail, or
+to alter, a fixture commit.
 
 The three stack builders at the end of the module build the shapes the boundary
 recovery has to tell apart: a child stacked on a parent that was squash-merged
@@ -74,7 +77,7 @@ def commit_file(repo: Repo, path: Path, text: str, message: str) -> str:
     """
     path.write_text(text, encoding="utf-8")
     repo.git.add(path.as_posix())
-    repo.git.commit("-m", message)
+    repo.git.commit("--no-gpg-sign", "--no-verify", "-m", message)
     return repo.head.commit.hexsha
 
 
@@ -117,7 +120,7 @@ def advance(repo: Repo, *, message: str = "Advance") -> str:
         The new commit's ID, so a caller can name it as a boundary.
 
     """
-    repo.git.commit("--allow-empty", "-m", message)
+    repo.git.commit("--no-gpg-sign", "--no-verify", "--allow-empty", "-m", message)
     return repo.head.commit.hexsha
 
 

@@ -717,13 +717,15 @@ class GitWheresatGraph:
         -------
         tuple[str, ...]
             One candidate per spelling, most specific first: ``branch`` itself
-            when it is already a full ref path, the short
+            when it is already a ref path, otherwise the short
             ``refs/remotes/<branch>`` form, then one candidate per configured
             remote in the order the repository configures them.
 
         """
-        candidates = [branch] if branch.startswith("refs/") else []
-        candidates.append(f"refs/remotes/{branch}")
+        # A ref path is asked as itself; a bare name is not, because Git
+        # resolves it against ``refs/heads`` rather than the remotes.
+        ref_path = branch.startswith("refs/")
+        candidates = [branch] if ref_path else [f"refs/remotes/{branch}"]
         candidates.extend(
             f"refs/remotes/{remote.name}/{branch}" for remote in self.repo.remotes
         )

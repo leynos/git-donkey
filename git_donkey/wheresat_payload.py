@@ -137,7 +137,24 @@ def list_field(value: object) -> list[object]:
 
 
 def string_field(value: object) -> str:
-    """Return ``value`` when it is a string, and the empty string otherwise."""
+    """Return ``value`` when it is a string, and the empty string otherwise.
+
+    A field this version reads as text and the forge sent as something else is
+    read as absent rather than rendered: the empty string is what a caller
+    tests for having nothing, so a number or a nested object cannot reach the
+    report dressed as a name.
+
+    Parameters
+    ----------
+    value : object
+        Field to read.
+
+    Returns
+    -------
+    str
+        The field's text, or the empty string when the field is not a string.
+
+    """
     return value if isinstance(value, str) else ""
 
 
@@ -162,7 +179,24 @@ def flag_field(value: object) -> bool:
 
 
 def count_field(value: object) -> int | None:
-    """Return ``value`` when it is a count, and ``None`` otherwise."""
+    """Return ``value`` when it is a count, and ``None`` otherwise.
+
+    A boolean is rejected although it *is* an int in Python, because JSON has
+    a boolean of its own: a forge that answered ``true`` where a count was
+    read has answered a flag, and reading it as ``1`` would put a number in
+    the report that no endpoint sent.
+
+    Parameters
+    ----------
+    value : object
+        Field to read.
+
+    Returns
+    -------
+    int | None
+        The count, or ``None`` when the field is not one.
+
+    """
     if isinstance(value, bool) or not isinstance(value, int):
         return None
     return value

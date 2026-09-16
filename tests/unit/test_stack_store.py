@@ -24,7 +24,7 @@ import typing as typ
 
 import pytest
 
-from git_donkey import stack_records, stack_store, stack_writes
+from git_donkey import stack_records, stack_store
 from tests.git_repo_helpers import config_section
 from tests.unit.stack_store_helpers import (
     CHILD,
@@ -47,6 +47,8 @@ if typ.TYPE_CHECKING:
 
     from git import Repo
     from syrupy.assertion import SnapshotAssertion
+
+    from git_donkey import stack_writes
 
 
 def test_create_writes_the_anchor_and_the_four_canonical_keys(

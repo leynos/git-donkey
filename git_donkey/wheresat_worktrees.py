@@ -45,6 +45,21 @@ counting every untracked file would warn about build output the replay would
 run over happily. A change to a tracked file stops it either way.
 """
 
+_NO_OPTIONAL_LOCKS: typ.Final = "--no-optional-locks"
+"""Git's opt-out from the optional work a read would take a lock to do.
+
+Reading a worktree's status is a question, and Git answers it by refreshing the
+index and writing it back when it may — so a read the run takes to decide
+whether it may write would be a write of its own, and one that contends with
+whoever else is using that worktree.
+
+The opt-out is a *global* option rather than a ``status`` one: ``git status
+--no-optional-locks`` is not a command Git accepts and ``git
+--no-optional-locks status`` is. GitPython's attribute-call form has nowhere to
+put an option that precedes the subcommand, so the read is made through
+:meth:`git.cmd.Git.execute`, which takes the argument vector whole.
+"""
+
 _OPERATIONS: typ.Final[tuple[tuple[GitOperation, tuple[str, ...]], ...]] = (
     (GitOperation.REBASE, ("rebase-merge", "rebase-apply")),
     (GitOperation.MERGE, ("MERGE_HEAD",)),
@@ -87,6 +102,27 @@ _GIT_ENTRY: typ.Final = ".git"
 
 _GITDIR_PREFIX: typ.Final = "gitdir:"
 """What a linked worktree's ``.git`` file holds in place of a directory."""
+
+
+class _GitExecute(typ.Protocol):
+    """The argument-vector Git surface a read needing a global option calls.
+
+    :meth:`git.cmd.Git.execute` takes the whole argument vector, which is the
+    only way through GitPython to place an option Git accepts *before* the
+    subcommand. Its declared overloads leave no shape for a read that wants the
+    status, both streams, and exceptions turned off, so that shape is named
+    here and the call is made through it, as the package's other Git surfaces
+    are.
+
+    """
+
+    GIT_PYTHON_GIT_EXECUTABLE: str
+    """Name of the Git executable, which such a vector opens with."""
+
+    def execute(
+        self, command: typ.Sequence[str], **kwargs: object
+    ) -> tuple[int, str, str]:
+        """Run ``command`` whole, returning its status and both streams."""
 
 
 def worktree_state(repo: Repo, branch: str) -> WorktreeState:
@@ -353,6 +389,10 @@ def _operation(worktree: Repo) -> GitOperation | None:
 def _dirty(worktree: Repo) -> bool:
     """Return whether ``worktree`` holds changes a replay would refuse to run over.
 
+    Reading the status is a question, and it is asked with Git's optional locks
+    turned off (:data:`_NO_OPTIONAL_LOCKS`), so the answer is not paid for by
+    writing the index of a worktree somebody else may be using.
+
     Returns
     -------
     bool
@@ -364,9 +404,15 @@ def _dirty(worktree: Repo) -> bool:
         If Git cannot read the worktree's status.
 
     """
-    status, output, stderr = worktree.git.status(
-        "--porcelain",
-        _TRACKED_ONLY,
+    git = typ.cast("_GitExecute", worktree.git)
+    status, output, stderr = git.execute(
+        [
+            git.GIT_PYTHON_GIT_EXECUTABLE,
+            _NO_OPTIONAL_LOCKS,
+            "status",
+            "--porcelain",
+            _TRACKED_ONLY,
+        ],
         with_extended_output=True,
         with_exceptions=False,
     )

@@ -211,6 +211,14 @@ class CollectedEvidence:
     ever adds inferred candidates, so a caveat is the strongest thing its
     silence may add.
 
+    ``capped`` says the candidate set was cut at :data:`MAX_CANDIDATES`. It is
+    carried beside ``faults`` rather than folded into them because it is the
+    one incompleteness an established answer does not survive: a source that
+    could not answer leaves the candidates that were read where they were, and
+    a truncation is what removed them, so a candidate that would have answered
+    differently — or a second one that would have made the answer an ambiguity
+    — is not among the candidates the policy judged.
+
     """
 
     candidates: tuple[Candidate, ...]
@@ -218,6 +226,7 @@ class CollectedEvidence:
     recorded_from: str | None
     faults: tuple[str, ...] = ()
     warnings: tuple[str, ...] = ()
+    capped: bool = False
 
 
 def _record_evidence(context: CollectionContext) -> CollectionResult:
@@ -272,21 +281,19 @@ def _shared_record_evidence(context: CollectionContext) -> CollectionResult:
         body or read one that claimed nothing.
 
     """
-    claim = context.shared_record
-    if not isinstance(claim, wheresat_shared_record.SharedRecord):
-        return CollectionResult()
-    return CollectionResult(
-        candidates=(
-            candidate_for(
-                claim.boundary,
-                EvidenceKind.SHARED_RECORD,
-                source=(
-                    "the shared record in the body of "
-                    f"{stack_records.identity_text(claim.parent)}"
-                ),
-            ),
-        )
-    )
+    match context.shared_record:
+        case wheresat_shared_record.SharedRecord(boundary=boundary, parent=parent):
+            source = (
+                "the shared record in the body of "
+                f"{stack_records.identity_text(parent)}"
+            )
+            return CollectionResult(
+                candidates=(
+                    candidate_for(boundary, EvidenceKind.SHARED_RECORD, source=source),
+                )
+            )
+        case _:
+            return CollectionResult()
 
 
 def _pull_request_head_evidence(context: CollectionContext) -> CollectionResult:
@@ -512,13 +519,14 @@ def collect_evidence(
     prepared, faults = _prepared(context)
     asked = _asked_for(context.request, sources)
     candidates, rung_faults = _rung_results(prepared, asked)
-    kept, cap_faults = _capped(candidates)
+    kept, cap_faults, capped = _capped(candidates)
     return CollectedEvidence(
         candidates=kept,
         parent_head=prepared.parent_head,
         recorded_from=_recorded_from(prepared.record),
         faults=faults + rung_faults + cap_faults,
         warnings=prepared.scan.warnings,
+        capped=capped,
     )
 
 
@@ -584,23 +592,26 @@ def _prepared(
 
 def _capped(
     candidates: tuple[Candidate, ...],
-) -> tuple[tuple[Candidate, ...], tuple[str, ...]]:
-    """Return the candidates within the bound, and why they are not all of them.
+) -> tuple[tuple[Candidate, ...], tuple[str, ...], bool]:
+    """Return the candidates within the bound, and whether the bound was reached.
 
     Returns
     -------
-    tuple[tuple[Candidate, ...], tuple[str, ...]]
-        The candidates to report, and the reason the set is not known to be
-        complete when the bound was reached.
+    tuple[tuple[Candidate, ...], tuple[str, ...], bool]
+        The candidates to report, the reason the set is not known to be
+        complete when the bound was reached, and whether it was. The flag is
+        what the policy reads to tell a cut set from a set some source failed
+        to answer for, which is a distinction an established answer does not
+        survive.
 
     """
     if len(candidates) <= MAX_CANDIDATES:
-        return candidates, ()
+        return candidates, (), False
     reason = (
         f"more than {MAX_CANDIDATES} boundary candidates were collected, so the "
         f"evidence set is not known to be complete"
     )
-    return candidates[:MAX_CANDIDATES], (reason,)
+    return candidates[:MAX_CANDIDATES], (reason,), True
 
 
 def _rung_results(
@@ -643,9 +654,11 @@ def _fork_point_refs(context: CollectionContext) -> tuple[str, ...]:
 
 def _recorded_from(record: stack_records.RecordResult) -> str | None:
     """Return the child tip a stack record was written against, if there is one."""
-    if isinstance(record, stack_records.StackRecord):
-        return record.recorded_from
-    return None
+    match record:
+        case stack_records.StackRecord(recorded_from=tip):
+            return tip
+        case _:
+            return None
 
 
 def _record_candidate(

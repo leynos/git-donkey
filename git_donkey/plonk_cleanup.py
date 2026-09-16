@@ -22,6 +22,8 @@ import dataclasses
 import logging
 import typing as typ
 
+from git import GitCommandError
+
 from git_donkey import (
     helpers,
     observability,
@@ -235,14 +237,15 @@ def _swept(
     Raises
     ------
     SystemExit
-        If a record cannot be read or cleared.
+        If a record cannot be read or cleared, whether the store refused the
+        read or Git refused a command the read was made of.
 
     """
     try:
         if dry_run:
             return records.rescuable(orphans)
         return records.sweep(orphans)
-    except (stack_store.StackRecordError, ValueError) as exc:
+    except (stack_store.StackRecordError, GitCommandError, ValueError) as exc:
         _record_failure("stack_record_sweep", mode)
         helpers._die(GIT_PLONK_PREFIX, f"the stack record sweep failed: {exc}", 1)
 
@@ -279,12 +282,18 @@ def _sweep_orphans(
     Raises
     ------
     SystemExit
-        If a record cannot be cleared. The sweep is repository-wide, so a
-        failure stops the run before any worktree has been removed rather than
-        leaving the cleanup half done.
+        If the orphans cannot be listed or a record cannot be cleared. The
+        sweep is repository-wide, so a failure stops the run before any
+        worktree has been removed rather than leaving the cleanup half done.
+        A Git command the listing or the clearing is made of is reported the
+        same way as a refusal by the store.
 
     """
-    orphans = records.orphans()
+    try:
+        orphans = records.orphans()
+    except (stack_store.StackRecordError, GitCommandError, ValueError) as exc:
+        _record_failure("stack_record_sweep", mode)
+        helpers._die(GIT_PLONK_PREFIX, f"listing the stack records failed: {exc}", 1)
     if not orphans:
         return (), ()
     swept = _swept(records, orphans, mode, dry_run=dry_run)
@@ -334,12 +343,13 @@ def _prune_tombstones(
     ------
     SystemExit
         If a tombstone cannot be deleted, for the same reason the sweep stops
-        the run: the record lifecycle is repository-wide.
+        the run: the record lifecycle is repository-wide, and a Git command
+        the deletion is made of is caught the same way.
 
     """
     try:
         pruned = tuple(records.expired(expire) if dry_run else records.prune(expire))
-    except (stack_store.StackRecordError, ValueError) as exc:
+    except (stack_store.StackRecordError, GitCommandError, ValueError) as exc:
         _record_failure("stack_record_prune", mode)
         helpers._die(GIT_PLONK_PREFIX, f"pruning tombstones failed: {exc}", 1)
     if not pruned:
