@@ -76,8 +76,11 @@ class _Graph:
 
     def ref_name(self, rev: str) -> str | None:
         """Report the configured fault, or answer that ``rev`` names no ref."""
-        if self.refusal is not None:
-            raise WheresatGraphError(self.refusal)
+        if self.refusal is None:
+            # Nothing is configured to refuse the question, so this graph
+            # answers that the revision names no ref of its own.
+            return
+        raise WheresatGraphError(self.refusal)
 
 
 def _target(tmp_path: Path, graph: _Graph) -> tuple[str, str | None]:

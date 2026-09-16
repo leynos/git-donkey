@@ -410,7 +410,7 @@ def cleanup_surfaces(
     adapter: object,
     records: object | None = None,
 ) -> plonk_cleanup._CleanupSurfaces:
-    """Return the Git surfaces a cleanup run over ``adapter`` cleans through.
+    """Return the Git and record surfaces a cleanup run cleans through.
 
     Parameters
     ----------

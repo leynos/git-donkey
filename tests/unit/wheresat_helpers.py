@@ -211,6 +211,7 @@ class ParentPullRequestOverrides(typ.TypedDict, total=False):
     head_ref: str
     head_repository: str
     head_fetched_from: str | None
+    landed: str | None
     stacked: bool
 
 
