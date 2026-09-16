@@ -859,19 +859,26 @@ cassette only for a command that is meant to call the API, and never edit a
 recording by hand.
 
 Every cassette is played through one `_recorder()` helper, which filters the
-credential and the metadata that describes it out of each request before the
-interaction is written, so no recording can carry what the traffic was recorded
-with. The filtered set is the `authorization` header itself plus the three
-OAuth headers GitHub's API answers with, which name the client and the access
-it was granted: `x-oauth-client-id`, `x-oauth-scopes`, and
-`x-accepted-oauth-scopes`. Replay does not miss them: `vcrpy` matches an
-interaction on the request's method and URL rather than on what it carried, so
-a run holding a token and a run holding none replay the same recording.
+credential out of each request before the interaction is written, so no
+recording can carry what the traffic was recorded with: the filtered set is the
+`authorization` header itself. `vcrpy`'s `filter_headers` reaches a request and
+nothing else, so the three headers GitHub's API sends in its answers are
+dropped from each response instead, by a `before_record_response` hook. They
+name the client and the access it was granted — `x-oauth-client-id`,
+`x-oauth-scopes`, and `x-accepted-oauth-scopes` — and none of them is read by
+any test. Replay does not miss either kind: `vcrpy` matches an interaction on
+the request's method and URL rather than on what it carried, so a run holding a
+token and a run holding none replay the same recording, and a response header
+cannot make an interaction unfindable.
 
-A recording made before the filter grew still carries those OAuth headers. It
-is not a credential, and it is left as it was recorded: the rule above holds
-for every recording, and a file that needs to say less is re-recorded rather
-than repaired by hand.
+A recording made before the response hook existed still carries those OAuth
+headers on disk, and it is left as it was recorded: the rule above holds for
+every recording, and a file that needs to say less is re-recorded rather than
+repaired by hand. Nothing reads them there: the hook drops them as a recording
+is loaded, which is what `tests/integration/test_wheresat_github.py` asserts,
+and a re-recording pass that writes a file strips them from it, because the
+file is written from the interactions the recorder holds rather than from the
+bytes it read.
 
 `vcrpy` 7.0.0 ships no pytest plugin, so the root `conftest.py` declares the
 `--record-mode` option itself — `none`, `once`, or `new_episodes`, defaulting to

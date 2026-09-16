@@ -84,22 +84,65 @@ def stub_commands(tmp_path: Path) -> StubCommands:
     return StubCommands(bin_dir=bin_dir, log_path=log_path)
 
 
+_RECORDER_HEADERS: typ.Final = (
+    "x-oauth-client-id",
+    "x-oauth-scopes",
+    "x-accepted-oauth-scopes",
+)
+"""What GitHub answers with that describes who asked rather than what was asked.
+
+None of the three is a credential, but together they name the client and the
+access it was granted, which a recording has no reason to keep.
+"""
+
+
+def _without_recorder_headers(response: dict[str, object]) -> dict[str, object]:
+    """Return ``response`` with the headers that describe the recorder dropped.
+
+    ``filter_headers`` reaches a request and nothing else, so the three headers
+    GitHub answers with are removed here rather than there. The hook runs as a
+    cassette is read as well as as one is written, so a recording made before
+    it existed replays without them, and the pass that refreshes a recording
+    writes a file that never held them. Removing a response header cannot make
+    an interaction unfindable, because a request is matched on its method and
+    URL rather than on what the answer carried.
+
+    Parameters
+    ----------
+    response : dict[str, object]
+        One recorded response, as the serializer read it or as the stub built
+        it.
+
+    Returns
+    -------
+    dict[str, object]
+        The same response, with the headers dropped.
+
+    """
+    headers = response.get("headers")
+    if isinstance(headers, dict):
+        response["headers"] = {
+            name: value
+            for name, value in headers.items()
+            if name.lower() not in _RECORDER_HEADERS
+        }
+    return response
+
+
 def _recorder(record_mode: str) -> vcr.VCR:
     """Return a VCR recorder for one cassette, with the credential filtered out.
 
     Every cassette goes through this, so no recording can carry the token the
     requests were made with: ``filter_headers`` drops the ``authorization``
-    header, and with it the three OAuth headers GitHub's API answers with,
-    which name the client and the access it was granted —
-    ``x-oauth-client-id``, ``x-oauth-scopes``, and ``x-accepted-oauth-scopes``.
-    None of the three is a credential, but together they describe who recorded
-    the traffic, which a recording has no reason to keep.
+    header from every request, matched without regard to case, so a recording
+    taken before it was listed here replays exactly as it was written. Replay
+    does not miss the credential either, because an interaction is matched on
+    the request's method and URL rather than on what it carried.
 
-    Filtering only ever removes headers from a request, and header names are
-    matched without regard to case, so a recording taken before these were
-    listed here replays exactly as it was written. Replay does not miss the
-    credential either, because an interaction is matched on the request's
-    method and URL rather than on what it carried.
+    The three headers GitHub answers with are dropped by
+    :func:`_without_recorder_headers`, which ``filter_headers`` cannot reach:
+    it filters requests, and GitHub's description of the client and its access
+    arrives in the response.
 
     Parameters
     ----------
@@ -115,12 +158,8 @@ def _recorder(record_mode: str) -> vcr.VCR:
     return vcr.VCR(
         record_mode=record_mode,
         cassette_library_dir=_CASSETTE_DIR.as_posix(),
-        filter_headers=[
-            "authorization",
-            "x-oauth-client-id",
-            "x-oauth-scopes",
-            "x-accepted-oauth-scopes",
-        ],
+        filter_headers=["authorization"],
+        before_record_response=_without_recorder_headers,
     )
 
 

@@ -63,6 +63,7 @@ from git_donkey.wheresat_github import (
     REQUEST_TIMEOUT_SECONDS,
     ApiWheresatGitHub,
 )
+from tests.integration.conftest import _RECORDER_HEADERS
 
 if typ.TYPE_CHECKING:
     from vcr.cassette import Cassette
@@ -164,6 +165,25 @@ def _asked(cassette: Cassette, path: str) -> None:
         f"expected the recording to hold a request for {path}, got "
         f"{[request.uri for request in cassette.requests]}"
     )
+
+
+def _response_header_names(cassette: Cassette) -> set[str]:
+    """Return every header name the recording's responses carry, in lower case.
+
+    Parameters
+    ----------
+    cassette : Cassette
+        Recording to read, as the recorder has already filtered it.
+
+    Returns
+    -------
+    set[str]
+        The names, folded so that a header is recognised however it is cased.
+
+    """
+    return {
+        name.lower() for response in cassette.responses for name in response["headers"]
+    }
 
 
 @pytest.fixture
@@ -309,6 +329,33 @@ def test_the_association_search_names_the_pull_request(
     assert page.truncated is False, (
         "a search with nothing left over did not stop short of the history"
     )
+
+
+def test_a_recording_does_not_say_which_client_made_the_requests(
+    wheresat_parent_metadata_cassette: Cassette,
+    wheresat_rate_limited_cassette: Cassette,
+) -> None:
+    """GitHub's description of the client and its access reaches no test.
+
+    ``filter_headers`` drops a request header and nothing more, so the three
+    headers GitHub answers with — ``x-oauth-client-id``, ``x-oauth-scopes``,
+    and ``x-accepted-oauth-scopes`` — are dropped as each recording is read.
+    None of the three is a credential, and none is read by any test, but
+    together they name who recorded the traffic, which a recording a reader can
+    check into a repository has no reason to keep. The recordings on disk still
+    carry them, because a recording is not edited by hand; the pass that
+    refreshes one writes a file that never held them.
+    """
+    for described, cassette in {
+        "the parent metadata recording": wheresat_parent_metadata_cassette,
+        "the rate-limited recording": wheresat_rate_limited_cassette,
+    }.items():
+        present = _response_header_names(cassette) & set(_RECORDER_HEADERS)
+
+        assert not present, (
+            f"{described} must state neither the client the requests were made "
+            f"with nor the access it was granted, but carries {sorted(present)}"
+        )
 
 
 def test_a_rate_limited_answer_is_not_an_answer(
