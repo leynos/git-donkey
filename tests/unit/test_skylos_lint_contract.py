@@ -103,6 +103,7 @@ _SKYLOS_ALLOW_USAGE_EXIT_STATUS: typ.Final = 2
 _TEST_PREREQUISITES: typ.Final = ("build", "uv", "$(VENV_TOOLS)", "makeutil")
 _FULL_SUITE_WORKFLOW_JOBS: typ.Final = frozenset((
     (".github/workflows/ci.yml", "lint-test"),
+    (".github/workflows/coverage-main.yml", "coverage-upload"),
 ))
 _EXPECTED_SKYLOS_WHITELIST_NAMES: typ.Final = frozenset[str]()
 _EXPECTED_SKYLOS_DOCUMENTED_WHITELIST_NAMES: typ.Final = frozenset[str]()

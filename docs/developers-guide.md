@@ -11,6 +11,15 @@ regenerates `typos.toml` from the live shared dictionary and the
 in CI. Put narrow repository-specific exceptions in `typos.local.toml`; never
 edit the generated entries by hand.
 
+## Coverage publication
+
+Pull-request CI generates serial, source-scoped Python coverage and compares it
+with the local ratchet baseline written by `main`. It neither invokes CodeScene
+nor exposes `CS_ACCESS_TOKEN`, so it does not require full Git history. On each
+push to `main`, `coverage-main.yml` generates the same ratcheted coverage and
+uploads it to CodeScene, keeping CodeScene's baseline aligned with its analysed
+branch.
+
 ## git-donkey workflow
 
 `git_donkey.donkey.run_git_donkey()` is the workflow function behind the

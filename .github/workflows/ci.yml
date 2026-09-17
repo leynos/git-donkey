@@ -9,13 +9,9 @@ jobs:
   lint-test:
     runs-on: ubuntu-latest
     permissions:
-      # Least privilege: this job only reads repository contents. Coverage
-      # uploads authenticate with CS_ACCESS_TOKEN, not the workflow token.
+      # Least privilege: this job only reads repository contents.
       contents: read
     env:
-      # Surface the secret as an env var so the CodeScene gate can test it:
-      # GitHub Actions does not allow `secrets.*` in step-level `if:`.
-      CS_ACCESS_TOKEN: ${{ secrets.CS_ACCESS_TOKEN }}
       MAKEUTIL_REVISION: '29fc5a1634ffbaa18a773eed9dff1b2838a45d9c'
       MAKEUTIL_TOOLCHAIN: 'nightly-2026-05-28'
     steps:
@@ -93,16 +89,14 @@ jobs:
         run: make typecheck
 
       - name: Run tests with coverage
-        uses: leynos/shared-actions/.github/actions/generate-coverage@6b5cdc2d4c0bb72cafd5a66d24d248ac25827db9
+        # Pull requests consume the ratchet baseline main writes. They do not
+        # need a CodeScene token, CodeScene CLI, or a full Git checkout.
+        if: github.event_name == 'pull_request'
+        uses: leynos/shared-actions/.github/actions/generate-coverage@152d9c4784d0ae5877938a984fe6d1f04d718fd8
         with:
+          language: python
+          python-source: ./git_donkey
           output-path: coverage.xml
           format: cobertura
-
-      - name: Upload coverage to CodeScene
-        if: env.CS_ACCESS_TOKEN != ''
-        uses: leynos/shared-actions/.github/actions/upload-codescene-coverage@6b5cdc2d4c0bb72cafd5a66d24d248ac25827db9
-        with:
-          path: coverage.xml
-          format: cobertura
-          access-token: ${{ secrets.CS_ACCESS_TOKEN }}
-          installer-checksum: ${{ vars.CODESCENE_CLI_SHA256 }}
+          pytest-workers: ''
+          with-ratchet: 'true'
