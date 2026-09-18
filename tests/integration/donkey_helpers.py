@@ -15,15 +15,14 @@ import dataclasses
 import typing as typ
 from pathlib import Path
 
+import pytest
 from git import Repo
 
-from git_donkey import donkey
+from git_donkey import donkey, stack_records, stack_store
 from tests.integration.conftest import _setup_repo
 
 if typ.TYPE_CHECKING:
     import collections.abc as cabc
-
-    import pytest
 
 
 @dataclasses.dataclass(slots=True)
@@ -151,6 +150,56 @@ def leave_base_behind_remote(scenario: DonkeyScenario) -> None:
     scenario.remote_tip = repo.head.commit.hexsha
     repo.git.reset("--hard", "HEAD~1")
     scenario.local_tip = repo.head.commit.hexsha
+
+
+def stack_record(scenario: DonkeyScenario, branch: str) -> stack_records.RecordResult:
+    """Return what the stack record artefacts for ``branch`` reconcile to.
+
+    The record is read through the command's own reader rather than from the
+    configuration directly, so a scenario asserts against the artefact as the
+    next command will see it — including the absence of one, which is a
+    first-class result rather than an error.
+
+    Parameters
+    ----------
+    scenario : DonkeyScenario
+        Scenario whose repository holds the record.
+    branch : str
+        Branch the record was written for.
+
+    Returns
+    -------
+    stack_records.RecordResult
+        The reconciled record, or the reason there is none to use.
+
+    """
+    return stack_store.GitStackRecordReader(scenario.repo).read(branch)
+
+
+def require_stack_record(
+    scenario: DonkeyScenario, branch: str
+) -> stack_records.StackRecord:
+    """Return the stack record for ``branch``, failing the test if there is none.
+
+    Parameters
+    ----------
+    scenario : DonkeyScenario
+        Scenario whose repository holds the record.
+    branch : str
+        Branch the record was written for.
+
+    Returns
+    -------
+    stack_records.StackRecord
+        The reconciled record.
+
+    """
+    record = stack_record(scenario, branch)
+    match record:
+        case stack_records.StackRecord():
+            return record
+        case _:
+            pytest.fail(f"expected a stack record for {branch!r}, got {record!r}")
 
 
 def _record_run(

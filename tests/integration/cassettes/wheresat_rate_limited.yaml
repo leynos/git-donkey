@@ -1,0 +1,76 @@
+interactions:
+- request:
+    body: null
+    headers:
+      Accept:
+      - application/vnd.github+json
+      Accept-Charset:
+      - utf-8
+      Accept-Encoding:
+      - gzip, deflate, zstd
+      Connection:
+      - keep-alive
+      Content-Type:
+      - application/json
+      User-Agent:
+      - github3.py/4.0.1
+    method: GET
+    uri: https://api.github.com/search/code?q=repo%3Aleynos%2Fgit-donkey+filename%3Apyproject.toml
+  response:
+    body:
+      string: "{\n\t\"message\": \"API rate limit exceeded for user ID 746767. If
+        you reach out to GitHub Support for help, please include the request ID B7E2:358ABB:320025:304C0F:6AA9739F
+        and timestamp 2026-09-15 16:34:39 UTC. For more on scraping GitHub and how
+        it may affect your rights, please review our Terms of Service (https:\\/\\/docs.github.com\\/en\\/site-policy\\/github-terms\\/github-terms-of-service)\",\n\t\"documentation_url\":
+        \"https://docs.github.com/en/rest/using-the-rest-api/getting-started-with-the-rest-api#rate-limiting\",\n\t\"status\":
+        \"403\"\n}\n"
+    headers:
+      Access-Control-Allow-Origin:
+      - '*'
+      Access-Control-Expose-Headers:
+      - ETag, Link, Location, Retry-After, X-GitHub-OTP, X-RateLimit-Limit, X-RateLimit-Remaining,
+        X-RateLimit-Used, X-RateLimit-Resource, X-RateLimit-Reset, X-OAuth-Scopes,
+        X-Accepted-OAuth-Scopes, X-Poll-Interval, X-GitHub-Media-Type, X-GitHub-SSO,
+        X-GitHub-Request-Id, X-GitHub-Edge-Region, Deprecation, Sunset
+      Content-Length:
+      - '535'
+      Content-Security-Policy:
+      - default-src 'none'
+      Content-Type:
+      - application/json; charset=utf-8
+      Date:
+      - Tue, 15 Sep 2026 16:34:39 GMT
+      Referrer-Policy:
+      - origin-when-cross-origin, strict-origin-when-cross-origin
+      Server:
+      - github.com
+      Strict-Transport-Security:
+      - max-age=31536000; includeSubdomains; preload
+      Vary:
+      - Accept-Encoding, Accept, X-Requested-With
+      X-Content-Type-Options:
+      - nosniff
+      X-Frame-Options:
+      - deny
+      X-GitHub-Media-Type:
+      - github.v3; format=json
+      X-GitHub-Request-Id:
+      - B7E2:358ABB:320025:304C0F:6AA9739F
+      X-RateLimit-Limit:
+      - '10'
+      X-RateLimit-Remaining:
+      - '0'
+      X-RateLimit-Reset:
+      - '1789490130'
+      X-RateLimit-Resource:
+      - code_search
+      X-RateLimit-Used:
+      - '10'
+      X-XSS-Protection:
+      - '0'
+      x-github-edge-region:
+      - fra
+    status:
+      code: 403
+      message: Forbidden
+version: 1

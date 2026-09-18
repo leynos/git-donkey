@@ -24,6 +24,7 @@ dependencies = [
     "platformdirs>=4.11.8",
     "plumbum>=1.8",
     "python-slugify>=8.0.0",
+    "requests>=2.32.0,<3.0",
 ]
 
 [project.urls]
@@ -36,6 +37,7 @@ git-donkey = "git_donkey.cli:git_donkey"
 git-track = "git_donkey.cli:git_track"
 git-fafo = "git_donkey.cli:git_fafo"
 git-plonk = "git_donkey.cli:git_plonk"
+git-wheresat = "git_donkey.cli:git_wheresat"
 git-donkey-template = "git_donkey.cli:git_donkey_template"
 git-incoming = "git_donkey.cli:git_incoming"
 git-in = "git_donkey.cli:git_in"
@@ -402,6 +404,13 @@ strict = true
 names = []
 
 [tool.skylos.whitelist.documented]
+"_commit_pulls_path" = "Called only from ApiWheresatGitHub.associated_pull_requests, which Skylos cannot reach for the reason given for _slug"
+"_pull_path" = "Called only from the ApiWheresatGitHub methods whose URLs it builds, which Skylos cannot reach for the reason given for _slug"
+"_slug" = "Called only from _pull_path, _commit_pulls_path and ApiWheresatGitHub._stack_members; Skylos credits no reference to any method of ApiWheresatGitHub, because the client is reached through the WheresatGitHub protocol and a call on a Protocol-typed parameter is not a reference it follows, so nothing below those methods is credited either"
+"_git_failure" = "Called only from the except GitCommandError handlers in _write_anchor and _write_tombstone; Skylos does not credit a call in a handler body"
+"_per_run_namespace" = "Called from per_run_ref and from GitWheresatRefWriter.release, which the durability suite drives as a pair: a boundary is fetched into refs/wheresat/op/<op-id>/<name> and the release is asserted to leave that namespace empty again, which is INV-8 and the only place it is covered. No console script reaches either, because the fetch this command performs writes the durable cache ref, so nothing a run does creates a per-run namespace"
+"per_run_ref" = "Called from the durability and fingerprint suites, which build the destination a transported boundary is fetched into and read the ref back from it; it names what _per_run_namespace names, and no console script reaches it for the same reason as that namespace"
+"render_shared_record" = "Called only from the shared-record suite, which pins the exact two lines the guide tells a reader to paste and the round trip parse_shared_record(render_shared_record(r)) == r for every record. No console script emits a shared record: git donkey writes a record into the clone that made it, and git wheresat reads one a person pasted into a pull request body, so the renderer has no production caller by design, and the interface spec records both the function and the fact that no command emits it"
 
 [build-system]
 requires = ["hatchling", "hatch-build-scripts>=1.0.0,<2", "docutils>=0.23,<0.24"]
@@ -421,6 +430,7 @@ commands = [
     "rst2man --config=docutils.conf --output=git-track.1 git-track.rst",
     "rst2man --config=docutils.conf --output=git-fafo.1 git-fafo.rst",
     "rst2man --config=docutils.conf --output=git-plonk.1 git-plonk.rst",
+    "rst2man --config=docutils.conf --output=git-wheresat.1 git-wheresat.rst",
     "rst2man --config=docutils.conf --output=git-donkey-template.1 git-donkey-template.rst",
     "rst2man --config=docutils.conf --output=git-incoming.1 git-incoming.rst",
     "rst2man --config=docutils.conf --output=git-in.1 git-in.rst",
@@ -433,6 +443,7 @@ commands = [
 "docs/man/git-track.1" = "share/man/man1/git-track.1"
 "docs/man/git-fafo.1" = "share/man/man1/git-fafo.1"
 "docs/man/git-plonk.1" = "share/man/man1/git-plonk.1"
+"docs/man/git-wheresat.1" = "share/man/man1/git-wheresat.1"
 "docs/man/git-donkey-template.1" = "share/man/man1/git-donkey-template.1"
 "docs/man/git-incoming.1" = "share/man/man1/git-incoming.1"
 "docs/man/git-in.1" = "share/man/man1/git-in.1"

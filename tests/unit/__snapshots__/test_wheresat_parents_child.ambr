@@ -1,0 +1,4 @@
+# serializer version: 1
+# name: test_a_body_that_supports_several_readings_names_every_reading
+  'the shared record in the body of acme/widget#17 names more than one reading, and this run will not choose among them: acme/widget#16 with boundary ddddddd; acme/widget#16 with boundary eeeeeee; acme/widget#15 with boundary ddddddd; acme/widget#15 with boundary eeeeeee; leave one reading in the body, or name the parent with --parent'
+# ---

@@ -23,6 +23,9 @@ from hypothesis import strategies as st
 from git_donkey import plonk, plonk_policy, plonk_records, plonk_selection
 from tests import git_repo_helpers
 
+if typ.TYPE_CHECKING:
+    import collections.abc as cabc
+
 # History messages consumed before the streaming scan stops: one per candidate
 # marker, so the trailing "Unneeded late history" message is never pulled.
 _EXPECTED_CONSUMED_HISTORY_MESSAGES = 2
@@ -288,7 +291,7 @@ def test_completed_candidates_streams_history_until_markers_match() -> None:
 
     consumed_messages = 0
 
-    def messages() -> typ.Iterator[str]:
+    def messages() -> cabc.Iterator[str]:
         nonlocal consumed_messages
         consumed_messages += 1
         yield "Merge pull request (#123)"

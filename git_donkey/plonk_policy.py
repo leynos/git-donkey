@@ -10,6 +10,9 @@ from __future__ import annotations
 import re
 import typing as typ
 
+if typ.TYPE_CHECKING:
+    import collections.abc as cabc
+
 _ISSUE_BRANCH_PATTERN = re.compile(r"^issue-(\d+)-")
 _ROADMAP_BRANCH_PATTERN = re.compile(r"^(?:(\w+)-)?(\d+)-(\d+)-(\d+)(\w+)?-(?:(\d+)-)?")
 
@@ -81,12 +84,12 @@ def completion_marker_for_branch(branch_name: str) -> str | None:
     return f"({'.'.join(parts)})"
 
 
-def has_completion_marker(messages: typ.Iterable[str], marker: str) -> bool:
+def has_completion_marker(messages: cabc.Iterable[str], marker: str) -> bool:
     """Return whether any commit message contains ``marker`` or its dotted form.
 
     Parameters
     ----------
-    messages : typ.Iterable[str]
+    messages : cabc.Iterable[str]
         Commit messages to scan. Consumed lazily and only until a match is
         found.
     marker : str
@@ -113,8 +116,8 @@ def has_completion_marker(messages: typ.Iterable[str], marker: str) -> bool:
 
 
 def completed_candidates[CandidateT: CompletionCandidate](
-    candidates: typ.Iterable[CandidateT],
-    messages: typ.Iterable[str],
+    candidates: cabc.Iterable[CandidateT],
+    messages: cabc.Iterable[str],
 ) -> list[CandidateT]:
     """Return candidates whose completion markers appear in commit history.
 
@@ -123,9 +126,9 @@ def completed_candidates[CandidateT: CompletionCandidate](
 
     Parameters
     ----------
-    candidates : typ.Iterable[CandidateT]
+    candidates : cabc.Iterable[CandidateT]
         Candidates to filter. Each must expose a ``marker`` attribute.
-    messages : typ.Iterable[str]
+    messages : cabc.Iterable[str]
         Commit messages to scan, consumed lazily.
 
     Returns

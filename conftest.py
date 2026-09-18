@@ -2,8 +2,9 @@
 
 The unit and integration suites both need lightweight GitHub API doubles while
 keeping the real workflow modules importable. This root ``conftest`` provides
-the reusable user and repository stubs and installs the recorder that captures
-workflow observability; integration-specific Git repository helpers live in
+the reusable user and repository stubs, installs the recorder that captures
+workflow observability, and declares the record mode the recorded GitHub
+cassettes are replayed with; integration-specific Git repository helpers live in
 ``tests.integration.conftest``.
 """
 
@@ -19,6 +20,36 @@ from tests.observability_helpers import RecordingRecorder
 
 if typ.TYPE_CHECKING:
     import collections.abc as cabc
+
+
+def pytest_addoption(parser: pytest.Parser) -> None:
+    """Declare how vcrpy treats the recorded GitHub cassettes.
+
+    ``vcrpy`` 7.0.0 ships no pytest plugin, so the record mode is declared here
+    rather than through a ``--record-mode`` another package would provide. The
+    default is ``none`` on purpose: a suite run replays what was recorded and
+    raises inside the code under test for anything the recordings do not hold,
+    so an unrecorded request can never reach the network by accident. The other
+    modes are for the deliberate recording pass described in
+    ``docs/developers-guide.md``, and for nothing else.
+
+    Parameters
+    ----------
+    parser : pytest.Parser
+        Parser the option is added to.
+
+    """
+    parser.addoption(
+        "--record-mode",
+        default="none",
+        choices=["none", "once", "new_episodes"],
+        help=(
+            "how vcrpy treats the recorded GitHub cassettes: 'none' (the "
+            "default) replays them and refuses anything unrecorded, 'once' "
+            "records a cassette that does not exist yet, and 'new_episodes' "
+            "appends interactions a recording does not already hold"
+        ),
+    )
 
 
 @dataclasses.dataclass

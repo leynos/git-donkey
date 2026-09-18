@@ -17,6 +17,9 @@ from pathlib import Path
 from git_donkey import plonk_policy
 from git_donkey.plonk_records import _PlonkCandidate
 
+if typ.TYPE_CHECKING:
+    import collections.abc as cabc
+
 _REFS_HEADS_PREFIX = "refs/heads/"
 
 
@@ -44,7 +47,7 @@ def _is_git_donkey_worktree(worktree_path: Path, worktrees_root: Path) -> bool:
 
 
 def _donkey_worktree_paths(
-    stanzas: typ.Iterable[dict[str, object]],
+    stanzas: cabc.Iterable[dict[str, object]],
     worktrees_root: Path,
 ) -> list[Path]:
     """Return linked worktree paths owned by git-donkey."""
@@ -59,7 +62,7 @@ def _donkey_worktree_paths(
 
 
 def _donkey_worktree_candidates(
-    stanzas: typ.Iterable[dict[str, object]],
+    stanzas: cabc.Iterable[dict[str, object]],
     worktrees_root: Path,
 ) -> list[_PlonkCandidate]:
     """Return recognized git-donkey worktrees with completion markers."""

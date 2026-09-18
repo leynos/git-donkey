@@ -49,12 +49,20 @@ type Operation = typ.Literal[
     "base_update",
     "pull_execution",
     "worktree_creation",
+    "stack_record_write",
+    "stack_record_sweep",
+    "stack_record_prune",
+    "stack_record_entomb",
     "template_overlay",
     "comparison_fetch",
     "comparison",
     "worktree_preflight",
     "worktree_removal",
     "branch_deletion",
+    "parent_identification",
+    "evidence_collection",
+    "boundary_assessment",
+    "evidence_fetch",
 ]
 """Fixed operation names a workflow step can report."""
 
@@ -87,8 +95,29 @@ type ErrorKind = typ.Literal[
     "os_error",
     "selection_error",
     "worktree_creation_error",
+    "stack_record_conflict",
+    "stack_record_malformed",
+    "github_api_error",
+    "credential_unavailable",
+    "shallow_history",
+    "search_incomplete",
 ]
 """Fixed labels for the class of failure an operation reported."""
+
+type EvidenceTierLabel = typ.Literal["attested", "derived", "inferred"]
+"""Fixed labels for how much weight a boundary candidate carries."""
+
+type WheresatVerdictLabel = typ.Literal[
+    "established", "unresolved", "indeterminate", "error"
+]
+"""Fixed labels for the verdict ``git wheresat`` reached.
+
+``error`` is the fourth, and it is the one no assessment carries: a run that
+refused to start — a usage, configuration, or write failure — reached no
+verdict about the boundary, and the envelope it emits says so. It is a label
+here because that envelope is what a consumer reads, so the vocabulary a
+recorder stores and the vocabulary a script matches on are one set.
+"""
 
 type CleanupModeLabel = typ.Literal["default", "soft", "hard"]
 """Fixed labels for the git-plonk mode a cleanup step ran in."""
@@ -108,6 +137,8 @@ class Observation:
     error_kind: ErrorKind | None = None
     mode: CleanupModeLabel | None = None
     skip_reason: SkipReasonLabel | None = None
+    verdict: WheresatVerdictLabel | None = None
+    evidence_tier: EvidenceTierLabel | None = None
 
     def attributes(self) -> dict[str, str]:
         """Return the record's bounded attributes, omitting unset labels.
@@ -128,6 +159,8 @@ class Observation:
                 ("error_kind", self.error_kind),
                 ("mode", self.mode),
                 ("skip_reason", self.skip_reason),
+                ("verdict", self.verdict),
+                ("evidence_tier", self.evidence_tier),
             )
             if value is not None
         }

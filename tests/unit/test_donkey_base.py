@@ -9,15 +9,23 @@ from __future__ import annotations
 import typing as typ
 
 import pytest
+from git.exc import BadName
 
 from git_donkey import donkey
+from tests import git_repo_helpers
 
 if typ.TYPE_CHECKING:
     from pathlib import Path
 
+    from git import Repo
+
 
 # Exit status reserved for a command-line usage error.
 _USAGE_ERROR_EXIT_CODE = 2
+
+# The trunk the cases compare a base against. It is a commit no case's base
+# resolves to, so every base that resolves at all is one that gets recorded.
+_TRUNK = donkey._Trunk(ref="refs/remotes/origin/main", commit="f" * 40)
 
 
 @pytest.mark.parametrize(
@@ -72,4 +80,131 @@ def test_no_pull_remains_a_compatible_no_op() -> None:
     """The existing no-pull option retains the new non-pulling default."""
     assert donkey._pull_mode(donkey._PullOptions(), no_pull=True) is None, (
         "an explicit no-pull retains the non-pulling default"
+    )
+
+
+@pytest.fixture
+def repository(tmp_path: Path) -> Repo:
+    """Return a fresh repository with one commit on ``main``.
+
+    The seeding is the shared helper's, so the repository a case here is handed
+    is the one the rest of the suite is handed: the commit identity is
+    configured in the repository itself, so the case neither depends on nor
+    writes to the runner's own Git configuration, and the branch ``Repo.init``
+    started on is renamed to ``main``, so a case that reads a local branch of
+    that name is answered by the fixture rather than by whatever
+    ``init.defaultBranch`` happens to be set to.
+
+    Returns
+    -------
+    Repo
+        The repository, checked out on ``main``.
+
+    """
+    return git_repo_helpers.seed_repo(tmp_path, branch="main")
+
+
+@pytest.fixture
+def context(repository: Repo, tmp_path: Path) -> donkey._DonkeyContext:
+    """Return a context over a fresh repository, with no remote configured."""
+    return donkey._DonkeyContext(
+        repo_home=repository,
+        remote="origin",
+        branch_to_worktree={},
+        worktrees_root=tmp_path / "worktrees",
+    )
+
+
+def test_a_base_the_repository_does_not_hold_is_not_recorded(
+    context: donkey._DonkeyContext,
+) -> None:
+    """A base that resolves to no commit is refused by Git, not by a traceback."""
+    stack = donkey._stack_context(
+        context,
+        trunk=_TRUNK,
+        base=donkey._Base(ref="no-such-branch", commit=None),
+    )
+
+    assert stack is None, (
+        "a base with no start point to freeze is one no record can be written from"
+    )
+
+
+def test_a_base_only_a_remote_tracking_ref_names_is_resolved(
+    context: donkey._DonkeyContext,
+) -> None:
+    """A base that is a remote-tracking ref resolves through that ref."""
+    head = context.repo_home.head.commit.hexsha
+    context.repo_home.git.update_ref("refs/remotes/origin/feature", head)
+
+    stack = donkey._stack_context(
+        context,
+        trunk=_TRUNK,
+        base=donkey._Base(
+            ref="feature",
+            commit=donkey._base_commit(context, "feature"),
+        ),
+    )
+
+    assert stack is not None, (
+        "the branch was created from a base that exists, so the record is owed"
+    )
+    assert stack.parent == "feature", (
+        "the parent the record names is the base the caller selected"
+    )
+    assert donkey._base_commit(context, "feature") == head, (
+        "and the commit the record freezes is the one the remote-tracking ref names"
+    )
+
+
+def test_a_base_named_for_the_trunk_is_still_weighed_by_commit(
+    context: donkey._DonkeyContext,
+) -> None:
+    """A base named as the default branch is recorded when its commit differs.
+
+    The default branch is discovered from the remote, and a local branch of that
+    name is a different ref that may hold commits the remote's does not. The
+    branch is then created from a commit the trunk does not have, which is what
+    being stacked means here, so the record is owed rather than skipped on the
+    strength of the two refs sharing a name.
+    """
+    head = context.repo_home.head.commit.hexsha
+
+    stack = donkey._stack_context(
+        context,
+        trunk=_TRUNK,
+        base=donkey._Base(ref="main", commit=head),
+    )
+
+    assert stack is not None, (
+        "a base at a commit the trunk does not have is a parent to record"
+    )
+    assert stack.parent == "main", (
+        "the parent is the name the caller selected, which is the branch they hold"
+    )
+
+
+def test_a_trunk_the_repository_will_not_resolve_is_not_a_trunk(
+    context: donkey._DonkeyContext,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A trunk ref GitPython cannot read is the absence of a trunk, not a failure.
+
+    ``Repo.commit`` reports an unresolvable revision as ``BadName`` as well as
+    the ``ValueError`` and ``GitCommandError`` the two handlers around it catch,
+    so the ref is planted and the read made to raise rather than the state
+    provoked through Git. A trunk that cannot be read leaves the branch simply
+    unrecorded, which is the contract this helper documents.
+    """
+    head = context.repo_home.head.commit.hexsha
+    context.repo_home.git.update_ref("refs/remotes/origin/main", head)
+
+    def unresolvable(_rev: str) -> typ.NoReturn:
+        msg = "unknown revision or path not in the working tree"
+        raise BadName(msg)
+
+    monkeypatch.setattr(context.repo_home, "commit", unresolvable)
+
+    assert donkey._local_trunk(context, default_branch="main") is None, (
+        "the branch is still created, and simply goes unrecorded"
     )

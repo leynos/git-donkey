@@ -45,6 +45,15 @@ git-donkey gives you Git subcommands for branch-based work:
   local branches. Worktrees holding uncommitted work are reported and left
   alone rather than discarded.
 
+- **`git wheresat`** – Report the replay boundary for a stacked branch: the old
+  base its own work sits on, which a rebase passes as its upstream argument so
+  that work already landed in the trunk is dropped. It moves no branch and no
+  worktree. By default it adds nothing but the evidence refs it caches under
+  `refs/wheresat/`; under `--record` it also writes the child branch's stack
+  record — its `refs/stack-bases/` anchor and the `branch.<name>.*` values
+  beside it — so a later run reads the boundary this one established rather
+  than weighing it again.
+
 - **`git donkey-template`** – Manage template directories that get
   automatically copied into new worktrees. Perfect for per-repository config
   files like `.editorconfig` or `.vscode/settings.json`.
@@ -72,6 +81,9 @@ git fafo my-new-project python
 
 # Remove completed git-donkey worktrees
 git plonk
+
+# Find the replay boundary of a stacked branch
+git wheresat --branch feature/awesome-stuff
 
 # Set up a template directory for this repo
 git donkey-template
