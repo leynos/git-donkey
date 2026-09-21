@@ -1,0 +1,9 @@
+# serializer version: 1
+# name: test_create_writes_the_anchor_and_the_four_canonical_keys
+  dict({
+    'stackbase': '<OID>',
+    'stackbaseevidence': 'stack-record-birth',
+    'stackbaserecordedfrom': '<OID>',
+    'stackparent': 'v1:branch:parent',
+  })
+# ---

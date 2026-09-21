@@ -9,11 +9,14 @@ from __future__ import annotations
 
 import typing as typ
 
+if typ.TYPE_CHECKING:
+    import collections.abc as cabc
+
 _REFS_REMOTES_PREFIX = "refs/remotes/"
 _HEAD_REF = "HEAD"
 
 
-def remote_name_for_ref(remote_names: typ.Iterable[str], ref: str) -> str | None:
+def remote_name_for_ref(remote_names: cabc.Iterable[str], ref: str) -> str | None:
     """Return the configured remote that owns ``ref``, if any.
 
     A remote owns the ref when the normalized ref names it exactly or starts
@@ -24,7 +27,7 @@ def remote_name_for_ref(remote_names: typ.Iterable[str], ref: str) -> str | None
 
     Parameters
     ----------
-    remote_names : typing.Iterable[str]
+    remote_names : collections.abc.Iterable[str]
         Configured remote names, in any order.
     ref : str
         Comparison ref, either the short ``<remote>/<branch>`` form or a

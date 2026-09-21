@@ -1,11 +1,12 @@
 """Property tests for the ``git-plonk`` completed-cleanup batch rules.
 
-``test_plonk_cleanup.py`` pins the cleanup contract with readable examples; the
-rules themselves are about a *batch*, so these tests generalise them over
-generated batches: every candidate is classified on its own, a skip or a refusal
-never shortens the sweep or reorders the rest, hard mode deletes a branch only
-once its worktree is gone, a refused deletion is neither a skip nor a removed
-branch, and a dry run reports the plan without mutating anything.
+``test_plonk_cleanup.py`` and ``test_plonk_record_lifecycle.py`` pin the cleanup
+contract with readable examples; the rules themselves are about a *batch*, so
+these tests generalise them over generated batches: every candidate is
+classified on its own, a skip or a refusal never shortens the sweep or reorders
+the rest, hard mode deletes a branch only once its worktree is gone, a refused
+deletion is neither a skip nor a removed branch, and a dry run reports the plan
+without mutating anything.
 
 Each example draws one state per candidate, feeds the matching doubles, and
 compares the run against a reference model of what those states should produce:
@@ -20,18 +21,19 @@ import typing as typ
 from hypothesis import given
 from hypothesis import strategies as st
 
-from git_donkey import plonk
+from git_donkey import plonk, plonk_records
 from tests.unit.plonk_cleanup_helpers import (
     RecordingGitAdapter,
+    RecordingStackStore,
     candidate,
+    cleanup_surfaces,
     marker_for,
     run_cleanup,
 )
 
 if typ.TYPE_CHECKING:
+    import collections.abc as cabc
     from pathlib import Path
-
-    from git_donkey import plonk_records
 
 # The state each candidate is generated in. ``CLEAN`` and ``DELETION_FAILURE``
 # differ only in what Git does to the branch; ``INCOMPLETE`` is a worktree whose
@@ -45,8 +47,8 @@ _DELETION_FAILURE = "deletion-failure"
 
 # States the preflight refuses, and the reason it reports for each.
 _PREFLIGHT_SKIPS = {
-    _DIRTY: plonk._SkipReason.DIRTY,
-    _UNAVAILABLE: plonk._SkipReason.UNAVAILABLE,
+    _DIRTY: plonk_records._SkipReason.DIRTY,
+    _UNAVAILABLE: plonk_records._SkipReason.UNAVAILABLE,
 }
 
 _ALL_STATES = (
@@ -81,7 +83,16 @@ class _Model:
     deleted: list[str]
 
 
-def _cases(states: typ.Sequence[str]) -> list[_Case]:
+@dataclasses.dataclass(frozen=True, slots=True)
+class _BranchPlan:
+    """What the run's branch stage does with one candidate's branch."""
+
+    entombed: bool
+    removed: bool
+    refused: bool
+
+
+def _cases(states: cabc.Sequence[str]) -> list[_Case]:
     """Return one candidate per state, with unique branch names and paths.
 
     Parameters
@@ -104,7 +115,7 @@ def _cases(states: typ.Sequence[str]) -> list[_Case]:
     ]
 
 
-def _adapter(cases: typ.Iterable[_Case]) -> RecordingGitAdapter:
+def _adapter(cases: cabc.Iterable[_Case]) -> RecordingGitAdapter:
     """Return an adapter double matching the states in ``cases``.
 
     Trunk history carries every marker but the incomplete candidate's, and each
@@ -146,7 +157,7 @@ def _adapter(cases: typ.Iterable[_Case]) -> RecordingGitAdapter:
     )
 
 
-def _skip_reason_for(case: _Case, *, dry_run: bool) -> plonk._SkipReason | None:
+def _skip_reason_for(case: _Case, *, dry_run: bool) -> plonk_records._SkipReason | None:
     """Return the reason the sweep leaves ``case``'s worktree in place.
 
     Parameters
@@ -159,7 +170,7 @@ def _skip_reason_for(case: _Case, *, dry_run: bool) -> plonk._SkipReason | None:
 
     Returns
     -------
-    plonk._SkipReason | None
+    plonk_records._SkipReason | None
         The reason the preflight refused the worktree, the reason a refused
         removal reports, or ``None`` when the worktree is removed.
 
@@ -167,7 +178,7 @@ def _skip_reason_for(case: _Case, *, dry_run: bool) -> plonk._SkipReason | None:
     if case.state in _PREFLIGHT_SKIPS:
         return _PREFLIGHT_SKIPS[case.state]
     if case.state is _REMOVAL_FAILURE and not dry_run:
-        return plonk._SkipReason.REMOVAL_FAILED
+        return plonk_records._SkipReason.REMOVAL_FAILED
     return None
 
 
@@ -235,13 +246,51 @@ def _refuses_branch_deletion(
     )
 
 
-def _model(
-    cases: typ.Sequence[_Case],
+def _branch_plan(
+    case: _Case,
     *,
     mode: plonk._PlonkMode,
     dry_run: bool,
+) -> _BranchPlan:
+    """Return what the run's branch stage does with ``case``.
+
+    Parameters
+    ----------
+    case : _Case
+        Candidate and the state it is in.
+    mode : plonk._PlonkMode
+        Cleanup mode the sweep runs in; only hard mode reaches the branch.
+    dry_run : bool
+        Whether the sweep plans the work without mutating Git.
+
+    Returns
+    -------
+    _BranchPlan
+        Whether the branch is entombed, reported as removed, or reported as a
+        deletion Git refused.
+
+    """
+    if mode is not plonk._PlonkMode.HARD:
+        return _BranchPlan(entombed=False, removed=False, refused=False)
+    return _BranchPlan(
+        entombed=True,
+        removed=_plans_branch_removal(case, mode=mode, dry_run=dry_run),
+        refused=_refuses_branch_deletion(case, mode=mode, dry_run=dry_run),
+    )
+
+
+def _model(
+    cases: cabc.Sequence[_Case],
+    *,
+    mode: plonk._PlonkMode,
+    dry_run: bool,
+    expire: str,
 ) -> _Model:
     """Return what the cleanup workflow should report and ask Git to do.
+
+    Every branch a hard run reaches is entombed before it is deleted, and the
+    double's ``branch_tip`` always finds one, so a branch that reaches the
+    branch stage of the model is a branch whose tip was preserved.
 
     Parameters
     ----------
@@ -251,6 +300,8 @@ def _model(
         Cleanup mode the sweep runs in.
     dry_run : bool
         Whether the sweep plans the work without mutating Git.
+    expire : str
+        Retention window the store double reports, which the run echoes back.
 
     Returns
     -------
@@ -261,10 +312,9 @@ def _model(
     """
     removed_worktrees: list[Path] = []
     removed_branches: list[str] = []
-    skipped_worktrees: list[plonk._SkippedWorktree] = []
+    skipped_worktrees: list[plonk_records._SkippedWorktree] = []
     failed_branch_deletions: list[str] = []
-    removed: list[Path] = []
-    deleted: list[str] = []
+    entombed_branches: list[str] = []
 
     for case in cases:
         candidate_ = case.candidate
@@ -273,18 +323,17 @@ def _model(
         skip_reason = _skip_reason_for(case, dry_run=dry_run)
         if skip_reason is not None:
             skipped_worktrees.append(
-                plonk._SkippedWorktree(candidate_.worktree_path, skip_reason)
+                plonk_records._SkippedWorktree(candidate_.worktree_path, skip_reason)
             )
             continue
 
         removed_worktrees.append(candidate_.worktree_path)
-        if not dry_run:
-            removed.append(candidate_.worktree_path)
-        if _plans_branch_removal(case, mode=mode, dry_run=dry_run):
+        plan = _branch_plan(case, mode=mode, dry_run=dry_run)
+        if plan.entombed:
+            entombed_branches.append(candidate_.branch_name)
+        if plan.removed:
             removed_branches.append(candidate_.branch_name)
-            if not dry_run:
-                deleted.append(candidate_.branch_name)
-        elif _refuses_branch_deletion(case, mode=mode, dry_run=dry_run):
+        elif plan.refused:
             failed_branch_deletions.append(candidate_.branch_name)
 
     return _Model(
@@ -296,9 +345,13 @@ def _model(
             removed_branches=tuple(removed_branches),
             skipped_worktrees=tuple(skipped_worktrees),
             failed_branch_deletions=tuple(failed_branch_deletions),
+            entombed_branches=tuple(entombed_branches),
+            tombstone_expire=expire,
         ),
-        removed=removed,
-        deleted=deleted,
+        # A dry run mutates neither surface, and both recorded lists mirror the
+        # reported ones: a branch is deleted exactly when it is reported removed.
+        removed=[] if dry_run else list(removed_worktrees),
+        deleted=[] if dry_run else list(removed_branches),
     )
 
 
@@ -312,12 +365,13 @@ def test_every_candidate_is_classified_independently(
     """A batch should produce one outcome per candidate, in the order received."""
     cases = _cases(states)
     adapter = _adapter(cases)
-    expected = _model(cases, mode=mode, dry_run=dry_run)
+    records = RecordingStackStore()
+    expected = _model(cases, mode=mode, dry_run=dry_run, expire=records.expire)
 
     result = run_cleanup(
         [case.candidate for case in cases],
-        adapter,
-        mode=mode,
+        cleanup_surfaces(adapter, records),
+        mode,
         dry_run=dry_run,
     )
 
@@ -332,4 +386,9 @@ def test_every_candidate_is_classified_independently(
     assert adapter.deleted == expected.deleted, (
         "hard mode deletes a branch only once its worktree is gone, so a "
         "refused deletion leaves its branch behind and the sweep continues"
+    )
+    written = [branch for branch, _tip in records.entombed]
+    assert written == ([] if dry_run else list(expected.result.entombed_branches)), (
+        "hard mode preserves the tip of every branch it deletes, and of no "
+        "branch it does not reach; a dry run writes none of them"
     )

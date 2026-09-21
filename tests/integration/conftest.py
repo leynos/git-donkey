@@ -36,6 +36,15 @@ if typ.TYPE_CHECKING:
 _CASSETTE_DIR = Path(__file__).parent / "cassettes"
 _NO_GITHUB_API_CASSETTE = "github_api_no_interactions.yaml"
 
+# Recorded GitHub API traffic ``git wheresat`` replays as its parent evidence,
+# and the record mode it is replayed in. ``none`` is the mode a suite runs in,
+# because a request the recordings do not hold must fail inside the code under
+# test rather than reach the network; ``--record-mode`` is for the deliberate
+# recording pass ``docs/developers-guide.md`` describes, and for nothing else.
+_PARENT_METADATA_CASSETTE = "wheresat_parent_metadata.yaml"
+_RATE_LIMITED_CASSETTE = "wheresat_rate_limited.yaml"
+_REPLAY_ONLY: typ.Final = "none"
+
 
 @dataclasses.dataclass(frozen=True, slots=True)
 class StubCommands:
@@ -75,6 +84,85 @@ def stub_commands(tmp_path: Path) -> StubCommands:
     return StubCommands(bin_dir=bin_dir, log_path=log_path)
 
 
+_RECORDER_HEADERS: typ.Final = (
+    "x-oauth-client-id",
+    "x-oauth-scopes",
+    "x-accepted-oauth-scopes",
+)
+"""What GitHub answers with that describes who asked rather than what was asked.
+
+None of the three is a credential, but together they name the client and the
+access it was granted, which a recording has no reason to keep.
+"""
+
+
+def _without_recorder_headers(response: dict[str, object]) -> dict[str, object]:
+    """Return ``response`` with the headers that describe the recorder dropped.
+
+    ``filter_headers`` reaches a request and nothing else, so the three headers
+    GitHub answers with are removed here rather than there. The hook runs as a
+    cassette is read as well as as one is written, so a recording made before
+    it existed replays without them, and the pass that refreshes a recording
+    writes a file that never held them. Removing a response header cannot make
+    an interaction unfindable, because a request is matched on its method and
+    URL rather than on what the answer carried.
+
+    Parameters
+    ----------
+    response : dict[str, object]
+        One recorded response, as the serializer read it or as the stub built
+        it.
+
+    Returns
+    -------
+    dict[str, object]
+        The same response, with the headers dropped.
+
+    """
+    headers = response.get("headers")
+    if isinstance(headers, dict):
+        response["headers"] = {
+            name: value
+            for name, value in headers.items()
+            if name.lower() not in _RECORDER_HEADERS
+        }
+    return response
+
+
+def _recorder(record_mode: str) -> vcr.VCR:
+    """Return a VCR recorder for one cassette, with the credential filtered out.
+
+    Every cassette goes through this, so no recording can carry the token the
+    requests were made with: ``filter_headers`` drops the ``authorization``
+    header from every request, matched without regard to case, so a recording
+    taken before it was listed here replays exactly as it was written. Replay
+    does not miss the credential either, because an interaction is matched on
+    the request's method and URL rather than on what it carried.
+
+    The three headers GitHub answers with are dropped by
+    :func:`_without_recorder_headers`, which ``filter_headers`` cannot reach:
+    it filters requests, and GitHub's description of the client and its access
+    arrives in the response.
+
+    Parameters
+    ----------
+    record_mode : str
+        What the recorder does with requests the cassette does not hold.
+
+    Returns
+    -------
+    vcr.VCR
+        The recorder, which each fixture plays its cassette through.
+
+    """
+    return vcr.VCR(
+        record_mode=record_mode,
+        cassette_library_dir=_CASSETTE_DIR.as_posix(),
+        filter_headers=["authorization"],
+        before_record_response=_without_recorder_headers,
+    )
+
+
 @pytest.fixture
 def github_api_cassette() -> cabc.Iterator[Cassette]:
     """Replay the recorded GitHub API traffic, refusing any request outside it.
@@ -85,6 +173,11 @@ def github_api_cassette() -> cabc.Iterator[Cassette]:
     donkey`` and ``git plonk`` judge completion and choose bases from Git
     history alone, and a test that provokes a GitHub API call fails here.
 
+    The mode is fixed rather than taken from ``--record-mode`` for that reason:
+    this cassette's subject is the *absence* of API traffic, and a recording
+    pass that could write into it would let a command that started calling the
+    API record the call instead of failing the test that forbids it.
+
     Yields
     ------
     Cassette
@@ -92,11 +185,61 @@ def github_api_cassette() -> cabc.Iterator[Cassette]:
         assert on after the workflow ran.
 
     """
-    recorder = vcr.VCR(
-        record_mode="none",
-        cassette_library_dir=_CASSETTE_DIR.as_posix(),
-    )
-    with recorder.use_cassette(_NO_GITHUB_API_CASSETTE) as cassette:
+    with _recorder(_REPLAY_ONLY).use_cassette(
+        _NO_GITHUB_API_CASSETTE,
+        allow_playback_repeats=True,
+    ) as cassette:
+        yield cassette
+
+
+@pytest.fixture(scope="module")
+def wheresat_parent_metadata_cassette(
+    request: pytest.FixtureRequest,
+) -> cabc.Iterator[Cassette]:
+    """Replay the parent evidence ``git wheresat`` reads from GitHub.
+
+    The recording holds the repository's own merged squash pull request, its
+    own open pull request, a stacked pull request whose position in the stack
+    the run reads, and the pull requests associated with one commit. It is
+    replayed in ``none`` record mode unless ``--record-mode`` says otherwise,
+    so a run that asked GitHub a question the recording does not hold fails
+    rather than reaching the network.
+
+    Yields
+    ------
+    Cassette
+        The replayed cassette, whose ``play_count`` a test can assert on to
+        show its answer came from the recording.
+
+    """
+    record_mode = request.config.getoption("record_mode")
+    with _recorder(record_mode).use_cassette(
+        _PARENT_METADATA_CASSETTE,
+        allow_playback_repeats=True,
+    ) as cassette:
+        yield cassette
+
+
+@pytest.fixture(scope="module")
+def wheresat_rate_limited_cassette(
+    request: pytest.FixtureRequest,
+) -> cabc.Iterator[Cassette]:
+    """Replay GitHub's refusal of a request the credential's allowance covered.
+
+    The recording holds one answer and it is not an answer: a ``403`` whose
+    ``X-RateLimit-Remaining`` is ``0``. It is kept apart from the metadata
+    recording because it is made by exhausting a real allowance, so re-recording
+    it is a deliberate act with a cost rather than a side effect of the pass
+    that refreshes the others.
+
+    Yields
+    ------
+    Cassette
+        The replayed cassette, whose ``play_count`` a test can assert on.
+
+    """
+    record_mode = request.config.getoption("record_mode")
+    with _recorder(record_mode).use_cassette(_RATE_LIMITED_CASSETTE) as cassette:
         yield cassette
 
 
@@ -118,6 +261,11 @@ def _setup_repo(tmp_path: Path) -> tuple[Path, Path]:
     local_repo.git.branch("-M", "main")
     local_repo.remote("origin").push("main")
     remote_repo.git.symbolic_ref("HEAD", "refs/heads/main")
+    # The remote-tracking default alias, spelled out rather than imported.
+    # Cloning creates it; fetching does not, and the alias is what lets the
+    # commands identify the trunk from local refs alone, so a fixture that
+    # omits it is not shaped like a clone.
+    local_repo.git.symbolic_ref("refs/remotes/origin/HEAD", "refs/remotes/origin/main")
 
     return local_path, remote_path
 

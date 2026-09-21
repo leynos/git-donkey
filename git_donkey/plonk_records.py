@@ -85,16 +85,25 @@ class _CandidateOutcome:
 
     A candidate can be skipped, removed, or removed with its branch left
     behind. The failure fields are mutually exclusive: a branch is only ever
-    deleted once its worktree is gone.
+    deleted once its worktree is gone, and only ever entombed once its tip has
+    been preserved. ``entombed`` is set for a dry run too, where it means the
+    tombstone the run planned rather than one it wrote.
     """
 
     skip_reason: _SkipReason | None = None
     branch_deletion_failed: bool = False
+    entombed: bool = False
+    entomb_failed: bool = False
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
 class _PlonkResult:
-    """Summary of filesystem and Git state removed by a git-plonk run."""
+    """Summary of filesystem and Git state removed by a git-plonk run.
+
+    The record-lifecycle fields are empty for a soft run, which leaves Git
+    state untouched, and ``tombstone_expire`` names the retention window the
+    run applied, so a summary that pruned anything can say what by.
+    """
 
     mode: _PlonkMode
     is_dry_run: bool = False
@@ -104,6 +113,69 @@ class _PlonkResult:
     cleaned_paths: tuple[Path, ...] = ()
     skipped_worktrees: tuple[_SkippedWorktree, ...] = ()
     failed_branch_deletions: tuple[str, ...] = ()
+    entombed_branches: tuple[str, ...] = ()
+    failed_entombments: tuple[str, ...] = ()
+    swept_records: tuple[str, ...] = ()
+    unrescuable_records: tuple[str, ...] = ()
+    pruned_tombstones: tuple[str, ...] = ()
+    tombstone_expire: str | None = None
+
+    def is_incomplete(self) -> bool:
+        """Return whether an action the run was asked for did not happen."""
+        return bool(self.failed_branch_deletions or self.failed_entombments)
+
+
+@dataclasses.dataclass(slots=True)
+class _CleanupTally:
+    """Running totals of what one completed cleanup has done so far.
+
+    Folding each :class:`_CandidateOutcome` into these lists is fiddlier than
+    it looks — a candidate whose tip was preserved but whose branch Git refused
+    to delete appears in two of them, and a candidate whose tombstone could not
+    be written keeps its branch — so the rule lives here rather than in the
+    loop that drives the candidates.
+    """
+
+    removed_worktrees: list[Path] = dataclasses.field(default_factory=list)
+    removed_branches: list[str] = dataclasses.field(default_factory=list)
+    skipped_worktrees: list[_SkippedWorktree] = dataclasses.field(default_factory=list)
+    failed_branch_deletions: list[str] = dataclasses.field(default_factory=list)
+    entombed_branches: list[str] = dataclasses.field(default_factory=list)
+    failed_entombments: list[str] = dataclasses.field(default_factory=list)
+
+    def add(
+        self,
+        candidate: _PlonkCandidate,
+        outcome: _CandidateOutcome,
+        mode: _PlonkMode,
+    ) -> None:
+        """Fold one cleaned candidate's ``outcome`` into the totals.
+
+        Parameters
+        ----------
+        candidate : _PlonkCandidate
+            Candidate the outcome came from.
+        outcome : _CandidateOutcome
+            What cleaning that candidate contributed.
+        mode : _PlonkMode
+            Cleanup mode; only hard mode deletes branches at all.
+
+        """
+        if outcome.skip_reason is not None:
+            self.skipped_worktrees.append(
+                _SkippedWorktree(candidate.worktree_path, outcome.skip_reason)
+            )
+            return
+        self.removed_worktrees.append(candidate.worktree_path)
+        if outcome.entombed:
+            self.entombed_branches.append(candidate.branch_name)
+        if outcome.entomb_failed:
+            self.failed_entombments.append(candidate.branch_name)
+            return
+        if outcome.branch_deletion_failed:
+            self.failed_branch_deletions.append(candidate.branch_name)
+        elif mode is _PlonkMode.HARD:
+            self.removed_branches.append(candidate.branch_name)
 
 
 @dataclasses.dataclass(frozen=True, slots=True)

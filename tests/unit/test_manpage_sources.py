@@ -209,6 +209,7 @@ def test_generation_is_strict_and_does_not_insert_files() -> None:
         "git-track",
         "git-fafo",
         "git-plonk",
+        "git-wheresat",
         "git-donkey-template",
         "git-incoming",
         "git-in",
@@ -248,6 +249,10 @@ def test_manual_has_standard_sections(command: str) -> None:
         # The manual must describe the skip-and-report policy, not the
         # force-removal behaviour 0.2.0 replaced.
         ("git-plonk", "skipped"),
+        # The manual must describe the four-status contract and the retention
+        # ref a boundary is kept under, which no argument walker can see.
+        ("git-wheresat", "indeterminate"),
+        ("git-wheresat", "refs/wheresat/boundary/"),
         ("git-donkey-template", "XDG_DATA_HOME"),
         ("git-incoming", "--no-fetch"),
         ("git-in", "--no-fetch"),
@@ -345,6 +350,7 @@ def _option_names(command: str, argument: ast.arg) -> list[str]:
         ("git-track", "_track_cli"),
         ("git-fafo", "_fafo_cli"),
         ("git-plonk", "_plonk_cli"),
+        ("git-wheresat", "_wheresat_cli"),
         ("git-donkey-template", "_template_cli"),
         ("git-incoming", "_incoming_cli"),
         ("git-in", "_incoming_cli"),

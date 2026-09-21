@@ -1,0 +1,1300 @@
+# serializer version: 1
+# name: test_an_unreadable_worktree_is_warned_about_rather_than_dropped
+  'the worktree holding child could not be read, so whether a replay can run there is not known: fatal: bad object'
+# ---
+# name: test_explained_report_matches_snapshot[established-with-parent]
+  '''
+  git wheresat: boundary for child
+    child tip   1111111
+    target      7777777
+    boundary    8888888
+  
+  Evidence
+    attested  stack-record-birth       8888888  stack record
+  
+  Included (2 commits)
+    1111111
+    2222222
+  
+  Excluded (2 commits)
+    3333333
+    4444444
+  
+  Gates
+    passed          parent-identity-matches
+                    the parent head came from its own acme/widget
+    passed          parent-merged
+                    the parent merged at 2026-09-01T09:30:00Z
+    passed          landed-reachable-from-target
+                    6666666 is an ancestor of 7777777
+    passed          boundary-is-ancestor-of-child
+                    8888888 is an ancestor of 1111111
+    passed          replay-range-non-empty
+                    the replay range 8888888888888888888888888888888888888888..1111111111111111111111111111111111111111 holds 2 commit(s)
+    passed          parent-history-intact
+                    8888888 is an ancestor of 5555555
+    passed          replay-range-excludes-landed-work
+                    8888888888888888888888888888888888888888..1111111111111111111111111111111111111111 holds no commit the parent head reaches
+    passed          record-not-superseded
+                    the record was written from the child's current tip
+  
+  Durability
+    a ref that outlives this run already reaches the boundary
+  
+  Replay
+    # back up the child tip first, then replay onto the target
+    git update-ref refs/wheresat-backup/child 1111111111111111111111111111111111111111
+    git rebase --onto 7777777777777777777777777777777777777777 8888888888888888888888888888888888888888 child
+    # undo: git reset --hard refs/wheresat-backup/child
+  
+    Verify before running: the child tip must still be 1111111
+  
+  '''
+# ---
+# name: test_explained_report_matches_snapshot[established]
+  '''
+  git wheresat: boundary for child
+    child tip   1111111
+    target      7777777
+    boundary    8888888
+  
+  Evidence
+    attested  stack-record-birth       8888888  stack record
+  
+  Included (2 commits)
+    1111111
+    2222222
+  
+  Excluded (2 commits)
+    3333333
+    4444444
+  
+  Gates
+    not applicable  parent-identity-matches
+                    the run did not set out to consult a parent pull request
+    not applicable  parent-merged
+                    the run did not set out to consult a parent pull request
+    not applicable  landed-reachable-from-target
+                    the run did not set out to consult a parent pull request
+    passed          boundary-is-ancestor-of-child
+                    8888888 is an ancestor of 1111111
+    passed          replay-range-non-empty
+                    the replay range 8888888888888888888888888888888888888888..1111111111111111111111111111111111111111 holds 2 commit(s)
+    passed          parent-history-intact
+                    8888888 is an ancestor of 5555555
+    passed          replay-range-excludes-landed-work
+                    8888888888888888888888888888888888888888..1111111111111111111111111111111111111111 holds no commit the parent head reaches
+    passed          record-not-superseded
+                    the record was written from the child's current tip
+  
+  Durability
+    a ref that outlives this run already reaches the boundary
+  
+  Replay
+    # back up the child tip first, then replay onto the target
+    git update-ref refs/wheresat-backup/child 1111111111111111111111111111111111111111
+    git rebase --onto 7777777777777777777777777777777777777777 8888888888888888888888888888888888888888 child
+    # undo: git reset --hard refs/wheresat-backup/child
+  
+    Verify before running: the child tip must still be 1111111
+  
+  '''
+# ---
+# name: test_json_envelopes_match_snapshot
+  dict({
+    'established': '''
+      {
+        "schema": "git-wheresat/1",
+        "verdict": "established",
+        "exitCode": 0,
+        "error": null,
+        "child": {
+          "branch": "child",
+          "tip": "1111111111111111111111111111111111111111"
+        },
+        "target": "7777777777777777777777777777777777777777",
+        "parent": null,
+        "parentHead": null,
+        "landed": null,
+        "oldBase": "8888888888888888888888888888888888888888",
+        "durableRef": null,
+        "included": {
+          "commits": [
+            "1111111111111111111111111111111111111111",
+            "2222222222222222222222222222222222222222"
+          ],
+          "count": 2,
+          "withheld": 0,
+          "cutShort": false
+        },
+        "excluded": {
+          "commits": [
+            "3333333333333333333333333333333333333333",
+            "4444444444444444444444444444444444444444"
+          ],
+          "count": 2,
+          "withheld": 0,
+          "cutShort": false
+        },
+        "support": [
+          {
+            "commit": "8888888888888888888888888888888888888888",
+            "kind": "stack-record-birth",
+            "tier": "attested"
+          }
+        ],
+        "candidates": [],
+        "gates": [
+          {
+            "name": "parent-identity-matches",
+            "outcome": "indeterminate",
+            "detail": "the run did not set out to consult a parent pull request",
+            "applicable": false
+          },
+          {
+            "name": "parent-merged",
+            "outcome": "indeterminate",
+            "detail": "the run did not set out to consult a parent pull request",
+            "applicable": false
+          },
+          {
+            "name": "landed-reachable-from-target",
+            "outcome": "indeterminate",
+            "detail": "the run did not set out to consult a parent pull request",
+            "applicable": false
+          },
+          {
+            "name": "boundary-is-ancestor-of-child",
+            "outcome": "passed",
+            "detail": "8888888 is an ancestor of 1111111",
+            "applicable": true
+          },
+          {
+            "name": "replay-range-non-empty",
+            "outcome": "passed",
+            "detail": "the replay range 8888888888888888888888888888888888888888..1111111111111111111111111111111111111111 holds 2 commit(s)",
+            "applicable": true
+          },
+          {
+            "name": "parent-history-intact",
+            "outcome": "passed",
+            "detail": "8888888 is an ancestor of 5555555",
+            "applicable": true
+          },
+          {
+            "name": "replay-range-excludes-landed-work",
+            "outcome": "passed",
+            "detail": "8888888888888888888888888888888888888888..1111111111111111111111111111111111111111 holds no commit the parent head reaches",
+            "applicable": true
+          },
+          {
+            "name": "record-not-superseded",
+            "outcome": "passed",
+            "detail": "the record was written from the child's current tip",
+            "applicable": true
+          }
+        ],
+        "reasons": [],
+        "warnings": [],
+        "rebaseCommand": "git rebase --onto 7777777777777777777777777777777777777777 8888888888888888888888888888888888888888 child",
+        "backupRef": "refs/wheresat-backup/child"
+      }
+  
+    ''',
+    'established-with-parent': '''
+      {
+        "schema": "git-wheresat/1",
+        "verdict": "established",
+        "exitCode": 0,
+        "error": null,
+        "child": {
+          "branch": "child",
+          "tip": "1111111111111111111111111111111111111111"
+        },
+        "target": "7777777777777777777777777777777777777777",
+        "parent": {
+          "repository": "acme/widget",
+          "number": 41
+        },
+        "parentHead": null,
+        "landed": null,
+        "oldBase": "8888888888888888888888888888888888888888",
+        "durableRef": null,
+        "included": {
+          "commits": [
+            "1111111111111111111111111111111111111111",
+            "2222222222222222222222222222222222222222"
+          ],
+          "count": 2,
+          "withheld": 0,
+          "cutShort": false
+        },
+        "excluded": {
+          "commits": [
+            "3333333333333333333333333333333333333333",
+            "4444444444444444444444444444444444444444"
+          ],
+          "count": 2,
+          "withheld": 0,
+          "cutShort": false
+        },
+        "support": [
+          {
+            "commit": "8888888888888888888888888888888888888888",
+            "kind": "stack-record-birth",
+            "tier": "attested"
+          }
+        ],
+        "candidates": [],
+        "gates": [
+          {
+            "name": "parent-identity-matches",
+            "outcome": "passed",
+            "detail": "the parent head came from its own acme/widget",
+            "applicable": true
+          },
+          {
+            "name": "parent-merged",
+            "outcome": "passed",
+            "detail": "the parent merged at 2026-09-01T09:30:00Z",
+            "applicable": true
+          },
+          {
+            "name": "landed-reachable-from-target",
+            "outcome": "passed",
+            "detail": "6666666 is an ancestor of 7777777",
+            "applicable": true
+          },
+          {
+            "name": "boundary-is-ancestor-of-child",
+            "outcome": "passed",
+            "detail": "8888888 is an ancestor of 1111111",
+            "applicable": true
+          },
+          {
+            "name": "replay-range-non-empty",
+            "outcome": "passed",
+            "detail": "the replay range 8888888888888888888888888888888888888888..1111111111111111111111111111111111111111 holds 2 commit(s)",
+            "applicable": true
+          },
+          {
+            "name": "parent-history-intact",
+            "outcome": "passed",
+            "detail": "8888888 is an ancestor of 5555555",
+            "applicable": true
+          },
+          {
+            "name": "replay-range-excludes-landed-work",
+            "outcome": "passed",
+            "detail": "8888888888888888888888888888888888888888..1111111111111111111111111111111111111111 holds no commit the parent head reaches",
+            "applicable": true
+          },
+          {
+            "name": "record-not-superseded",
+            "outcome": "passed",
+            "detail": "the record was written from the child's current tip",
+            "applicable": true
+          }
+        ],
+        "reasons": [],
+        "warnings": [],
+        "rebaseCommand": "git rebase --onto 7777777777777777777777777777777777777777 8888888888888888888888888888888888888888 child",
+        "backupRef": "refs/wheresat-backup/child"
+      }
+  
+    ''',
+    'indeterminate': '''
+      {
+        "schema": "git-wheresat/1",
+        "verdict": "indeterminate",
+        "exitCode": 3,
+        "error": null,
+        "child": {
+          "branch": "child",
+          "tip": "1111111111111111111111111111111111111111"
+        },
+        "target": "7777777777777777777777777777777777777777",
+        "parent": {
+          "repository": "acme/widget",
+          "number": 41
+        },
+        "parentHead": null,
+        "landed": null,
+        "oldBase": null,
+        "durableRef": null,
+        "included": {
+          "commits": [],
+          "count": 0,
+          "withheld": 0,
+          "cutShort": false
+        },
+        "excluded": {
+          "commits": [],
+          "count": 0,
+          "withheld": 0,
+          "cutShort": false
+        },
+        "support": [],
+        "candidates": [
+          {
+            "commit": "8888888888888888888888888888888888888888",
+            "kind": "stack-record-birth",
+            "tier": "attested",
+            "source": "stack record"
+          }
+        ],
+        "gates": [
+          {
+            "name": "parent-identity-matches",
+            "outcome": "indeterminate",
+            "detail": "the parent pull request could not be resolved",
+            "applicable": true
+          },
+          {
+            "name": "parent-merged",
+            "outcome": "indeterminate",
+            "detail": "the parent pull request could not be resolved",
+            "applicable": true
+          },
+          {
+            "name": "landed-reachable-from-target",
+            "outcome": "passed",
+            "detail": "6666666 is an ancestor of 7777777",
+            "applicable": true
+          },
+          {
+            "name": "boundary-is-ancestor-of-child",
+            "outcome": "passed",
+            "detail": "8888888 is an ancestor of 1111111",
+            "applicable": true
+          },
+          {
+            "name": "replay-range-non-empty",
+            "outcome": "passed",
+            "detail": "the replay range 8888888888888888888888888888888888888888..1111111111111111111111111111111111111111 holds 2 commit(s)",
+            "applicable": true
+          },
+          {
+            "name": "parent-history-intact",
+            "outcome": "passed",
+            "detail": "8888888 is an ancestor of 5555555",
+            "applicable": true
+          },
+          {
+            "name": "replay-range-excludes-landed-work",
+            "outcome": "passed",
+            "detail": "8888888888888888888888888888888888888888..1111111111111111111111111111111111111111 holds no commit the parent head reaches",
+            "applicable": true
+          },
+          {
+            "name": "record-not-superseded",
+            "outcome": "passed",
+            "detail": "the record was written from the child's current tip",
+            "applicable": true
+          }
+        ],
+        "reasons": [
+          "8888888 awaits an answer: parent-identity-matches indeterminate: the parent pull request could not be resolved; parent-merged indeterminate: the parent pull request could not be resolved"
+        ],
+        "warnings": [],
+        "rebaseCommand": null,
+        "backupRef": null
+      }
+  
+    ''',
+    'nothing-found': '''
+      {
+        "schema": "git-wheresat/1",
+        "verdict": "unresolved",
+        "exitCode": 1,
+        "error": null,
+        "child": {
+          "branch": "child",
+          "tip": "1111111111111111111111111111111111111111"
+        },
+        "target": "7777777777777777777777777777777777777777",
+        "parent": null,
+        "parentHead": null,
+        "landed": null,
+        "oldBase": null,
+        "durableRef": null,
+        "included": {
+          "commits": [],
+          "count": 0,
+          "withheld": 0,
+          "cutShort": false
+        },
+        "excluded": {
+          "commits": [],
+          "count": 0,
+          "withheld": 0,
+          "cutShort": false
+        },
+        "support": [],
+        "candidates": [],
+        "gates": [],
+        "reasons": [
+          "no boundary candidate was found"
+        ],
+        "warnings": [],
+        "rebaseCommand": null,
+        "backupRef": null
+      }
+  
+    ''',
+    'unresolved': '''
+      {
+        "schema": "git-wheresat/1",
+        "verdict": "unresolved",
+        "exitCode": 1,
+        "error": null,
+        "child": {
+          "branch": "child",
+          "tip": "1111111111111111111111111111111111111111"
+        },
+        "target": "7777777777777777777777777777777777777777",
+        "parent": {
+          "repository": "acme/widget",
+          "number": 41
+        },
+        "parentHead": null,
+        "landed": null,
+        "oldBase": null,
+        "durableRef": null,
+        "included": {
+          "commits": [],
+          "count": 0,
+          "withheld": 0,
+          "cutShort": false
+        },
+        "excluded": {
+          "commits": [],
+          "count": 0,
+          "withheld": 0,
+          "cutShort": false
+        },
+        "support": [],
+        "candidates": [
+          {
+            "commit": "8888888888888888888888888888888888888888",
+            "kind": "stack-record-birth",
+            "tier": "attested",
+            "source": "stack record"
+          }
+        ],
+        "gates": [
+          {
+            "name": "parent-identity-matches",
+            "outcome": "passed",
+            "detail": "the parent head came from its own acme/widget",
+            "applicable": true
+          },
+          {
+            "name": "parent-merged",
+            "outcome": "failed",
+            "detail": "the parent pull request is not merged, so its work has not landed",
+            "applicable": true
+          },
+          {
+            "name": "landed-reachable-from-target",
+            "outcome": "passed",
+            "detail": "6666666 is an ancestor of 7777777",
+            "applicable": true
+          },
+          {
+            "name": "boundary-is-ancestor-of-child",
+            "outcome": "passed",
+            "detail": "8888888 is an ancestor of 1111111",
+            "applicable": true
+          },
+          {
+            "name": "replay-range-non-empty",
+            "outcome": "passed",
+            "detail": "the replay range 8888888888888888888888888888888888888888..1111111111111111111111111111111111111111 holds 2 commit(s)",
+            "applicable": true
+          },
+          {
+            "name": "parent-history-intact",
+            "outcome": "passed",
+            "detail": "8888888 is an ancestor of 5555555",
+            "applicable": true
+          },
+          {
+            "name": "replay-range-excludes-landed-work",
+            "outcome": "passed",
+            "detail": "8888888888888888888888888888888888888888..1111111111111111111111111111111111111111 holds no commit the parent head reaches",
+            "applicable": true
+          },
+          {
+            "name": "record-not-superseded",
+            "outcome": "passed",
+            "detail": "the record was written from the child's current tip",
+            "applicable": true
+          }
+        ],
+        "reasons": [
+          "8888888 is refused by parent-merged failed: the parent pull request is not merged, so its work has not landed"
+        ],
+        "warnings": [],
+        "rebaseCommand": null,
+        "backupRef": null
+      }
+  
+    ''',
+    'unresolved-ambiguous': '''
+      {
+        "schema": "git-wheresat/1",
+        "verdict": "unresolved",
+        "exitCode": 1,
+        "error": null,
+        "child": {
+          "branch": "child",
+          "tip": "1111111111111111111111111111111111111111"
+        },
+        "target": "7777777777777777777777777777777777777777",
+        "parent": null,
+        "parentHead": null,
+        "landed": null,
+        "oldBase": null,
+        "durableRef": null,
+        "included": {
+          "commits": [],
+          "count": 0,
+          "withheld": 0,
+          "cutShort": false
+        },
+        "excluded": {
+          "commits": [],
+          "count": 0,
+          "withheld": 0,
+          "cutShort": false
+        },
+        "support": [],
+        "candidates": [
+          {
+            "commit": "8888888888888888888888888888888888888888",
+            "kind": "fork-point",
+            "tier": "derived",
+            "source": "fork point"
+          },
+          {
+            "commit": "8888888888888888888888888888888888888888",
+            "kind": "merge-base",
+            "tier": "derived",
+            "source": "merge base"
+          },
+          {
+            "commit": "9999999999999999999999999999999999999999",
+            "kind": "fork-point",
+            "tier": "derived",
+            "source": "fork point"
+          },
+          {
+            "commit": "9999999999999999999999999999999999999999",
+            "kind": "merge-base",
+            "tier": "derived",
+            "source": "merge base"
+          }
+        ],
+        "gates": [
+          {
+            "name": "parent-identity-matches",
+            "outcome": "indeterminate",
+            "detail": "the run did not set out to consult a parent pull request",
+            "applicable": false
+          },
+          {
+            "name": "parent-merged",
+            "outcome": "indeterminate",
+            "detail": "the run did not set out to consult a parent pull request",
+            "applicable": false
+          },
+          {
+            "name": "landed-reachable-from-target",
+            "outcome": "indeterminate",
+            "detail": "the run did not set out to consult a parent pull request",
+            "applicable": false
+          },
+          {
+            "name": "boundary-is-ancestor-of-child",
+            "outcome": "passed",
+            "detail": "8888888 is an ancestor of 1111111",
+            "applicable": true
+          },
+          {
+            "name": "replay-range-non-empty",
+            "outcome": "passed",
+            "detail": "the replay range 8888888888888888888888888888888888888888..1111111111111111111111111111111111111111 holds 2 commit(s)",
+            "applicable": true
+          },
+          {
+            "name": "parent-history-intact",
+            "outcome": "passed",
+            "detail": "8888888 is an ancestor of 5555555",
+            "applicable": true
+          },
+          {
+            "name": "replay-range-excludes-landed-work",
+            "outcome": "passed",
+            "detail": "8888888888888888888888888888888888888888..1111111111111111111111111111111111111111 holds no commit the parent head reaches",
+            "applicable": true
+          },
+          {
+            "name": "record-not-superseded",
+            "outcome": "indeterminate",
+            "detail": "the candidate is not a stack record",
+            "applicable": false
+          },
+          {
+            "name": "parent-identity-matches",
+            "outcome": "indeterminate",
+            "detail": "the run did not set out to consult a parent pull request",
+            "applicable": false
+          },
+          {
+            "name": "parent-merged",
+            "outcome": "indeterminate",
+            "detail": "the run did not set out to consult a parent pull request",
+            "applicable": false
+          },
+          {
+            "name": "landed-reachable-from-target",
+            "outcome": "indeterminate",
+            "detail": "the run did not set out to consult a parent pull request",
+            "applicable": false
+          },
+          {
+            "name": "boundary-is-ancestor-of-child",
+            "outcome": "passed",
+            "detail": "8888888 is an ancestor of 1111111",
+            "applicable": true
+          },
+          {
+            "name": "replay-range-non-empty",
+            "outcome": "passed",
+            "detail": "the replay range 8888888888888888888888888888888888888888..1111111111111111111111111111111111111111 holds 2 commit(s)",
+            "applicable": true
+          },
+          {
+            "name": "parent-history-intact",
+            "outcome": "passed",
+            "detail": "8888888 is an ancestor of 5555555",
+            "applicable": true
+          },
+          {
+            "name": "replay-range-excludes-landed-work",
+            "outcome": "passed",
+            "detail": "8888888888888888888888888888888888888888..1111111111111111111111111111111111111111 holds no commit the parent head reaches",
+            "applicable": true
+          },
+          {
+            "name": "record-not-superseded",
+            "outcome": "indeterminate",
+            "detail": "the candidate is not a stack record",
+            "applicable": false
+          },
+          {
+            "name": "parent-identity-matches",
+            "outcome": "indeterminate",
+            "detail": "the run did not set out to consult a parent pull request",
+            "applicable": false
+          },
+          {
+            "name": "parent-merged",
+            "outcome": "indeterminate",
+            "detail": "the run did not set out to consult a parent pull request",
+            "applicable": false
+          },
+          {
+            "name": "landed-reachable-from-target",
+            "outcome": "indeterminate",
+            "detail": "the run did not set out to consult a parent pull request",
+            "applicable": false
+          },
+          {
+            "name": "boundary-is-ancestor-of-child",
+            "outcome": "passed",
+            "detail": "9999999 is an ancestor of 1111111",
+            "applicable": true
+          },
+          {
+            "name": "replay-range-non-empty",
+            "outcome": "passed",
+            "detail": "the replay range 9999999999999999999999999999999999999999..1111111111111111111111111111111111111111 holds 2 commit(s)",
+            "applicable": true
+          },
+          {
+            "name": "parent-history-intact",
+            "outcome": "passed",
+            "detail": "9999999 is an ancestor of 5555555",
+            "applicable": true
+          },
+          {
+            "name": "replay-range-excludes-landed-work",
+            "outcome": "passed",
+            "detail": "9999999999999999999999999999999999999999..1111111111111111111111111111111111111111 holds no commit the parent head reaches",
+            "applicable": true
+          },
+          {
+            "name": "record-not-superseded",
+            "outcome": "indeterminate",
+            "detail": "the candidate is not a stack record",
+            "applicable": false
+          },
+          {
+            "name": "parent-identity-matches",
+            "outcome": "indeterminate",
+            "detail": "the run did not set out to consult a parent pull request",
+            "applicable": false
+          },
+          {
+            "name": "parent-merged",
+            "outcome": "indeterminate",
+            "detail": "the run did not set out to consult a parent pull request",
+            "applicable": false
+          },
+          {
+            "name": "landed-reachable-from-target",
+            "outcome": "indeterminate",
+            "detail": "the run did not set out to consult a parent pull request",
+            "applicable": false
+          },
+          {
+            "name": "boundary-is-ancestor-of-child",
+            "outcome": "passed",
+            "detail": "9999999 is an ancestor of 1111111",
+            "applicable": true
+          },
+          {
+            "name": "replay-range-non-empty",
+            "outcome": "passed",
+            "detail": "the replay range 9999999999999999999999999999999999999999..1111111111111111111111111111111111111111 holds 2 commit(s)",
+            "applicable": true
+          },
+          {
+            "name": "parent-history-intact",
+            "outcome": "passed",
+            "detail": "9999999 is an ancestor of 5555555",
+            "applicable": true
+          },
+          {
+            "name": "replay-range-excludes-landed-work",
+            "outcome": "passed",
+            "detail": "9999999999999999999999999999999999999999..1111111111111111111111111111111111111111 holds no commit the parent head reaches",
+            "applicable": true
+          },
+          {
+            "name": "record-not-superseded",
+            "outcome": "indeterminate",
+            "detail": "the candidate is not a stack record",
+            "applicable": false
+          }
+        ],
+        "reasons": [
+          "2 commits could serve as the boundary (8888888, 9999999); the evidence does not choose between them"
+        ],
+        "warnings": [],
+        "rebaseCommand": null,
+        "backupRef": null
+      }
+  
+    ''',
+  })
+# ---
+# name: test_text_report_matches_snapshot[established-with-parent]
+  '''
+  git wheresat: boundary for child
+    child tip   1111111
+    target      7777777
+    boundary    8888888
+  
+  Evidence
+    attested  stack-record-birth       8888888  stack record
+  
+  Included (2 commits)
+    1111111
+    2222222
+  
+  Excluded (2 commits)
+    3333333
+    4444444
+  
+  Durability
+    a ref that outlives this run already reaches the boundary
+  
+  Replay
+    # back up the child tip first, then replay onto the target
+    git update-ref refs/wheresat-backup/child 1111111111111111111111111111111111111111
+    git rebase --onto 7777777777777777777777777777777777777777 8888888888888888888888888888888888888888 child
+    # undo: git reset --hard refs/wheresat-backup/child
+  
+    Verify before running: the child tip must still be 1111111
+  
+  '''
+# ---
+# name: test_text_report_matches_snapshot[established]
+  '''
+  git wheresat: boundary for child
+    child tip   1111111
+    target      7777777
+    boundary    8888888
+  
+  Evidence
+    attested  stack-record-birth       8888888  stack record
+  
+  Included (2 commits)
+    1111111
+    2222222
+  
+  Excluded (2 commits)
+    3333333
+    4444444
+  
+  Durability
+    a ref that outlives this run already reaches the boundary
+  
+  Replay
+    # back up the child tip first, then replay onto the target
+    git update-ref refs/wheresat-backup/child 1111111111111111111111111111111111111111
+    git rebase --onto 7777777777777777777777777777777777777777 8888888888888888888888888888888888888888 child
+    # undo: git reset --hard refs/wheresat-backup/child
+  
+    Verify before running: the child tip must still be 1111111
+  
+  '''
+# ---
+# name: test_text_report_matches_snapshot[indeterminate]
+  '''
+  git wheresat: could not tell where the work of child begins
+  
+  Evidence
+    attested  stack-record-birth       8888888  stack record
+  
+  Gates
+    indeterminate   parent-identity-matches
+                    the parent pull request could not be resolved
+    indeterminate   parent-merged
+                    the parent pull request could not be resolved
+    passed          landed-reachable-from-target
+                    6666666 is an ancestor of 7777777
+    passed          boundary-is-ancestor-of-child
+                    8888888 is an ancestor of 1111111
+    passed          replay-range-non-empty
+                    the replay range 8888888888888888888888888888888888888888..1111111111111111111111111111111111111111 holds 2 commit(s)
+    passed          parent-history-intact
+                    8888888 is an ancestor of 5555555
+    passed          replay-range-excludes-landed-work
+                    8888888888888888888888888888888888888888..1111111111111111111111111111111111111111 holds no commit the parent head reaches
+    passed          record-not-superseded
+                    the record was written from the child's current tip
+  
+  Reasons
+    - 8888888 awaits an answer: parent-identity-matches indeterminate: the parent pull request could not be resolved; parent-merged indeterminate: the parent pull request could not be resolved
+  
+  '''
+# ---
+# name: test_text_report_matches_snapshot[nothing-found]
+  '''
+  git wheresat: no boundary could be established for child
+  
+  Evidence
+  
+  Gates
+  
+  Reasons
+    - no boundary candidate was found
+  
+  '''
+# ---
+# name: test_text_report_matches_snapshot[unresolved-ambiguous]
+  '''
+  git wheresat: no boundary could be established for child
+  
+  Evidence
+    derived   fork-point               8888888  fork point
+    derived   merge-base               8888888  merge base
+    derived   fork-point               9999999  fork point
+    derived   merge-base               9999999  merge base
+  
+  Gates
+    not applicable  parent-identity-matches
+                    the run did not set out to consult a parent pull request
+    not applicable  parent-merged
+                    the run did not set out to consult a parent pull request
+    not applicable  landed-reachable-from-target
+                    the run did not set out to consult a parent pull request
+    passed          boundary-is-ancestor-of-child
+                    8888888 is an ancestor of 1111111
+    passed          replay-range-non-empty
+                    the replay range 8888888888888888888888888888888888888888..1111111111111111111111111111111111111111 holds 2 commit(s)
+    passed          parent-history-intact
+                    8888888 is an ancestor of 5555555
+    passed          replay-range-excludes-landed-work
+                    8888888888888888888888888888888888888888..1111111111111111111111111111111111111111 holds no commit the parent head reaches
+    not applicable  record-not-superseded
+                    the candidate is not a stack record
+    not applicable  parent-identity-matches
+                    the run did not set out to consult a parent pull request
+    not applicable  parent-merged
+                    the run did not set out to consult a parent pull request
+    not applicable  landed-reachable-from-target
+                    the run did not set out to consult a parent pull request
+    passed          boundary-is-ancestor-of-child
+                    8888888 is an ancestor of 1111111
+    passed          replay-range-non-empty
+                    the replay range 8888888888888888888888888888888888888888..1111111111111111111111111111111111111111 holds 2 commit(s)
+    passed          parent-history-intact
+                    8888888 is an ancestor of 5555555
+    passed          replay-range-excludes-landed-work
+                    8888888888888888888888888888888888888888..1111111111111111111111111111111111111111 holds no commit the parent head reaches
+    not applicable  record-not-superseded
+                    the candidate is not a stack record
+    not applicable  parent-identity-matches
+                    the run did not set out to consult a parent pull request
+    not applicable  parent-merged
+                    the run did not set out to consult a parent pull request
+    not applicable  landed-reachable-from-target
+                    the run did not set out to consult a parent pull request
+    passed          boundary-is-ancestor-of-child
+                    9999999 is an ancestor of 1111111
+    passed          replay-range-non-empty
+                    the replay range 9999999999999999999999999999999999999999..1111111111111111111111111111111111111111 holds 2 commit(s)
+    passed          parent-history-intact
+                    9999999 is an ancestor of 5555555
+    passed          replay-range-excludes-landed-work
+                    9999999999999999999999999999999999999999..1111111111111111111111111111111111111111 holds no commit the parent head reaches
+    not applicable  record-not-superseded
+                    the candidate is not a stack record
+    not applicable  parent-identity-matches
+                    the run did not set out to consult a parent pull request
+    not applicable  parent-merged
+                    the run did not set out to consult a parent pull request
+    not applicable  landed-reachable-from-target
+                    the run did not set out to consult a parent pull request
+    passed          boundary-is-ancestor-of-child
+                    9999999 is an ancestor of 1111111
+    passed          replay-range-non-empty
+                    the replay range 9999999999999999999999999999999999999999..1111111111111111111111111111111111111111 holds 2 commit(s)
+    passed          parent-history-intact
+                    9999999 is an ancestor of 5555555
+    passed          replay-range-excludes-landed-work
+                    9999999999999999999999999999999999999999..1111111111111111111111111111111111111111 holds no commit the parent head reaches
+    not applicable  record-not-superseded
+                    the candidate is not a stack record
+  
+  Reasons
+    - 2 commits could serve as the boundary (8888888, 9999999); the evidence does not choose between them
+  
+  '''
+# ---
+# name: test_text_report_matches_snapshot[unresolved]
+  '''
+  git wheresat: no boundary could be established for child
+  
+  Evidence
+    attested  stack-record-birth       8888888  stack record
+  
+  Gates
+    passed          parent-identity-matches
+                    the parent head came from its own acme/widget
+    failed          parent-merged
+                    the parent pull request is not merged, so its work has not landed
+    passed          landed-reachable-from-target
+                    6666666 is an ancestor of 7777777
+    passed          boundary-is-ancestor-of-child
+                    8888888 is an ancestor of 1111111
+    passed          replay-range-non-empty
+                    the replay range 8888888888888888888888888888888888888888..1111111111111111111111111111111111111111 holds 2 commit(s)
+    passed          parent-history-intact
+                    8888888 is an ancestor of 5555555
+    passed          replay-range-excludes-landed-work
+                    8888888888888888888888888888888888888888..1111111111111111111111111111111111111111 holds no commit the parent head reaches
+    passed          record-not-superseded
+                    the record was written from the child's current tip
+  
+  Reasons
+    - 8888888 is refused by parent-merged failed: the parent pull request is not merged, so its work has not landed
+  
+  '''
+# ---
+# name: test_the_envelope_carries_the_warnings_match_snapshot
+  '''
+  {
+    "schema": "git-wheresat/1",
+    "verdict": "established",
+    "exitCode": 0,
+    "error": null,
+    "child": {
+      "branch": "child",
+      "tip": "1111111111111111111111111111111111111111"
+    },
+    "target": "7777777777777777777777777777777777777777",
+    "parent": null,
+    "parentHead": null,
+    "landed": null,
+    "oldBase": "8888888888888888888888888888888888888888",
+    "durableRef": null,
+    "included": {
+      "commits": [
+        "1111111111111111111111111111111111111111",
+        "2222222222222222222222222222222222222222"
+      ],
+      "count": 2,
+      "withheld": 0,
+      "cutShort": false
+    },
+    "excluded": {
+      "commits": [
+        "3333333333333333333333333333333333333333",
+        "4444444444444444444444444444444444444444"
+      ],
+      "count": 2,
+      "withheld": 0,
+      "cutShort": false
+    },
+    "support": [
+      {
+        "commit": "8888888888888888888888888888888888888888",
+        "kind": "stack-record-birth",
+        "tier": "attested"
+      }
+    ],
+    "candidates": [],
+    "gates": [
+      {
+        "name": "parent-identity-matches",
+        "outcome": "indeterminate",
+        "detail": "the run did not set out to consult a parent pull request",
+        "applicable": false
+      },
+      {
+        "name": "parent-merged",
+        "outcome": "indeterminate",
+        "detail": "the run did not set out to consult a parent pull request",
+        "applicable": false
+      },
+      {
+        "name": "landed-reachable-from-target",
+        "outcome": "indeterminate",
+        "detail": "the run did not set out to consult a parent pull request",
+        "applicable": false
+      },
+      {
+        "name": "boundary-is-ancestor-of-child",
+        "outcome": "passed",
+        "detail": "8888888 is an ancestor of 1111111",
+        "applicable": true
+      },
+      {
+        "name": "replay-range-non-empty",
+        "outcome": "passed",
+        "detail": "the replay range 8888888888888888888888888888888888888888..1111111111111111111111111111111111111111 holds 2 commit(s)",
+        "applicable": true
+      },
+      {
+        "name": "parent-history-intact",
+        "outcome": "passed",
+        "detail": "8888888 is an ancestor of 5555555",
+        "applicable": true
+      },
+      {
+        "name": "replay-range-excludes-landed-work",
+        "outcome": "passed",
+        "detail": "8888888888888888888888888888888888888888..1111111111111111111111111111111111111111 holds no commit the parent head reaches",
+        "applicable": true
+      },
+      {
+        "name": "record-not-superseded",
+        "outcome": "passed",
+        "detail": "the record was written from the child's current tip",
+        "applicable": true
+      }
+    ],
+    "reasons": [],
+    "warnings": [
+      "the worktree holding child could not be read, so whether a replay can run there is not known: fatal: no such worktree"
+    ],
+    "rebaseCommand": "git rebase --onto 7777777777777777777777777777777777777777 8888888888888888888888888888888888888888 child",
+    "backupRef": "refs/wheresat-backup/child"
+  }
+  
+  '''
+# ---
+# name: test_the_warnings_a_replay_cannot_run_under_match_snapshot
+  '''
+  git wheresat: boundary for child
+    child tip   1111111
+    target      7777777
+    boundary    8888888
+  
+  Warnings
+    - a rebase is already in progress in the worktree holding child, so no replay can run there until it is finished or aborted
+    - the worktree holding child has uncommitted changes, so no replay can run there until they are committed or stashed
+  
+  Evidence
+    attested  stack-record-birth       8888888  stack record
+  
+  Included (2 commits)
+    1111111
+    2222222
+  
+  Excluded (2 commits)
+    3333333
+    4444444
+  
+  Durability
+    a ref that outlives this run already reaches the boundary
+  
+  Replay
+    # back up the child tip first, then replay onto the target
+    git update-ref refs/wheresat-backup/child 1111111111111111111111111111111111111111
+    git rebase --onto 7777777777777777777777777777777777777777 8888888888888888888888888888888888888888 child
+    # undo: git reset --hard refs/wheresat-backup/child
+  
+    Verify before running: the child tip must still be 1111111
+  
+  '''
+# ---
+# name: test_truncation_tails_match_snapshots[long-replay-range]
+  '''
+  git wheresat: boundary for child
+    child tip   1111111
+    target      7777777
+    boundary    8888888
+  
+  Evidence
+    attested  stack-record-birth       8888888  stack record
+  
+  Included (21 commits)
+    0000010
+    0000011
+    0000012
+    0000013
+    0000014
+    0000015
+    0000016
+    0000017
+    0000018
+    0000019
+    0000020
+    0000021
+    0000022
+    0000023
+    0000024
+    0000025
+    0000026
+    0000027
+    0000028
+    0000029
+    ... 1 more not listed
+  
+  Excluded (0 commits)
+  
+  Durability
+    a ref that outlives this run already reaches the boundary
+  
+  Replay
+    # back up the child tip first, then replay onto the target
+    git update-ref refs/wheresat-backup/child 1111111111111111111111111111111111111111
+    git rebase --onto 7777777777777777777777777777777777777777 8888888888888888888888888888888888888888 child
+    # undo: git reset --hard refs/wheresat-backup/child
+  
+    Verify before running: the child tip must still be 1111111
+  
+  '''
+# ---
+# name: test_truncation_tails_match_snapshots[outranked-candidate]
+  '''
+  git wheresat: boundary for child
+    child tip   1111111
+    target      7777777
+    boundary    8888888
+  
+  Evidence
+    attested  stack-record-birth       8888888  stack record
+  
+  Included (2 commits)
+    1111111
+    2222222
+  
+  Excluded (2 commits)
+    3333333
+    4444444
+  
+  Durability
+    a ref that outlives this run already reaches the boundary
+  
+  Replay
+    # back up the child tip first, then replay onto the target
+    git update-ref refs/wheresat-backup/child 1111111111111111111111111111111111111111
+    git rebase --onto 7777777777777777777777777777777777777777 8888888888888888888888888888888888888888 child
+    # undo: git reset --hard refs/wheresat-backup/child
+  
+    Verify before running: the child tip must still be 1111111
+  
+  '''
+# ---
+# name: test_truncation_tails_match_snapshots[truncated-history]
+  '''
+  git wheresat: boundary for child
+    child tip   1111111
+    target      7777777
+    boundary    8888888
+  
+  Evidence
+    attested  stack-record-birth       8888888  stack record
+  
+  Included (2 commits)
+    1111111
+    2222222
+  
+  Excluded (2 commits)
+    3333333
+    4444444
+    ... the range was cut short: 2 commits seen
+  
+  Durability
+    a ref that outlives this run already reaches the boundary
+  
+  Replay
+    # back up the child tip first, then replay onto the target
+    git update-ref refs/wheresat-backup/child 1111111111111111111111111111111111111111
+    git rebase --onto 7777777777777777777777777777777777777777 8888888888888888888888888888888888888888 child
+    # undo: git reset --hard refs/wheresat-backup/child
+  
+    Verify before running: the child tip must still be 1111111
+  
+  '''
+# ---
+# name: test_truncation_tails_match_snapshots[truncated-replay-range]
+  '''
+  git wheresat: boundary for child
+    child tip   1111111
+    target      7777777
+    boundary    8888888
+  
+  Evidence
+    attested  stack-record-birth       8888888  stack record
+  
+  Included (2 commits)
+    1111111
+    2222222
+    ... the range was cut short: 2 commits seen
+  
+  Excluded (2 commits)
+    3333333
+    4444444
+  
+  Durability
+    a ref that outlives this run already reaches the boundary
+  
+  Replay
+    # back up the child tip first, then replay onto the target
+    git update-ref refs/wheresat-backup/child 1111111111111111111111111111111111111111
+    git rebase --onto 7777777777777777777777777777777777777777 8888888888888888888888888888888888888888 child
+    # undo: git reset --hard refs/wheresat-backup/child
+  
+    Verify before running: the child tip must still be 1111111
+  
+  '''
+# ---

@@ -21,7 +21,7 @@ from types import SimpleNamespace
 import pytest
 from git import Repo
 
-from git_donkey import plonk
+from git_donkey import plonk_records, plonk_worktree_adapter
 from tests import git_repo_helpers
 
 if typ.TYPE_CHECKING:
@@ -106,16 +106,18 @@ def _apply_dirt(worktree_path: Path, dirt: str) -> None:
     ("dirt", "expected_reason"),
     [
         pytest.param("clean", None, id="clean"),
-        pytest.param("modified", plonk._SkipReason.DIRTY, id="modified-tracked-file"),
-        pytest.param("staged", plonk._SkipReason.DIRTY, id="staged-change"),
-        pytest.param("untracked", plonk._SkipReason.DIRTY, id="untracked-file"),
+        pytest.param(
+            "modified", plonk_records._SkipReason.DIRTY, id="modified-tracked-file"
+        ),
+        pytest.param("staged", plonk_records._SkipReason.DIRTY, id="staged-change"),
+        pytest.param("untracked", plonk_records._SkipReason.DIRTY, id="untracked-file"),
         pytest.param("ignored", None, id="ignored-build-output"),
     ],
 )
 def test_cleanliness_preflight_matches_git_removal(
     tmp_path: Path,
     dirt: str,
-    expected_reason: plonk._SkipReason | None,
+    expected_reason: plonk_records._SkipReason | None,
     recording_recorder: RecordingRecorder,
 ) -> None:
     """The preflight should clear exactly the worktrees Git removes unprompted.
@@ -125,7 +127,7 @@ def test_cleanliness_preflight_matches_git_removal(
     would either destroy work or skip a worktree Git would happily discard.
     """
     repo, worktree_path = _worktree_with_dirt(tmp_path, dirt)
-    adapter = plonk._GitWorktreeAdapter(repo)
+    adapter = plonk_worktree_adapter._GitWorktreeAdapter(repo)
 
     reason = adapter.skip_reason(worktree_path)
     removed = adapter.remove_worktree(worktree_path)
@@ -147,9 +149,9 @@ def test_skip_reason_reports_a_missing_worktree_directory(tmp_path: Path) -> Non
     repo, worktree_path = _worktree_with_dirt(tmp_path, "clean")
     shutil.rmtree(worktree_path)
 
-    reason = plonk._GitWorktreeAdapter(repo).skip_reason(worktree_path)
+    reason = plonk_worktree_adapter._GitWorktreeAdapter(repo).skip_reason(worktree_path)
 
-    assert reason is plonk._SkipReason.UNAVAILABLE, (
+    assert reason is plonk_records._SkipReason.UNAVAILABLE, (
         "a worktree whose directory is gone is unavailable, not dirty"
     )
 
@@ -179,7 +181,7 @@ def test_removal_never_forces_git_to_discard_files() -> None:
             calls.append(arguments)
             return ""
 
-    adapter = plonk._GitWorktreeAdapter(
+    adapter = plonk_worktree_adapter._GitWorktreeAdapter(
         typ.cast("Repo", SimpleNamespace(git=_RecordingGit()))
     )
 
@@ -197,7 +199,7 @@ def test_removal_leaves_a_dirty_worktree_on_disk(
 ) -> None:
     """Git's own refusal is the backstop if a dirty candidate reaches removal."""
     repo, worktree_path = _worktree_with_dirt(tmp_path, "modified")
-    adapter = plonk._GitWorktreeAdapter(repo)
+    adapter = plonk_worktree_adapter._GitWorktreeAdapter(repo)
 
     removed = adapter.remove_worktree(worktree_path)
 
@@ -222,7 +224,9 @@ def test_delete_branch_removes_the_branch_and_times_the_deletion(
     repo = git_repo_helpers.seed_repo(tmp_path / "repo")
     repo.git.branch(_WORKTREE_BRANCH)
 
-    deleted = plonk._GitWorktreeAdapter(repo).delete_branch(_WORKTREE_BRANCH)
+    deleted = plonk_worktree_adapter._GitWorktreeAdapter(repo).delete_branch(
+        _WORKTREE_BRANCH
+    )
 
     assert deleted is True, "Git deletes a branch that is not checked out here"
     assert _WORKTREE_BRANCH not in {head.name for head in repo.heads}, (
@@ -248,7 +252,9 @@ def test_delete_branch_reports_and_survives_gits_refusal(
     repo = git_repo_helpers.seed_repo(tmp_path / "repo")
     checked_out = repo.head.reference.name
 
-    deleted = plonk._GitWorktreeAdapter(repo).delete_branch(checked_out)
+    deleted = plonk_worktree_adapter._GitWorktreeAdapter(repo).delete_branch(
+        checked_out
+    )
 
     assert deleted is False, "the adapter reports the refusal as a boolean"
     assert checked_out in {head.name for head in repo.heads}, (

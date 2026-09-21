@@ -13,6 +13,8 @@ from git import GitCommandError
 from git_donkey import incoming_outgoing
 
 if typ.TYPE_CHECKING:
+    import collections.abc as cabc
+
     from tests.observability_helpers import RecordingRecorder
 
 _LOG_COMMAND = "log"
@@ -72,7 +74,7 @@ class _FakeAdapter:
         return None
 
     @staticmethod
-    def remote_names() -> typ.Iterable[str]:
+    def remote_names() -> cabc.Iterable[str]:
         """Report the configured remote names."""
         return ["origin"]
 

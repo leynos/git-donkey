@@ -39,6 +39,34 @@ def _stream_or_none(stream: typ.TextIO) -> typ.TextIO | None:
     return None
 
 
+def _print_error(prefix: str, msg: str, *, emoji: str | None = None) -> None:
+    """Print an error message under ``prefix``, with the emoji it earns.
+
+    A caller that reports a failure without exiting — one whose exit a handler
+    has to weigh against the exits it catches alongside, so its own class is
+    what must be raised — prints through here and raises itself, which is why
+    the rendering is not `_die`'s alone.
+
+    Parameters
+    ----------
+    prefix : str
+        Command the message is reported under.
+    msg : str
+        What went wrong.
+    emoji : str | None, optional
+        Emoji to print before the message, or ``None`` to choose one from the
+        prefix: the git-donkey emoji for git-donkey's own messages, and none
+        for another command's.
+
+    """
+    if emoji is None and prefix == _GIT_DONKEY_PREFIX:
+        emoji = _GIT_DONKEY_EMOJI
+    if emoji:
+        _eprint(f"{prefix}: {emoji} {msg}")
+    else:
+        _eprint(f"{prefix}: {msg}")
+
+
 def _die(
     prefix: str,
     msg: str,
@@ -46,13 +74,28 @@ def _die(
     *,
     emoji: str | None = None,
 ) -> typ.NoReturn:
-    """Exit with a formatted error message."""
-    if emoji is None and prefix == _GIT_DONKEY_PREFIX:
-        emoji = _GIT_DONKEY_EMOJI
-    if emoji:
-        _eprint(f"{prefix}: {emoji} {msg}")
-    else:
-        _eprint(f"{prefix}: {msg}")
+    """Exit with a formatted error message.
+
+    Parameters
+    ----------
+    prefix : str
+        Command the message is reported under.
+    msg : str
+        What went wrong.
+    code : int, optional
+        Status the process ends with, ``2`` for a usage error by default.
+    emoji : str | None, optional
+        Emoji to print before the message, or ``None`` to choose one from the
+        prefix: the git-donkey emoji for git-donkey's own messages, and none
+        for another command's.
+
+    Raises
+    ------
+    SystemExit
+        Always, carrying ``code``.
+
+    """
+    _print_error(prefix, msg, emoji=emoji)
     raise SystemExit(code)
 
 
