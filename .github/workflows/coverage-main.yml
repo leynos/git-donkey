@@ -1,11 +1,23 @@
 name: Coverage (main)
 
-# CodeScene accepts coverage for analysed branches. Main therefore advances the
-# local ratchet and publishes its coverage; pull requests only read the ratchet.
+# The single CodeScene publisher. CodeScene accepts `cs-coverage upload`
+# only for analysed branches, so main's coverage is uploaded here on
+# push. Pull requests generate coverage with the ratchet this workflow
+# advances, and nothing a pull request runs receives CodeScene
+# credentials or contacts CodeScene.
+# tests/unit/test_codescene_coverage_contract.py holds the shape.
 
 on:
   push:
     branches: [main]
+
+# One publisher run at a time, never cancelled. GitHub keeps one pending
+# run per group, so a newer push replaces an older pending run and never
+# interrupts a running one; the newest baseline wins. A cancelled run
+# would abandon both its upload and its ratchet baseline write.
+concurrency:
+  group: coverage-main
+  cancel-in-progress: false
 
 jobs:
   coverage-upload:
@@ -13,8 +25,6 @@ jobs:
     permissions:
       contents: read
     env:
-      CS_ACCESS_TOKEN: ${{ secrets.CS_ACCESS_TOKEN || '' }}
-      CODESCENE_CLI_SHA256: ${{ vars.CODESCENE_CLI_SHA256 || '' }}
       MAKEUTIL_REVISION: '29fc5a1634ffbaa18a773eed9dff1b2838a45d9c'
       MAKEUTIL_TOOLCHAIN: 'nightly-2026-05-28'
     steps:
@@ -27,7 +37,7 @@ jobs:
           python-version: '3.13'
 
       - name: Install uv
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
 
       - name: Cache Makefile parser
         id: makeutil-cache
@@ -48,21 +58,26 @@ jobs:
             makeutil
 
       - name: Generate coverage
-        uses: leynos/shared-actions/.github/actions/generate-coverage@152d9c4784d0ae5877938a984fe6d1f04d718fd8
+        uses: leynos/shared-actions/.github/actions/generate-coverage@a5765019912a8ab6882b12db049c7cde635f3a85
         with:
-          language: python
-          python-source: ./git_donkey
           output-path: coverage.xml
           format: cobertura
-          pytest-workers: ''
           with-ratchet: 'true'
 
       - name: Upload coverage data to CodeScene
-        if: env.CS_ACCESS_TOKEN
-        uses: leynos/shared-actions/.github/actions/upload-codescene-coverage@152d9c4784d0ae5877938a984fe6d1f04d718fd8
+        # The token binds here and nowhere else in the workflow.
+        env:
+          CS_ACCESS_TOKEN: ${{ secrets.CS_ACCESS_TOKEN }}
+        # The ref as well as the token. This workflow declares no
+        # `workflow_dispatch` today, so the ref is always main; the guard
+        # is here because a dispatch can aim at any branch, and the upload
+        # carries no ref of its own.
+        if: env.CS_ACCESS_TOKEN != '' && github.ref == 'refs/heads/main'
+        uses: leynos/shared-actions/.github/actions/upload-codescene-coverage@a5765019912a8ab6882b12db049c7cde635f3a85
         with:
           path: coverage.xml
           format: cobertura
           mode: upload
           access-token: ${{ env.CS_ACCESS_TOKEN }}
-          installer-checksum: ${{ env.CODESCENE_CLI_SHA256 }}
+          # No checksum input: the action pins the CLI through its own
+          # manifest, and `installer-checksum` is rejected from this pin.
