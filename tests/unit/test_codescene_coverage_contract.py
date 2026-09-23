@@ -61,7 +61,7 @@ PULL_REQUEST_COVERAGE_GUARD: typ.Final[frozenset[str]] = frozenset({
 
 #: The publisher's triggers, exactly. Dropping one is as silent as adding
 #: one: a publisher that loses its push trigger never publishes again.
-PUBLISHER_TRIGGERS: typ.Final[frozenset[str]] = frozenset({"push"})
+PUBLISHER_TRIGGERS: typ.Final[frozenset[str]] = frozenset({"push", "workflow_dispatch"})
 
 #: What both coverage lanes measure, exactly. The lanes are held equal to
 #: each other below; this pins the shared selection itself, so a change
