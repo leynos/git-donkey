@@ -302,6 +302,7 @@ def _entry_surface(trigger: str) -> dict[str, Document]:
         pytest.param("merge_group:", id="merge-group"),
         pytest.param("pull_request_review:", id="pull-request-review"),
         pytest.param("pull_request_review_comment:", id="review-comment"),
+        pytest.param("pull_request_target:", id="pull-request-target"),
         pytest.param("push:", id="push-every-branch"),
         pytest.param("push:\n    paths: ['src/**']", id="push-paths-only"),
         pytest.param("push:\n    branches: [dev]", id="push-other-branch"),
