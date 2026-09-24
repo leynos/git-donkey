@@ -14,7 +14,7 @@ import typing as typ
 from pathlib import Path
 
 import pytest
-from hypothesis import given
+from hypothesis import given, settings
 from hypothesis import strategies as st
 from plumbum.commands.processes import ProcessExecutionError
 
@@ -188,6 +188,10 @@ def test_remote_classification_depends_on_single_head_commit_emptiness(
     )
 
 
+# No deadline: a timing budget here asserts the host, not the code. The
+# first example pays one-off first-call costs, and at a load average of
+# about 70 it took 407 ms against the default 200 ms deadline.
+@settings(deadline=None)
 @given(yes=st.booleans(), prompt_response=st.booleans())
 def test_adoption_confirmation_requires_yes_or_prompt_acceptance(
     *,
@@ -242,6 +246,10 @@ def test_remote_adoption_inspection_failure_exits(
     assert excinfo.value.code == 1, "expected adoption inspection failure to exit"
 
 
+# No deadline: every example creates and removes a temporary directory, so
+# its duration follows the host's filesystem load. At a load average of
+# about 57 the first example took 388 ms against the default 200 ms.
+@settings(deadline=None)
 @given(repo_name=_SLUG_TEXT)
 def test_empty_scaffold_creates_only_requested_directory(
     repo_name: str,
