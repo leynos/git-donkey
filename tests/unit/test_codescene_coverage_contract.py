@@ -290,3 +290,36 @@ def test_the_pull_request_lane_measures_what_the_baseline_measures(
             assert step.get("uses") == baseline[0].get("uses"), (
                 "the lane and the baseline must run one generator commit"
             )
+
+
+def test_the_publisher_builds_the_project_before_measuring(
+    documents: dict[str, Document],
+) -> None:
+    """The publisher runs ``make build`` before it generates coverage.
+
+    The manpage packaging tests build a wheel offline against the
+    ``.uv-cache`` that only ``make build`` fills, so without that step
+    every main run fails in coverage and never uploads, as run
+    36028370138 did. The step's command is held exactly, with no ``if:``,
+    in the coverage step's own job and ahead of it.
+    """
+    _, document = publisher(documents)
+    jobs = document.get("jobs")
+    assert isinstance(jobs, dict), "the publisher declares no jobs mapping"
+    for job in jobs.values():
+        steps = job.get("steps", []) if isinstance(job, dict) else []
+        coverage = [
+            index
+            for index, step in enumerate(steps)
+            if COVERAGE_ACTION in str(step.get("uses"))
+        ]
+        if not coverage:
+            continue
+        builds = [
+            index
+            for index, step in enumerate(steps[: coverage[0]])
+            if str(step.get("run", "")).strip() == "make build" and "if" not in step
+        ]
+        assert builds, "the coverage job must run `make build` before coverage"
+        return
+    pytest.fail("no publisher job runs generate-coverage")

@@ -105,6 +105,18 @@ def test_the_compliant_closure_passes() -> None:
             id="sweep-1-qualified-self-call",
         ),
         pytest.param(
+            CALLER.replace("./.github/workflows/probe.yml", "leynos/example@main"),
+            PROBE,
+            "qualified self-call",
+            id="sweep-1-qualified-root-self-call",
+        ),
+        pytest.param(
+            CALLER.replace("./.github/workflows/probe.yml", "LeyNos/Example@main"),
+            PROBE,
+            "qualified self-call",
+            id="sweep-1-qualified-root-self-call-mixed-case",
+        ),
+        pytest.param(
             CALLER.replace("probe.yml", "probe.yml@main").replace("./", "$/"),
             PROBE,
             "cannot name a ref",
