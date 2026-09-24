@@ -70,6 +70,12 @@ jobs:
             --force \
             makeutil
 
+      # As in ci.yml: `uv sync` builds the project, which puts the build
+      # backend in uv's cache. The manpage packaging tests build offline
+      # and fail without it.
+      - name: Install code
+        run: make build
+
       - name: Generate coverage
         uses: leynos/shared-actions/.github/actions/generate-coverage@a5765019912a8ab6882b12db049c7cde635f3a85
         with:
