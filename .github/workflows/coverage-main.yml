@@ -1,0 +1,101 @@
+name: Coverage (main)
+
+# The single CodeScene publisher. CodeScene accepts `cs-coverage upload`
+# only for analysed branches, so main's coverage is uploaded here on
+# push. Pull requests generate coverage with the ratchet this workflow
+# advances, and nothing a pull request runs receives CodeScene
+# credentials or contacts CodeScene.
+# tests/unit/test_codescene_coverage_contract.py holds the shape.
+#
+# workflow_dispatch is the recovery path for automerged changes: a merge
+# made with the automerge workflow's GITHUB_TOKEN does not fire push
+# workflows, so those changes reach this publisher only through a
+# dispatch or the next push.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# One publisher run per ref at a time, never cancelled. GitHub keeps one
+# pending run per group, so a newer push replaces an older pending run
+# and never interrupts a running one; the newest baseline wins. A
+# cancelled run would abandon both its upload and its ratchet baseline
+# write. The group is keyed on the ref alone: a branch dispatch cannot
+# displace a pending main run, and with one group for main, runs never
+# overlap and the newest triggered run's coverage lands last. A manual
+# re-run of an older run is an operator action that republishes that
+# commit's coverage and baseline until the next push. A dispatch that
+# replaces a pending push leaves the ratchet baseline one commit behind
+# until the next push, because only a push saves it.
+concurrency:
+  group: coverage-main-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  coverage-upload:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      MAKEUTIL_REVISION: '29fc5a1634ffbaa18a773eed9dff1b2838a45d9c'
+      MAKEUTIL_TOOLCHAIN: 'nightly-2026-05-28'
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v4
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.13'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+
+      - name: Cache Makefile parser
+        id: makeutil-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cargo/bin/makeutil
+          key: makeutil-${{ runner.os }}-${{ runner.arch }}-${{ env.MAKEUTIL_TOOLCHAIN }}-${{ env.MAKEUTIL_REVISION }}
+
+      - name: Install Makefile parser
+        if: steps.makeutil-cache.outputs.cache-hit != 'true'
+        run: |
+          rustup toolchain install "${MAKEUTIL_TOOLCHAIN}" --profile minimal
+          RUSTFLAGS="-Zpolonius=next" cargo +"${MAKEUTIL_TOOLCHAIN}" install \
+            --git https://github.com/leynos/makeutil \
+            --rev "${MAKEUTIL_REVISION}" \
+            --locked \
+            --force \
+            makeutil
+
+      - name: Generate coverage
+        uses: leynos/shared-actions/.github/actions/generate-coverage@a5765019912a8ab6882b12db049c7cde635f3a85
+        with:
+          output-path: coverage.xml
+          format: cobertura
+          with-ratchet: 'true'
+
+      # Whether the token is set, as a plain output. The expression is
+      # evaluated before the shell runs, so this step binds nothing: the
+      # token is in no step's env, because the upload action is composite
+      # and passes its step env to nested upload-artifact and cache steps.
+      - name: Check CodeScene token
+        id: codescene-token
+        run: echo "available=${{ secrets.CS_ACCESS_TOKEN != '' }}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload coverage data to CodeScene
+        # The ref as well as the token: a dispatch can aim at any branch,
+        # and the upload carries no ref of its own.
+        if: >-
+          steps.codescene-token.outputs.available == 'true'
+          && github.ref == 'refs/heads/main'
+        uses: leynos/shared-actions/.github/actions/upload-codescene-coverage@a5765019912a8ab6882b12db049c7cde635f3a85
+        with:
+          path: coverage.xml
+          format: cobertura
+          mode: upload
+          access-token: ${{ secrets.CS_ACCESS_TOKEN }}
+          # No checksum input: the action pins the CLI through its own
+          # manifest, and `installer-checksum` is rejected from this pin.
