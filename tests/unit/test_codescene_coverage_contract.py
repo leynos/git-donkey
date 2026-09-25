@@ -358,15 +358,31 @@ def test_both_lanes_measure_on_the_same_interpreter(
     (baseline,) = _coverage_steps(document)
     environment = baseline.get("env")
     assert isinstance(environment, dict), "the baseline's coverage step sets no env"
-    expected = _setup_python_version(document)
-    assert environment.get("UV_PYTHON") == expected, (
-        f"the baseline must pin UV_PYTHON to setup-python's {expected!r}; "
-        f"it sets {environment.get('UV_PYTHON')!r}"
-    )
+    _assert_pinned_to_setup_python(document, baseline, "the baseline")
     surface = pull_request_surface(documents, REPOSITORY)
     for lane_document in surface.values():
         for step in _coverage_steps(lane_document):
+            _assert_pinned_to_setup_python(lane_document, step, "the lane")
             assert step.get("env") == environment, (
                 f"the lane measures under env {step.get('env')!r}, the "
                 f"baseline under {environment!r}"
             )
+
+
+def _assert_pinned_to_setup_python(
+    document: Document, step: dict[object, object], role: str
+) -> None:
+    """Assert a coverage step pins ``UV_PYTHON`` to its workflow's setup-python.
+
+    Both values must be present: two absences compare equal, and would
+    certify a coverage step that pins nothing in a workflow that installs
+    no interpreter.
+    """
+    expected = _setup_python_version(document)
+    environment = step.get("env")
+    actual = environment.get("UV_PYTHON") if isinstance(environment, dict) else None
+    assert expected, f"{role}'s workflow must install Python with setup-python"
+    assert actual, f"{role}'s coverage step must set UV_PYTHON"
+    assert actual == expected, (
+        f"{role} must pin UV_PYTHON to setup-python's {expected!r}; it sets {actual!r}"
+    )
