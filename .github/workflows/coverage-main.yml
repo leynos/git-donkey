@@ -77,7 +77,7 @@ jobs:
         run: make build
 
       - name: Generate coverage
-        uses: leynos/shared-actions/.github/actions/generate-coverage@a5765019912a8ab6882b12db049c7cde635f3a85
+        uses: leynos/shared-actions/.github/actions/generate-coverage@759da19f0379b6d2d7ddef93b7ad4c3b98154e41
         # Pinned to the interpreter setup-python installs, in both lanes:
         # the action builds its coverage environment with whatever
         # interpreter uv finds first, which an earlier step's managed
@@ -104,7 +104,7 @@ jobs:
         if: >-
           steps.codescene-token.outputs.available == 'true'
           && github.ref == 'refs/heads/main'
-        uses: leynos/shared-actions/.github/actions/upload-codescene-coverage@a5765019912a8ab6882b12db049c7cde635f3a85
+        uses: leynos/shared-actions/.github/actions/upload-codescene-coverage@759da19f0379b6d2d7ddef93b7ad4c3b98154e41
         with:
           path: coverage.xml
           format: cobertura

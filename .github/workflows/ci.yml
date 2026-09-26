@@ -37,7 +37,7 @@ jobs:
       - name: Install mdtablefix
         # `make check-fmt` runs `mdtablefix --check --git`; 0.6.0 is the
         # first release with `--check` and `--git`.
-        uses: leynos/shared-actions/.github/actions/install-mdtablefix@a5765019912a8ab6882b12db049c7cde635f3a85
+        uses: leynos/shared-actions/.github/actions/install-mdtablefix@759da19f0379b6d2d7ddef93b7ad4c3b98154e41
         with:
           version: "0.6.0"
 
@@ -94,7 +94,7 @@ jobs:
       # publishes the report.
       - name: Run tests with coverage
         if: github.event_name == 'pull_request'
-        uses: leynos/shared-actions/.github/actions/generate-coverage@a5765019912a8ab6882b12db049c7cde635f3a85
+        uses: leynos/shared-actions/.github/actions/generate-coverage@759da19f0379b6d2d7ddef93b7ad4c3b98154e41
         # Pinned to the interpreter setup-python installs, in both lanes:
         # the action builds its coverage environment with whatever
         # interpreter uv finds first, which an earlier step's managed
