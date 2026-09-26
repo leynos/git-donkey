@@ -78,6 +78,13 @@ jobs:
 
       - name: Generate coverage
         uses: leynos/shared-actions/.github/actions/generate-coverage@a5765019912a8ab6882b12db049c7cde635f3a85
+        # Pinned to the interpreter setup-python installs, in both lanes:
+        # the action builds its coverage environment with whatever
+        # interpreter uv finds first, which an earlier step's managed
+        # download can change, and a baseline measured on one Python is
+        # not comparable with a lane measured on another.
+        env:
+          UV_PYTHON: '3.13'
         with:
           output-path: coverage.xml
           format: cobertura

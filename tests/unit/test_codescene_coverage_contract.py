@@ -323,3 +323,66 @@ def test_the_publisher_builds_the_project_before_measuring(
         assert builds, "the coverage job must run `make build` before coverage"
         return
     pytest.fail("no publisher job runs generate-coverage")
+
+
+def _setup_python_version(document: Document) -> object:
+    """Return the ``python-version`` a workflow's setup-python step installs.
+
+    Returns
+    -------
+    object
+        The version as written, or ``None`` with no setup-python step.
+    """
+    versions = [
+        _inputs(step).get("python-version")
+        for step in all_steps(document)
+        if "actions/setup-python" in str(step.get("uses"))
+    ]
+    assert len(versions) <= 1, f"expected one setup-python step, found {versions}"
+    return versions[0] if versions else None
+
+
+def test_both_lanes_measure_on_the_same_interpreter(
+    documents: dict[str, Document],
+) -> None:
+    """The lane's coverage environment carries the baseline's, exactly.
+
+    The generator builds its coverage environment with whatever
+    interpreter uv finds first, and in the pull-request lane an earlier
+    step's managed download left Python 3.14 for it to find, so the lane
+    measured 86.47% against a baseline of 91.91% taken on 3.13. The
+    baseline step pins ``UV_PYTHON`` to the version setup-python
+    installs, and every lane step's ``env`` must equal the baseline's.
+    """
+    _, document = publisher(documents)
+    (baseline,) = _coverage_steps(document)
+    environment = baseline.get("env")
+    assert isinstance(environment, dict), "the baseline's coverage step sets no env"
+    _assert_pinned_to_setup_python(document, baseline, "the baseline")
+    surface = pull_request_surface(documents, REPOSITORY)
+    for lane_document in surface.values():
+        for step in _coverage_steps(lane_document):
+            _assert_pinned_to_setup_python(lane_document, step, "the lane")
+            assert step.get("env") == environment, (
+                f"the lane measures under env {step.get('env')!r}, the "
+                f"baseline under {environment!r}"
+            )
+
+
+def _assert_pinned_to_setup_python(
+    document: Document, step: dict[object, object], role: str
+) -> None:
+    """Assert a coverage step pins ``UV_PYTHON`` to its workflow's setup-python.
+
+    Both values must be present: two absences compare equal, and would
+    certify a coverage step that pins nothing in a workflow that installs
+    no interpreter.
+    """
+    expected = _setup_python_version(document)
+    environment = step.get("env")
+    actual = environment.get("UV_PYTHON") if isinstance(environment, dict) else None
+    assert expected, f"{role}'s workflow must install Python with setup-python"
+    assert actual, f"{role}'s coverage step must set UV_PYTHON"
+    assert actual == expected, (
+        f"{role} must pin UV_PYTHON to setup-python's {expected!r}; it sets {actual!r}"
+    )

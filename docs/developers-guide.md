@@ -19,6 +19,14 @@ publishes no coverage artefact (`publish-artefact: 'false'`). Nothing a pull
 request runs invokes CodeScene, runs `cs-coverage`, receives `CS_ACCESS_TOKEN`,
 or names the CodeScene host.
 
+Both `generate-coverage` steps set `UV_PYTHON: '3.13'`, the interpreter
+`setup-python` installs. The action builds its coverage environment with
+whatever interpreter uv finds first, and in the pull-request lane an earlier
+step left a managed Python 3.14 for it to find, so the lane measured 86.47%
+against a baseline of 91.91% taken on 3.13. The contract requires the
+baseline's pin to match `setup-python`, and every lane step's `env` to equal
+the baseline's.
+
 `coverage-main.yml` is the single publisher. It runs on pushes to `main` and on
 manual dispatch, reports whether `CS_ACCESS_TOKEN` is set from a
 `codescene-token` check step that binds nothing, passes the secret to the
