@@ -53,6 +53,25 @@ whose answers have changed shape and failed every pull request at once, and a
 fork cannot read the token anyway. The ratchet applies the same gate from this
 repository's own baseline.
 
+Both coverage lanes set up Python 3.13 with `actions/setup-python` and name it
+again with a `UV_PYTHON` on the coverage step, inside the project's
+`requires-python` (`>=3.13`). generate-coverage chooses its interpreter from its
+`python-version` input, then `UV_PYTHON`, then `.python-version`, then the
+`python3` on `PATH`, which is the most recent `setup-python` step before the
+call in its job; `uv sync` refuses an interpreter outside `requires-python`.
+`tests/unit/test_coverage_python_version.py`, with its reader in
+`tests/unit/coverage_python_sources.py`, requires every generate-coverage call
+in the pull-request lane and the publisher to declare at least one of those
+sources, every declared source to name the same version, that version to be
+inside `requires-python`, and both lanes to measure on that one version. A
+`setup-python` step guarded by `if:` or allowed to fail with
+`continue-on-error` declares nothing. The ratchet baseline key already carries
+the interpreter (`ratchet-baseline-<os>-py<major.minor>-`), so a lane on
+another Python would miss its baseline rather than compare against the wrong
+one; the contract turns that silent restart into a failure. It uses
+`packaging`, a development dependency.  The `.python-version` parser is pure,
+with its one file read behind `read_text_if_present`.
+
 ### Workflow contract helpers
 
 `tests/unit/test_codescene_coverage_contract.py` holds the rule over this
