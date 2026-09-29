@@ -53,6 +53,8 @@ COVERAGE: typ.Final[dict[str, object]] = {
 }
 AGREE: typ.Final[str] = "3.14"
 CONFLICT: typ.Final[str] = "3.13"
+#: What an empty source and a passing verdict both read as.
+EMPTY: typ.Final[str] = ""
 
 
 def _lane_calls() -> dict[str, list[CoverageCall]]:
@@ -163,6 +165,28 @@ def test_the_innermost_uv_python_is_read(
     (read,) = coverage_calls(_workflow({"cov": job}, workflow_env))
 
     assert read.sources["UV_PYTHON"] == expected, "the innermost UV_PYTHON wins"
+
+
+def test_an_empty_step_uv_python_wins_over_the_outer_value() -> None:
+    """An empty step ``UV_PYTHON`` replaces the job's, so there is no false conflict.
+
+    The action then falls through to ``.python-version``, which agrees with
+    the setup step; reading the job's ``3.13`` instead would report a conflict.
+    """
+    step = {**COVERAGE, "env": {"UV_PYTHON": ""}}
+    job = {**_steps(_setup(AGREE), step), "env": {"UV_PYTHON": CONFLICT}}
+    (call,) = coverage_calls(_workflow({"cov": job}), AGREE)
+
+    assert call.sources["UV_PYTHON"] == EMPTY, "the empty step value must win"
+    assert verdict(call) == EMPTY, f"no conflict expected, got {call.sources}"
+
+
+def test_an_absent_step_uv_python_still_inherits_the_job_value() -> None:
+    """Narrow: with no step value the job's ``UV_PYTHON`` applies, and conflicts."""
+    job = {**_steps(_setup(AGREE), COVERAGE), "env": {"UV_PYTHON": CONFLICT}}
+    (call,) = coverage_calls(_workflow({"cov": job}), AGREE)
+
+    assert verdict(call) == "conflicting", f"expected a conflict, got {call.sources}"
 
 
 class SourceCombination(typ.NamedTuple):

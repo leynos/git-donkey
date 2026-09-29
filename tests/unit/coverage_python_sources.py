@@ -129,11 +129,22 @@ def _declared_by_setup(step: dict[str, object]) -> str:
 
 
 def _uv_python(*scopes: dict[str, object]) -> str:
-    """Return the innermost ``UV_PYTHON`` among step, job and workflow scopes."""
+    """Return the innermost ``UV_PYTHON`` among step, job and workflow scopes.
+
+    The first scope that defines the key wins even when its value is empty: an
+    empty step value replaces the outer one, and the action then falls through
+    to ``.python-version`` or ``PATH`` rather than to the outer value.
+
+    Returns
+    -------
+    str
+        The innermost defined value, or ``""`` when no scope defines the key.
+
+    """
     for scope in scopes:
-        value = _mapping(scope.get("env")).get("UV_PYTHON")
-        if value:
-            return str(value)
+        env = _mapping(scope.get("env"))
+        if "UV_PYTHON" in env:
+            return str(env["UV_PYTHON"] or "")
     return ""
 
 
