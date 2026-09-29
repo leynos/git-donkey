@@ -22,6 +22,13 @@ SKYLOS_VERSION ?= 4.33.2
 TOOLS = $(MDLINT) uv
 VENV_TOOLS = pytest
 UV_ENV = UV_CACHE_DIR=.uv-cache UV_TOOL_DIR=.uv-tools
+# The CV-005 CodeScene contracts live in shared-actions and run from a full
+# commit, so a fix is a pin bump. `.github/cv005.toml` holds this repository's
+# only parameters.
+CV005_CONTRACTS_REF ?= a38feb9be25755c30eca5bda96bd3786a5b89c6b
+CV005_CONTRACTS = $(UV_ENV) uv tool run --python 3.13 \
+	--from 'git+https://github.com/leynos/shared-actions@$(CV005_CONTRACTS_REF)\#subdirectory=packages/cv005-contracts' \
+	cv005-contracts
 # The spelling gate regenerates typos.toml from the live shared dictionary and
 # the typos.local.toml overlay on every run, then runs Typos itself, so no
 # separate typos pin is needed here.
@@ -52,7 +59,7 @@ SKYLOS_EXCLUDE_FOLDERS ?= tests
 SKYLOS_WHITELIST_LOCK ?= .skylos-whitelist.lock
 
 .PHONY: help all clean build build-release lint fmt check-fmt \
-        markdownlint nixie spelling skylos-allow test typecheck \
+        markdownlint nixie spelling skylos-allow test test-workflow-contracts typecheck \
         makeutil \
         $(TOOLS) $(VENV_TOOLS)
 .PHONY: pytest test
@@ -155,6 +162,9 @@ nixie: ## Validate Mermaid diagrams
 
 test: build uv $(VENV_TOOLS) makeutil ## Run tests
 	$(UV_ENV) uv run pytest -v -n auto
+
+test-workflow-contracts: uv ## Run the shared CV-005 CodeScene contracts
+	$(CV005_CONTRACTS) check --repository .
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?##' $(MAKEFILE_LIST) | \
