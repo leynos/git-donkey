@@ -5,7 +5,8 @@ name: Coverage (main)
 # push. Pull requests generate coverage with the ratchet this workflow
 # advances, and nothing a pull request runs receives CodeScene
 # credentials or contacts CodeScene.
-# tests/unit/test_codescene_coverage_contract.py holds the shape.
+# `cv005-contracts` (the Makefile's `test-workflow-contracts` target) holds the
+# shape.
 #
 # workflow_dispatch is the recovery path for automerged changes: a merge
 # made with the automerge workflow's GITHUB_TOKEN does not fire push
@@ -47,6 +48,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v4
+        with:
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -108,7 +111,7 @@ jobs:
         if: >-
           steps.codescene-token.outputs.available == 'true'
           && github.ref == 'refs/heads/main'
-        uses: leynos/shared-actions/.github/actions/upload-codescene-coverage@774cc5a01e457714aede66e14a97b3e257812fc2
+        uses: leynos/shared-actions/.github/actions/upload-codescene-coverage@759da19f0379b6d2d7ddef93b7ad4c3b98154e41
         with:
           path: coverage.xml
           format: cobertura
