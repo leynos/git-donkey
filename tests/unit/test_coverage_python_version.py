@@ -279,6 +279,19 @@ def test_the_python_version_entry_is_the_first_non_comment_line(
     assert python_version_entry(text) == expected, "the first non-comment entry"
 
 
+def test_an_optional_file_that_cannot_be_read_fails_loudly(tmp_path: Path) -> None:
+    """Only absence reads as absent; a directory or undecodable file raises."""
+    undecodable = tmp_path / "bytes"
+    undecodable.write_bytes(b"\xff\xfe")
+    directory = tmp_path / "directory"
+    directory.mkdir()
+
+    with pytest.raises(UnicodeDecodeError):
+        read_text_if_present(undecodable)
+    with pytest.raises(OSError, match="directory"):
+        read_text_if_present(directory)
+
+
 def test_a_python_version_file_is_read_from_the_tree(tmp_path: Path) -> None:
     """A real ``.python-version`` feeds the parser; a missing one reads as absent."""
     present = tmp_path / ".python-version"

@@ -88,16 +88,27 @@ def requires_python(pyproject: str) -> SpecifierSet:
 def read_text_if_present(path: Path) -> str | None:
     """Return a file's text, or ``None`` when the file does not exist.
 
-    The only file access in this module. A file that exists but cannot be read
-    raises, which fails the contract loudly rather than reading as absent.
+    The only file access in this module. Only a missing file reads as absent:
+    a directory, a permission failure or undecodable bytes raise, which fails
+    the contract loudly rather than reading as absent.
 
     Returns
     -------
     str or None
         The file's text, or ``None`` when it is absent.
 
+    Raises
+    ------
+    OSError
+        If the file exists but cannot be read, for example a directory.
+    UnicodeDecodeError
+        If the file is not valid UTF-8.
+
     """
-    return path.read_text(encoding="utf-8") if path.is_file() else None
+    try:
+        return path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return None
 
 
 def python_version_entry(text: str | None) -> str:
