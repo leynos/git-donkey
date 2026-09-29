@@ -64,8 +64,11 @@ with a loader that refuses duplicate keys, follows the pull-request surface
 through local `./` and `$/` calls and composite actions, and drives every
 clause against breaching fixtures in its own suite, so this repository keeps no
 copy of the readers. The repository's parameters are in `.github/cv005.toml`:
-`repository`, and the `3.13` interpreter that both coverage steps pin through
-`UV_PYTHON`.
+`repository`, the `3.13` interpreter that both coverage steps pin through
+`UV_PYTHON`, and the publisher's exact `[selection]`, so a change made to the
+generators and the uploader together is still a reviewed change.
+`tests/unit/test_publisher_builds_first.py` keeps the one repository fact the
+shared rules do not know: the publisher runs `make build` before it measures.
 
 ## git-donkey workflow
 

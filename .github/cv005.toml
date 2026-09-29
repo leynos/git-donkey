@@ -1,2 +1,10 @@
 repository = "leynos/git-donkey"
 interpreter = "3.13"
+
+# What the publisher's ratcheting generator measures, exactly. The shared rules
+# hold every lane equal to the publisher; this pins the publisher's own value,
+# so a change made to both at once is still a reviewed change.
+[selection]
+output-path = "coverage.xml"
+format = "cobertura"
+with-ratchet = "true"
