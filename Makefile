@@ -32,7 +32,7 @@ CV005_CONTRACTS = $(UV_ENV) uv tool run --python 3.13 \
 # The spelling gate regenerates typos.toml from the live shared dictionary and
 # the typos.local.toml overlay on every run, then runs Typos itself, so no
 # separate typos pin is needed here.
-TYPOS_CONFIG_BUILDER_VERSION ?= v0.1.1
+TYPOS_CONFIG_BUILDER_VERSION ?= v0.1.3
 TYPOS_CONFIG_BUILDER = $(UV_ENV) uv tool run --from \
         "git+https://github.com/leynos/typos-config-builder.git@$(TYPOS_CONFIG_BUILDER_VERSION)" \
         typos-config-builder
