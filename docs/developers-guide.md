@@ -11,6 +11,10 @@ regenerates `typos.toml` from the live shared dictionary and the
 in CI. Put narrow repository-specific exceptions in `typos.local.toml`; never
 edit the generated entries by hand.
 
+`TYPOS_CONFIG_BUILDER_VERSION` in the `Makefile` pins the
+`typos-config-builder` release the gate runs (currently `v0.1.3`). Raise it
+together with the regenerated `typos.toml`, never on its own.
+
 ## Coverage publication
 
 Pull-request CI generates coverage with the ratchet (`with-ratchet: 'true'`)
