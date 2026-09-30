@@ -315,10 +315,10 @@ def _skylos_allow_environment(*assignments: str) -> dict[str, str]:
 
 
 def _assert_makeutil_installation(step: dict[str, object], *, contract: str) -> None:
-    """Assert that step runs the pinned prebuilt install action, defaults only.
+    """Assert that ``step`` runs the pinned prebuilt install action, defaults only.
 
-    A run key would mean a from-source install had crept back, and a
-    with key would move the version off the action's own default and digest
+    A ``run`` key would mean a from-source install had crept back, and a
+    ``with`` key would move the version off the action's own default and digest
     table.
     """
     assert step.get("uses") == _INSTALL_MAKEUTIL_ACTION, (
