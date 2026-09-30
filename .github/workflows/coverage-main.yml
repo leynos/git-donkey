@@ -111,7 +111,7 @@ jobs:
         if: >-
           steps.codescene-token.outputs.available == 'true'
           && github.ref == 'refs/heads/main'
-        uses: leynos/shared-actions/.github/actions/upload-codescene-coverage@759da19f0379b6d2d7ddef93b7ad4c3b98154e41
+        uses: leynos/shared-actions/.github/actions/upload-codescene-coverage@2f58fab140cc8dfe69756aaa6a3bbb987c426023
         with:
           path: coverage.xml
           format: cobertura
