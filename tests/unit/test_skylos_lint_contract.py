@@ -13,6 +13,7 @@ from __future__ import annotations
 import functools
 import json
 import os
+import re
 import shlex
 import subprocess  # ruff: ignore[suspicious-subprocess-import] - fixed commands exercise build boundaries.
 import tomllib
@@ -30,27 +31,9 @@ if typ.TYPE_CHECKING:
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 _MAKEUTIL_COMMAND: typ.Final = ("makeutil", "parse", "Makefile")
-_MAKEUTIL_REVISION: typ.Final = "29fc5a1634ffbaa18a773eed9dff1b2838a45d9c"
-_MAKEUTIL_TOOLCHAIN: typ.Final = "nightly-2026-05-28"
-_MAKEUTIL_BINARY_PATH: typ.Final = "~/.cargo/bin/makeutil"
-_MAKEUTIL_INSTALL_TOKENS: typ.Final = (
-    "rustup",
-    "toolchain",
-    "install",
-    "${MAKEUTIL_TOOLCHAIN}",
-    "--profile",
-    "minimal",
-    "RUSTFLAGS=-Zpolonius=next",
-    "cargo",
-    "+${MAKEUTIL_TOOLCHAIN}",
-    "install",
-    "--git",
-    "https://github.com/leynos/makeutil",
-    "--rev",
-    "${MAKEUTIL_REVISION}",
-    "--locked",
-    "--force",
-    "makeutil",
+_INSTALL_MAKEUTIL_ACTION: typ.Final = (
+    "leynos/shared-actions/.github/actions/install-makeutil"
+    "@d57cb19b82281236088108f2ffb7e13bc00fc2f8"
 )
 _SKYLOS_CLI_TOKENS: typ.Final = (
     "$(UV_ENV)",
@@ -332,14 +315,64 @@ def _skylos_allow_environment(*assignments: str) -> dict[str, str]:
     return environment
 
 
-def _assert_makeutil_installation(command: object, *, contract: str) -> None:
-    """Assert that ``command`` installs the pinned Makeutil parser."""
-    assert isinstance(command, str), (
-        f"{contract} must provide a Makeutil installation shell command"
+def _assert_makeutil_installation(step: dict[str, object], *, contract: str) -> None:
+    """Assert that ``step`` runs the pinned prebuilt install action, defaults only.
+
+    A ``run`` key would mean a from-source install had crept back, and a
+    ``with`` key would move the version off the action's own default and digest
+    table.
+    """
+    assert step.get("uses") == _INSTALL_MAKEUTIL_ACTION, (
+        f"{contract} must use the pinned install-makeutil action"
     )
-    assert (
-        tuple(shlex.split(command.replace("\\\n", ""))) == _MAKEUTIL_INSTALL_TOKENS
-    ), f"{contract} must install the pinned Makeutil revision with Polonius"
+    assert "run" not in step, f"{contract} must not also run an install command"
+    assert "with" not in step, f"{contract} must take the action's default version"
+
+
+def _assert_makeutil_verification(
+    install_step: dict[str, object],
+    verify_step: dict[str, object],
+    *,
+    contract: str,
+) -> None:
+    """Assert the smoke step that proves the installed binary is usable.
+
+    The install step needs an id so the verify step can read the version the
+    action reports; the verify step must compare the binary's own version with
+    it and require a complete parse of the repository Makefile.
+    """
+    assert install_step.get("id") == "makeutil", f"{contract} install step needs id"
+    environment = _mapping(verify_step.get("env"), subject=f"{contract} environment")
+    assert environment.get("INSTALLED_VERSION") == (
+        "${{ steps.makeutil.outputs.version }}"
+    ), f"{contract} must read the version the install action reports"
+    script = verify_step.get("run")
+    assert isinstance(script, str), f"{contract} must run a verification script"
+    assert 'test "$(makeutil --version)" = "makeutil ${INSTALLED_VERSION}"' in script, (
+        f"{contract} must compare the binary's version with the installed one"
+    )
+    assert "makeutil parse Makefile" in script, (
+        f"{contract} must parse the repository Makefile"
+    )
+    assert '["parse"]["status"] == "complete"' in script, (
+        f"{contract} must require a complete parse"
+    )
+    assert not re.search(r"\d+\.\d+\.\d+", script), (
+        f"{contract} must compare versions, never name one"
+    )
+
+
+def _assert_verification_follows_install(workflow_path: str, job_name: str) -> None:
+    """Assert the verify step directly follows the install step."""
+    steps = _objects(
+        _workflow_job(workflow_path, job_name).get("steps"),
+        subject=f"{workflow_path} {job_name} steps",
+    )
+    names = [step.get("name") for step in steps]
+    position = names.index("Install makeutil")
+    assert names[position + 1] == "Verify makeutil", (
+        f"{workflow_path} {job_name} must verify makeutil right after installing it"
+    )
 
 
 def _assert_makeutil_install_precedes_full_suite(
@@ -350,7 +383,7 @@ def _assert_makeutil_install_precedes_full_suite(
     steps = _objects(
         _workflow_job(workflow_path, job_name).get("steps"), subject=f"{subject} steps"
     )
-    install_index = _step_index(steps, "Install Makefile parser", subject=subject)
+    install_index = _step_index(steps, "Install makeutil", subject=subject)
     suite_indexes = [
         index for index, step in enumerate(steps) if _step_invokes_full_suite(step)
     ]
@@ -611,53 +644,30 @@ def test_skylos_configuration_is_strict_with_no_unverified_exceptions() -> None:
 def test_full_suite_ci_jobs_install_the_pinned_makefile_parser() -> None:
     """Every isolated full-suite job must install Makeutil independently."""
     for workflow_path, job_name in _contract_full_suite_jobs():
-        coverage_job = _workflow_job(workflow_path, job_name)
-        environment = _mapping(
-            coverage_job.get("env"),
-            subject=f"{workflow_path} {job_name} Makeutil environment",
-        )
-        parser_step = _sole_workflow_step(
-            workflow_path, job_name, "Install Makefile parser"
-        )
-        cache_step = _sole_workflow_step(
-            workflow_path, job_name, "Cache Makefile parser"
-        )
-        cache_inputs = _mapping(
-            cache_step.get("with"),
-            subject=f"{workflow_path} {job_name} Makeutil cache inputs",
-        )
-        cache_key = cache_inputs.get("key")
-        cache_step_id = cache_step.get("id")
+        subject = f"{workflow_path} {job_name}"
+        job = _workflow_job(workflow_path, job_name)
+        environment = _mapping(job.get("env", {}), subject=f"{subject} environment")
+        steps = _objects(job.get("steps"), subject=f"{subject} steps")
 
-        assert environment.get("MAKEUTIL_REVISION") == _MAKEUTIL_REVISION, (
-            f"{workflow_path} {job_name} Makeutil revision contract must stay pinned"
+        assert "MAKEUTIL_REVISION" not in environment, (
+            f"{subject} must not carry a from-source Makeutil pin"
         )
-        assert environment.get("MAKEUTIL_TOOLCHAIN") == _MAKEUTIL_TOOLCHAIN, (
-            f"{workflow_path} {job_name} Makeutil toolchain contract must stay pinned"
+        assert "MAKEUTIL_TOOLCHAIN" not in environment, (
+            f"{subject} must not carry a Makeutil nightly toolchain"
         )
-        assert isinstance(cache_key, str), (
-            f"{workflow_path} {job_name} Makeutil cache must declare a string key"
+        assert not any(step.get("name") == "Cache Makefile parser" for step in steps), (
+            f"{subject} must leave Makeutil caching to the install action"
         )
-        assert "env.MAKEUTIL_REVISION" in cache_key, (
-            f"{workflow_path} {job_name} Makeutil cache key must pin the revision"
-        )
-        assert "env.MAKEUTIL_TOOLCHAIN" in cache_key, (
-            f"{workflow_path} {job_name} Makeutil cache key must pin the toolchain"
-        )
-        assert cache_inputs.get("path") == _MAKEUTIL_BINARY_PATH, (
-            f"{workflow_path} {job_name} Makeutil cache must store the parser "
-            "binary the install step provides"
-        )
-        assert isinstance(cache_step_id, str), (
-            f"{workflow_path} {job_name} Makeutil cache step must declare an id"
-        )
-        assert parser_step.get("if") == (
-            f"steps.{cache_step_id}.outputs.cache-hit != 'true'"
-        ), f"{workflow_path} {job_name} Makeutil install must run only on a cache miss"
         _assert_makeutil_installation(
-            parser_step.get("run"),
-            contract=f"{workflow_path} {job_name} Makeutil-install contract",
+            _sole_workflow_step(workflow_path, job_name, "Install makeutil"),
+            contract=f"{subject} Makeutil-install contract",
         )
+        _assert_makeutil_verification(
+            _sole_workflow_step(workflow_path, job_name, "Install makeutil"),
+            _sole_workflow_step(workflow_path, job_name, "Verify makeutil"),
+            contract=f"{subject} Makeutil-verify contract",
+        )
+        _assert_verification_follows_install(workflow_path, job_name)
         _assert_makeutil_install_precedes_full_suite(workflow_path, job_name)
 
 
