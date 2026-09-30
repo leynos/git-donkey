@@ -13,6 +13,7 @@ from __future__ import annotations
 import functools
 import json
 import os
+import re
 import shlex
 import subprocess  # ruff: ignore[suspicious-subprocess-import] - fixed commands exercise build boundaries.
 import tomllib
@@ -355,6 +356,9 @@ def _assert_makeutil_verification(
     )
     assert '["parse"]["status"] == "complete"' in script, (
         f"{contract} must require a complete parse"
+    )
+    assert not re.search(r"\d+\.\d+\.\d+", script), (
+        f"{contract} must compare versions, never name one"
     )
 
 
