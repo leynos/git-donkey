@@ -11,9 +11,6 @@ jobs:
     permissions:
       # Least privilege: this job only reads repository contents.
       contents: read
-    env:
-      MAKEUTIL_REVISION: '29fc5a1634ffbaa18a773eed9dff1b2838a45d9c'
-      MAKEUTIL_TOOLCHAIN: 'nightly-2026-05-28'
     steps:
       - name: Check out repository
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v4
@@ -41,23 +38,10 @@ jobs:
         with:
           version: "0.6.0"
 
-      - name: Cache Makefile parser
-        id: makeutil-cache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
-        with:
-          path: ~/.cargo/bin/makeutil
-          key: makeutil-${{ runner.os }}-${{ runner.arch }}-${{ env.MAKEUTIL_TOOLCHAIN }}-${{ env.MAKEUTIL_REVISION }}
-
-      - name: Install Makefile parser
-        if: steps.makeutil-cache.outputs.cache-hit != 'true'
-        run: |
-          rustup toolchain install "${MAKEUTIL_TOOLCHAIN}" --profile minimal
-          RUSTFLAGS="-Zpolonius=next" cargo +"${MAKEUTIL_TOOLCHAIN}" install \
-            --git https://github.com/leynos/makeutil \
-            --rev "${MAKEUTIL_REVISION}" \
-            --locked \
-            --force \
-            makeutil
+      - name: Install makeutil
+        # A digest-verified prebuilt release, cached by the action itself,
+        # rather than a from-source build.
+        uses: leynos/shared-actions/.github/actions/install-makeutil@d57cb19b82281236088108f2ffb7e13bc00fc2f8
 
       - name: Validate Makefile
         run: mbake validate Makefile
