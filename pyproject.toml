@@ -46,7 +46,7 @@ git-out = "git_donkey.cli:git_out"
 dev = [
     "pytest",
     "PyYAML>=6.0.3,<7",
-    "hypothesis>=6.165.10,<7",
+    "hypothesis>=6.168.1,<7",
     "ruff==0.16.8",
     "pyright",
     "pytest-timeout",
@@ -54,7 +54,7 @@ dev = [
     "interrogate>=1.7.0",
     "pytest-bdd>=8.1.0,<9",
     "syrupy>=6.1.1,<7",
-    "pylint>=4.0,<5",
+    "pylint>=4.0.9,<5",
     "packaging>=25.0,<27",
     "df12-python-lints @ git+https://github.com/leynos/df12-python-lints@v0.2.0",
     "vcrpy>=7.0.0,<9",
