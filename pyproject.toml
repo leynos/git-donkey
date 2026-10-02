@@ -47,7 +47,7 @@ dev = [
     "pytest",
     "PyYAML>=6.0.3,<7",
     "hypothesis>=6.168.1,<7",
-    "ruff==0.16.8",
+    "ruff==0.16.9",
     "pyright",
     "pytest-timeout",
     "pytest-xdist",
