@@ -21,7 +21,7 @@ dependencies = [
     "cyclopts>=4.25.3",
     "github3.py>=4.0.1",
     "loctocat>=0.6.0",
-    "platformdirs>=4.12.0",
+    "platformdirs>=4.12.1",
     "plumbum>=1.8",
     "python-slugify>=9.1.2",
 ]
@@ -46,7 +46,7 @@ git-out = "git_donkey.cli:git_out"
 dev = [
     "pytest",
     "PyYAML>=6.0.3,<7",
-    "hypothesis>=6.168.2,<7",
+    "hypothesis>=6.168.3,<7",
     "ruff==0.16.9",
     "pyright",
     "pytest-timeout",
