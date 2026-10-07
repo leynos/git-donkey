@@ -21,7 +21,7 @@ dependencies = [
     "cyclopts>=4.25.3",
     "github3.py>=4.0.1",
     "loctocat>=0.6.0",
-    "platformdirs>=4.12.1",
+    "platformdirs>=4.12.2",
     "plumbum>=1.8",
     "python-slugify>=9.1.2",
 ]
@@ -54,7 +54,7 @@ dev = [
     "interrogate>=1.7.0",
     "pytest-bdd>=8.1.0,<9",
     "syrupy>=6.1.1,<7",
-    "pylint>=4.0.9,<5",
+    "pylint>=4.1.1,<5",
     "packaging>=25.0,<27",
     "df12-python-lints @ git+https://github.com/leynos/df12-python-lints@v0.2.0",
     "vcrpy>=7.0.0,<9",
