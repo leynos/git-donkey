@@ -18,7 +18,7 @@ classifiers = [
 ]
 dependencies = [
     "GitPython>=3.1.45",
-    "cyclopts>=5.0.0",
+    "cyclopts>=5.1.1",
     "github3.py>=4.0.1",
     "loctocat>=0.6.0",
     "platformdirs>=4.12.2",
@@ -47,7 +47,7 @@ dev = [
     "pytest",
     "PyYAML>=6.0.3,<7",
     "hypothesis>=6.168.3,<7",
-    "ruff==0.16.9",
+    "ruff==0.16.10",
     "pyright",
     "pytest-timeout",
     "pytest-xdist",
