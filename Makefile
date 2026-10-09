@@ -33,7 +33,7 @@ CV005_CONTRACTS = $(UV_ENV) uv tool run --python 3.13 \
 # the typos.local.toml overlay on every run, then runs Typos itself, so no
 # separate typos pin is needed here.
 TYPOS_CONFIG_BUILDER_VERSION ?= v0.1.3
-TYPOS_CONFIG_BUILDER = $(UV_ENV) uv tool run --from \
+TYPOS_CONFIG_BUILDER = $(UV_ENV) uv tool run --python 3.14 --from \
         "git+https://github.com/leynos/typos-config-builder.git@$(TYPOS_CONFIG_BUILDER_VERSION)" \
         typos-config-builder
 # Pylint targets shared by both passes.
