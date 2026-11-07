@@ -36,7 +36,8 @@ TYPOS_CONFIG_BUILDER_VERSION ?= v0.1.3
 TYPOS_CONFIG_BUILDER = $(UV_ENV) uv tool run --python 3.14 --from \
         "git+https://github.com/leynos/typos-config-builder.git@$(TYPOS_CONFIG_BUILDER_VERSION)" \
         typos-config-builder
-# The docstring gate reads every Python tree the repository owns, tests included.
+# The docstring gate scans these targets recursively, subject to interrogate's
+# default exclusions; a test checks that every tracked Python file lies under one.
 INTERROGATE_TARGETS ?= git_donkey tests conftest.py
 # Level 2 prints a MISSED row per undocumented definition, which the
 # `interrogate` target fails on: the rounded percentage alone can pass a lone gap.

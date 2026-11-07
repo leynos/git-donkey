@@ -1,6 +1,6 @@
 """Behavioural tests for the Makefile's `interrogate` docstring-coverage target.
 
-`make lint` must reach an `interrogate` run over every Python directory Git
+`make lint` must reach an `interrogate` run over every Python file Git
 tracks, at a threshold of 100, with a guard that fails on any `MISSED` row
 (interrogate rounds its percentage to one decimal, so the threshold alone can
 pass a lone gap in a large repository). These tests read the recipe's variables
