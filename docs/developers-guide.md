@@ -554,11 +554,10 @@ Taking each in turn:
   configuration and exception policy.
 
 The two Pylint passes share `PYLINT_TARGETS`, which defaults to
-`git_donkey scripts tests`, so both always analyse the same files. It is
-declared with `?=` and can be overridden on the command line. `PYLINT_JOBS` is
-a tenth of the machine's cores with a floor of two, keeping the pass parallel
-on small continuous integration runners while leaving headroom on large shared
-machines.
+`git_donkey tests`, so both always analyse the same files. It is declared with
+`?=` and can be overridden on the command line. `PYLINT_JOBS` is a tenth of the
+machine's cores with a floor of two, keeping the pass parallel on small
+continuous integration runners while leaving headroom on large shared machines.
 
 Running `make lint` requires `uv` and `pyscn` on `PATH`; the Makefile's `TOOLS`
 list and `ensure_tool` check fail early with a clear message if `uv` is missing.
