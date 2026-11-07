@@ -36,6 +36,7 @@ def test_git_fafo_existing_repo_early_return(
     called: dict[str, bool] = {}
 
     def _fake_run_fafo_commands(*_: object, **__: object) -> None:
+        """Record that the command sequence ran."""
         called["ran"] = True
 
     monkeypatch.setattr(fafo.helpers, "_require_command", lambda *_: None)
@@ -63,6 +64,7 @@ def test_git_fafo_runs_expected_commands(
     stub_github = github_stubs[1]
 
     def _fake_login(*, token: str | None = None) -> object:
+        """Record the token and return the GitHub stub."""
         created["token"] = token or ""
         return stub_github("example", created)
 
@@ -102,6 +104,7 @@ def test_git_fafo_trusts_copier_template_when_requested(
     stub_github = github_stubs[1]
 
     def _fake_login(*, token: str | None = None) -> object:
+        """Record the token and return the GitHub stub."""
         created["token"] = token or ""
         return stub_github("example", created)
 
@@ -141,12 +144,14 @@ def test_git_fafo_without_language_creates_empty_repo(
     stub_github = github_stubs[1]
 
     def _fake_login(*, token: str | None = None) -> object:
+        """Record the token and return the GitHub stub."""
         created["token"] = token or ""
         return stub_github("example", created)
 
     required_commands: list[str] = []
 
     def _fake_require_command(command: str, _: str) -> None:
+        """Record which command was required."""
         required_commands.append(command)
 
     monkeypatch.setenv(

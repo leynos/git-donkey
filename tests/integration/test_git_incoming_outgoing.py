@@ -71,6 +71,7 @@ def run_and_capture(
         *,
         fetch: bool = True,
     ) -> tuple[int, str, str]:
+        """Run ``runner`` inside ``path``; return its exit code, stdout and stderr."""
         monkeypatch.chdir(path)
         exit_code = runner(ref, fetch=fetch)
         captured = capsys.readouterr()

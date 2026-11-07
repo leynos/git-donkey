@@ -202,6 +202,7 @@ def test_adoption_confirmation_requires_yes_or_prompt_acceptance(
     prompts: list[bool] = []
 
     def _fake_prompt(*_: object, **__: object) -> bool:
+        """Note that the prompt was shown and return the generated answer."""
         prompts.append(True)
         return prompt_response
 
@@ -232,6 +233,7 @@ def test_remote_adoption_inspection_failure_exits(
     """Remote inspection failures should exit with a diagnostic failure."""
 
     def _fail_classify(_: object) -> fafo_adoption._RemoteState:
+        """Fail the way ``git ls-remote`` does when the remote is unreachable."""
         raise ProcessExecutionError(["git", "ls-remote"], 128, "", "boom")
 
     monkeypatch.setattr(fafo_adoption, "_classify_remote", _fail_classify)

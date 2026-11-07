@@ -507,11 +507,11 @@ application import paths.
 
 ## Lint workflow
 
-`make lint` runs seven checks in order. The `lint` target invokes them as:
+`make lint` runs seven checks. The `interrogate` target is a prerequisite of
+`lint`, so it runs first; the `lint` recipe then invokes the others in order as:
 
 ```make
 $(RUFF) check
-$(UV_ENV) uv run interrogate --fail-under 100 git_donkey
 pyscn check git_donkey tests --skip-clones
 $(PYLINT_BUILTIN) $(PYLINT_TARGETS)
 $(PYLINT_DF12) $(PYLINT_TARGETS)
@@ -525,7 +525,10 @@ Taking each in turn:
 
 - **Ruff** expands to `uv tool run ruff@$(RUFF_VERSION) check`, and is
   configured by `[tool.ruff]` in `pyproject.toml`.
-- **interrogate** enforces 100% docstring coverage across the package.
+- **interrogate** enforces 100% docstring coverage across `INTERROGATE_TARGETS`
+  (the package, `tests` and `conftest.py`). The `interrogate` target prints
+  every definition and fails on any `MISSED` row, because interrogate rounds
+  its percentage to one decimal and the threshold alone can pass a lone gap.
 - **pyscn** runs complexity and dead-code analysis. It is a `PATH` tool that
   continuous integration installs with `uv tool install pyscn`; it is not a
   development dependency.

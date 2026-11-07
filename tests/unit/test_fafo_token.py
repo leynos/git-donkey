@@ -58,11 +58,13 @@ class _StubAuthenticator:
     created: dict[str, object] | None = None
 
     def ping(self) -> _StubAuthInfo:
+        """Note the ping, if recording, and return placeholder device-flow data."""
         if self.created is not None:
             self.created["pinged"] = True
         return _stub_auth_info()
 
     def poll(self) -> str:
+        """Note the poll, if recording, and return the configured token."""
         if self.created is not None:
             self.created["polled"] = True
         return self.token
@@ -82,6 +84,7 @@ def _fake_authenticator_factory(
         token_url: str,
         scopes: list[str],
     ) -> _StubAuthenticator:
+        """Record the constructor arguments, if recording, and build the stub."""
         if created is not None:
             created["client_id"] = client_id
             created["auth_url"] = auth_url

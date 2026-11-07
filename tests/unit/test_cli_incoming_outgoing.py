@@ -19,6 +19,7 @@ def test_incoming_cli_passes_ref_and_no_fetch(monkeypatch: pytest.MonkeyPatch) -
     recorded: dict[str, object] = {}
 
     def _fake_run_git_incoming(ref: str | None = None, *, fetch: bool = True) -> int:
+        """Record the ref and fetch flag and report exit code 0."""
         recorded["ref"] = ref
         recorded["fetch"] = fetch
         return 0
@@ -46,6 +47,7 @@ def test_outgoing_cli_defaults_to_fetch(monkeypatch: pytest.MonkeyPatch) -> None
     recorded: dict[str, object] = {}
 
     def _fake_run_git_outgoing(ref: str | None = None, *, fetch: bool = True) -> int:
+        """Record the ref and fetch flag and report exit code 1."""
         recorded["ref"] = ref
         recorded["fetch"] = fetch
         return 1

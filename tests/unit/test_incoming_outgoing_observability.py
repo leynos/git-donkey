@@ -31,6 +31,7 @@ class _FakeGit:
     """Minimal ``repo.git`` double for the comparison command surface."""
 
     def __init__(self, log_output: str, *, fail_log: bool = False) -> None:
+        """Set the log output and whether ``log`` should fail."""
         self.log_output = log_output
         self.fail_log = fail_log
 
@@ -50,6 +51,7 @@ class _FakeRepo:
     """Minimal repository double for the comparison command surface."""
 
     def __init__(self, log_output: str, *, fail_log: bool = False) -> None:
+        """Build the ``git`` double and a single ``origin`` remote."""
         self.git = _FakeGit(log_output, fail_log=fail_log)
         self.remotes = [types.SimpleNamespace(name="origin")]
 
@@ -58,6 +60,7 @@ class _FakeAdapter:
     """Comparison adapter double that records fetches and can fail one."""
 
     def __init__(self, *, fail_fetch: bool = False) -> None:
+        """Start with no recorded fetches; ``fail_fetch`` makes fetching fail."""
         self.fetched: list[str] = []
         self.fail_fetch = fail_fetch
 

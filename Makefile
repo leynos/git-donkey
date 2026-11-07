@@ -36,6 +36,12 @@ TYPOS_CONFIG_BUILDER_VERSION ?= v0.1.3
 TYPOS_CONFIG_BUILDER = $(UV_ENV) uv tool run --python 3.14 --from \
         "git+https://github.com/leynos/typos-config-builder.git@$(TYPOS_CONFIG_BUILDER_VERSION)" \
         typos-config-builder
+# The docstring gate reads every Python tree the repository owns, tests included.
+INTERROGATE_TARGETS ?= git_donkey tests conftest.py
+# Level 2 prints a MISSED row per undocumented definition, which the
+# `interrogate` target fails on: the rounded percentage alone can pass a lone gap.
+INTERROGATE_FLAGS ?= -vv --fail-under 100
+INTERROGATE ?= $(UV_ENV) uv run interrogate
 # Pylint targets shared by both passes.
 PYLINT_TARGETS ?= git_donkey tests
 # Spend a tenth of the available cores on Pylint, leaving room for the other
@@ -60,7 +66,7 @@ SKYLOS_WHITELIST_LOCK ?= .skylos-whitelist.lock
 
 .PHONY: help all clean build build-release lint fmt check-fmt \
         markdownlint nixie spelling skylos-allow test test-workflow-contracts typecheck \
-        makeutil \
+        makeutil interrogate \
         $(TOOLS) $(VENV_TOOLS)
 .PHONY: pytest test
 
@@ -126,9 +132,20 @@ check-fmt: uv ## Verify formatting
 # every venv-backed command below goes through `uv run`, which syncs the
 # project environment on demand. That keeps CI to a single synchronisation
 # while leaving `make lint` usable from a clean checkout.
-lint: uv ## Run linters
+# Interrogate rounds its percentage to one decimal, so `--fail-under 100` alone
+# can pass a lone gap in a large repository; fail on any MISSED row as well.
+interrogate: uv ## Enforce complete Python docstring coverage
+	@report="$$($(INTERROGATE) $(INTERROGATE_FLAGS) $(INTERROGATE_TARGETS))"; \
+	  status=$$?; \
+	  printf '%s\n' "$$report"; \
+	  test "$$status" -eq 0 || exit "$$status"; \
+	  if printf '%s\n' "$$report" | grep -q '| *MISSED *|'; then \
+	    printf '%s\n' 'interrogate: undocumented definitions remain; see the MISSED rows above' >&2; \
+	    exit 1; \
+	  fi
+
+lint: uv interrogate ## Run linters
 	$(RUFF) check
-	$(UV_ENV) uv run interrogate --fail-under 100 git_donkey
 	pyscn check git_donkey tests --skip-clones
 	$(PYLINT_BUILTIN) $(PYLINT_TARGETS)
 	$(PYLINT_DF12) $(PYLINT_TARGETS)

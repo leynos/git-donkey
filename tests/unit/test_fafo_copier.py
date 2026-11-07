@@ -74,6 +74,7 @@ def test_run_copier_interactive_uses_trusted_command(
     recorded: dict[str, object] = {}
 
     def _fake_run(cmd: list[str], **kwargs: object) -> object:
+        """Record the command and its ``check`` flag instead of running it."""
         recorded["cmd"] = cmd
         recorded["check"] = kwargs["check"]
         return object()
@@ -107,6 +108,7 @@ def test_scaffold_repo_creates_empty_project_without_template(
     called: dict[str, object] = {}
 
     def _fake_run_copier_interactive(**kwargs: object) -> None:
+        """Record the keyword arguments of the interactive Copier call."""
         called["kwargs"] = kwargs
 
     monkeypatch.setattr(

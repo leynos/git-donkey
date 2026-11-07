@@ -111,6 +111,7 @@ def test_git_fafo_validates_remote_before_scaffolding(
     _patch_existing_github(monkeypatch, remote_path)
 
     def _fail_scaffold(**_kwargs: object) -> typ.NoReturn:
+        """Fail the test if scaffolding is attempted."""
         msg = "scaffold must not run for a non-empty remote"
         raise AssertionError(msg)
 

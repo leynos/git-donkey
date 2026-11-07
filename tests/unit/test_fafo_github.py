@@ -33,6 +33,7 @@ class _StubResponse:
 
     @staticmethod
     def json() -> dict[str, object]:
+        """Return a GitHub error body reporting that the repository name is taken."""
         return {
             "message": "Repository creation failed.",
             "errors": [
@@ -53,6 +54,7 @@ def _patch_github_login(
     """Patch github3.login with a handler that receives the token."""
 
     def _fake_login(*, token: str) -> object:
+        """Pass the token to the handler and return what it builds."""
         return handler(token)
 
     monkeypatch.setattr(fafo.github3, "login", _fake_login)
@@ -116,6 +118,7 @@ def test_create_remote_repository_uses_github3_login(
     stub_github = github_stubs[1]
 
     def _login_handler(token: str) -> object:
+        """Record the token and return the GitHub stub."""
         created["token"] = token
         return stub_github("octocat", created)
 
@@ -143,7 +146,7 @@ def test_create_remote_repository_auth_failure_exits_with_error(
     """Auth failures should exit with a clear error message."""
 
     def _login_handler(token: str) -> None:
-        return None
+        """Simulate a failed login by returning no client."""
 
     _assert_create_repo_failure(
         monkeypatch,
@@ -162,11 +165,14 @@ def test_create_remote_repository_missing_user_login_exits_with_error(
     """Missing user info should exit with a clear error message."""
 
     class _StubGitHub:
+        """GitHub client double that reports no authenticated user."""
+
         @staticmethod
         def me() -> None:
-            return None
+            """Return no user information."""
 
     def _login_handler(token: str) -> _StubGitHub:
+        """Return the client double whatever the token."""
         return _StubGitHub()
 
     _assert_create_repo_failure(
@@ -187,16 +193,21 @@ def test_create_remote_repository_returns_existing_repo(
 
     @dataclasses.dataclass(slots=True)
     class _StubGitHub:
+        """GitHub client double whose repository creation reports a name clash."""
+
         login: str
 
         def me(self) -> object:
+            """Return the authenticated user stub for this login."""
             return github_stubs[0](self.login)
 
         @staticmethod
         def create_repository(name: str, *, private: bool = False) -> typ.NoReturn:
+            """Fail as GitHub does when the repository already exists."""
             raise github3_exceptions.UnprocessableEntity(_StubResponse())
 
     def _login_handler(token: str) -> _StubGitHub:
+        """Return the client double for ``octocat`` whatever the token."""
         return _StubGitHub("octocat")
 
     remote = _create_repo_with_login(
@@ -219,6 +230,7 @@ def test_confirm_adopt_existing_repository_prompts(
     recorded: dict[str, object] = {}
 
     def _fake_prompt(question: str, *, default: bool = False) -> bool:
+        """Record the question and default, and answer yes."""
         recorded["question"] = question
         recorded["default"] = default
         return True
@@ -243,6 +255,7 @@ def test_confirm_adopt_existing_repository_uses_yes(
     """The --yes option should skip the adoption prompt."""
 
     def _fail_prompt(*_: object, **__: object) -> typ.NoReturn:
+        """Fail the test if the prompt is shown."""
         msg = "prompt should not be called"
         raise AssertionError(msg)
 

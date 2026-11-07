@@ -63,6 +63,7 @@ class RecordingRecorder(observability.Recorder):
     """Recorder that retains every observation and timed span it receives."""
 
     def __init__(self) -> None:
+        """Start with no recorded observations or spans."""
         self.observations: list[observability.Observation] = []
         self.spans: list[RecordedSpan] = []
 

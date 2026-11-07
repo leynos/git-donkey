@@ -74,6 +74,7 @@ def test_fafo_cli_passes_scaffold_options(
         token: str,
         options: fafo._FafoOptions,
     ) -> int:
+        """Record the workflow arguments and report success."""
         recorded["repo_name"] = repo_name
         recorded["language"] = language
         recorded["token"] = token

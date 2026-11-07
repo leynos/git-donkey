@@ -37,6 +37,7 @@ class _FakeGit:
         upstream: str | None = "origin/main",
         fail_log: bool = False,
     ) -> None:
+        """Set the log output, upstream ref and whether ``log`` should fail."""
         self.log_output = log_output
         self.upstream = upstream
         self.fail_log = fail_log
@@ -67,6 +68,7 @@ class _FakeReference:
     """Minimal ``repo.head.reference`` double."""
 
     def __init__(self, *, tracking: bool) -> None:
+        """Choose whether the reference has a tracking branch."""
         self._tracking = tracking
 
     def tracking_branch(self) -> _FakeRemote | None:
@@ -78,6 +80,7 @@ class _FakeHead:
     """Minimal ``repo.head`` double reporting a checked-out branch."""
 
     def __init__(self, *, tracking: bool) -> None:
+        """Report a checked-out branch, with or without a tracking branch."""
         self.is_detached = False
         self.reference = _FakeReference(tracking=tracking)
 
@@ -93,6 +96,7 @@ class _FakeRepo:
         fail_log: bool = False,
         remotes: tuple[str, ...] = ("origin",),
     ) -> None:
+        """Build the ``git`` double, the named remotes and the head double."""
         self.git = _FakeGit(log_output, upstream=upstream, fail_log=fail_log)
         self.remotes = [_FakeRemote(name) for name in remotes]
         self.head = _FakeHead(tracking=upstream is not None)
@@ -102,6 +106,7 @@ class _ModelGit:
     """``repo.git`` double that models ref reachability as commit sets."""
 
     def __init__(self, reachable: dict[str, set[str]]) -> None:
+        """Set the commits reachable from each ref."""
         self.reachable = reachable
 
     def log(self, *args: str) -> str:
@@ -115,6 +120,7 @@ class _ModelRepo:
     """Repository double whose ``git`` models a bounded commit graph."""
 
     def __init__(self, reachable: dict[str, set[str]]) -> None:
+        """Build the reachability-model ``git`` double and an ``origin`` remote."""
         self.git = _ModelGit(reachable)
         self.remotes = [_FakeRemote("origin")]
 
