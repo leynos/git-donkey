@@ -500,6 +500,17 @@ development dependency and as a continuous integration tool, so keep
 `RUFF_VERSION`, the `ruff==` entry in `pyproject.toml`, and the
 `uv tool install ruff==` step in `.github/workflows/ci.yml` in sync.
 
+The `Install uv` step in `.github/workflows/ci.yml` and
+`.github/workflows/coverage-main.yml` pins uv too. `make build` fills
+`.uv-cache` with that uv, and the offline packaging tests in
+`tests/integration/test_manpage_packaging.py` read the cache with the uv that
+the `generate-coverage` shared action puts first on `PATH`. uv releases that
+use different cache layouts (for example `simple-v27` against `simple-v25`)
+cannot read each other's entries, so the offline build then finds no
+`hatchling`. Keep the pin equal to the `version` input of the `setup-uv` step
+nested inside the pinned `generate-coverage` action, and check that nested pin
+whenever the shared-actions commit changes.
+
 The `typecheck` target adds `scripts` to the type checker's module search path,
 because that directory holds PEP 723 single-file helpers that import each other
 by module name. Keep the path scoped to the target rather than changing
