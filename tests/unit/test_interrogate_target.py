@@ -4,7 +4,7 @@
 tracks, at a threshold of 100, with a guard that fails on any `MISSED` row
 (interrogate rounds its percentage to one decimal, so the threshold alone can
 pass a lone gap in a large repository). These tests read the recipe's variables
-and run the target, so a dropped prerequisite, a relaxed flag or a guard that
+and run the target, so a dropped invocation, a relaxed flag or a guard that
 stops failing breaks a test rather than silently restoring the gap.
 """
 
@@ -97,9 +97,15 @@ def _tracked(*patterns: str) -> list[str]:
     return [name for name in output.split("\0") if name]
 
 
-def test_lint_depends_on_interrogate() -> None:
-    """Dropping the prerequisite would remove the gate from `make lint`."""
-    assert "interrogate" in _prerequisites("lint"), "lint must depend on interrogate"
+def test_lint_runs_the_interrogate_target() -> None:
+    """Dropping the invocation would remove the gate from `make lint`."""
+    recipe = re.search(r"^lint:.*\n((?:\t.*\n|\n)*)", _makefile_text(), re.MULTILINE)
+    assert recipe, "the Makefile must declare a lint recipe"
+    commands = [line.split() for line in recipe.group(1).splitlines() if line.strip()]
+    assert any(
+        command[:1] == ["$(MAKE)"] and command[-1] == "interrogate"
+        for command in commands
+    ), "lint must run the interrogate target through $(MAKE)"
 
 
 def test_interrogate_is_declared_phony() -> None:
@@ -184,8 +190,9 @@ def _make_interrogate(*assignments: str) -> subprocess.CompletedProcess[str]:
 
     A parent Make's flags and a caller's `UV`, `INTERROGATE*` or `PYTHON_TARGETS`
     overrides would change what the target runs, so those variables are removed
-    from the child environment. The target's own prerequisites (the environment
-    build) are treated as up to date: the tests drive the recipe, not the build.
+    from the child environment. Any prerequisites the target declares (here the
+    `uv` tool check) are marked up to date with `-o`, so the tests drive the
+    recipe alone.
 
     Returns
     -------

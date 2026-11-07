@@ -145,8 +145,9 @@ interrogate: uv ## Enforce complete Python docstring coverage
 	    exit 1; \
 	  fi
 
-lint: uv interrogate ## Run linters
+lint: uv ## Run linters
 	$(RUFF) check
+	$(MAKE) --no-print-directory interrogate
 	pyscn check git_donkey tests --skip-clones
 	$(PYLINT_BUILTIN) $(PYLINT_TARGETS)
 	$(PYLINT_DF12) $(PYLINT_TARGETS)

@@ -64,7 +64,7 @@ def test_git_fafo_runs_expected_commands(
     stub_github = github_stubs[1]
 
     def _fake_login(*, token: str | None = None) -> object:
-        """Record the token and return the GitHub stub."""
+        """Record the token (empty when ``None``) and return the GitHub stub."""
         created["token"] = token or ""
         return stub_github("example", created)
 
@@ -104,7 +104,7 @@ def test_git_fafo_trusts_copier_template_when_requested(
     stub_github = github_stubs[1]
 
     def _fake_login(*, token: str | None = None) -> object:
-        """Record the token and return the GitHub stub."""
+        """Record the token (empty when ``None``) and return the GitHub stub."""
         created["token"] = token or ""
         return stub_github("example", created)
 
@@ -144,7 +144,7 @@ def test_git_fafo_without_language_creates_empty_repo(
     stub_github = github_stubs[1]
 
     def _fake_login(*, token: str | None = None) -> object:
-        """Record the token and return the GitHub stub."""
+        """Record the token (empty when ``None``) and return the GitHub stub."""
         created["token"] = token or ""
         return stub_github("example", created)
 
