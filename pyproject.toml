@@ -181,9 +181,6 @@ max-args = 4
 max-bool-expr = 2
 max-locals = 10
 
-[tool.interrogate]
-ignore-overloaded-functions = true
-
 # This [tool.pylint] table configures the built-in Pylint pass. It and the
 # df12-python-lints plugin pass (configured in .pylintrc-df12.toml) both run
 # under the project virtual-env's CPython; see the Makefile.

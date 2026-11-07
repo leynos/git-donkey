@@ -82,6 +82,7 @@ class RecordingGitAdapter:
         removal_failures: typ.Iterable[Path] = (),
         deletion_failures: typ.Iterable[str] = (),
     ) -> None:
+        """Configure the trunk markers and the skip and failure scenarios."""
         self._markers = tuple(markers)
         self.skip_reasons = dict(skip_reasons or {})
         self.removal_failures = set(removal_failures)

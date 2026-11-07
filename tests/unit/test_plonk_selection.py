@@ -289,6 +289,7 @@ def test_completed_candidates_streams_history_until_markers_match() -> None:
     consumed_messages = 0
 
     def messages() -> typ.Iterator[str]:
+        """Yield trunk messages, counting how many the consumer pulls."""
         nonlocal consumed_messages
         consumed_messages += 1
         yield "Merge pull request (#123)"

@@ -522,7 +522,7 @@ application import paths.
 
 ```make
 $(RUFF) check
-$(UV_ENV) uv run interrogate --fail-under 100 git_donkey
+$(MAKE) --no-print-directory interrogate
 pyscn check git_donkey tests --skip-clones
 $(PYLINT_BUILTIN) $(PYLINT_TARGETS)
 $(PYLINT_DF12) $(PYLINT_TARGETS)
@@ -536,7 +536,9 @@ Taking each in turn:
 
 - **Ruff** expands to `uv tool run ruff@$(RUFF_VERSION) check`, and is
   configured by `[tool.ruff]` in `pyproject.toml`.
-- **interrogate** enforces 100% docstring coverage across the package.
+- **interrogate** runs through the `interrogate` target: `--fail-under 100`
+  over `INTERROGATE_TARGETS` (the package, `tests` and `conftest.py`), and a
+  failure if the report holds a `MISSED` row.
 - **pyscn** runs complexity and dead-code analysis. It is a `PATH` tool that
   continuous integration installs with `uv tool install pyscn`; it is not a
   development dependency.
@@ -552,11 +554,10 @@ Taking each in turn:
   configuration and exception policy.
 
 The two Pylint passes share `PYLINT_TARGETS`, which defaults to
-`git_donkey scripts tests`, so both always analyse the same files. It is
-declared with `?=` and can be overridden on the command line. `PYLINT_JOBS` is
-a tenth of the machine's cores with a floor of two, keeping the pass parallel
-on small continuous integration runners while leaving headroom on large shared
-machines.
+`git_donkey tests`, so both always analyse the same files. It is declared with
+`?=` and can be overridden on the command line. `PYLINT_JOBS` is a tenth of the
+machine's cores with a floor of two, keeping the pass parallel on small
+continuous integration runners while leaving headroom on large shared machines.
 
 Running `make lint` requires `uv` and `pyscn` on `PATH`; the Makefile's `TOOLS`
 list and `ensure_tool` check fail early with a clear message if `uv` is missing.

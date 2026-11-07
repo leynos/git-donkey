@@ -32,6 +32,7 @@ class _ExistingRepoResponse:
 
     @staticmethod
     def json() -> dict[str, object]:
+        """Return a GitHub error body reporting that the repository name is taken."""
         return {
             "message": "Repository creation failed.",
             "errors": [{"message": "name already exists on this account"}],
@@ -52,14 +53,17 @@ class _ExistingRepoGitHub:
     login: str
 
     def me(self) -> _ExistingRepoUser:
+        """Return the authenticated user, carrying this stub's login."""
         return _ExistingRepoUser(self.login)
 
     @staticmethod
     def create_repository(name: str, *, private: bool = False) -> typ.NoReturn:
+        """Fail as GitHub does when the repository already exists."""
         raise github3_exceptions.UnprocessableEntity(_ExistingRepoResponse())
 
 
 def _create_bare_remote(tmp_path: Path) -> Path:
+    """Initialize an empty bare repository under ``tmp_path`` and return its path."""
     remote_path = tmp_path / "existing.git"
     Repo.init(remote_path, bare=True)
     return remote_path
@@ -102,6 +106,7 @@ def _seed_with_empty_initial(
 
 
 def _seed_empty_initial_commit(remote_path: Path, tmp_path: Path) -> None:
+    """Seed the remote's main branch with one empty initial commit."""
     _seed_with_empty_initial(remote_path, tmp_path, _SeedConfig("seed-empty"))
 
 
@@ -140,6 +145,7 @@ def _seed_empty_initial_with_tag(remote_path: Path, tmp_path: Path) -> None:
     """Seed an empty initial commit on main plus a tag."""
 
     def _add_tag(repo: Repo) -> None:
+        """Create the ``v1`` tag in the seed clone."""
         repo.git.tag("v1")
 
     _seed_with_empty_initial(
@@ -151,10 +157,14 @@ def _patch_existing_github(
     monkeypatch: pytest.MonkeyPatch,
     remote_path: Path,
 ) -> None:
+    """Point the GitHub login and remote URL at the stubs for an existing repo."""
+
     def _fake_login(*, token: str | None = None) -> object:
+        """Return a GitHub stub whose repository creation reports a clash."""
         return _ExistingRepoGitHub("example")
 
     def _fake_remote_repository_url(*, owner: str, repo_name: str) -> str:
+        """Return the local bare remote's path in place of a GitHub URL."""
         return remote_path.as_posix()
 
     monkeypatch.setenv("GITHUB_TOKEN", "fake-token")

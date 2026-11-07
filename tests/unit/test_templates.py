@@ -303,6 +303,7 @@ class TestApplyTemplate:
         messages: list[str] = []
 
         def fake_eprint(message: str) -> None:
+            """Collect the warning instead of printing it."""
             messages.append(message)
 
         monkeypatch.setattr(helpers, "_eprint", fake_eprint)
@@ -434,6 +435,7 @@ class TestApplyTemplate:
         messages: list[str] = []
 
         def fake_eprint(message: str) -> None:
+            """Collect the warning instead of printing it."""
             messages.append(message)
 
         monkeypatch.setattr(helpers, "_eprint", fake_eprint)

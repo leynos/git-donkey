@@ -32,6 +32,7 @@ def test_plonk_cli_passes_dry_run_flag(monkeypatch: pytest.MonkeyPatch) -> None:
         hard: bool = False,
         dry_run: bool = False,
     ) -> int:
+        """Capture the options the CLI passes and report success."""
         captured_options.update(soft=soft, hard=hard, dry_run=dry_run)
         return 0
 
