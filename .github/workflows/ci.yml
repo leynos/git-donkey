@@ -23,8 +23,8 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
-          # Keep this equal to the uv that leynos/shared-actions' generate-coverage
-          # action installs (its `version` input). `make build` fills .uv-cache with
+          # Keep this equal to the `version` input of the setup-uv step nested in
+          # leynos/shared-actions' generate-coverage action. `make build` fills .uv-cache with
           # this uv, and the offline packaging tests read that cache with the
           # action's uv; uv versions that disagree on the cache layout (for example
           # simple-v27 against simple-v25) cannot read each other's entries.
