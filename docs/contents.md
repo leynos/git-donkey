@@ -22,4 +22,4 @@ This index summarizes the maintained project documentation.
   changes for users upgrading from 0.1.0, including the base-selection and
   cleanup changes and the new comparison commands.
 
-[adr-003]: adr-003-python-lint-architecture.md
+[adr-003]: adrs/adr-0003-python-lint-architecture.md
