@@ -101,7 +101,7 @@ ipython_config.py
 #uv.lock
 .uv-cache/
 .uv-tools/
-.skylos-whitelist.lock
+.pyproject.toml.df12.lock
 .memdb/
 
 # poetry

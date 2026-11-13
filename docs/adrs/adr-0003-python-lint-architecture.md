@@ -43,29 +43,31 @@ that preserves those boundaries without adopting benchmark infrastructure.
 6. `ambrleaks` for unredacted values in syrupy snapshot files.
 7. Skylos for strict production dead-code detection.
 
-The Makefile defines a command-only `SKYLOS_CLI` macro that pins Skylos and
-Python 3.14. The `SKYLOS` macro adds scan-specific options such as
-`--config-file`; the production gate scans `git_donkey`, explicitly excludes
-`tests`, and enables Skylos gate mode. Python 3.14 is required because Skylos
-parses source using that runtime's AST, preventing newer syntax from becoming a
-phantom dead-code finding.
+The Makefile's `SKYLOS` macro runs the installed `df12-skylos` command from
+df12-python-lints, whose `skylos` extra carries the one Skylos pin, under
+Python 3.14. The production roots (`git_donkey`) live in `[tool.df12_skylos]`,
+the exclusion (`tests`) in `[tool.skylos]`, and the strict gate in
+`[tool.skylos.gate]`. Python 3.14 is required because Skylos parses source
+using that runtime's AST, preventing newer syntax from becoming a phantom
+dead-code finding.
 
 When an implicit runtime caller is verified, a typed Skylos entry-point rule is
 preferred. A documented allow-list exception is permitted only where that rule
 cannot model the boundary, and it must include a caller-specific reason.
-`make skylos-allow` accepts only non-whitespace `SYMBOL` and `REASON` values,
-returning exit status 2 before Skylos runs when either value is absent. It
-holds the ignored repository-local `.skylos-whitelist.lock` with `flock` across
-Skylos's read-modify-write update, so concurrent documented exceptions cannot
-overwrite one another.
+`make skylos-allow` passes `SYMBOL` and `REASON` to `df12-skylos allow`, which
+accepts only non-whitespace values, returning exit status 2 when either is
+absent, and holds the ignored repository-local `.pyproject.toml.df12.lock`
+across its read-modify-write update, so concurrent documented exceptions cannot
+overwrite one another. The command and its behaviour are tested in
+df12-python-lints, and CI runs the shared-actions `df12-skylos` action.
 
 ## Consequences
 
 - `make lint` and continuous integration block unexplained production dead
   code.
 - Test-only references cannot suppress a production finding.
-- The Skylos and Makeutil versions are explicit contracts that require a
-  deliberate update.
+- The df12-python-lints revision (`DF12_SKYLOS_SHA`) and the Makeutil version
+  are explicit contracts that require a deliberate update.
 - Concurrent documented-exception updates serialize through the local lock
   file, which is not committed.
 - Contributors must investigate every finding instead of applying broad

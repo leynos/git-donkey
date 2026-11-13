@@ -436,15 +436,18 @@ through `extra`, so callers can route records into structured logging later:
 
 ## Dead-code detection
 
-`make lint` runs Skylos `4.33.2` as its final check, after the checks
-enumerated under [Lint workflow](#lint-workflow). Skylos scans only
-`git_donkey`, explicitly excludes `tests`, reports only dead-code findings,
-does not upload results or collect provenance, and blocks local linting and
-continuous integration on unexplained code. Skylos parses source with its own
-runtime Abstract Syntax Tree (AST), so its command-only CLI macro pins Python
-3.14. The pin prevents newer Python syntax from producing phantom dead-code
-findings. The separate `$(SKYLOS)` macro adds scan-only options such as
-`--config-file` for the lint target.
+`make lint` runs the installed `df12-skylos` command from
+[df12-python-lints](https://github.com/leynos/df12-python-lints) as its final
+check, after the checks enumerated under [Lint workflow](#lint-workflow). The
+command's `skylos` extra carries the one Skylos pin, and `$(SKYLOS)` provisions
+it at the commit in `DF12_SKYLOS_SHA`. It scans the production roots in
+`[tool.df12_skylos]` (`git_donkey`), excludes the paths in
+`[tool.skylos] exclude` (`tests`), reports only dead-code findings, does not
+upload results or collect provenance, and blocks local linting and continuous
+integration on unexplained code. Skylos parses source with its own runtime
+Abstract Syntax Tree (AST), so the tool environment pins Python 3.14. The pin
+prevents newer Python syntax from producing phantom dead-code findings. CI also
+runs the shared-actions `df12-skylos` action.
 
 Treat every finding as dead code until its caller is verified. Remove genuine
 dead code. For a framework callback, protocol implementation, or another
@@ -456,20 +459,20 @@ reason. Only when no entry-point rule can model a verified false positive, run:
 make skylos-allow SYMBOL=symbol REASON="Verified runtime caller"
 ```
 
-The helper requires both values to contain non-whitespace text, invokes
-`skylos whitelist` before its reason, and records the symbol and explanation in
+The target hands both values to `df12-skylos allow`, which requires them to
+contain non-whitespace text and records the symbol and explanation in
 `[tool.skylos.whitelist]` in `pyproject.toml`. It rejects a missing or
 whitespace-only value with exit status 2. Use `SYMBOL`, not `NAME`: Windows
 Subsystem for Linux (WSL) injects `NAME` with the hostname. Do not add
-speculative, bulk, or unexplained allow-list entries. The helper holds the
-ignored repository-local `.skylos-whitelist.lock` with `flock` while Skylos
-performs its read-modify-write update, preventing concurrent contributors from
-losing a verified exception.
+speculative, bulk, or unexplained allow-list entries. The command holds the
+ignored repository-local `.pyproject.toml.df12.lock` while it performs its
+read-modify-write update, preventing concurrent contributors from losing a
+verified exception.
 
-`tests/unit/test_skylos_lint_contract.py` parses the Makefile with Makeutil and
-checks the Skylos and continuous-integration boundaries. `make test` verifies
-that `makeutil` is present before invoking the suite. Before running the full
-test suite locally, install `makeutil` as CI does. CI uses the shared
+`tests/unit/test_makeutil_ci_contract.py` parses the Makefile with Makeutil and
+checks the continuous-integration boundaries. `make test` verifies that
+`makeutil` is present before invoking the suite. Before running the full test
+suite locally, install `makeutil` as CI does. CI uses the shared
 `install-makeutil` action, which downloads a prebuilt release and checks it
 against a pinned digest and the release's own `.sha256` file. Locally, download
 `makeutil-x86_64-unknown-linux-musl` (or the `aarch64` build) from the release
@@ -527,9 +530,7 @@ pyscn check git_donkey tests --skip-clones
 $(PYLINT_BUILTIN) $(PYLINT_TARGETS)
 $(PYLINT_DF12) $(PYLINT_TARGETS)
 $(UV_ENV) uv run ambrleaks tests
-$(SKYLOS) $(SKYLOS_PRODUCTION_TARGETS) --exclude $(SKYLOS_EXCLUDE_FOLDERS) \
-	--category dead_code --gate --format concise \
-	--no-upload --no-provenance --no-grep-verify
+$(SKYLOS) check --repository .
 ```
 
 Taking each in turn:
@@ -563,8 +564,8 @@ Running `make lint` requires `uv` and `pyscn` on `PATH`; the Makefile's `TOOLS`
 list and `ensure_tool` check fail early with a clear message if `uv` is missing.
 `pyscn` is the one lint tool `uv` does not provide, so continuous integration
 installs it with `uv tool install pyscn`. Everything else needs no separate
-installation: Ruff and Skylos run via `uv tool run` at pinned versions, while
-interrogate, both Pylint passes, and ambrleaks run via `uv run` from the
+installation: Ruff and `df12-skylos` run via `uv tool run` at pinned versions,
+while interrogate, both Pylint passes, and ambrleaks run via `uv run` from the
 project virtual environment. The project requires Python 3.13 or newer, but
 `uv` provisions a suitable CPython interpreter for the virtual environment, so
 contributors need no matching system Python. No Node.js tooling is needed for

@@ -18,7 +18,6 @@ RUFF ?= $(UV_ENV) uv tool run ruff@$(RUFF_VERSION)
 # releases, so an unpinned ty makes CI fail on errors that never appear locally.
 TY_VERSION ?= 0.0.79
 TY ?= $(UV_ENV) uv tool run ty@$(TY_VERSION)
-SKYLOS_VERSION ?= 4.33.2
 TOOLS = $(MDLINT) uv
 VENV_TOOLS = pytest
 UV_ENV = UV_CACHE_DIR=.uv-cache UV_TOOL_DIR=.uv-tools
@@ -57,16 +56,16 @@ PYLINT = $(UV_ENV) uv run pylint -j $(PYLINT_JOBS)
 PYLINT_BUILTIN = $(PYLINT)
 # The df12-python-lints plugin pass keeps its own config.
 PYLINT_DF12 = $(PYLINT) --rcfile=.pylintrc-df12.toml
-# Skylos parses source using its own runtime AST. Python 3.14 prevents phantom
-# dead-code findings when source uses syntax unavailable to an older runtime.
-SKYLOS_CLI = $(UV_ENV) uv tool run --python 3.14 --from 'skylos==$(SKYLOS_VERSION)' skylos
-SKYLOS = $(SKYLOS_CLI) --config-file pyproject.toml
-SKYLOS_PRODUCTION_TARGETS ?= git_donkey
-SKYLOS_EXCLUDE_FOLDERS ?= tests
-SKYLOS_WHITELIST_LOCK ?= .skylos-whitelist.lock
+# The dead-code gate is the installed df12-skylos command; its `skylos` extra
+# carries the one Skylos pin. Skylos parses source with its own runtime AST, so
+# the tool environment runs Python 3.14.
+DF12_SKYLOS_SHA = 56ad71721c3f1f2164ec84b69150582488f1a927
+SKYLOS = $(UV_ENV) uv tool run --python 3.14 --from \
+	'df12-python-lints[skylos] @ git+https://github.com/leynos/df12-python-lints.git@$(DF12_SKYLOS_SHA)' \
+	df12-skylos
 
 .PHONY: help all clean build build-release lint fmt check-fmt \
-        markdownlint nixie spelling skylos-allow test test-workflow-contracts typecheck \
+        markdownlint nixie spelling skylos skylos-allow test test-workflow-contracts typecheck \
         makeutil interrogate \
         $(TOOLS) $(VENV_TOOLS)
 .PHONY: pytest test
@@ -154,16 +153,15 @@ lint: uv ## Run linters
 	# ambrleaks is a console script of the df12-python-lints dev dependency, so
 	# `uv run` finds it in the synced venv; it is not a separate distribution.
 	$(UV_ENV) uv run ambrleaks tests
-	$(SKYLOS) $(SKYLOS_PRODUCTION_TARGETS) --exclude $(SKYLOS_EXCLUDE_FOLDERS) \
-		--category dead_code --gate --format concise \
-		--no-upload --no-provenance --no-grep-verify
+	$(SKYLOS) check --repository .
+
+skylos: ## Detect dead production code
+	$(SKYLOS) check --repository .
 
 skylos-allow: export SKYLOS_SYMBOL = $(value SYMBOL)
 skylos-allow: export SKYLOS_REASON = $(value REASON)
-skylos-allow: ## Document one named Skylos exception, not an entry point
-	@case "$${SKYLOS_SYMBOL}" in *[![:space:]]*) ;; *) printf "Error: SYMBOL is required for a named whitelist exception\n" >&2; exit 2;; esac
-	@case "$${SKYLOS_REASON}" in *[![:space:]]*) ;; *) printf "Error: REASON is required for a named whitelist exception\n" >&2; exit 2;; esac
-	flock "$(SKYLOS_WHITELIST_LOCK)" $(SKYLOS_CLI) whitelist "$${SKYLOS_SYMBOL}" --reason "$${SKYLOS_REASON}"
+skylos-allow: ## Document one named Skylos exception (SYMBOL=name REASON=text)
+	$(SKYLOS) allow --repository . --symbol="$${SKYLOS_SYMBOL}" --reason="$${SKYLOS_REASON}"
 
 typecheck: build uv ## Run typechecking
 	$(TY) --version
