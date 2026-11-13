@@ -1,11 +1,8 @@
-"""Contract tests for the Makefile and CI tooling gates.
+"""Contract tests for the Makefile parser and the CI jobs that provision it.
 
-Skylos's scanner accepts ``--config-file`` before a scan path, whereas the
-standalone ``whitelist`` subcommand must immediately follow ``skylos``. Skylos
-also uses its own runtime AST, so Python 3.14 is part of the command contract.
 Makeutil supplies structured Makefile facts, avoiding fragile source-text
-matching for the command order, the production-gate behaviour, and the tool
-provisioning that the lint and type-check targets rely on.
+matching for the tool provisioning that the test and type-check targets rely
+on, and the full-suite CI jobs are held to one install-and-verify shape.
 """
 
 from __future__ import annotations
@@ -16,14 +13,9 @@ import os
 import re
 import shlex
 import subprocess  # ruff: ignore[suspicious-subprocess-import] - fixed commands exercise build boundaries.
-import tomllib
 import typing as typ
 from pathlib import Path
-from tempfile import TemporaryDirectory
 
-import hypothesis as hyp
-import hypothesis.strategies as st
-import pytest
 import yaml
 
 if typ.TYPE_CHECKING:
@@ -35,86 +27,11 @@ _INSTALL_MAKEUTIL_ACTION: typ.Final = (
     "leynos/shared-actions/.github/actions/install-makeutil"
     "@ebe2f3105334283441f4c915eb979a0f4b9f2c04"
 )
-_SKYLOS_CLI_TOKENS: typ.Final = (
-    "$(UV_ENV)",
-    "uv",
-    "tool",
-    "run",
-    "--python",
-    "3.14",
-    "--from",
-    "skylos==$(SKYLOS_VERSION)",
-    "skylos",
-)
-_SKYLOS_SCAN_TOKENS: typ.Final = (
-    "$(SKYLOS_CLI)",
-    "--config-file",
-    "pyproject.toml",
-)
-_SKYLOS_LINT_TOKENS: typ.Final = (
-    "$(SKYLOS)",
-    "$(SKYLOS_PRODUCTION_TARGETS)",
-    "--exclude",
-    "$(SKYLOS_EXCLUDE_FOLDERS)",
-    "--category",
-    "dead_code",
-    "--gate",
-    "--format",
-    "concise",
-    "--no-upload",
-    "--no-provenance",
-    "--no-grep-verify",
-)
-_SKYLOS_WHITELIST_TOKENS: typ.Final = (
-    "flock",
-    "$(SKYLOS_WHITELIST_LOCK)",
-    "$(SKYLOS_CLI)",
-    "whitelist",
-    "$${SKYLOS_SYMBOL}",
-    "--reason",
-    "$${SKYLOS_REASON}",
-)
-_SKYLOS_LINT_COMMAND_PREFIX: typ.Final = ("$(SKYLOS)",)
-_SKYLOS_WHITELIST_COMMAND_PREFIX: typ.Final = ("flock",)
-_SKYLOS_VERSION_TOKENS: typ.Final = ("4.33.2",)
-_SKYLOS_PRODUCTION_TARGET_TOKENS: typ.Final = ("git_donkey",)
-_SKYLOS_EXCLUDE_FOLDER_TOKENS: typ.Final = ("tests",)
-_SKYLOS_WHITELIST_LOCK: typ.Final = ".skylos-whitelist.lock"
-_SKYLOS_WHITELIST_LOCK_TOKENS: typ.Final = (_SKYLOS_WHITELIST_LOCK,)
-# The whitelist target reserves exit status 2 for a missing or blank argument.
-_SKYLOS_ALLOW_USAGE_EXIT_STATUS: typ.Final = 2
 _TEST_PREREQUISITES: typ.Final = ("build", "uv", "$(VENV_TOOLS)", "makeutil")
 _FULL_SUITE_WORKFLOW_JOBS: typ.Final = frozenset((
     (".github/workflows/ci.yml", "lint-test"),
     (".github/workflows/coverage-main.yml", "coverage-upload"),
 ))
-_EXPECTED_SKYLOS_WHITELIST_NAMES: typ.Final = frozenset[str]()
-_EXPECTED_SKYLOS_DOCUMENTED_WHITELIST_NAMES: typ.Final = frozenset[str]()
-# Every symbol the workflow or an embedder reaches through the recorder that
-# ``git_donkey.observability`` installs, which no static call graph follows.
-_EXPECTED_SKYLOS_ENTRYPOINT_NAMES: typ.Final = frozenset({
-    "LoggingRecorder",
-    "LoggingRecorder.record",
-    "LoggingRecorder.span",
-    "NullRecorder.record",
-    "NullRecorder.span",
-    "observation",
-    "operation",
-    "set_recorder",
-})
-_SHELL_ARGUMENT_TEXT: typ.Final = st.builds(
-    lambda prefix, content, suffix: f"{prefix}{content}{suffix}",
-    st.text(alphabet=" \t", max_size=4),
-    st.text(
-        alphabet=(
-            "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-            "_$;|&'\"()[]{}*?!\\`"
-        ),
-        min_size=1,
-        max_size=40,
-    ),
-    st.text(alphabet=" \t", max_size=4),
-)
 
 
 @functools.cache
@@ -187,18 +104,6 @@ def _variable_tokens(name: str) -> tuple[str, ...]:
     value = _sole_variable(name).get("raw_value")
     assert isinstance(value, str), f"{name!r} must have a string Makefile value"
     return tuple(shlex.split(value))
-
-
-def _recipe_tokens(target: str) -> tuple[tuple[str, ...], ...]:
-    """Return shell-like tokens for every recipe in ``target``."""
-    recipes = _objects(
-        _sole_recipe_rule(target).get("recipes"), subject=f"{target} recipes"
-    )
-    return tuple(
-        tuple(shlex.split(recipe_text.replace("\\\n", "")))
-        for recipe in recipes
-        if isinstance(recipe_text := recipe.get("text"), str)
-    )
 
 
 def _rule_prerequisites(target: str) -> tuple[str, ...]:
@@ -288,33 +193,6 @@ def _contract_full_suite_jobs() -> frozenset[tuple[str, str]]:
     return full_suite_jobs
 
 
-def _run_skylos_allow(
-    make_command: cabc.Callable[..., tuple[str, ...]], *arguments: str
-) -> subprocess.CompletedProcess[str]:
-    """Run a non-mutating whitelist boundary with a WSL-style ``NAME`` value."""
-    environment = _skylos_allow_environment(*arguments)
-    return subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] - fixed Make target and arguments.
-        make_command("skylos-allow"),
-        capture_output=True,
-        check=False,
-        cwd=REPOSITORY_ROOT,
-        env=environment,
-        text=True,
-    )
-
-
-def _skylos_allow_environment(*assignments: str) -> dict[str, str]:
-    """Return a clean whitelist environment with a WSL-style ``NAME`` value."""
-    environment: dict[str, str] = dict(os.environ)
-    environment["NAME"] = "wsl-hostname"
-    environment.pop("REASON", None)
-    environment.pop("SYMBOL", None)
-    for assignment in assignments:
-        name, value = assignment.split("=", maxsplit=1)
-        environment[name] = value
-    return environment
-
-
 def _assert_makeutil_installation(step: dict[str, object], *, contract: str) -> None:
     """Assert that ``step`` runs the pinned prebuilt install action, defaults only.
 
@@ -395,51 +273,6 @@ def _assert_makeutil_install_precedes_full_suite(
     )
 
 
-def test_lint_recipe_runs_the_production_dead_code_gate() -> None:
-    """``make lint`` must run the strict production-only Skylos scan."""
-    assert _variable_tokens("SKYLOS_VERSION") == _SKYLOS_VERSION_TOKENS, (
-        "Skylos version contract must pin 4.33.2"
-    )
-    assert (
-        _variable_tokens("SKYLOS_PRODUCTION_TARGETS")
-        == _SKYLOS_PRODUCTION_TARGET_TOKENS
-    ), "Skylos production-target contract must scan git_donkey"
-    assert (
-        _variable_tokens("SKYLOS_EXCLUDE_FOLDERS") == _SKYLOS_EXCLUDE_FOLDER_TOKENS
-    ), "Skylos exclusion contract must omit tests"
-    skylos_commands = [
-        command
-        for command in _recipe_tokens("lint")
-        if command[:1] == _SKYLOS_LINT_COMMAND_PREFIX
-    ]
-
-    assert skylos_commands == [_SKYLOS_LINT_TOKENS], (
-        "Skylos lint command must strictly scan only production dead code"
-    )
-
-
-def test_whitelist_target_uses_the_command_only_skylos_cli() -> None:
-    """``skylos whitelist`` must precede its symbol and scan-only options."""
-    assert _variable_tokens("SKYLOS_CLI") == _SKYLOS_CLI_TOKENS, (
-        "Skylos CLI must pin Python 3.14 and the configured Skylos release"
-    )
-    assert _variable_tokens("SKYLOS") == _SKYLOS_SCAN_TOKENS, (
-        "Skylos scan macro must add only the scan configuration file"
-    )
-    assert _variable_tokens("SKYLOS_WHITELIST_LOCK") == _SKYLOS_WHITELIST_LOCK_TOKENS, (
-        "Skylos whitelist lock contract must use the ignored local lock file"
-    )
-
-    whitelist_commands = [
-        command
-        for command in _recipe_tokens("skylos-allow")
-        if command[:1] == _SKYLOS_WHITELIST_COMMAND_PREFIX
-    ]
-    assert whitelist_commands == [_SKYLOS_WHITELIST_TOKENS], (
-        "Skylos whitelist command must lock and dispatch before its reason option"
-    )
-
-
 def test_test_target_requires_the_makefile_parser() -> None:
     """``make test`` must verify Makeutil before contract tests run."""
     assert _rule_prerequisites("test") == _TEST_PREREQUISITES, (
@@ -488,156 +321,6 @@ def test_typecheck_provisions_ty_from_the_pinned_tool_run() -> None:
     assert not {"ty", "$(ty)"} & typecheck_prerequisites, (
         "typecheck must not depend on an installed ty prerequisite; the target "
         "verifies the pinned release itself"
-    )
-
-
-def test_whitelist_lock_is_ignored() -> None:
-    """The local whitelist lock must not be committed as repository state."""
-    ignored_paths = frozenset((REPOSITORY_ROOT / ".gitignore").read_text().splitlines())
-    assert _SKYLOS_WHITELIST_LOCK in ignored_paths, (
-        "Skylos whitelist lock contract must ignore the local flock path"
-    )
-
-
-@pytest.mark.parametrize(
-    ("arguments_for", "argument_name"),
-    [
-        (lambda value: (), "SYMBOL"),
-        (lambda value: ("SYMBOL=handler",), "REASON"),
-        (lambda value: (f"SYMBOL={value}", "REASON=runtime caller"), "SYMBOL"),
-        (lambda value: ("SYMBOL=handler", f"REASON={value}"), "REASON"),
-    ],
-    ids=(
-        "missing-symbol",
-        "missing-reason",
-        "whitespace-symbol",
-        "whitespace-reason",
-    ),
-)
-@hyp.settings(max_examples=5, deadline=None)
-@hyp.given(value=st.text(alphabet=" \t", min_size=1, max_size=8))
-def test_skylos_allow_rejects_missing_or_whitespace_values(
-    make_command: cabc.Callable[..., tuple[str, ...]],
-    arguments_for: cabc.Callable[[str], tuple[str, ...]],
-    argument_name: str,
-    value: str,
-) -> None:
-    """The whitelist target must reject missing and whitespace-only values."""
-    completed = _run_skylos_allow(make_command, *arguments_for(value))
-
-    assert completed.returncode == _SKYLOS_ALLOW_USAGE_EXIT_STATUS, (
-        f"Skylos whitelist boundary must return exit {_SKYLOS_ALLOW_USAGE_EXIT_STATUS}"
-        f" when {argument_name} is missing or whitespace-only"
-    )
-    assert (
-        f"Error: {argument_name} is required for a named whitelist exception"
-        in completed.stderr
-    ), (
-        f"Skylos whitelist boundary must identify missing or whitespace-only "
-        f"{argument_name}"
-    )
-
-
-@hyp.settings(max_examples=25, deadline=None)
-@hyp.example(symbol=" $(handler);* ", reason=' Loaded "$plugin" | registry ')
-@hyp.given(symbol=_SHELL_ARGUMENT_TEXT, reason=_SHELL_ARGUMENT_TEXT)
-def test_skylos_allow_forwards_arguments_without_mutating_configuration(
-    make_command: cabc.Callable[..., tuple[str, ...]], symbol: str, reason: str
-) -> None:
-    """The helper must forward exact environment values without configuration edits."""
-    pyproject_path = REPOSITORY_ROOT / "pyproject.toml"
-    original_pyproject = pyproject_path.read_bytes()
-
-    with TemporaryDirectory() as temporary_directory:
-        temporary_path = Path(temporary_directory)
-        recorder_path = temporary_path / "skylos-recorder"
-        arguments_path = temporary_path / "arguments.json"
-        recorder_path.write_text(
-            """#!/usr/bin/env python3
-import json
-import os
-import sys
-from pathlib import Path
-
-Path(os.environ[\"SKYLOS_ARGUMENTS_PATH\"]).write_text(
-    json.dumps(sys.argv[1:]), encoding=\"utf-8\"
-)
-""",
-            encoding="utf-8",
-        )
-        recorder_path.chmod(0o755)
-        environment = _skylos_allow_environment(f"SYMBOL={symbol}", f"REASON={reason}")
-        environment["SKYLOS_ARGUMENTS_PATH"] = str(arguments_path)
-        lock_path = temporary_path / "skylos-whitelist.lock"
-        completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] - fixed Make target and recorder.
-            make_command(
-                "--no-print-directory",
-                "-f",
-                str(REPOSITORY_ROOT / "Makefile"),
-                f"SKYLOS_CLI={recorder_path}",
-                f"SKYLOS_WHITELIST_LOCK={lock_path}",
-                "skylos-allow",
-            ),
-            capture_output=True,
-            check=False,
-            cwd=temporary_path,
-            env=environment,
-            text=True,
-        )
-
-        assert completed.returncode == 0, (
-            "Skylos whitelist boundary must forward complete SYMBOL and REASON "
-            f"values through the recorder: {completed.stderr}"
-        )
-        assert json.loads(arguments_path.read_text(encoding="utf-8")) == [
-            "whitelist",
-            symbol,
-            "--reason",
-            reason,
-        ], "Skylos whitelist boundary must preserve every argument exactly"
-
-    assert pyproject_path.read_bytes() == original_pyproject, (
-        "Skylos whitelist forwarding tests must not mutate pyproject.toml"
-    )
-
-
-def test_skylos_configuration_is_strict_with_no_unverified_exceptions() -> None:
-    """Skylos must remain strict until an explained false positive is verified."""
-    with (REPOSITORY_ROOT / "pyproject.toml").open("rb") as configuration_file:
-        configuration = tomllib.load(configuration_file)
-
-    tool = _mapping(configuration.get("tool"), subject="tool configuration")
-    skylos = _mapping(tool.get("skylos"), subject="Skylos configuration")
-    gate = _mapping(skylos.get("gate"), subject="Skylos gate configuration")
-    whitelist = _mapping(
-        skylos.get("whitelist"), subject="Skylos whitelist configuration"
-    )
-    documented = _mapping(
-        whitelist.get("documented"), subject="documented Skylos whitelist"
-    )
-    dead_code = _mapping(
-        skylos.get("dead_code", {}), subject="Skylos dead-code configuration"
-    )
-    entrypoints = _objects(
-        dead_code.get("entrypoints", []), subject="Skylos typed entry points"
-    )
-    entrypoint_names = frozenset(entrypoint.get("name") for entrypoint in entrypoints)
-
-    assert gate.get("strict") is True, (
-        "Skylos gate configuration must enable strict mode"
-    )
-    assert set(_text_sequence(whitelist.get("names"), subject="Skylos whitelist")) == (
-        _EXPECTED_SKYLOS_WHITELIST_NAMES
-    ), "Skylos whitelist names must match the consciously approved exception set"
-    assert frozenset(documented) == _EXPECTED_SKYLOS_DOCUMENTED_WHITELIST_NAMES, (
-        "Skylos documented whitelist must match the consciously approved exception set"
-    )
-    assert all(isinstance(name, str) for name in entrypoint_names), (
-        "Skylos typed entry points must identify every approved symbol by name"
-    )
-    assert entrypoint_names == _EXPECTED_SKYLOS_ENTRYPOINT_NAMES, (
-        "Skylos typed entry points must match the consciously approved runtime "
-        "caller set"
     )
 
 

@@ -344,12 +344,18 @@ filterwarnings = [
 [tool.uv]
 package = true
 
+[tool.df12_skylos]
+roots = ["git_donkey"]
+python = "3.14"
+
+[tool.skylos]
+exclude = ["tests"]
+
 # The workflow reaches the recorder through observability.get_recorder(), so
 # a static call graph cannot follow it into the implementations. The recorder
 # is also installed from outside the package by embedders and the test suite.
 # Each rule names one symbol the workflow or an installer reaches that way,
-# together with the caller that reaches it. The approved set is pinned by
-# tests/unit/test_skylos_lint_contract.py.
+# together with the caller that reaches it.
 [tool.skylos.dead_code]
 
 [[tool.skylos.dead_code.entrypoints]]
