@@ -9,11 +9,13 @@ to delete. No mode provides an interactive confirmation gate.
 Plonk must run inside a Git repository. It considers Git-registered linked
 worktrees under the worktree root donkey uses: the `<main-name>.worktrees`
 sibling of the main worktree, the `<bare-name>.worktrees` sibling of a bare
-repository, or the directory `donkey.worktreesRoot` names. In a bare
-collection, session worktrees kept elsewhere, such as under
-`<container>/worktrees/`, are out of scope. This is a path-based scope, not a
-provenance check: a manually created worktree under that directory can also
-qualify. It does not sweep arbitrary unregistered directories.
+repository, or the directory `donkey.worktreesRoot` names. A bare repository's
+trailing `.git` is dropped first, so `/container/bare.git` is scanned as
+`/container/bare.worktrees`. In a bare collection, session worktrees kept
+elsewhere, such as under `<container>/worktrees/`, are out of scope. This is a
+path-based scope, not a provenance check: a manually created worktree under
+that directory can also qualify. It does not sweep arbitrary unregistered
+directories.
 
 - Default mode removes clean worktrees whose recognized branch marker occurs in
   the selected trunk history. It keeps local branches.

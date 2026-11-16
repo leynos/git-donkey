@@ -12,6 +12,14 @@ The root is ``donkey.worktreesRoot`` when that is configured, and otherwise a
 under this root, so the default for a bare repository deliberately avoids any
 directory another tool fills with its own worktrees.
 
+Policy and infrastructure are kept apart. :func:`select_layout` and
+:func:`default_worktrees_root` are pure: they take plain values and perform no
+Git, filesystem, or process work. :func:`resolve_layout` is the Git adapter that
+supplies those values. Neither layer exits the process; an unresolvable layout
+raises :class:`LayoutError`, and the command boundaries in
+:mod:`git_donkey.donkey` and :mod:`git_donkey.plonk` turn that into a usage
+exit.
+
 Usage
 -----
 Resolve the layout from any directory inside the repository::
@@ -20,7 +28,10 @@ Resolve the layout from any directory inside the repository::
 
     repo = helpers._find_repo("git-donkey")
     stanzas = helpers._parse_worktree_porcelain(repo)
-    resolved = layout.resolve_layout(repo, stanzas, "git-donkey")
+    try:
+        resolved = layout.resolve_layout(repo, stanzas)
+    except layout.LayoutError as exc:
+        helpers._die("git-donkey", str(exc), 2)
     print(resolved.worktrees_root)
 """
 
@@ -28,11 +39,10 @@ from __future__ import annotations
 
 import dataclasses
 import enum
+import os
 from pathlib import Path
 
 from git import GitCommandError, Repo
-
-from git_donkey import helpers
 
 WORKTREES_ROOT_CONFIG_KEY = "donkey.worktreesRoot"
 _WORKTREES_SUFFIX = ".worktrees"
@@ -40,6 +50,15 @@ _BARE_DIRECTORY_SUFFIX = ".git"
 # `git config --get` exits 1 when the key is unset, and with other statuses
 # when the configuration cannot be read or the value cannot be converted.
 _CONFIG_KEY_UNSET_STATUS = 1
+
+
+class LayoutError(Exception):
+    """An unresolvable repository layout, carrying a caller-ready message.
+
+    The policy and adapter layers raise this instead of exiting so they stay
+    usable from tests and other callers. Only the command boundaries translate
+    it into a process exit.
+    """
 
 
 class LayoutKind(enum.StrEnum):
@@ -106,8 +125,84 @@ def default_worktrees_root(anchor_dir: Path, kind: LayoutKind) -> Path:
     return anchor_dir.parent / f"{name}{_WORKTREES_SUFFIX}"
 
 
-def _configured_worktrees_root(repo: Repo, prefix: str) -> Path | None:
-    """Return the ``donkey.worktreesRoot`` path, or ``None`` when it is unset."""
+def select_layout(
+    anchor_dir: Path,
+    kind: LayoutKind,
+    configured_root: str | None,
+) -> RepositoryLayout:
+    """Return the layout the precedence and naming rules imply.
+
+    This is the policy layer: it takes plain values, reads no Git state, and
+    performs no filesystem resolution or exit. Callers that need canonical
+    paths resolve the result, as :func:`resolve_layout` does.
+
+    Parameters
+    ----------
+    anchor_dir : Path
+        The main worktree, or the bare repository directory.
+    kind : LayoutKind
+        Whether ``anchor_dir`` is a main worktree or a bare repository.
+    configured_root : str | None
+        The ``donkey.worktreesRoot`` value, or ``None`` when it is unset. A
+        relative value resolves against ``anchor_dir``; the Git adapter has
+        already expanded a leading ``~``.
+
+    Returns
+    -------
+    RepositoryLayout
+        The layout the rules imply, with lexical path normalisation only.
+
+    Raises
+    ------
+    LayoutError
+        If ``configured_root`` is set but empty.
+
+    Examples
+    --------
+    >>> select_layout(
+    ...     Path("/src/repo"), LayoutKind.MAIN_WORKTREE, None
+    ... ).worktrees_root
+    PosixPath('/src/repo.worktrees')
+    >>> select_layout(
+    ...     Path("/src/repo"), LayoutKind.MAIN_WORKTREE, "../trees"
+    ... ).worktrees_root
+    PosixPath('/src/trees')
+
+    """
+    if configured_root is not None and not configured_root:
+        msg = (
+            f"{WORKTREES_ROOT_CONFIG_KEY} is set but empty; unset it or give it "
+            "a directory"
+        )
+        raise LayoutError(msg)
+    worktrees_root = (
+        default_worktrees_root(anchor_dir, kind)
+        if configured_root is None
+        else anchor_dir / configured_root
+    )
+    return RepositoryLayout(
+        anchor_dir=anchor_dir,
+        kind=kind,
+        worktrees_root=Path(os.path.normpath(worktrees_root)),
+    )
+
+
+def _anchor_from_stanzas(
+    stanzas: list[dict[str, object]],
+) -> tuple[Path, LayoutKind]:
+    """Return the anchor directory and kind from a parsed worktree listing."""
+    if not stanzas or "worktree" not in stanzas[0]:
+        msg = "could not parse `git worktree list --porcelain` output"
+        raise LayoutError(msg)
+    anchor_dir = Path(str(stanzas[0]["worktree"])).expanduser().resolve()
+    kind = (
+        LayoutKind.BARE if stanzas[0].get("bare", False) else LayoutKind.MAIN_WORKTREE
+    )
+    return anchor_dir, kind
+
+
+def _configured_worktrees_root(repo: Repo) -> str | None:
+    """Return the configured root string, or ``None`` when the key is unset."""
     try:
         # `--type=path` makes Git expand a leading `~`, as it does for its own
         # path-valued settings.
@@ -115,26 +210,20 @@ def _configured_worktrees_root(repo: Repo, prefix: str) -> Path | None:
     except GitCommandError as exc:
         if exc.status == _CONFIG_KEY_UNSET_STATUS:
             return None
-        helpers._die(prefix, f"could not read {WORKTREES_ROOT_CONFIG_KEY}: {exc}", 2)
-    if not value:
-        helpers._die(
-            prefix,
-            f"{WORKTREES_ROOT_CONFIG_KEY} is set but empty; unset it or give it "
-            "a directory",
-            2,
-        )
-    return Path(value)
+        msg = f"could not read {WORKTREES_ROOT_CONFIG_KEY}: {exc}"
+        raise LayoutError(msg) from exc
+    return value
 
 
 def resolve_layout(
     repo: Repo,
     stanzas: list[dict[str, object]],
-    prefix: str,
 ) -> RepositoryLayout:
     """Resolve the anchor directory and worktrees root for ``repo``.
 
-    Git lists the main worktree first, or the bare repository when there is no
-    main worktree, so the first stanza names the anchor whichever worktree the
+    This is the Git adapter for the rules in :func:`select_layout`. Git lists
+    the main worktree first, or the bare repository when there is no main
+    worktree, so the first stanza names the anchor whichever worktree the
     command was invoked from. A relative ``donkey.worktreesRoot`` is resolved
     against the anchor, so one shared setting means the same directory from
     every worktree.
@@ -146,8 +235,6 @@ def resolve_layout(
         ``donkey.worktreesRoot``.
     stanzas : list[dict[str, object]]
         Parsed ``git worktree list --porcelain`` output for ``repo``.
-    prefix : str
-        CLI name used for error messages.
 
     Returns
     -------
@@ -156,28 +243,14 @@ def resolve_layout(
 
     Raises
     ------
-    SystemExit
-        If the worktree listing names no anchor, or ``donkey.worktreesRoot``
-        is empty or unreadable.
+    LayoutError
+        If the listing names no anchor, ``donkey.worktreesRoot`` cannot be
+        read, or it is set but empty.
 
     """
-    if not stanzas or "worktree" not in stanzas[0]:
-        helpers._die(
-            prefix, "could not parse `git worktree list --porcelain` output", 2
-        )
-
-    anchor_dir = Path(str(stanzas[0]["worktree"])).expanduser().resolve()
-    kind = (
-        LayoutKind.BARE if stanzas[0].get("bare", False) else LayoutKind.MAIN_WORKTREE
-    )
-    configured_root = _configured_worktrees_root(repo, prefix)
-    worktrees_root = (
-        default_worktrees_root(anchor_dir, kind)
-        if configured_root is None
-        else anchor_dir / configured_root
-    )
-    return RepositoryLayout(
-        anchor_dir=anchor_dir,
-        kind=kind,
-        worktrees_root=worktrees_root.resolve(),
+    anchor_dir, kind = _anchor_from_stanzas(stanzas)
+    selected = select_layout(anchor_dir, kind, _configured_worktrees_root(repo))
+    return dataclasses.replace(
+        selected,
+        worktrees_root=selected.worktrees_root.resolve(),
     )

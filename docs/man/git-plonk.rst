@@ -20,6 +20,9 @@ Clean up linked worktrees listed by Git under the worktree root
 **git-donkey** uses: the main repository's ``../{repo}.worktrees`` directory,
 the ``{name}.worktrees`` sibling of a bare repository, or the directory named
 by the ``donkey.worktreesRoot`` Git configuration value.
+A bare repository's trailing ``.git`` is dropped before ``.worktrees`` is
+added, so ``/container/bare.git`` is scanned as
+``/container/bare.worktrees``.
 Run the command inside a Git repository, including a linked topic worktree or
 a bare repository directory.
 Worktrees outside that directory remain untouched.

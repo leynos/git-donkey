@@ -20,10 +20,15 @@ from pathlib import Path
 
 from git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
 
+from git_donkey import fetch_refspec
+
 _GIT_DONKEY_PREFIX = "git-donkey"
 _GIT_DONKEY_EMOJI = "💀"
 _GIT_CONFLICT_EMOJI = "⚔️"
 _SLUG_PATTERN = re.compile(r"^[a-zA-Z0-9_.-]+$")
+# `git config --get-all` exits 1 when the key is unset; any other status means
+# the configuration could not be read.
+_CONFIG_KEY_UNSET_STATUS = 1
 
 
 def _eprint(*args: object) -> None:
@@ -168,25 +173,31 @@ def _first_remote_name(repo: Repo, prefix: str) -> str:
         _die(prefix, "no remotes configured", 2)
 
 
-def _require_fetch_refspec(repo: Repo, remote: str, prefix: str) -> None:
-    """Exit unless ``remote`` is configured to fetch into remote-tracking refs.
+def _read_fetch_refspecs(repo: Repo, remote: str) -> list[str]:
+    """Return the remote's configured fetch refspecs.
 
-    ``git clone --bare`` configures no fetch refspec, so a fetch updates no
-    ``refs/remotes/<remote>/*`` ref and a branch that exists on the remote looks
-    absent. Refusing here stops a workflow from creating a fresh branch where
-    it should have tracked the remote one.
+    Returns
+    -------
+    list[str]
+        The configured ``remote.<remote>.fetch`` values, or an empty list when
+        the key is unset.
+
+    Raises
+    ------
+    git_donkey.fetch_refspec.FetchRefspecError
+        If Git reports a failure other than the key being unset, so an
+        unreadable configuration is never mistaken for a missing refspec.
+
     """
     key = f"remote.{remote}.fetch"
     try:
-        repo.git.config("--get-all", key)
-    except GitCommandError:
-        _die(
-            prefix,
-            f"remote '{remote}' has no fetch refspec, so its branches cannot be "
-            "tracked (`git clone --bare` configures none); run: "
-            f"git config {key} '+refs/heads/*:refs/remotes/{remote}/*'",
-            2,
-        )
+        value = repo.git.config("--get-all", key)
+    except GitCommandError as exc:
+        if exc.status == _CONFIG_KEY_UNSET_STATUS:
+            return []
+        msg = f"could not read {key}: {exc}"
+        raise fetch_refspec.FetchRefspecError(msg) from exc
+    return [line for line in value.splitlines() if line]
 
 
 def _fetch_remote(repo: Repo, remote: str, prefix: str) -> None:

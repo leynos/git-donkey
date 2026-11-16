@@ -10,12 +10,9 @@ depend on, or write to, the runner's global Git configuration.
 
 from __future__ import annotations
 
-import typing as typ
+from pathlib import Path
 
 from git import Repo
-
-if typ.TYPE_CHECKING:
-    from pathlib import Path
 
 
 def configure_repo(repo: Repo) -> None:
@@ -91,6 +88,21 @@ def repo_with_remote_default(
     repo.create_remote("origin", remote_path.as_posix())
     repo.remote("origin").push(f"main:refs/heads/{default_branch}")
     return repo, remote_repo
+
+
+def corrupt_config(repo: Repo) -> None:
+    """Append an unparsable stanza so Git rejects the configuration file.
+
+    Parameters
+    ----------
+    repo : Repo
+        Repository whose config file is corrupted. Later Git config reads fail
+        with a status that is not "key unset", which lets a test observe how an
+        adapter distinguishes an unreadable configuration from a missing key.
+
+    """
+    config_path = Path(repo.git_dir) / "config"
+    config_path.write_text(f"{config_path.read_text()}[broken\n")
 
 
 FETCH_ALL_BRANCHES_REFSPEC = "+refs/heads/*:refs/remotes/origin/*"

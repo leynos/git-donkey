@@ -15,14 +15,17 @@ from pathlib import Path
 import pytest
 from git import Repo
 
-from git_donkey import helpers, layout
+from git_donkey import donkey, helpers, layout, plonk
 from git_donkey.layout import LayoutKind
-from tests.git_repo_helpers import bare_collection, repo_with_remote_default
+from tests.git_repo_helpers import (
+    bare_collection,
+    corrupt_config,
+    repo_with_remote_default,
+)
 
 if typ.TYPE_CHECKING:
     import collections.abc as cabc
 
-_PREFIX = "git-donkey"
 _USAGE_ERROR_EXIT_CODE = 2
 
 type _CollectionFactory = cabc.Callable[..., tuple[Repo, Path]]
@@ -49,7 +52,16 @@ def collection(tmp_path: Path) -> _CollectionFactory:
 def _resolve(repo: Repo) -> layout.RepositoryLayout:
     """Resolve the layout of ``repo`` from its own worktree listing."""
     stanzas = helpers._parse_worktree_porcelain(repo)
-    return layout.resolve_layout(repo, stanzas, _PREFIX)
+    return layout.resolve_layout(repo, stanzas)
+
+
+def _raising_layout_error(
+    _repo: Repo,
+    _stanzas: list[dict[str, object]],
+) -> layout.RepositoryLayout:
+    """Stand in for the resolver so a boundary test can observe its handling."""
+    msg = "layout exploded"
+    raise layout.LayoutError(msg)
 
 
 @pytest.mark.parametrize(
@@ -69,6 +81,60 @@ def test_default_worktrees_root(kind: LayoutKind, anchor: str, expected: str) ->
     assert layout.default_worktrees_root(Path(anchor), kind) == Path(expected), (
         "expected the default root to be a '.worktrees' sibling of the anchor, "
         "without a bare repository's '.git' suffix"
+    )
+
+
+@pytest.mark.parametrize(
+    ("anchor", "kind", "expected"),
+    [
+        ("/src/repo", LayoutKind.MAIN_WORKTREE, "/src/repo.worktrees"),
+        ("/src/repo.git", LayoutKind.BARE, "/src/repo.worktrees"),
+    ],
+)
+def test_select_layout_uses_the_default_root_when_unset(
+    anchor: str,
+    kind: LayoutKind,
+    expected: str,
+) -> None:
+    """An unset override selects the default sibling root without Git I/O."""
+    selected = layout.select_layout(Path(anchor), kind, None)
+
+    assert selected == layout.RepositoryLayout(
+        anchor_dir=Path(anchor),
+        kind=kind,
+        worktrees_root=Path(expected),
+    ), "expected the default root when no override is configured"
+
+
+@pytest.mark.parametrize(
+    ("configured", "expected"),
+    [
+        ("../trees", "/src/trees"),
+        ("nested/root", "/src/repo/nested/root"),
+        ("/opt/trees", "/opt/trees"),
+    ],
+)
+def test_select_layout_honours_the_configured_root(
+    configured: str,
+    expected: str,
+) -> None:
+    """A configured root wins and a relative value resolves against the anchor."""
+    selected = layout.select_layout(
+        Path("/src/repo"), LayoutKind.MAIN_WORKTREE, configured
+    )
+
+    assert selected.worktrees_root == Path(expected), (
+        "expected the configured root to replace the default"
+    )
+
+
+def test_select_layout_refuses_an_empty_configured_root() -> None:
+    """An empty override is a policy error, not a process exit."""
+    with pytest.raises(layout.LayoutError) as excinfo:
+        layout.select_layout(Path("/src/repo"), LayoutKind.MAIN_WORKTREE, "")
+
+    assert "donkey.worktreesRoot is set but empty" in str(excinfo.value), (
+        "expected the policy error to name the empty configuration key"
     )
 
 
@@ -178,40 +244,76 @@ def test_configured_root_expands_the_home_directory(
     )
 
 
-def test_empty_configured_root_is_refused(
-    tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    """An empty ``donkey.worktreesRoot`` is a configuration error."""
+def test_empty_configured_root_is_refused(tmp_path: Path) -> None:
+    """An empty ``donkey.worktreesRoot`` raises a typed configuration error."""
     repo, _remote = repo_with_remote_default(tmp_path / "repo", tmp_path / "remote.git")
     repo.git.config(layout.WORKTREES_ROOT_CONFIG_KEY, "")
 
-    with pytest.raises(SystemExit) as excinfo:
+    with pytest.raises(layout.LayoutError) as excinfo:
         _resolve(repo)
 
-    assert excinfo.value.code == _USAGE_ERROR_EXIT_CODE, (
-        "expected an empty root to exit with status 2"
-    )
-    assert "donkey.worktreesRoot is set but empty" in capsys.readouterr().err, (
+    assert "donkey.worktreesRoot is set but empty" in str(excinfo.value), (
         "expected the error to name the empty configuration key"
+    )
+
+
+def test_unreadable_configuration_raises_a_layout_error(tmp_path: Path) -> None:
+    """A failed configuration read is reported apart from an empty value."""
+    repo, _remote = repo_with_remote_default(tmp_path / "repo", tmp_path / "remote.git")
+    corrupt_config(repo)
+    # Supply the stanza directly: the corrupted file would also break the
+    # `git worktree list` call, which must not mask the config-read failure.
+    stanzas: list[dict[str, object]] = [{"worktree": (tmp_path / "repo").as_posix()}]
+
+    with pytest.raises(layout.LayoutError) as excinfo:
+        layout.resolve_layout(repo, stanzas)
+
+    message = str(excinfo.value)
+    assert "could not read donkey.worktreesRoot" in message, (
+        "expected an unreadable configuration to be named as such"
+    )
+    assert "bad config" in message, (
+        "expected the Git failure to be preserved in the message"
     )
 
 
 @pytest.mark.parametrize("stanzas", [[], [{"bare": True}]])
 def test_unparsable_worktree_listing_is_refused(
     tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
     stanzas: list[dict[str, object]],
 ) -> None:
-    """A listing without a leading worktree path cannot anchor a layout."""
+    """A listing without a leading worktree path raises a typed error."""
     repo, _remote = repo_with_remote_default(tmp_path / "repo", tmp_path / "remote.git")
 
+    with pytest.raises(layout.LayoutError) as excinfo:
+        layout.resolve_layout(repo, stanzas)
+
+    assert "could not parse" in str(excinfo.value), (
+        "expected the error to name the unparsable listing"
+    )
+
+
+@pytest.mark.parametrize(
+    "boundary",
+    [donkey._resolve_layout, plonk._resolve_layout],
+    ids=["donkey", "plonk"],
+)
+def test_boundary_exits_on_a_layout_error(
+    boundary: cabc.Callable[[Repo, list[dict[str, object]]], layout.RepositoryLayout],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Each command boundary turns a layout error into a usage exit."""
+    repo, _remote = repo_with_remote_default(tmp_path / "repo", tmp_path / "remote.git")
+    monkeypatch.setattr(layout, "resolve_layout", _raising_layout_error)
+
     with pytest.raises(SystemExit) as excinfo:
-        layout.resolve_layout(repo, stanzas, _PREFIX)
+        boundary(repo, [])
 
     assert excinfo.value.code == _USAGE_ERROR_EXIT_CODE, (
-        "expected an unparsable listing to exit 2"
+        "expected the boundary to exit with the usage status"
     )
-    assert "could not parse" in capsys.readouterr().err, (
-        "expected the error to name the unparsable listing"
+    assert "layout exploded" in capsys.readouterr().err, (
+        "expected the boundary to print the policy message"
     )

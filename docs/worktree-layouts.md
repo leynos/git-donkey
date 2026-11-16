@@ -28,9 +28,16 @@ command is invoked from.
 
 ## Decision
 
-`git_donkey.layout.resolve_layout()` is the single owner of both directories.
-`git donkey` and `git plonk` call it and never derive a path themselves, so the
-two commands cannot disagree about where donkey worktrees live.
+`git_donkey.layout` is the single owner of both directories. `git donkey` and
+`git plonk` call it and never derive a path themselves, so the two commands
+cannot disagree about where donkey worktrees live.
+
+Inside the module, policy and infrastructure stay apart. `select_layout()` and
+`default_worktrees_root()` are pure: they take plain values and read no Git
+state. `resolve_layout()` is the Git adapter that reads the worktree listing and
+`donkey.worktreesRoot`, then supplies those values to the policy. Neither
+layer exits; an unresolvable layout raises `LayoutError`, which the command
+boundaries in `donkey.py` and `plonk.py` translate into exit status 2.
 
 The anchor is the first entry Git lists: the main worktree, or the bare
 repository when no main worktree exists. Git runs `git worktree add`,
@@ -124,11 +131,13 @@ since it fetches the default branch through an explicit refspec.
 
 ## Verification contract
 
-Unit tests in `tests/unit/test_layout.py` pin the default root for each
+Unit tests in `tests/unit/test_layout.py` pin the pure policy for each
 arrangement in Table 1, the layout resolved from a linked worktree and from the
-bare directory, and the relative, absolute, home-relative, and empty forms of
-`donkey.worktreesRoot`. `tests/unit/test_cli_helpers.py` covers the fetch
-refspec precondition.
+bare directory, the relative, absolute, home-relative, and empty forms of
+`donkey.worktreesRoot`, and the typed errors the adapter raises.
+`tests/unit/test_plonk_selection.py` asserts that the anchor stanza is never a
+cleanup target, and `tests/unit/test_cli_helpers.py` covers the fetch refspec
+rule and its adapter.
 
 Behavioural tests build a real bare collection with a session worktree.
 `features/git_donkey_bare.feature` asserts where a new worktree is created,

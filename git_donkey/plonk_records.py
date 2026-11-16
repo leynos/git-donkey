@@ -113,6 +113,7 @@ class _PlonkContext:
     repo_home: Repo
     stanzas: list[dict[str, object]]
     worktrees_root: Path
+    anchor_dir: Path
     trunk_ref: str
     invoking_worktree: Path | None
 
@@ -123,3 +124,4 @@ class _SoftPlonkContext:
 
     stanzas: list[dict[str, object]]
     worktrees_root: Path
+    anchor_dir: Path

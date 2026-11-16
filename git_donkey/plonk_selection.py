@@ -43,17 +43,43 @@ def _is_git_donkey_worktree(worktree_path: Path, worktrees_root: Path) -> bool:
     )
 
 
+def _is_cleanup_target(
+    worktree_path: Path,
+    worktrees_root: Path,
+    anchor_dir: Path,
+) -> bool:
+    """Return whether git-plonk may treat ``worktree_path`` as donkey's own.
+
+    The anchor is excluded by identity rather than by its position in the
+    listing. git-donkey never owns the main worktree or the bare repository, so
+    neither may be cleaned even when a configured root happens to contain it,
+    and a caller that supplies only linked-worktree stanzas still keeps every
+    one of them.
+
+    Returns
+    -------
+    bool
+        ``True`` when ``worktree_path`` is a linked worktree under the root and
+        is not the anchor.
+
+    """
+    return worktree_path != anchor_dir and _is_git_donkey_worktree(
+        worktree_path, worktrees_root
+    )
+
+
 def _donkey_worktree_paths(
     stanzas: typ.Iterable[dict[str, object]],
     worktrees_root: Path,
+    anchor_dir: Path,
 ) -> list[Path]:
-    """Return linked worktree paths owned by git-donkey."""
+    """Return linked worktree paths owned by git-donkey, never the anchor."""
     paths: list[Path] = []
     for stanza in stanzas:
         worktree_path = _worktree_path_from_stanza(stanza)
         if worktree_path is None:
             continue
-        if _is_git_donkey_worktree(worktree_path, worktrees_root):
+        if _is_cleanup_target(worktree_path, worktrees_root, anchor_dir):
             paths.append(worktree_path)
     return paths
 
@@ -61,6 +87,7 @@ def _donkey_worktree_paths(
 def _donkey_worktree_candidates(
     stanzas: typ.Iterable[dict[str, object]],
     worktrees_root: Path,
+    anchor_dir: Path,
 ) -> list[_PlonkCandidate]:
     """Return recognized git-donkey worktrees with completion markers."""
     candidates: list[_PlonkCandidate] = []
@@ -69,7 +96,7 @@ def _donkey_worktree_candidates(
         worktree_path = _worktree_path_from_stanza(stanza)
         if branch_name is None or worktree_path is None:
             continue
-        if not _is_git_donkey_worktree(worktree_path, worktrees_root):
+        if not _is_cleanup_target(worktree_path, worktrees_root, anchor_dir):
             continue
         marker = plonk_policy.completion_marker_for_branch(branch_name)
         if marker is None:
