@@ -6,11 +6,14 @@ to delete. No mode provides an interactive confirmation gate.
 
 ## Understand the scope and modes
 
-Plonk must run inside a Git repository. It identifies the main worktree and
-considers Git-registered linked worktrees under its sibling
-`<main-name>.worktrees` directory. This is a path-based scope, not a provenance
-check: a manually created worktree under that directory can also qualify. It
-does not sweep arbitrary unregistered directories.
+Plonk must run inside a Git repository. It considers Git-registered linked
+worktrees under the worktree root donkey uses: the `<main-name>.worktrees`
+sibling of the main worktree, the `<bare-name>.worktrees` sibling of a bare
+repository, or the directory `donkey.worktreesRoot` names. In a bare
+collection, session worktrees kept elsewhere, such as under
+`<container>/worktrees/`, are out of scope. This is a path-based scope, not a
+provenance check: a manually created worktree under that directory can also
+qualify. It does not sweep arbitrary unregistered directories.
 
 - Default mode removes clean worktrees whose recognized branch marker occurs in
   the selected trunk history. It keeps local branches.
@@ -27,8 +30,9 @@ does not sweep arbitrary unregistered directories.
 Default and hard modes exclude the invoking worktree. Soft mode does **not**
 exclude it. All modes can affect other agents' worktrees. Execute a reviewed
 preview from the same invoking worktree: changing directory can change the
-candidate set. Running from the main worktree avoids excluding a linked
-worktree merely because the shell happens to be inside it.
+candidate set. Running from the main worktree, or from the bare directory in a
+bare collection, avoids excluding a linked worktree merely because the shell
+happens to be inside it.
 
 ## Know what the cleanliness check protects
 

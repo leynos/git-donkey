@@ -88,7 +88,10 @@ contributor must preserve when editing the workflow.
 The module split mirrors `git-fafo` and `git-plonk`: `git_donkey.cli` owns
 Cyclopts parsing, `git_donkey.donkey` owns the workflow, and
 `git_donkey.donkey_worktrees` and `git_donkey.templates` own the worktree and
-overlay mechanics the workflow composes.
+overlay mechanics the workflow composes. `git_donkey.layout` owns the anchor
+directory and the worktrees root for both `git donkey` and `git plonk`; neither
+workflow derives those paths itself. The
+[worktree layout design](worktree-layouts.md) records the rules.
 
 The CLI wrapper maps `branch_name`, an optional `origin_branch`, `--no-pull`,
 and the fields of `_PullOptions` onto the workflow call, then raises
@@ -99,9 +102,11 @@ and the fields of `_PullOptions` onto the workflow call, then raises
 `run_git_donkey()` performs its steps in a fixed order:
 
 1. `_pull_mode()` validates the pull flags.
-2. `_load_donkey_context()` discovers the repository, resolves the principal
-   remote, fetches it, and builds a `_DonkeyContext` holding the home
-   repository, remote name, branch-to-worktree map, and worktrees root.
+2. `_load_donkey_context()` discovers the repository, resolves its layout
+   with `layout.resolve_layout()`, resolves the principal remote, requires it
+   to have a fetch refspec, fetches it, and builds a `_DonkeyContext` holding
+   the anchor repository (the main worktree, or the bare repository), remote
+   name, branch-to-worktree map, and worktrees root.
 3. The base is resolved with `_fetch_remote_default_ref()` when no base was
    supplied, or `choose_base_branch()` when one was.
 4. `_maybe_update_base_branch()` derives the local branch name, then prompts

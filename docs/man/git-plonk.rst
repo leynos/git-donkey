@@ -16,9 +16,12 @@ SYNOPSIS
 DESCRIPTION
 ===========
 
-Clean up linked worktrees listed by Git under the main repository's
-``../{repo}.worktrees`` directory.
-Run the command inside a Git repository, including a linked topic worktree.
+Clean up linked worktrees listed by Git under the worktree root
+**git-donkey** uses: the main repository's ``../{repo}.worktrees`` directory,
+the ``{name}.worktrees`` sibling of a bare repository, or the directory named
+by the ``donkey.worktreesRoot`` Git configuration value.
+Run the command inside a Git repository, including a linked topic worktree or
+a bare repository directory.
 Worktrees outside that directory remain untouched.
 
 Default mode removes completed worktrees.

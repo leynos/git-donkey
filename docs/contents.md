@@ -18,6 +18,9 @@ This index summarizes the maintained project documentation.
 - [Worktree-management skill](../skill/git-donkey-worktrees/SKILL.md) provides
   an agent workflow for creation, reuse, stacked branches, and reviewed cleanup
   with `git donkey` and `git plonk`.
+- [Worktree layouts](worktree-layouts.md) records where `git donkey` creates
+  worktrees, how a bare repository collection is supported, and the
+  `donkey.worktreesRoot` override.
 - [0.2.0 migration guide](v0-2-0-migration-guide.md) records the user-visible
   changes for users upgrading from 0.1.0, including the base-selection and
   cleanup changes and the new comparison commands.

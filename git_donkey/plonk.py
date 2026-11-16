@@ -27,7 +27,7 @@ from pathlib import Path
 
 from git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
 
-from git_donkey import donkey, helpers, observability, plonk_policy, remote_default
+from git_donkey import helpers, layout, observability, plonk_policy, remote_default
 from git_donkey.plonk_records import (
     _MODE_LABELS,
     _SKIP_REASON_LABELS,
@@ -286,7 +286,7 @@ def _fetch_canonical_trunk_ref(repo: Repo) -> str:
 
 
 def _load_plonk_context() -> _PlonkContext:
-    """Load the main repository, worktree stanzas, root, and trunk ref."""
+    """Load the anchor repository, worktree stanzas, root, and trunk ref."""
     repo_cwd = helpers._find_repo(_GIT_PLONK_PREFIX)
     invoking_worktree = (
         Path(repo_cwd.working_tree_dir).resolve()
@@ -294,15 +294,14 @@ def _load_plonk_context() -> _PlonkContext:
         else None
     )
     stanzas = helpers._parse_worktree_porcelain(repo_cwd)
-    home_dir = helpers._main_worktree_path_from_list(stanzas, _GIT_PLONK_PREFIX)
-    os.chdir(home_dir)
-    repo_home = Repo(home_dir)
-    worktrees_root = donkey._worktrees_root(home_dir)
+    resolved = layout.resolve_layout(repo_cwd, stanzas, _GIT_PLONK_PREFIX)
+    os.chdir(resolved.anchor_dir)
+    repo_home = Repo(resolved.anchor_dir)
     trunk_ref = _fetch_canonical_trunk_ref(repo_home)
     return _PlonkContext(
         repo_home=repo_home,
         stanzas=stanzas,
-        worktrees_root=worktrees_root,
+        worktrees_root=resolved.worktrees_root,
         trunk_ref=trunk_ref,
         invoking_worktree=invoking_worktree,
     )
@@ -312,10 +311,10 @@ def _load_soft_plonk_context() -> _SoftPlonkContext:
     """Load only worktree state required by soft cleanup."""
     repo_cwd = helpers._find_repo(_GIT_PLONK_PREFIX)
     stanzas = helpers._parse_worktree_porcelain(repo_cwd)
-    home_dir = helpers._main_worktree_path_from_list(stanzas, _GIT_PLONK_PREFIX)
+    resolved = layout.resolve_layout(repo_cwd, stanzas, _GIT_PLONK_PREFIX)
     return _SoftPlonkContext(
         stanzas=stanzas,
-        worktrees_root=donkey._worktrees_root(home_dir),
+        worktrees_root=resolved.worktrees_root,
     )
 
 

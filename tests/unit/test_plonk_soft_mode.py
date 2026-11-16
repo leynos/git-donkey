@@ -14,7 +14,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from git_donkey import plonk
+from git_donkey import layout, plonk
 
 if typ.TYPE_CHECKING:
     from pathlib import Path
@@ -34,11 +34,14 @@ def test_soft_mode_loads_only_worktree_context(
         plonk.helpers, "_parse_worktree_porcelain", lambda _repo: stanzas
     )
     monkeypatch.setattr(
-        plonk.helpers,
-        "_main_worktree_path_from_list",
-        lambda _stanzas, _prefix: tmp_path / "repo",
+        plonk.layout,
+        "resolve_layout",
+        lambda _repo, _stanzas, _prefix: layout.RepositoryLayout(
+            anchor_dir=tmp_path / "repo",
+            kind=layout.LayoutKind.MAIN_WORKTREE,
+            worktrees_root=worktrees_root,
+        ),
     )
-    monkeypatch.setattr(plonk.donkey, "_worktrees_root", lambda _home: worktrees_root)
     monkeypatch.setattr(
         plonk,
         "_load_plonk_context",

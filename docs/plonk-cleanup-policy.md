@@ -49,6 +49,17 @@ own `Failed branch deletions:` heading between the removal sections and the
 skip section. The sweep continues with the remaining candidates, and the run
 exits with status 1.
 
+## Scope
+
+A sweep considers only the linked worktrees Git lists under the worktrees root
+that `git donkey` uses. Scope is decided by path, not by provenance: a worktree
+created by hand under the root qualifies, and a worktree outside it is never
+touched, even when its branch carries a completed marker. `git_donkey.layout`
+resolves the root for both commands, as the
+[worktree layout design](worktree-layouts.md) records. In a bare repository
+collection the root is separate from any directory a session manager fills, so
+session worktrees stay out of every mode's reach.
+
 ## Cleanliness rule
 
 The preflight mirrors the check `git worktree remove` performs itself: a

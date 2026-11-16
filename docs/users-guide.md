@@ -101,12 +101,12 @@ Contributor build and validation details appear in the
 
 ## git donkey
 
-Create a linked worktree at `../{repo}.worktrees/{branch}`. When no base is
-specified, the command discovers the default branch advertised by the principal
-remote and creates the new branch from its fetched remote commit. The principal
-remote is the first configured remote, preserving the existing selection rule.
-The default branch need not be named `main`, and the remote need not be named
-`origin`.
+Create a linked worktree at `../{repo}.worktrees/{branch}`, a sibling of the
+main worktree. When no base is specified, the command discovers the default
+branch advertised by the principal remote and creates the new branch from its
+fetched remote commit. The principal remote is the first configured remote,
+preserving the existing selection rule. The default branch need not be named
+`main`, and the remote need not be named `origin`.
 
 The command fetches remote references but does not pull, rebase, or prompt to
 update a local base by default. Unpublished local commits and uncommitted
@@ -120,6 +120,34 @@ Existing local or remote feature branches are reused with their existing
 tracking rules; the base is used only when creating a new branch. If the
 worktree path already exists or the branch is already checked out elsewhere,
 the command exits with a ⚔️ conflict message.
+
+### Bare repositories and the worktree root
+
+`git donkey` also runs in a bare repository whose checkouts are all linked
+worktrees, such as a collection that keeps `bare.git` beside a `worktrees`
+directory. It can be invoked from any linked worktree or from the bare
+directory itself. With no main worktree to sit beside, new worktrees are
+created at `<bare-name>.worktrees/{branch}` beside the bare repository, with a
+trailing `.git` dropped from the name: `demo.git` uses `demo.worktrees`, and
+`bare.git` uses `bare.worktrees`. A directory another tool fills with its own
+worktrees is never used, so `git plonk` cannot reach those worktrees.
+
+Set `donkey.worktreesRoot` to choose a different directory in either kind of
+repository. A relative value is resolved against the main worktree, or against
+the bare repository when there is no main worktree:
+
+```shell
+git config donkey.worktreesRoot ../donkeys
+```
+
+`git plonk` cleans the same directory, so choose one that holds only worktrees
+`git plonk` may remove. Changing the value does not move existing worktrees.
+
+The principal remote must have a fetch refspec, which `git clone --bare` does
+not configure. Without one `git donkey` exits with code `2` and prints the
+`git config` command that adds it, because remote branches could not otherwise
+be found and reused. The [worktree layout design](worktree-layouts.md) records
+the reasoning.
 
 ```shell
 # Create from the principal remote's default branch without updating checkouts
@@ -353,9 +381,12 @@ git fafo demo-repo python --trust
 ## git plonk
 
 Clean up worktrees created by `git donkey`. The command must be run inside a
-Git repository. It discovers the main worktree, derives the
-`../{repo}.worktrees` directory used by `git donkey`, and only operates on
-linked worktrees listed by Git under that directory.
+Git repository. It resolves the worktree root `git donkey` uses, which is the
+`../{repo}.worktrees` sibling of the main worktree, the `<bare-name>.worktrees`
+sibling of a bare repository, or the directory named by `donkey.worktreesRoot`.
+It only operates on linked worktrees listed by Git under that directory. In a
+bare repository collection, worktrees another tool keeps elsewhere, such as
+session worktrees, are never removed or cleaned.
 
 ```shell
 # Remove completed git-donkey worktrees

@@ -107,25 +107,6 @@ def _parse_worktree_porcelain(repo: Repo) -> list[dict[str, object]]:
     return stanzas
 
 
-def _main_worktree_path_from_list(
-    stanzas: list[dict[str, object]],
-    prefix: str,
-) -> Path:
-    """Return the main worktree path from parsed worktree stanzas."""
-    if not stanzas or "worktree" not in stanzas[0]:
-        _die(prefix, "could not parse `git worktree list --porcelain` output", 2)
-
-    if stanzas[0].get("bare", False):
-        _die(
-            prefix,
-            "repository appears to be bare; this command expects a non-bare repo "
-            "with a main worktree",
-            2,
-        )
-
-    return Path(str(stanzas[0]["worktree"])).expanduser().resolve()
-
-
 def _branch_to_worktree_map(stanzas: list[dict[str, object]]) -> dict[str, Path]:
     """Return a mapping of branch names to worktree paths."""
     out: dict[str, Path] = {}
@@ -185,6 +166,27 @@ def _first_remote_name(repo: Repo, prefix: str) -> str:
         return repo.remotes[0].name
     except IndexError:
         _die(prefix, "no remotes configured", 2)
+
+
+def _require_fetch_refspec(repo: Repo, remote: str, prefix: str) -> None:
+    """Exit unless ``remote`` is configured to fetch into remote-tracking refs.
+
+    ``git clone --bare`` configures no fetch refspec, so a fetch updates no
+    ``refs/remotes/<remote>/*`` ref and a branch that exists on the remote looks
+    absent. Refusing here stops a workflow from creating a fresh branch where
+    it should have tracked the remote one.
+    """
+    key = f"remote.{remote}.fetch"
+    try:
+        repo.git.config("--get-all", key)
+    except GitCommandError:
+        _die(
+            prefix,
+            f"remote '{remote}' has no fetch refspec, so its branches cannot be "
+            "tracked (`git clone --bare` configures none); run: "
+            f"git config {key} '+refs/heads/*:refs/remotes/{remote}/*'",
+            2,
+        )
 
 
 def _fetch_remote(repo: Repo, remote: str, prefix: str) -> None:
