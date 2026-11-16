@@ -24,8 +24,9 @@ git-donkey gives you Git subcommands for branch-based work:
 
 - **`git donkey`** – Creates linked worktrees at
   `../{repo}.worktrees/{branch}` so you can work on multiple branches without
-  the constant stash-switch-unstash dance. Bonus: automatically applies
-  template overlays from your personal template directory!
+  the constant stash-switch-unstash dance. Works in bare repository collections
+  too. Bonus: automatically applies template overlays from your personal
+  template directory!
 
 - **`git track`** – Fetch and switch to (or create) tracking branches in one
   command. No more "did I create this branch yet?" confusion.

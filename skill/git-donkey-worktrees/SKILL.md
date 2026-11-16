@@ -53,11 +53,13 @@ authorization; creating a worktree does not authorize later cleanup.
    A detached `HEAD` requires an explicit decision about the calling checkout;
    the current donkey workflow expects a checked-out branch even when the base
    argument is omitted. Do not switch a shared checkout to make it proceed.
-4. Identify the main worktree and the principal remote. Donkey and plonk both
-   select the first configured remote, not necessarily `origin`, and both
-   discover the default branch it advertises rather than assuming `main`. Do
-   not change remote configuration to make an assumption fit. Donkey reports
-   `Using remote: ...`; verify that this agrees with the intended remote.
+4. Identify the anchor and the principal remote. The anchor is the main
+   worktree, or the bare repository when the first inventory entry is marked
+   `bare`. Donkey and plonk both select the first configured remote, not
+   necessarily `origin`, and both discover the default branch it advertises
+   rather than assuming `main`. Do not change remote configuration to make an
+   assumption fit. Donkey reports `Using remote: ...`; verify that this agrees
+   with the intended remote.
 5. Coordinate with other agents before changing shared branch or worktree state.
    Worktrees have separate working files but share repository refs and other
    Git metadata. A new checkout is not a separate clone or a permission
@@ -166,10 +168,15 @@ success. Do not delete the path, reset the branch, prune metadata, or force a
 second checkout to bypass the conflict.
 
 The layout is a sibling of the **main worktree**:
-`<main-parent>/<main-name>.worktrees/<branch>`. Branch slashes create nested
-path components. It is not necessarily relative to the shell's current
-directory. After creation, read the inventory again and select the path for the
-exact `refs/heads/<branch>` entry:
+`<main-parent>/<main-name>.worktrees/<branch>`. A bare repository has no main
+worktree, so the layout is a sibling of the bare directory, with a trailing
+`.git` dropped from its name: `<container>/bare.git` gives
+`<container>/bare.worktrees/<branch>`. A session manager's own directory, such
+as `<container>/worktrees/`, is never used. `git config donkey.worktreesRoot`
+overrides either default; read it, but do not set or change it without the
+user's instruction. Branch slashes create nested path components. It is not
+necessarily relative to the shell's current directory. After creation, read the
+inventory again and select the path for the exact `refs/heads/<branch>` entry:
 
 ```bash
 git worktree list --porcelain
@@ -224,8 +231,9 @@ Default and hard runs, previews included, contact the principal remote: plonk
 discovers and fetches its advertised default branch before every sweep, and
 fails without removing anything when the remote is unreachable or advertises no
 default branch. Start with the preview for the requested mode from a
-deliberately selected invoking worktree, normally the main worktree. Keep that
-location unchanged between preview and execution:
+deliberately selected invoking worktree, normally the main worktree, or the
+bare directory in a bare collection. Keep that location unchanged between
+preview and execution:
 
 ```bash
 git -C "$main_worktree" plonk --dry-run

@@ -20,10 +20,15 @@ from pathlib import Path
 
 from git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
 
+from git_donkey import fetch_refspec
+
 _GIT_DONKEY_PREFIX = "git-donkey"
 _GIT_DONKEY_EMOJI = "💀"
 _GIT_CONFLICT_EMOJI = "⚔️"
 _SLUG_PATTERN = re.compile(r"^[a-zA-Z0-9_.-]+$")
+# `git config --get-all` exits 1 when the key is unset; any other status means
+# the configuration could not be read.
+_CONFIG_KEY_UNSET_STATUS = 1
 
 
 def _eprint(*args: object) -> None:
@@ -107,25 +112,6 @@ def _parse_worktree_porcelain(repo: Repo) -> list[dict[str, object]]:
     return stanzas
 
 
-def _main_worktree_path_from_list(
-    stanzas: list[dict[str, object]],
-    prefix: str,
-) -> Path:
-    """Return the main worktree path from parsed worktree stanzas."""
-    if not stanzas or "worktree" not in stanzas[0]:
-        _die(prefix, "could not parse `git worktree list --porcelain` output", 2)
-
-    if stanzas[0].get("bare", False):
-        _die(
-            prefix,
-            "repository appears to be bare; this command expects a non-bare repo "
-            "with a main worktree",
-            2,
-        )
-
-    return Path(str(stanzas[0]["worktree"])).expanduser().resolve()
-
-
 def _branch_to_worktree_map(stanzas: list[dict[str, object]]) -> dict[str, Path]:
     """Return a mapping of branch names to worktree paths."""
     out: dict[str, Path] = {}
@@ -185,6 +171,33 @@ def _first_remote_name(repo: Repo, prefix: str) -> str:
         return repo.remotes[0].name
     except IndexError:
         _die(prefix, "no remotes configured", 2)
+
+
+def _read_fetch_refspecs(repo: Repo, remote: str) -> list[str]:
+    """Return the remote's configured fetch refspecs.
+
+    Returns
+    -------
+    list[str]
+        The configured ``remote.<remote>.fetch`` values, or an empty list when
+        the key is unset.
+
+    Raises
+    ------
+    git_donkey.fetch_refspec.FetchRefspecError
+        If Git reports a failure other than the key being unset, so an
+        unreadable configuration is never mistaken for a missing refspec.
+
+    """
+    key = f"remote.{remote}.fetch"
+    try:
+        value = repo.git.config("--get-all", key)
+    except GitCommandError as exc:
+        if exc.status == _CONFIG_KEY_UNSET_STATUS:
+            return []
+        msg = f"could not read {key}: {exc}"
+        raise fetch_refspec.FetchRefspecError(msg) from exc
+    return [line for line in value.splitlines() if line]
 
 
 def _fetch_remote(repo: Repo, remote: str, prefix: str) -> None:

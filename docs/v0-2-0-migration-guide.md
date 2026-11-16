@@ -39,6 +39,11 @@ surface keeps working unchanged.
   is not `origin`: `git plonk` now judges completion against the default branch
   the principal remote advertises, rather than a stale `<remote>/HEAD` alias or
   local `main`.
+- Bare repositories whose checkouts are all linked worktrees: `git donkey` and
+  `git plonk` now run in them, where both previously exited with code 2.
+- Repositories whose principal remote has no fetch refspec, as
+  `git clone --bare` leaves it: `git donkey` now exits with code 2 and prints
+  the `git config` command that adds one.
 
 ## Behaviour changes
 
@@ -55,6 +60,9 @@ surface keeps working unchanged.
 | `git plonk --hard`         | Deleted local branches after a forced worktree removal         | Deletes local branches only after an unforced removal, so a skipped worktree keeps its branch |
 | `git plonk` trunk          | Read `<remote>/HEAD`, falling back to local `main`             | The fetched default branch the principal remote advertises                                    |
 | `git plonk --soft`         | Removed generated directories only                             | Unchanged                                                                                     |
+| Bare repository            | `git donkey` and `git plonk` exited with code 2                | Both run; worktrees are created beside the bare directory                                     |
+| Worktree root              | Always `../{repo}.worktrees`                                   | Unchanged by default; `donkey.worktreesRoot` overrides it                                     |
+| Remote without a refspec   | Remote branches silently looked absent                         | `git donkey` fails with exit code 2 and names the missing setting                             |
 
 _Table 1: Behaviour changes between git-donkey 0.1.0 and 0.2.0._
 
@@ -166,6 +174,12 @@ principal remote's advertised symbolic `HEAD`, fetched explicitly into
 trusted, and there is no fallback to local `main`. This is the same trunk
 `git donkey` bases new worktrees on, so the two commands cannot disagree about
 which branch is the repository's trunk.
+
+Both commands now resolve one shared layout. In a bare repository the worktree
+root is the `<bare-name>.worktrees` sibling of the bare directory, with a
+trailing `.git` dropped from the name, so worktrees another tool keeps
+elsewhere in the collection stay outside `git plonk`'s reach. Repositories with
+a main worktree keep `../{repo}.worktrees`.
 
 ## New comparison commands
 
@@ -312,3 +326,5 @@ hard mode, its branch.
   the discovery, preservation, and verification contracts.
 - [Plonk cleanup policy](plonk-cleanup-policy.md) records the removal policy
   `git plonk` applies to completed worktrees.
+- [Worktree layouts](worktree-layouts.md) records where worktrees are created,
+  including in a bare repository collection.

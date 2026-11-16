@@ -18,7 +18,14 @@ SYNOPSIS
 DESCRIPTION
 ===========
 
-Create a linked worktree at ``../{repo}.worktrees/{branch}``.
+Create a linked worktree at ``../{repo}.worktrees/{branch}``, a sibling of the
+main worktree.
+In a bare repository, whose checkouts are all linked worktrees, the worktree is
+created beside the bare directory instead, at ``{name}.worktrees/{branch}``
+with a trailing ``.git`` dropped from the directory name.
+The ``donkey.worktreesRoot`` Git configuration value replaces either
+directory; a relative value is resolved against the main worktree or the bare
+repository.
 Use the default branch advertised by the first configured remote as the base,
 an explicitly named base branch, or ``.`` for the branch checked out in the
 calling working directory, including when called from a linked worktree.

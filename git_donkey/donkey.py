@@ -23,7 +23,9 @@ from git import Git, GitCommandError, Repo
 
 from git_donkey import (
     donkey_worktrees,
+    fetch_refspec,
     helpers,
+    layout,
     observability,
     remote_default,
     templates,
@@ -373,11 +375,6 @@ def _maybe_update_base_branch(
     )
 
 
-def _worktrees_root(home_dir: Path) -> Path:
-    """Return the directory path where worktrees are stored."""
-    return (home_dir.parent / f"{home_dir.name}.worktrees").resolve()
-
-
 def _create_worktree(
     context: _DonkeyContext,
     *,
@@ -417,6 +414,28 @@ def _create_worktree(
         _record(Observation(operation="worktree_creation", outcome="success"))
 
 
+def _resolve_layout(
+    repo: Repo,
+    stanzas: list[dict[str, object]],
+) -> layout.RepositoryLayout:
+    """Resolve the repository layout, exiting with a usage error on failure."""
+    try:
+        return layout.resolve_layout(repo, stanzas)
+    except layout.LayoutError as exc:
+        helpers._die(_GIT_DONKEY_PREFIX, str(exc), 2)
+
+
+def _require_fetch_refspec(repo: Repo, remote: str) -> None:
+    """Exit unless ``remote`` can track the branches its fetch updates."""
+    try:
+        refspecs = helpers._read_fetch_refspecs(repo, remote)
+    except fetch_refspec.FetchRefspecError as exc:
+        helpers._die(_GIT_DONKEY_PREFIX, str(exc), 2)
+    refusal = fetch_refspec.refusal_message(remote, refspecs)
+    if refusal is not None:
+        helpers._die(_GIT_DONKEY_PREFIX, refusal, 2)
+
+
 def _load_donkey_context() -> tuple[_DonkeyContext, str]:
     """Load and return the git-donkey repository context and current branch."""
     repo_cwd = helpers._find_repo(_GIT_DONKEY_PREFIX)
@@ -425,22 +444,24 @@ def _load_donkey_context() -> tuple[_DonkeyContext, str]:
     )
 
     stanzas = helpers._parse_worktree_porcelain(repo_cwd)
-    home_dir = helpers._main_worktree_path_from_list(stanzas, _GIT_DONKEY_PREFIX)
+    resolved = _resolve_layout(repo_cwd, stanzas)
     branch_to_worktree = helpers._branch_to_worktree_map(stanzas)
 
-    os.chdir(home_dir)
-    repo_home = Repo(home_dir)
+    # The anchor is the main worktree, or the bare repository when every
+    # checkout is a linked worktree; Git runs worktree commands from either.
+    os.chdir(resolved.anchor_dir)
+    repo_home = Repo(resolved.anchor_dir)
 
     remote = helpers._first_remote_name(repo_home, _GIT_DONKEY_PREFIX)
     helpers._eprint(f"Using remote: {remote}")
+    _require_fetch_refspec(repo_home, remote)
     helpers._fetch_remote(repo_home, remote, _GIT_DONKEY_PREFIX)
 
-    worktrees_root = _worktrees_root(home_dir)
     context = _DonkeyContext(
         repo_home=repo_home,
         remote=remote,
         branch_to_worktree=branch_to_worktree,
-        worktrees_root=worktrees_root,
+        worktrees_root=resolved.worktrees_root,
     )
     return context, saved_cwd_branch
 

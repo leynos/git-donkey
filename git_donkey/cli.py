@@ -32,7 +32,8 @@ from git_donkey import donkey, fafo, incoming_outgoing, plonk, template_cmd, tra
 _donkey_app = App(
     name="git donkey",
     help=(
-        "Create a linked worktree at ../{repo}.worktrees/{branch}, branching from "
+        "Create a linked worktree at ../{repo}.worktrees/{branch}, or under "
+        "donkey.worktreesRoot when that is configured, branching from "
         "the first remote's default branch, a specified base, or '.' meaning the "
         "branch currently checked out in the CWD. Fetches remote refs without "
         "pulling by default. --pull-rebase or --pull-ff enables a confirmation "

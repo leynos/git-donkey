@@ -27,7 +27,7 @@ from pathlib import Path
 
 from git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
 
-from git_donkey import donkey, helpers, observability, plonk_policy, remote_default
+from git_donkey import helpers, layout, observability, plonk_policy, remote_default
 from git_donkey.plonk_records import (
     _MODE_LABELS,
     _SKIP_REASON_LABELS,
@@ -285,8 +285,19 @@ def _fetch_canonical_trunk_ref(repo: Repo) -> str:
     )
 
 
+def _resolve_layout(
+    repo: Repo,
+    stanzas: list[dict[str, object]],
+) -> layout.RepositoryLayout:
+    """Resolve the repository layout, exiting with a usage error on failure."""
+    try:
+        return layout.resolve_layout(repo, stanzas)
+    except layout.LayoutError as exc:
+        helpers._die(_GIT_PLONK_PREFIX, str(exc), 2)
+
+
 def _load_plonk_context() -> _PlonkContext:
-    """Load the main repository, worktree stanzas, root, and trunk ref."""
+    """Load the anchor repository, worktree stanzas, root, and trunk ref."""
     repo_cwd = helpers._find_repo(_GIT_PLONK_PREFIX)
     invoking_worktree = (
         Path(repo_cwd.working_tree_dir).resolve()
@@ -294,15 +305,15 @@ def _load_plonk_context() -> _PlonkContext:
         else None
     )
     stanzas = helpers._parse_worktree_porcelain(repo_cwd)
-    home_dir = helpers._main_worktree_path_from_list(stanzas, _GIT_PLONK_PREFIX)
-    os.chdir(home_dir)
-    repo_home = Repo(home_dir)
-    worktrees_root = donkey._worktrees_root(home_dir)
+    resolved = _resolve_layout(repo_cwd, stanzas)
+    os.chdir(resolved.anchor_dir)
+    repo_home = Repo(resolved.anchor_dir)
     trunk_ref = _fetch_canonical_trunk_ref(repo_home)
     return _PlonkContext(
         repo_home=repo_home,
         stanzas=stanzas,
-        worktrees_root=worktrees_root,
+        worktrees_root=resolved.worktrees_root,
+        anchor_dir=resolved.anchor_dir,
         trunk_ref=trunk_ref,
         invoking_worktree=invoking_worktree,
     )
@@ -312,27 +323,29 @@ def _load_soft_plonk_context() -> _SoftPlonkContext:
     """Load only worktree state required by soft cleanup."""
     repo_cwd = helpers._find_repo(_GIT_PLONK_PREFIX)
     stanzas = helpers._parse_worktree_porcelain(repo_cwd)
-    home_dir = helpers._main_worktree_path_from_list(stanzas, _GIT_PLONK_PREFIX)
+    resolved = _resolve_layout(repo_cwd, stanzas)
     return _SoftPlonkContext(
         stanzas=stanzas,
-        worktrees_root=donkey._worktrees_root(home_dir),
+        worktrees_root=resolved.worktrees_root,
+        anchor_dir=resolved.anchor_dir,
     )
 
 
 def _run_soft(
-    stanzas: typ.Iterable[dict[str, object]],
-    worktrees_root: Path,
+    context: _SoftPlonkContext,
     filesystem: _FilesystemCleanupAdapter | None = None,
     *,
     dry_run: bool = False,
 ) -> _PlonkResult:
     """Run soft cleanup for every git-donkey worktree."""
-    worktree_paths = _donkey_worktree_paths(stanzas, worktrees_root)
+    worktree_paths = _donkey_worktree_paths(
+        context.stanzas, context.worktrees_root, context.anchor_dir
+    )
     _LOGGER.info(
         "Starting git-plonk soft cleanup",
         extra={
             "mode": _PlonkMode.SOFT.value,
-            "worktrees_root": worktrees_root.as_posix(),
+            "worktrees_root": context.worktrees_root.as_posix(),
             "inspected_worktrees": len(worktree_paths),
         },
     )
@@ -565,7 +578,9 @@ def _run_completed_cleanup(
     """Remove completed worktrees and optionally their local branches."""
     adapter = git_adapter or _GitWorktreeAdapter(context.repo_home)
     _log_plonk_cleanup_start(mode, context)
-    candidates = _donkey_worktree_candidates(context.stanzas, context.worktrees_root)
+    candidates = _donkey_worktree_candidates(
+        context.stanzas, context.worktrees_root, context.anchor_dir
+    )
     completed_candidates = plonk_policy.completed_candidates(
         candidates,
         adapter.history_messages(context.trunk_ref),
@@ -654,11 +669,7 @@ def run_git_plonk(
 
     if soft:
         soft_context = _load_soft_plonk_context()
-        result = _run_soft(
-            soft_context.stanzas,
-            soft_context.worktrees_root,
-            dry_run=dry_run,
-        )
+        result = _run_soft(soft_context, dry_run=dry_run)
     else:
         context = _load_plonk_context()
         mode = _PlonkMode.HARD if hard else _PlonkMode.DEFAULT

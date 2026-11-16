@@ -9,15 +9,12 @@ removing them. These tests pin that narrow contract.
 
 from __future__ import annotations
 
-import typing as typ
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
-from git_donkey import plonk
-
-if typ.TYPE_CHECKING:
-    from pathlib import Path
+from git_donkey import layout, plonk
 
 
 def test_soft_mode_loads_only_worktree_context(
@@ -27,18 +24,25 @@ def test_soft_mode_loads_only_worktree_context(
 ) -> None:
     """Soft mode should avoid trunk ref resolution and global cwd changes."""
     worktrees_root = tmp_path / "repo.worktrees"
-    stanzas = [{"worktree": worktrees_root / "issue-123-fix"}]
+    stanzas = [
+        {"worktree": tmp_path / "repo", "branch": "refs/heads/main"},
+        {"worktree": worktrees_root / "issue-123-fix"},
+    ]
+    cwd_before = Path.cwd()
 
     monkeypatch.setattr(plonk.helpers, "_find_repo", lambda _prefix: SimpleNamespace())
     monkeypatch.setattr(
         plonk.helpers, "_parse_worktree_porcelain", lambda _repo: stanzas
     )
     monkeypatch.setattr(
-        plonk.helpers,
-        "_main_worktree_path_from_list",
-        lambda _stanzas, _prefix: tmp_path / "repo",
+        plonk.layout,
+        "resolve_layout",
+        lambda _repo, _stanzas: layout.RepositoryLayout(
+            anchor_dir=tmp_path / "repo",
+            kind=layout.LayoutKind.MAIN_WORKTREE,
+            worktrees_root=worktrees_root,
+        ),
     )
-    monkeypatch.setattr(plonk.donkey, "_worktrees_root", lambda _home: worktrees_root)
     monkeypatch.setattr(
         plonk,
         "_load_plonk_context",
@@ -58,6 +62,7 @@ def test_soft_mode_loads_only_worktree_context(
     exit_code = plonk.run_git_plonk(soft=True)
 
     assert exit_code == 0, "expected soft git plonk to succeed"
+    assert Path.cwd() == cwd_before, "soft mode must not change the process cwd"
     assert "git-plonk: mode=soft" in capsys.readouterr().out, (
         "expected soft-mode summary output"
     )
@@ -73,8 +78,20 @@ def test_soft_mode_removes_generated_paths_and_leaves_the_rest(
     target_path.mkdir(parents=True)
     work_file = worktree_path / "README.md"
     work_file.write_text("work in progress")
+    anchor = tmp_path / "repo"
 
-    result = plonk._run_soft([{"worktree": worktree_path}], worktrees_root)
+    stanzas: list[dict[str, object]] = [
+        {"worktree": anchor, "branch": "refs/heads/main"},
+        {"worktree": worktree_path},
+    ]
+
+    result = plonk._run_soft(
+        plonk._SoftPlonkContext(
+            stanzas=stanzas,
+            worktrees_root=worktrees_root,
+            anchor_dir=anchor,
+        )
+    )
 
     assert result.mode is plonk._PlonkMode.SOFT, "expected soft mode"
     assert not result.is_dry_run, "a real soft run is not a plan"
@@ -95,10 +112,19 @@ def test_dry_run_soft_mode_reports_targets_without_removing_them(
     worktree_path = worktrees_root / "issue-123-fix"
     target_path = worktree_path / "target"
     target_path.mkdir(parents=True)
+    anchor = tmp_path / "repo"
+
+    stanzas: list[dict[str, object]] = [
+        {"worktree": anchor, "branch": "refs/heads/main"},
+        {"worktree": worktree_path},
+    ]
 
     result = plonk._run_soft(
-        [{"worktree": worktree_path}],
-        worktrees_root,
+        plonk._SoftPlonkContext(
+            stanzas=stanzas,
+            worktrees_root=worktrees_root,
+            anchor_dir=anchor,
+        ),
         dry_run=True,
     )
 

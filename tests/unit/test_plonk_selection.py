@@ -20,7 +20,14 @@ from git import Repo
 from hypothesis import given
 from hypothesis import strategies as st
 
-from git_donkey import plonk, plonk_policy, plonk_records, plonk_selection
+from git_donkey import (
+    helpers,
+    layout,
+    plonk,
+    plonk_policy,
+    plonk_records,
+    plonk_selection,
+)
 from tests import git_repo_helpers
 
 # History messages consumed before the streaming scan stops: one per candidate
@@ -134,6 +141,7 @@ def test_unrecognized_branch_has_no_completion_marker() -> None:
 def test_detached_head_stanza_yields_no_branch_or_candidate(tmp_path: Path) -> None:
     """A detached worktree should carry no branch, so it is never a candidate."""
     worktrees_root = tmp_path / _WORKTREES_ROOT_NAME
+    anchor = _stanza(tmp_path, "main")
     stanza: dict[str, object] = {
         "worktree": (worktrees_root / "issue-123-fix").as_posix(),
         "detached": True,
@@ -143,25 +151,26 @@ def test_detached_head_stanza_yields_no_branch_or_candidate(tmp_path: Path) -> N
     assert plonk_selection._branch_name_from_stanza(stanza) is None, (
         "a detached worktree names no local branch"
     )
-    assert not plonk_selection._donkey_worktree_candidates([stanza], worktrees_root), (
-        "a worktree with no branch cannot be judged complete"
-    )
+    assert not plonk_selection._donkey_worktree_candidates(
+        [anchor, stanza], worktrees_root, tmp_path
+    ), "a worktree with no branch cannot be judged complete"
 
 
 def test_stanza_without_a_worktree_field_is_ignored(tmp_path: Path) -> None:
     """A stanza naming no path should not become a candidate or a path."""
     worktrees_root = tmp_path / _WORKTREES_ROOT_NAME
+    anchor = _stanza(tmp_path, "main")
     stanza: dict[str, object] = {"branch": "refs/heads/issue-123-fix"}
 
     assert plonk_selection._worktree_path_from_stanza(stanza) is None, (
         "a stanza with no worktree field yields no path"
     )
-    assert not plonk_selection._donkey_worktree_paths([stanza], worktrees_root), (
-        "the path filter skips the stanza rather than inventing a location"
-    )
-    assert not plonk_selection._donkey_worktree_candidates([stanza], worktrees_root), (
-        "a pathless stanza cannot be cleaned up"
-    )
+    assert not plonk_selection._donkey_worktree_paths(
+        [anchor, stanza], worktrees_root, tmp_path
+    ), "the path filter skips the stanza rather than inventing a location"
+    assert not plonk_selection._donkey_worktree_candidates(
+        [anchor, stanza], worktrees_root, tmp_path
+    ), "a pathless stanza cannot be cleaned up"
 
 
 def test_worktree_path_is_expanded_and_resolved() -> None:
@@ -211,9 +220,11 @@ def test_donkey_worktree_paths_keep_only_worktrees_under_the_root(
         _stanza(outside, "issue-124-fix"),
     ]
 
-    assert plonk_selection._donkey_worktree_paths(stanzas, worktrees_root) == [
-        inside.resolve()
-    ], "only the linked worktree under the donkey root is a cleanup target"
+    assert plonk_selection._donkey_worktree_paths(
+        stanzas, worktrees_root, tmp_path
+    ) == [inside.resolve()], (
+        "only the linked worktree under the donkey root is a cleanup target"
+    )
 
 
 def test_donkey_worktree_candidates_filter_unrecognized_branches(
@@ -222,13 +233,16 @@ def test_donkey_worktree_candidates_filter_unrecognized_branches(
     """Candidate selection should keep recognized branches inside the root."""
     worktrees_root = tmp_path / _WORKTREES_ROOT_NAME
     stanzas = [
+        _stanza(tmp_path, "main"),
         _stanza(worktrees_root / "feature-work", "feature/unstructured"),
         _stanza(worktrees_root / "road-1-2-3a-4-task", "road-1-2-3a-4-task"),
         _stanza(tmp_path / "elsewhere" / "issue-124-fix", "issue-124-fix"),
         _stanza(worktrees_root / "issue-123-fix", "issue-123-fix"),
     ]
 
-    candidates = plonk_selection._donkey_worktree_candidates(stanzas, worktrees_root)
+    candidates = plonk_selection._donkey_worktree_candidates(
+        stanzas, worktrees_root, tmp_path
+    )
 
     assert [candidate.branch_name for candidate in candidates] == [
         "road-1-2-3a-4-task",
@@ -238,6 +252,74 @@ def test_donkey_worktree_candidates_filter_unrecognized_branches(
         "(road.1.2.3a.4)",
         "(#123)",
     ], "each candidate carries the marker its branch encodes"
+
+
+def test_anchor_stanza_is_never_a_cleanup_target(tmp_path: Path) -> None:
+    """The main checkout stays out of scope even when a root contains it."""
+    worktrees_root = tmp_path / "root"
+    anchor = worktrees_root / "main-checkout"
+    linked = worktrees_root / "issue-123-fix"
+    stanzas = [
+        _stanza(anchor, "road-1-2-3a-4-task"),
+        _stanza(linked, "issue-123-fix"),
+    ]
+
+    assert plonk_selection._donkey_worktree_paths(stanzas, worktrees_root, anchor) == [
+        linked.resolve()
+    ], "the anchor must not be selected for soft cleanup"
+    assert [
+        candidate.branch_name
+        for candidate in plonk_selection._donkey_worktree_candidates(
+            stanzas, worktrees_root, anchor
+        )
+    ] == ["issue-123-fix"], (
+        "the anchor must not become a completed-cleanup candidate, even when its "
+        "branch carries a marker"
+    )
+
+
+def test_stanzas_without_the_anchor_remain_cleanup_targets(tmp_path: Path) -> None:
+    """Every stanza stays eligible when the listing omits the anchor."""
+    worktrees_root = tmp_path / _WORKTREES_ROOT_NAME
+    stanzas = [_stanza(worktrees_root / "issue-123-fix", "issue-123-fix")]
+
+    assert plonk_selection._donkey_worktree_paths(
+        stanzas, worktrees_root, tmp_path / "repo"
+    ) == [(worktrees_root / "issue-123-fix").resolve()], (
+        "exclusion is by identity, so omitting the anchor does not drop a candidate"
+    )
+
+
+def test_symlinked_configured_root_scopes_cleanup_to_the_real_directory(
+    tmp_path: Path,
+) -> None:
+    """Cleanup follows the resolved root, not its lexical collapse."""
+    repo, _remote = git_repo_helpers.repo_with_remote_default(
+        tmp_path / "repo", tmp_path / "remote.git"
+    )
+    shared_subdir = tmp_path / "shared" / "subdir"
+    shared_subdir.mkdir(parents=True)
+    intended_root = tmp_path / "shared" / "trees"
+    intended_root.mkdir()
+    link = tmp_path / "repo" / "link"
+    link.symlink_to(shared_subdir, target_is_directory=True)
+    repo.git.config(layout.WORKTREES_ROOT_CONFIG_KEY, "link/../trees")
+
+    resolved = layout.resolve_layout(repo, helpers._parse_worktree_porcelain(repo))
+    stanzas: list[dict[str, object]] = [
+        _stanza(tmp_path / "repo", "main"),
+        _stanza(intended_root / "issue-123-fix", "issue-123-fix"),
+        _stanza(tmp_path / "repo" / "trees" / "issue-456-fix", "issue-456-fix"),
+    ]
+
+    paths = plonk_selection._donkey_worktree_paths(
+        stanzas, resolved.worktrees_root, resolved.anchor_dir
+    )
+
+    assert paths == [(intended_root / "issue-123-fix").resolve()], (
+        "the resolved root must scope cleanup; a worktree under the lexical "
+        "collapse of the same configuration is out of scope"
+    )
 
 
 def test_completed_candidates_use_history_markers() -> None:

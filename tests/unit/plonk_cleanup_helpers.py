@@ -177,6 +177,7 @@ def cleanup_context(
             for one in candidates
         ],
         worktrees_root=Path("/repo.worktrees"),
+        anchor_dir=Path("/repo"),
         trunk_ref=TRUNK_REF,
         invoking_worktree=None,
     )
