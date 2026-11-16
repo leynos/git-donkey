@@ -98,7 +98,11 @@ git config donkey.worktreesRoot ../donkeys
 ```
 
 An empty value is refused with exit status 2, because it would make the anchor
-itself the root. `git plonk` uses the configured root as its scope, so a root
+itself the root. A relative value is joined to the anchor and then resolved
+against the filesystem, so a symlinked component keeps its meaning:
+`link/../trees` names the directory beside the symlink's target, not beside the
+link. The policy layer therefore leaves `..` in place and only the adapter
+resolves the path. `git plonk` uses the configured root as its scope, so a root
 that contains worktrees created by other tools brings them into a sweep.
 Changing the value does not move existing worktrees; those left under the old
 root fall out of `git plonk`'s scope.
@@ -134,10 +138,12 @@ since it fetches the default branch through an explicit refspec.
 Unit tests in `tests/unit/test_layout.py` pin the pure policy for each
 arrangement in Table 1, the layout resolved from a linked worktree and from the
 bare directory, the relative, absolute, home-relative, and empty forms of
-`donkey.worktreesRoot`, and the typed errors the adapter raises.
-`tests/unit/test_plonk_selection.py` asserts that the anchor stanza is never a
-cleanup target, and `tests/unit/test_cli_helpers.py` covers the fetch refspec
-rule and its adapter.
+`donkey.worktreesRoot`, a configured root whose symlink precedes a `..`, and
+the typed errors the adapter raises. `tests/unit/test_plonk_selection.py`
+asserts that the anchor stanza is never a cleanup target, that a listing
+without the anchor keeps its candidates, and that a symlinked configured root
+scopes cleanup to the resolved directory. `tests/unit/test_cli_helpers.py`
+covers the fetch refspec rule and its adapter.
 
 Behavioural tests build a real bare collection with a session worktree.
 `features/git_donkey_bare.feature` asserts where a new worktree is created,

@@ -20,7 +20,14 @@ from git import Repo
 from hypothesis import given
 from hypothesis import strategies as st
 
-from git_donkey import plonk, plonk_policy, plonk_records, plonk_selection
+from git_donkey import (
+    helpers,
+    layout,
+    plonk,
+    plonk_policy,
+    plonk_records,
+    plonk_selection,
+)
 from tests import git_repo_helpers
 
 # History messages consumed before the streaming scan stops: one per candidate
@@ -280,6 +287,38 @@ def test_stanzas_without_the_anchor_remain_cleanup_targets(tmp_path: Path) -> No
         stanzas, worktrees_root, tmp_path / "repo"
     ) == [(worktrees_root / "issue-123-fix").resolve()], (
         "exclusion is by identity, so omitting the anchor does not drop a candidate"
+    )
+
+
+def test_symlinked_configured_root_scopes_cleanup_to_the_real_directory(
+    tmp_path: Path,
+) -> None:
+    """Cleanup follows the resolved root, not its lexical collapse."""
+    repo, _remote = git_repo_helpers.repo_with_remote_default(
+        tmp_path / "repo", tmp_path / "remote.git"
+    )
+    shared_subdir = tmp_path / "shared" / "subdir"
+    shared_subdir.mkdir(parents=True)
+    intended_root = tmp_path / "shared" / "trees"
+    intended_root.mkdir()
+    link = tmp_path / "repo" / "link"
+    link.symlink_to(shared_subdir, target_is_directory=True)
+    repo.git.config(layout.WORKTREES_ROOT_CONFIG_KEY, "link/../trees")
+
+    resolved = layout.resolve_layout(repo, helpers._parse_worktree_porcelain(repo))
+    stanzas: list[dict[str, object]] = [
+        _stanza(tmp_path / "repo", "main"),
+        _stanza(intended_root / "issue-123-fix", "issue-123-fix"),
+        _stanza(tmp_path / "repo" / "trees" / "issue-456-fix", "issue-456-fix"),
+    ]
+
+    paths = plonk_selection._donkey_worktree_paths(
+        stanzas, resolved.worktrees_root, resolved.anchor_dir
+    )
+
+    assert paths == [(intended_root / "issue-123-fix").resolve()], (
+        "the resolved root must scope cleanup; a worktree under the lexical "
+        "collapse of the same configuration is out of scope"
     )
 
 

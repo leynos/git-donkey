@@ -39,7 +39,6 @@ from __future__ import annotations
 
 import dataclasses
 import enum
-import os
 from pathlib import Path
 
 from git import GitCommandError, Repo
@@ -134,7 +133,10 @@ def select_layout(
 
     This is the policy layer: it takes plain values, reads no Git state, and
     performs no filesystem resolution or exit. Callers that need canonical
-    paths resolve the result, as :func:`resolve_layout` does.
+    paths resolve the result, as :func:`resolve_layout` does. No component of
+    the joined path is collapsed lexically: a configured root such as
+    ``link/../trees`` must be resolved against the filesystem, where ``link``
+    may be a symlink whose target changes what ``..`` means.
 
     Parameters
     ----------
@@ -144,13 +146,14 @@ def select_layout(
         Whether ``anchor_dir`` is a main worktree or a bare repository.
     configured_root : str | None
         The ``donkey.worktreesRoot`` value, or ``None`` when it is unset. A
-        relative value resolves against ``anchor_dir``; the Git adapter has
-        already expanded a leading ``~``.
+        relative value is joined to ``anchor_dir``; the Git adapter has already
+        expanded a leading ``~``.
 
     Returns
     -------
     RepositoryLayout
-        The layout the rules imply, with lexical path normalisation only.
+        The layout the rules imply, with the configured root joined but not
+        resolved.
 
     Raises
     ------
@@ -164,9 +167,9 @@ def select_layout(
     ... ).worktrees_root
     PosixPath('/src/repo.worktrees')
     >>> select_layout(
-    ...     Path("/src/repo"), LayoutKind.MAIN_WORKTREE, "../trees"
+    ...     Path("/src/repo"), LayoutKind.MAIN_WORKTREE, "/srv/trees"
     ... ).worktrees_root
-    PosixPath('/src/trees')
+    PosixPath('/srv/trees')
 
     """
     if configured_root is not None and not configured_root:
@@ -183,7 +186,7 @@ def select_layout(
     return RepositoryLayout(
         anchor_dir=anchor_dir,
         kind=kind,
-        worktrees_root=Path(os.path.normpath(worktrees_root)),
+        worktrees_root=Path(worktrees_root),
     )
 
 

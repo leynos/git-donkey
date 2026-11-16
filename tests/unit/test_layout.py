@@ -109,7 +109,7 @@ def test_select_layout_uses_the_default_root_when_unset(
 @pytest.mark.parametrize(
     ("configured", "expected"),
     [
-        ("../trees", "/src/trees"),
+        ("../trees", "/src/repo/../trees"),
         ("nested/root", "/src/repo/nested/root"),
         ("/opt/trees", "/opt/trees"),
     ],
@@ -118,13 +118,14 @@ def test_select_layout_honours_the_configured_root(
     configured: str,
     expected: str,
 ) -> None:
-    """A configured root wins and a relative value resolves against the anchor."""
+    """A configured root wins and a relative value is joined, not collapsed."""
     selected = layout.select_layout(
         Path("/src/repo"), LayoutKind.MAIN_WORKTREE, configured
     )
 
     assert selected.worktrees_root == Path(expected), (
-        "expected the configured root to replace the default"
+        "expected the configured root to replace the default, with any '..' "
+        "left for the adapter to resolve"
     )
 
 
@@ -225,6 +226,34 @@ def test_configured_absolute_root_replaces_the_default(tmp_path: Path) -> None:
 
     assert _resolve(repo).worktrees_root == configured.resolve(), (
         "expected the configured root to replace the sibling default"
+    )
+
+
+@pytest.mark.parametrize(
+    "configure",
+    [
+        lambda _link: "link/../trees",
+        lambda link: (link / ".." / "trees").as_posix(),
+    ],
+    ids=["relative", "absolute"],
+)
+def test_configured_root_resolves_a_symlink_before_a_parent_component(
+    tmp_path: Path,
+    configure: cabc.Callable[[Path], str],
+) -> None:
+    """A symlink followed by ``..`` keeps its filesystem meaning."""
+    repo, _remote = repo_with_remote_default(tmp_path / "repo", tmp_path / "remote.git")
+    shared_subdir = tmp_path / "shared" / "subdir"
+    shared_subdir.mkdir(parents=True)
+    link = tmp_path / "repo" / "link"
+    link.symlink_to(shared_subdir, target_is_directory=True)
+    repo.git.config(layout.WORKTREES_ROOT_CONFIG_KEY, configure(link))
+
+    resolved = _resolve(repo)
+
+    assert resolved.worktrees_root == (tmp_path / "shared" / "trees").resolve(), (
+        "expected the symlink to resolve before '..'; collapsing lexically would "
+        "name <repo>/trees and scope cleanup against the wrong directory"
     )
 
 
