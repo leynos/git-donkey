@@ -34,7 +34,7 @@ if typ.TYPE_CHECKING:
     import pytest
 
 
-@dataclasses.dataclass(frozen=True, slots=True)
+@dataclasses.dataclass(slots=True)
 class ScopeScenario(PlonkScenario):
     """Scenario state plus the paths scope assertions need to reach.
 

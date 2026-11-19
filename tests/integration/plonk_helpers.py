@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import dataclasses
 import typing as typ
+from pathlib import Path
 
 from git import Repo
 
@@ -20,7 +21,9 @@ from git_donkey import donkey
 from tests.git_repo_helpers import configure_repo
 
 if typ.TYPE_CHECKING:
-    from pathlib import Path
+    import collections.abc as cabc
+
+    import pytest
 
 # The tracked seed file the dirt helpers edit, and the content each edit leaves
 # behind. Both kinds of dirt are uncommitted work, so both must keep their
@@ -30,14 +33,38 @@ MODIFIED_CONTENT = "edited in the worktree"
 STAGED_CONTENT = "staged in the worktree"
 
 
-@dataclasses.dataclass(frozen=True, slots=True)
+@dataclasses.dataclass(slots=True)
 class PlonkScenario:
-    """Repository state shared by BDD steps and direct regression tests."""
+    """Repository state shared by BDD steps and direct regression tests.
+
+    Attributes
+    ----------
+    local_path : Path
+        Working checkout the sweep runs from.
+    completed_branch : str
+        Branch whose worktree carries a completion marker.
+    active_branch : str | None
+        Branch of the worktree a scenario invokes the sweep from, when the
+        scenario cares which worktree that is.
+    dirty_branch : str | None
+        Second completed branch, used by scenarios that compare a clean
+        worktree with one holding uncommitted work.
+    exit_code : int | str | None
+        Exit code the recorded run returned, or the code it exited with.
+    stdout : str
+        Standard output the recorded run produced.
+    stderr : str
+        Standard error the recorded run produced.
+
+    """
 
     local_path: Path
     completed_branch: str
     active_branch: str | None = None
     dirty_branch: str | None = None
+    exit_code: int | str | None = None
+    stdout: str = ""
+    stderr: str = ""
 
     @property
     def worktree_root(self) -> Path:
@@ -47,6 +74,85 @@ class PlonkScenario:
     def worktree_path(self, branch_name: str) -> Path:
         """Return the expected worktree path for ``branch_name``."""
         return self.worktree_root / branch_name
+
+
+def capture_plonk_run(
+    scenario: PlonkScenario,
+    capsys: pytest.CaptureFixture[str],
+    call: cabc.Callable[[], int | None],
+) -> None:
+    """Run a ``git plonk`` invocation, recording its exit code and streams.
+
+    A workflow that returns a code and a CLI entry point that exits are both
+    recorded rather than raised, so a scenario states the exit code it expects
+    in its ``Then`` steps. The capture is drained before the call so setup
+    output cannot be mistaken for the sweep's own report.
+
+    Parameters
+    ----------
+    scenario : PlonkScenario
+        Scenario collecting the result.
+    capsys : pytest.CaptureFixture[str]
+        Capture fixture the run's output is read from.
+    call : cabc.Callable[[], int | None]
+        Invocation to run, such as ``plonk.run_git_plonk(hard=True)``.
+
+    """
+    capsys.readouterr()
+    try:
+        scenario.exit_code = call()
+    except SystemExit as exc:
+        scenario.exit_code = exc.code
+    finally:
+        captured = capsys.readouterr()
+        scenario.stdout = captured.out
+        scenario.stderr = captured.err
+
+
+def skipped_entry(worktree_path: Path, reason: str) -> str:
+    """Build the report line naming ``worktree_path`` as skipped.
+
+    Parameters
+    ----------
+    worktree_path : Path
+        Worktree the sweep left alone.
+    reason : str
+        Skip reason the report appends in parentheses.
+
+    Returns
+    -------
+    str
+        The report line, without its trailing newline.
+
+    """
+    return f"- {worktree_path} ({reason})"
+
+
+def worktree_order(local_path: Path) -> list[Path]:
+    """Return the worktree paths in the order Git reports them.
+
+    ``git plonk`` walks ``git worktree list --porcelain``, so a report that
+    names several worktrees orders them the same way. Deriving that order from
+    Git keeps a multi-entry expectation independent of the order the scenario
+    happened to create its worktrees in.
+
+    Parameters
+    ----------
+    local_path : Path
+        Repository whose worktree registration is read.
+
+    Returns
+    -------
+    list[Path]
+        Absolute worktree paths, in Git's report order.
+
+    """
+    porcelain = Repo(local_path).git.worktree("list", "--porcelain")
+    return [
+        Path(line.removeprefix("worktree "))
+        for line in porcelain.splitlines()
+        if line.startswith("worktree ")
+    ]
 
 
 def commit_completion_marker(local_path: Path, marker: str) -> None:

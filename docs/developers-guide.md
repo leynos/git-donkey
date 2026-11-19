@@ -703,6 +703,14 @@ messages as syrupy snapshots in
 generate its artefact, when a new `git-fafo` conflict or credential failure
 path is introduced.
 
+`tests/output_assertions.py` holds the exact-output helpers the integration
+suites share. `stream()` builds a newline-terminated expectation,
+`require_stream()` compares a whole stream and accepts only a trailing
+`{git_error}` placeholder standing in for a diagnostic Git itself produced, and
+`require_line()` finds one complete line inside a longer report. Reach for
+these instead of a substring check; `tests/unit/test_output_assertions.py` pins
+their failure behaviour as well as their success behaviour.
+
 The `git-plonk` test modules are split the same way as the production modules
 they verify. `tests/integration/test_git_plonk_bdd.py` binds the scenarios in
 `tests/integration/features/git_plonk.feature`: the default, soft, and hard
