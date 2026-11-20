@@ -349,7 +349,7 @@ skips rather than forcing removal are recorded in the
 
 `pytest-bdd` and `syrupy` are development dependencies for this command.
 `pytest-bdd` covers user workflows against real temporary Git repositories, and
-`syrupy` pins stable summary rendering. Hypothesis checks marker-shape
+`syrupy` pins the exact summary rendering. Hypothesis checks marker-shape
 invariants in the pure policy layer.
 
 ## git-incoming and git-outgoing module boundaries
@@ -576,6 +576,37 @@ project virtual environment. The project requires Python 3.13 or newer, but
 contributors need no matching system Python. No Node.js tooling is needed for
 `make lint`; that belongs to the separate `markdownlint` and `nixie` targets.
 
+### Snapshot tests
+
+Syrupy pins user-facing output that is too long or too detailed to restate
+usefully inside a test body. The `snapshot` fixture compares the whole string
+exactly, so a missing artefact fails the test and so does any difference in
+wording, wrapping, or trailing whitespace. Artefacts live beside their tests in
+`__snapshots__/<module>.ambr`.
+
+Regenerate one module's snapshots serially:
+
+```sh
+uv run pytest tests/unit/test_fafo_error_messages.py --snapshot-update
+```
+
+Do not pass `-n` or `-k` to that command. Each artefact must be written once,
+and an update run must cover every test in the module so unrelated snapshots
+are neither refreshed nor silently pruned. Read the resulting `.ambr` diff
+before committing it: the snapshot is the specification. Then run the module
+again without `--snapshot-update` to prove the committed artefact matches, and
+run `uv run ambrleaks tests` to confirm no absolute path, hex string, UUID, or
+e-mail address leaked into the recording.
+
+Application-owned output is asserted exactly, including its final newline. Only
+a diagnostic produced by a third-party tool, such as Git's own fetch error, may
+be normalized, and only through a trailing placeholder that matches the
+non-empty remainder of the stream. When that diagnostic follows application
+progress output, assert it with `require_terminal()`, which matches the literal
+template from a line boundary to the end of the stream. Do not strip,
+lower-case, or substring-match application output to make an assertion pass;
+narrow the snapshot, assert the whole line, or add a placeholder instead.
+
 ### Development dependencies
 
 The `[dependency-groups] dev` table in `pyproject.toml` provides `pylint`
@@ -669,8 +700,32 @@ existing-repository scenarios, so the tests stay focused on behaviour rather
 than Git setup.
 
 `tests/unit/test_fafo_error_messages.py` pins complete user-facing error
-messages. Add new cases there when a new `git-fafo` conflict or credential
-failure path is introduced.
+messages as syrupy snapshots in
+`tests/unit/__snapshots__/test_fafo_error_messages.ambr`. Add a case there, and
+generate its artefact, when a new `git-fafo` conflict or credential failure
+path is introduced.
+
+`tests/output_assertions.py` holds the exact-output helpers the integration
+suites share. `stream()` builds a newline-terminated expectation,
+`require_stream()` compares a whole stream and accepts only a trailing
+`{git_error}` placeholder standing in for a diagnostic Git itself produced,
+`require_line()` finds one complete line inside a longer report, and
+`require_terminal()` matches a `{git_error}` template from a line boundary to
+the end of the stream when application progress output precedes it. Reach for
+the narrowest of these that still specifies the behaviour, and never a
+substring check; `tests/unit/test_output_assertions.py` pins their failure
+behaviour as well as their success behaviour.
+
+Whole-stream assertions are preferred wherever a run emits only the text under
+test. Where a run emits progress output first — a `Using remote:` line, a plonk
+summary header — assert the complete line with `require_line()`, or the
+diagnostic with `require_terminal()` when it ends in third-party text. Tests
+that need several entries in a report derive their order from the repository
+itself, for example `git worktree list --porcelain` for plonk recounting, so
+the expectation describes production behaviour rather than test-run order.
+`tests/integration/plonk_helpers.py` records the exit code and both captured
+streams for every plonk invocation; assert against those rather than rendering
+a summary inside the test.
 
 The `git-plonk` test modules are split the same way as the production modules
 they verify. `tests/integration/test_git_plonk_bdd.py` binds the scenarios in

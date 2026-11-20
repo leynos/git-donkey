@@ -32,6 +32,7 @@ from tests.integration.donkey_helpers import (
     run_donkey_without_pulling,
     seed_repo,
 )
+from tests.output_assertions import require_stream, stream
 
 if typ.TYPE_CHECKING:
     from pathlib import Path
@@ -304,8 +305,13 @@ def cli_reports_a_mutually_exclusive_usage_error(cli_outcome: _CliOutcome) -> No
     assert cli_outcome.code == _USAGE_ERROR_EXIT_CODE, (
         "expected conflicting pull modes to exit with a usage error"
     )
-    assert "mutually exclusive" in cli_outcome.stderr, (
-        "expected the error to name the mutually exclusive options"
+    require_stream(
+        cli_outcome.stderr,
+        stream(
+            "git-donkey: 💀 --pull-rebase, --pull-ff, and --no-pull are "
+            "mutually exclusive"
+        ),
+        context="git donkey stderr",
     )
 
 

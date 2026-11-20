@@ -1,0 +1,25 @@
+# serializer version: 1
+# name: test_empty_scaffold_existing_path_message
+  '''
+  git-fafo: ⚔️ repository path 'demo-repo' already exists
+  
+  '''
+# ---
+# name: test_existing_repository_without_confirmation_message
+  '''
+  git-fafo: ⚔️ GitHub repository 'octocat/demo-repo' already exists. Pass --yes to adopt it when it has no commits or only an empty initial commit.
+  
+  '''
+# ---
+# name: test_missing_token_without_terminal_message
+  '''
+  git-fafo: missing GitHub token and no interactive terminal available; set GITHUB_TOKEN, GH_TOKEN, or GIT_DONKEY_CREDENTIALS_FILE
+  
+  '''
+# ---
+# name: test_non_empty_existing_repository_message
+  '''
+  git-fafo: ⚔️ GitHub repository 'octocat/demo-repo' already exists and is not empty. Pick a new name or delete the existing repository before running git-fafo again.
+  
+  '''
+# ---

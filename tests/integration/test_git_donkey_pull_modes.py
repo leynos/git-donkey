@@ -10,6 +10,11 @@ from git import Repo
 from git_donkey import donkey
 from tests.integration.conftest import _setup_repo
 from tests.integration.donkey_helpers import seed_repo
+from tests.output_assertions import (
+    GIT_ERROR_PLACEHOLDER,
+    require_line,
+    require_terminal,
+)
 
 if typ.TYPE_CHECKING:
     from pathlib import Path
@@ -78,8 +83,10 @@ def test_pull_ff_refuses_divergence_even_with_rebase_configured(
         )
 
     assert excinfo.value.code == 1, "divergence under --ff-only is an error"
-    assert "pull --ff-only" in capsys.readouterr().err, (
-        "the error names the fast-forward-only mode"
+    require_terminal(
+        capsys.readouterr().err,
+        f"git-donkey: 💀 update failed (pull --ff-only): {GIT_ERROR_PLACEHOLDER}",
+        context="git donkey stderr",
     )
     assert repo.head.commit.hexsha == original_tip, (
         "the diverged local base is left untouched"
@@ -112,8 +119,11 @@ def test_opt_in_never_pulls_base_into_unrelated_primary_checkout(
         donkey.run_git_donkey("feature/unsafe", "main", options=options)
 
     assert excinfo.value.code == 1, "a base held by no worktree is an error"
-    assert "not checked out in a worktree" in capsys.readouterr().err, (
-        "the error explains the missing worktree"
+    require_line(
+        capsys.readouterr().err,
+        "git-donkey: 💀 cannot pull 'main': it is not checked out in a worktree; "
+        "check out that base explicitly or omit the pull option",
+        context="git donkey stderr",
     )
     assert repo.active_branch.name == "unrelated", (
         "the primary checkout keeps its branch"

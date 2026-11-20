@@ -20,7 +20,13 @@ import vcr
 from git import Repo
 from pytest_bdd import parsers, then, when
 
+from git_donkey import templates
 from tests.git_repo_helpers import configure_repo
+from tests.output_assertions import (
+    GIT_ERROR_PLACEHOLDER,
+    require_line,
+    require_terminal,
+)
 
 if typ.TYPE_CHECKING:
     import collections.abc as cabc
@@ -160,7 +166,53 @@ def git_donkey_reports(scenario: DonkeyScenario, message: str) -> None:
     _require_stderr_message(scenario, message)
 
 
+def _worktree_holding_branch(scenario: DonkeyScenario) -> Path:
+    """Return the registered worktree currently holding the scenario's branch."""
+    porcelain = scenario.repo.git.worktree("list", "--porcelain")
+    wanted_branch = f"branch refs/heads/{scenario.branch}"
+    for stanza in porcelain.split("\n\n"):
+        lines = stanza.splitlines()
+        if lines and wanted_branch in lines[1:]:
+            return Path(lines[0].removeprefix("worktree "))
+    return scenario.worktree_path()
+
+
+def _expand_stderr_template(scenario: DonkeyScenario, message: str) -> str:
+    """Substitute the path placeholders a feature message may carry.
+
+    ``{worktree_path}`` names the worktree that already holds the branch, which
+    is what a refusal to reuse that branch reports. ``{target_path}`` names the
+    worktree path ``git donkey`` would have created. ``{template_dir}`` names
+    the overlay directory for the scenario's repository, and expands to an
+    empty string when the repository has no remote.
+
+    Returns
+    -------
+    str
+        The message with every recognised placeholder replaced.
+
+    """
+    overlay_dir = templates.get_template_dir_path(scenario.repo)
+    replacements = {
+        "{worktree_path}": str(_worktree_holding_branch(scenario)),
+        "{target_path}": str(scenario.worktree_path()),
+        "{template_dir}": str(overlay_dir or ""),
+    }
+    for placeholder, value in replacements.items():
+        message = message.replace(placeholder, value)
+    return message
+
+
 def _require_stderr_message(scenario: DonkeyScenario, message: str) -> None:
-    """Fail the test unless ``message`` appears in the recorded stderr."""
-    if message not in scenario.stderr:
-        pytest.fail(f"expected stderr to report {message!r}: {scenario.stderr!r}")
+    """Fail unless the recorded stderr carries ``message`` as a whole line.
+
+    A message ending in the Git-error placeholder is the tail of a failing
+    run's stream, so its literal part is matched from a line boundary and the
+    remainder is left to Git; everything else is matched as one complete line
+    of a longer report.
+    """
+    expected = _expand_stderr_template(scenario, message)
+    if GIT_ERROR_PLACEHOLDER in expected:
+        require_terminal(scenario.stderr, expected, context="git donkey stderr")
+        return
+    require_line(scenario.stderr, expected, context="git donkey stderr")

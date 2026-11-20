@@ -10,6 +10,7 @@ from git import Repo
 from git_donkey import donkey
 from tests.integration.conftest import _setup_repo
 from tests.integration.donkey_helpers import seed_repo
+from tests.output_assertions import require_stream, stream
 
 if typ.TYPE_CHECKING:
     from pathlib import Path
@@ -128,8 +129,14 @@ def test_missing_advertised_default_requires_explicit_base(
         donkey.run_git_donkey("feature/missing")
 
     assert excinfo.value.code == 1, "a missing advertised default is an error"
-    assert "specify a base branch explicitly" in capsys.readouterr().err, (
-        "the error tells the user to name a base explicitly"
+    require_stream(
+        capsys.readouterr().err,
+        stream(
+            "Using remote: origin",
+            "git-donkey: 💀 remote 'origin' does not advertise a default branch; "
+            "specify a base branch explicitly",
+        ),
+        context="git donkey stderr",
     )
     assert "feature/missing" not in repo.heads, (
         "no branch is created when the default cannot be discovered"

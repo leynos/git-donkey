@@ -32,8 +32,11 @@ from tests.integration.plonk_helpers import (
     commit_ignore_rule,
     create_git_donkey_worktree,
     edit_tracked_file,
+    record_plonk_run,
+    skipped_entry,
     stage_tracked_change,
 )
+from tests.output_assertions import require_stream, stream
 
 if typ.TYPE_CHECKING:
     from pathlib import Path
@@ -183,67 +186,94 @@ def repository_with_ignored_build_output(
     return scenario
 
 
-@when("I run git plonk in default mode", target_fixture="plonk_output")
+def _require_report(scenario: PlonkScenario, *lines: str) -> None:
+    """Assert the run printed exactly ``lines``, each terminated by a newline."""
+    require_stream(scenario.stdout, stream(*lines), context="git plonk stdout")
+
+
+@when("I run git plonk in default mode")
 def run_default_plonk(
     scenario: PlonkScenario,
     capsys: pytest.CaptureFixture[str],
-) -> str:
-    """Run the default cleanup mode and capture its report."""
-    exit_code = plonk.run_git_plonk()
-    assert exit_code == 0, "expected default git plonk to succeed"
-    return capsys.readouterr().out
+) -> None:
+    """Run the default cleanup mode and record its report."""
+    record_plonk_run(scenario, capsys, "default", plonk.run_git_plonk)
+    assert scenario.exit_code == 0, "expected default git plonk to succeed"
 
 
-@when("I run git plonk in default dry-run mode", target_fixture="plonk_output")
+@when("I run git plonk in default dry-run mode")
 def run_default_dry_run_plonk(
     scenario: PlonkScenario,
     capsys: pytest.CaptureFixture[str],
-) -> str:
+) -> None:
     """Run default cleanup in dry-run mode through the CLI boundary."""
-    with pytest.raises(SystemExit) as exc_info:
-        cli._plonk_app(["--dry-run"])
-    assert exc_info.value.code == 0, "expected default dry-run git plonk to succeed"
-    return capsys.readouterr().out
+    record_plonk_run(
+        scenario,
+        capsys,
+        "default dry-run",
+        lambda: cli._plonk_app(["--dry-run"]),
+    )
+    assert scenario.exit_code == 0, "expected default dry-run git plonk to succeed"
 
 
 @when("I run git plonk in soft mode")
-def run_soft_plonk(scenario: PlonkScenario) -> None:
-    """Run the soft cleanup mode."""
-    exit_code = plonk.run_git_plonk(soft=True)
-    assert exit_code == 0, "expected soft git plonk to succeed"
+def run_soft_plonk(
+    scenario: PlonkScenario,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Run the soft cleanup mode and record its report."""
+    record_plonk_run(
+        scenario,
+        capsys,
+        "soft",
+        lambda: plonk.run_git_plonk(soft=True),
+    )
+    assert scenario.exit_code == 0, "expected soft git plonk to succeed"
 
 
-@when("I run git plonk in soft dry-run mode", target_fixture="plonk_output")
+@when("I run git plonk in soft dry-run mode")
 def run_soft_dry_run_plonk(
     scenario: PlonkScenario,
     capsys: pytest.CaptureFixture[str],
-) -> str:
-    """Run soft cleanup in dry-run mode and capture its report."""
-    exit_code = plonk.run_git_plonk(soft=True, dry_run=True)
-    assert exit_code == 0, "expected soft dry-run git plonk to succeed"
-    return capsys.readouterr().out
+) -> None:
+    """Run soft cleanup in dry-run mode and record its report."""
+    record_plonk_run(
+        scenario,
+        capsys,
+        "soft dry-run",
+        lambda: plonk.run_git_plonk(soft=True, dry_run=True),
+    )
+    assert scenario.exit_code == 0, "expected soft dry-run git plonk to succeed"
 
 
-@when("I run git plonk in hard mode", target_fixture="plonk_output")
+@when("I run git plonk in hard mode")
 def run_hard_plonk(
     scenario: PlonkScenario,
     capsys: pytest.CaptureFixture[str],
-) -> str:
-    """Run the hard cleanup mode and capture its report."""
-    exit_code = plonk.run_git_plonk(hard=True)
-    assert exit_code == 0, "expected hard git plonk to succeed"
-    return capsys.readouterr().out
+) -> None:
+    """Run the hard cleanup mode and record its report."""
+    record_plonk_run(
+        scenario,
+        capsys,
+        "hard",
+        lambda: plonk.run_git_plonk(hard=True),
+    )
+    assert scenario.exit_code == 0, "expected hard git plonk to succeed"
 
 
-@when("I run git plonk in hard dry-run mode", target_fixture="plonk_output")
+@when("I run git plonk in hard dry-run mode")
 def run_hard_dry_run_plonk(
     scenario: PlonkScenario,
     capsys: pytest.CaptureFixture[str],
-) -> str:
-    """Run hard cleanup in dry-run mode and capture its report."""
-    exit_code = plonk.run_git_plonk(hard=True, dry_run=True)
-    assert exit_code == 0, "expected hard dry-run git plonk to succeed"
-    return capsys.readouterr().out
+) -> None:
+    """Run hard cleanup in dry-run mode and record its report."""
+    record_plonk_run(
+        scenario,
+        capsys,
+        "hard dry-run",
+        lambda: plonk.run_git_plonk(hard=True, dry_run=True),
+    )
+    assert scenario.exit_code == 0, "expected hard dry-run git plonk to succeed"
 
 
 @when("I run git plonk with soft and hard modes", target_fixture="plonk_exit")
@@ -285,44 +315,34 @@ def dirty_completed_worktree_remains(scenario: PlonkScenario) -> None:
     )
 
 
-def _assert_skipped_entry(
-    worktree_path: Path,
-    reason: str,
-    plonk_output: str,
-) -> None:
-    """Assert ``plonk_output`` reports ``worktree_path`` as skipped for ``reason``."""
-    assert "Skipped worktrees:" in plonk_output, (
-        "expected a skipped worktree section in the report"
-    )
-    assert f"- {worktree_path} ({reason})" in plonk_output, (
-        f"expected {worktree_path} to be reported as skipped for {reason}"
-    )
-
-
 @then("git plonk reports the dirty worktree as skipped")
-def git_plonk_reports_dirty_worktree_skipped(
-    scenario: PlonkScenario,
-    plonk_output: str,
-) -> None:
-    """Assert the report names the dirty worktree and the reason it survived."""
+def git_plonk_reports_dirty_worktree_skipped(scenario: PlonkScenario) -> None:
+    """Assert the report removes the clean worktree and names the dirty one."""
     assert scenario.dirty_branch is not None, "expected dirty branch in scenario"
-    _assert_skipped_entry(
-        scenario.worktree_path(scenario.dirty_branch),
-        "uncommitted changes",
-        plonk_output,
+    _require_report(
+        scenario,
+        f"git-plonk: mode={scenario.mode}",
+        "Removed worktrees:",
+        f"- {scenario.worktree_path(scenario.completed_branch)}",
+        "Skipped worktrees:",
+        skipped_entry(
+            scenario.worktree_path(scenario.dirty_branch),
+            "uncommitted changes",
+        ),
     )
 
 
 @then("git plonk reports the completed worktree as skipped")
-def git_plonk_reports_completed_worktree_skipped(
-    scenario: PlonkScenario,
-    plonk_output: str,
-) -> None:
+def git_plonk_reports_completed_worktree_skipped(scenario: PlonkScenario) -> None:
     """Assert the report names the completed worktree and why it survived."""
-    _assert_skipped_entry(
-        scenario.worktree_path(scenario.completed_branch),
-        "uncommitted changes",
-        plonk_output,
+    _require_report(
+        scenario,
+        f"git-plonk: mode={scenario.mode}",
+        "Skipped worktrees:",
+        skipped_entry(
+            scenario.worktree_path(scenario.completed_branch),
+            "uncommitted changes",
+        ),
     )
 
 
@@ -414,93 +434,49 @@ def git_plonk_exits_with_usage_error(plonk_exit: int | str | None) -> None:
     )
 
 
-def _assert_dry_run_header(mode: str, plonk_output: str) -> None:
-    """Assert the dry-run summary header for ``mode`` appears in ``plonk_output``."""
-    message = (
-        "expected dry-run summary header"
-        if mode == "hard"
-        else f"expected {mode} dry-run summary header"
-    )
-    assert f"git-plonk: mode={mode} dry-run" in plonk_output, message
-
-
-def _assert_planned_worktree_removal(
-    scenario: PlonkScenario,
-    plonk_output: str,
-) -> None:
-    """Assert the planned worktree-removal section lists the completed path."""
-    assert "Planned worktree removals:" in plonk_output, (
-        "expected planned worktree section"
-    )
-    assert str(scenario.worktree_path(scenario.completed_branch)) in plonk_output, (
-        "expected completed worktree path in dry-run output"
-    )
-
-
-def _assert_branch_deletion_section(
-    scenario: PlonkScenario,
-    plonk_output: str,
-    *,
-    expected: bool,
-) -> None:
-    """Assert the branch-deletion section is present or absent as ``expected``."""
-    if expected:
-        assert "Planned branch deletions:" in plonk_output, (
-            "expected planned branch section"
-        )
-        assert f"- {scenario.completed_branch}" in plonk_output, (
-            "expected completed branch in dry-run output"
-        )
-    else:
-        assert "Planned branch deletions:" not in plonk_output, (
-            "expected default dry-run output to omit branch deletion section"
-        )
-        assert f"- {scenario.completed_branch}" not in plonk_output, (
-            "expected default dry-run output to omit completed branch deletion"
-        )
+def _scenario_worktree_paths(scenario: PlonkScenario) -> list[Path]:
+    """Return the scenario's worktrees in the order Git registers them."""
+    wanted = {scenario.worktree_path(branch) for branch in _scenario_branches(scenario)}
+    return [path for path in scenario.known_worktrees if path in wanted]
 
 
 @then("git plonk reports planned worktree and branch cleanup")
-def git_plonk_reports_planned_cleanup(
-    scenario: PlonkScenario,
-    plonk_output: str,
-) -> None:
+def git_plonk_reports_planned_cleanup(scenario: PlonkScenario) -> None:
     """Assert dry-run output describes the work that would be performed."""
-    _assert_dry_run_header("hard", plonk_output)
-    _assert_planned_worktree_removal(scenario, plonk_output)
-    _assert_branch_deletion_section(scenario, plonk_output, expected=True)
+    _require_report(
+        scenario,
+        f"git-plonk: mode={scenario.mode}",
+        "Planned worktree removals:",
+        f"- {scenario.worktree_path(scenario.completed_branch)}",
+        "Planned branch deletions:",
+        f"- {scenario.completed_branch}",
+    )
 
 
 @then("git plonk reports planned default worktree cleanup only")
-def git_plonk_reports_planned_default_cleanup(
-    scenario: PlonkScenario,
-    plonk_output: str,
-) -> None:
+def git_plonk_reports_planned_default_cleanup(scenario: PlonkScenario) -> None:
     """Assert default dry-run output excludes hard-mode branch deletion."""
-    _assert_dry_run_header("default", plonk_output)
-    _assert_planned_worktree_removal(scenario, plonk_output)
-    _assert_branch_deletion_section(scenario, plonk_output, expected=False)
+    _require_report(
+        scenario,
+        f"git-plonk: mode={scenario.mode}",
+        "Planned worktree removals:",
+        f"- {scenario.worktree_path(scenario.completed_branch)}",
+    )
 
 
 @then("git plonk reports planned generated path cleanup")
-def git_plonk_reports_planned_generated_cleanup(
-    scenario: PlonkScenario,
-    plonk_output: str,
-) -> None:
+def git_plonk_reports_planned_generated_cleanup(scenario: PlonkScenario) -> None:
     """Assert soft dry-run output describes generated paths it would remove."""
-    branches = _scenario_branches(scenario)
-    _assert_dry_run_header("soft", plonk_output)
-    assert "Planned generated path removals:" in plonk_output, (
-        "expected planned generated path section"
+    lines = [
+        f"git-plonk: mode={scenario.mode}",
+        "Planned generated path removals:",
+    ]
+    lines.extend(
+        f"- {worktree_path / name}"
+        for worktree_path in _scenario_worktree_paths(scenario)
+        for name in ("target", "node_modules")
     )
-    for branch_name in branches:
-        worktree_path = scenario.worktree_path(branch_name)
-        assert str(worktree_path / "target") in plonk_output, (
-            f"expected target path in dry-run output for {branch_name}"
-        )
-        assert str(worktree_path / "node_modules") in plonk_output, (
-            f"expected node_modules path in dry-run output for {branch_name}"
-        )
+    _require_report(scenario, *lines)
 
 
 scenarios("features/git_plonk.feature")

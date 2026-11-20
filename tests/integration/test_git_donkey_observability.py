@@ -15,6 +15,11 @@ from git import Repo
 from git_donkey import donkey, slugs, templates
 from tests.integration.conftest import _setup_repo
 from tests.integration.donkey_helpers import seed_repo
+from tests.output_assertions import (
+    GIT_ERROR_PLACEHOLDER,
+    require_line,
+    require_terminal,
+)
 
 if typ.TYPE_CHECKING:
     from pathlib import Path
@@ -270,7 +275,11 @@ def test_failed_base_update_records_the_git_failure(
         )
 
     assert excinfo.value.code == 1, "divergence under --ff-only is still an error"
-    assert capsys.readouterr().err, "the failure is still reported to the user"
+    require_terminal(
+        capsys.readouterr().err,
+        f"git-donkey: 💀 update failed (pull --ff-only): {GIT_ERROR_PLACEHOLDER}",
+        context="git donkey stderr",
+    )
     assert recording_recorder.outcomes("base_update") == ["started", "failure"], (
         "the update reports its start and its failure"
     )
@@ -353,8 +362,11 @@ def test_unselectable_template_records_unavailable(
     exit_code = donkey.run_git_donkey("feature/ambiguous-template", "main")
 
     assert exit_code == 0, "an unusable template selection is not a failure"
-    assert "Multiple remotes" in capsys.readouterr().err, (
-        "the selection problem is still reported to the user"
+    require_line(
+        capsys.readouterr().err,
+        "git-donkey: Multiple remotes configured without an 'origin' remote: "
+        "upstream, mirror",
+        context="git donkey stderr",
     )
     assert recording_recorder.outcomes("template_overlay") == ["unavailable"], (
         "the unusable overlay reports itself unavailable"
