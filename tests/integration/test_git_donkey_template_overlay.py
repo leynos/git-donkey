@@ -12,6 +12,7 @@ import typing as typ
 
 from git_donkey import donkey, slugs, templates
 from tests.integration.conftest import _setup_repo
+from tests.output_assertions import require_stream, stream
 
 if typ.TYPE_CHECKING:
     from pathlib import Path
@@ -89,12 +90,18 @@ def test_git_donkey_reports_template_overlay_failure(
     exit_code = donkey.run_git_donkey("feature/overlay-failure", no_pull=True)
 
     assert exit_code == 1, "expected git-donkey to report the overlay failure"
-    stderr = capsys.readouterr().err
-    assert "Error applying template overlay from" in stderr, (
-        "expected the overlay error to be reported"
-    )
-    assert "Worktree created but template overlay failed" in stderr, (
-        "expected the retained worktree to be reported"
+    require_stream(
+        capsys.readouterr().err,
+        stream(
+            "Using remote: origin",
+            "Creating new branch 'feature/overlay-failure' from "
+            "'refs/remotes/origin/main' in a new worktree",
+            f"Applying template overlay from: {template_dir}",
+            f"git-donkey: Error applying template overlay from {template_dir}: "
+            "simulated overlay failure",
+            "git-donkey: Worktree created but template overlay failed",
+        ),
+        context="git donkey stderr",
     )
 
     worktree_root = local_path.parent / f"{local_path.name}.worktrees"

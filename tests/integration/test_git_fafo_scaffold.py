@@ -12,6 +12,7 @@ import os
 import typing as typ
 
 from git_donkey import fafo
+from tests.output_assertions import require_stream, stream
 
 if typ.TYPE_CHECKING:
     from pathlib import Path
@@ -47,8 +48,10 @@ def test_git_fafo_existing_repo_early_return(
 
     assert exit_code == 1, "expected git-fafo to return error for existing path"
     assert not called, "expected no git-fafo commands to run"
-    assert "You did that one already!" in capsys.readouterr().err, (
-        "expected early-return message on stderr"
+    require_stream(
+        capsys.readouterr().err,
+        stream("You did that one already!"),
+        context="git-fafo stderr",
     )
 
 

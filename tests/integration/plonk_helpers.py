@@ -19,6 +19,7 @@ from git import Repo
 
 from git_donkey import donkey
 from tests.git_repo_helpers import configure_repo
+from tests.output_assertions import require_stream
 
 if typ.TYPE_CHECKING:
     import collections.abc as cabc
@@ -53,6 +54,13 @@ class PlonkScenario:
         Exit code the recorded run returned, or the code it exited with.
     stdout : str
         Standard output the recorded run produced.
+    mode : str
+        Mode of the recorded run as the report header spells it, such as
+        ``"hard dry-run"``.
+    known_worktrees : tuple[Path, ...]
+        Worktree paths Git reported before the recorded run, in its listing
+        order. A sweep removes worktrees, so the order a report used can only
+        be read before it runs.
     stderr : str
         Standard error the recorded run produced.
 
@@ -63,6 +71,8 @@ class PlonkScenario:
     active_branch: str | None = None
     dirty_branch: str | None = None
     exit_code: int | str | None = None
+    mode: str = ""
+    known_worktrees: tuple[Path, ...] = ()
     stdout: str = ""
     stderr: str = ""
 
@@ -76,6 +86,60 @@ class PlonkScenario:
         return self.worktree_root / branch_name
 
 
+@dataclasses.dataclass(frozen=True, slots=True)
+class RunResult:
+    """Exit code and output streams one recorded invocation produced.
+
+    Attributes
+    ----------
+    exit_code : int | str | None
+        Code the invocation returned, or the code it exited with.
+    stdout : str
+        Standard output the invocation produced.
+    stderr : str
+        Standard error the invocation produced.
+
+    """
+
+    exit_code: int | str | None
+    stdout: str
+    stderr: str
+
+
+def capture_run(
+    capsys: pytest.CaptureFixture[str],
+    call: cabc.Callable[[], int | None],
+) -> RunResult:
+    """Run ``call``, recording whether it returned or exited and what it wrote.
+
+    The capture is drained before the call so setup output cannot be mistaken
+    for the invocation's own report. Draining again afterwards bounds the
+    recorded streams to what the call itself wrote.
+
+    Parameters
+    ----------
+    capsys : pytest.CaptureFixture[str]
+        Capture fixture the run's output is read from.
+    call : cabc.Callable[[], int | None]
+        Invocation to run, such as ``plonk.run_git_plonk(hard=True)``.
+
+    Returns
+    -------
+    RunResult
+        The recorded exit code and output streams.
+
+    """
+    capsys.readouterr()
+    exit_code: int | str | None = None
+    try:
+        exit_code = call()
+    except SystemExit as exc:
+        exit_code = exc.code
+    finally:
+        captured = capsys.readouterr()
+    return RunResult(exit_code, captured.out, captured.err)
+
+
 def capture_plonk_run(
     scenario: PlonkScenario,
     capsys: pytest.CaptureFixture[str],
@@ -85,8 +149,9 @@ def capture_plonk_run(
 
     A workflow that returns a code and a CLI entry point that exits are both
     recorded rather than raised, so a scenario states the exit code it expects
-    in its ``Then`` steps. The capture is drained before the call so setup
-    output cannot be mistaken for the sweep's own report.
+    in its ``Then`` steps. The worktree listing is read before the call because
+    a sweep removes worktrees, so the order a report used can only be captured
+    beforehand.
 
     Parameters
     ----------
@@ -98,15 +163,42 @@ def capture_plonk_run(
         Invocation to run, such as ``plonk.run_git_plonk(hard=True)``.
 
     """
-    capsys.readouterr()
-    try:
-        scenario.exit_code = call()
-    except SystemExit as exc:
-        scenario.exit_code = exc.code
-    finally:
-        captured = capsys.readouterr()
-        scenario.stdout = captured.out
-        scenario.stderr = captured.err
+    scenario.known_worktrees = tuple(worktree_order(scenario.local_path))
+    result = capture_run(capsys, call)
+    scenario.exit_code = result.exit_code
+    scenario.stdout = result.stdout
+    scenario.stderr = result.stderr
+
+
+def record_plonk_run(
+    scenario: PlonkScenario,
+    capsys: pytest.CaptureFixture[str],
+    mode: str,
+    call: cabc.Callable[[], int | None],
+) -> None:
+    """Run a successful ``git plonk`` invocation and record its report.
+
+    The mode is stored in the form the summary header spells it, so a scenario
+    can build the exact expected report without repeating how the header is
+    punctuated. A successful sweep reports through its summary alone, so any
+    standard error fails here rather than being absorbed by a looser
+    assertion.
+
+    Parameters
+    ----------
+    scenario : PlonkScenario
+        Scenario collecting the result.
+    capsys : pytest.CaptureFixture[str]
+        Capture fixture the run's output is read from.
+    mode : str
+        Mode as the summary header spells it, such as ``"hard dry-run"``.
+    call : cabc.Callable[[], int | None]
+        Invocation to run, such as ``plonk.run_git_plonk(hard=True)``.
+
+    """
+    scenario.mode = mode
+    capture_plonk_run(scenario, capsys, call)
+    require_stream(scenario.stderr, "", context="git plonk stderr")
 
 
 def skipped_entry(worktree_path: Path, reason: str) -> str:

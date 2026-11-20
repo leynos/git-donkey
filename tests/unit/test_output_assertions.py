@@ -14,8 +14,11 @@ from tests.output_assertions import (
     GIT_ERROR_PLACEHOLDER,
     require_line,
     require_stream,
+    require_terminal,
     stream,
 )
+
+_GIT_FAILURE_TEMPLATE = f"git-donkey: fetch failed: {GIT_ERROR_PLACEHOLDER}"
 
 
 def test_stream_terminates_every_line_including_blanks() -> None:
@@ -93,6 +96,52 @@ def test_require_stream_rejects_a_repeated_placeholder() -> None:
         require_stream(
             stream("a: b: c"),
             f"{GIT_ERROR_PLACEHOLDER}: {GIT_ERROR_PLACEHOLDER}",
+        )
+
+
+def test_require_terminal_accepts_a_diagnostic_after_progress() -> None:
+    """A diagnostic that follows progress output should still match."""
+    require_terminal(
+        stream("Using remote: origin", "git-donkey: fetch failed: fatal: boom"),
+        _GIT_FAILURE_TEMPLATE,
+    )
+
+
+def test_require_terminal_accepts_a_multi_line_git_error() -> None:
+    """Git's own multi-line text should stand in for the placeholder."""
+    require_terminal(
+        stream("git-donkey: fetch failed: fatal: boom", "fatal: could not read"),
+        _GIT_FAILURE_TEMPLATE,
+    )
+
+
+def test_require_terminal_rejects_a_missing_diagnostic() -> None:
+    """A stream without the diagnostic should fail even if it has progress."""
+    with pytest.raises(pytest.fail.Exception):
+        require_terminal(stream("Using remote: origin"), _GIT_FAILURE_TEMPLATE)
+
+
+def test_require_terminal_rejects_an_empty_git_error() -> None:
+    """The diagnostic must carry the third-party text the placeholder stands for."""
+    with pytest.raises(pytest.fail.Exception):
+        require_terminal("git-donkey: fetch failed: ", _GIT_FAILURE_TEMPLATE)
+
+
+def test_require_terminal_rejects_a_mid_line_match() -> None:
+    """A diagnostic that does not start a line should not match."""
+    with pytest.raises(pytest.fail.Exception):
+        require_terminal(
+            stream("progress: git-donkey: fetch failed: fatal: boom"),
+            _GIT_FAILURE_TEMPLATE,
+        )
+
+
+def test_require_terminal_rejects_a_non_trailing_placeholder() -> None:
+    """The terminal helper validates the placeholder position too."""
+    with pytest.raises(ValueError, match="final characters"):
+        require_terminal(
+            stream("git-donkey: fetch failed: fatal: boom: done"),
+            f"{GIT_ERROR_PLACEHOLDER}: done",
         )
 
 

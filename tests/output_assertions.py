@@ -7,13 +7,15 @@ helpers compare whole streams and whole lines instead, and they keep the one
 deliberate exception — a diagnostic produced by a third-party tool — narrow
 enough that it can only stand in for the tail of the stream.
 
-Three tools cover the cases the suites need:
+Four tools cover the cases the suites need:
 
 - :func:`stream` builds the expected text, so a multi-line expectation reads
   as its lines rather than as escaped newlines.
 - :func:`require_stream` compares a whole stream, optionally accepting a
   trailing :data:`GIT_ERROR_PLACEHOLDER` where Git's own error text is
   reported.
+- :func:`require_terminal` compares the diagnostic a run ends with, for the
+  commands that write progress before they fail.
 - :func:`require_line` requires one complete line to be present, which is what
   a multi-line report needs when its other lines are not the subject of the
   assertion.
@@ -100,23 +102,63 @@ def require_stream(
             _fail_stream(actual, expected_template, context)
         return
 
-    if (
-        not expected_template.endswith(GIT_ERROR_PLACEHOLDER)
-        or expected_template.count(GIT_ERROR_PLACEHOLDER) != 1
-    ):
-        message = (
-            f"{GIT_ERROR_PLACEHOLDER} must be the only placeholder and the "
-            f"final characters of the template: {expected_template!r}"
-        )
-        raise ValueError(message)
-
-    prefix = expected_template.removesuffix(GIT_ERROR_PLACEHOLDER)
+    prefix = _git_error_prefix(expected_template)
     external_text = actual.removeprefix(prefix)
     if not actual.startswith(prefix) or not external_text:
         pytest.fail(
             f"expected {context} to start with {prefix!r} followed by a "
             f"non-empty external diagnostic\nreceived: {actual!r}"
         )
+
+
+def require_terminal(
+    actual: str,
+    expected_template: str,
+    *,
+    context: str = "output",
+) -> None:
+    """Fail unless ``actual`` ends with a diagnostic matching the template.
+
+    Some commands report progress before they fail, so their diagnostic is the
+    tail of the stream rather than all of it. The template must begin at a line
+    boundary, and its final :data:`GIT_ERROR_PLACEHOLDER` must match the
+    non-empty remainder of the stream, which is where Git's own error text
+    sits.
+
+    Parameters
+    ----------
+    actual : str
+        The captured stream under test.
+    expected_template : str
+        Literal diagnostic text ending with the placeholder.
+    context : str
+        What the stream represents, used in the failure message.
+
+    Raises
+    ------
+    ValueError
+        If the placeholder appears anywhere but once, as the end of the
+        template.
+
+    Examples
+    --------
+    >>> require_terminal(
+    ...     stream("Using remote: origin", "git-donkey: fetch failed: fatal: boom"),
+    ...     "git-donkey: fetch failed: {git_error}",
+    ... )
+
+    """
+    prefix = _git_error_prefix(expected_template)
+    for position in (
+        0,
+        *(index + 1 for index, char in enumerate(actual) if char == "\n"),
+    ):
+        if actual.startswith(prefix, position) and actual[position + len(prefix) :]:
+            return
+    pytest.fail(
+        f"expected {context} to end with the diagnostic {prefix!r} followed by "
+        f"a non-empty external diagnostic\nreceived: {actual!r}"
+    )
 
 
 def require_line(
@@ -154,6 +196,20 @@ def require_line(
         f"expected {context} to contain the complete line {terminated!r}\n"
         f"received: {actual!r}"
     )
+
+
+def _git_error_prefix(expected_template: str) -> str:
+    """Return the literal prefix of a template ending with the placeholder."""
+    if (
+        not expected_template.endswith(GIT_ERROR_PLACEHOLDER)
+        or expected_template.count(GIT_ERROR_PLACEHOLDER) != 1
+    ):
+        message = (
+            f"{GIT_ERROR_PLACEHOLDER} must be the only placeholder and the "
+            f"final characters of the template: {expected_template!r}"
+        )
+        raise ValueError(message)
+    return expected_template.removesuffix(GIT_ERROR_PLACEHOLDER)
 
 
 def _fail_stream(actual: str, expected: str, context: str) -> typ.NoReturn:

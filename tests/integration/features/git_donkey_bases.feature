@@ -3,7 +3,7 @@ Feature: Choose, fetch, and update git donkey worktree bases
   Scenario: An explicit local base still fetches from the remote first
     Given a repository whose remote has been deleted
     When I run git donkey with the current branch as the base
-    Then git donkey fails with code 1 and reports "fetch failed"
+    Then git donkey fails with code 1 and reports "git-donkey: 💀 fetch failed: {git_error}"
     And no branch or worktree is created
 
   Scenario: The default and --no-pull both start at the remote tip
@@ -27,7 +27,7 @@ Feature: Choose, fetch, and update git donkey worktree bases
     And a non-interactive stdin
     When I run git donkey with --pull-ff and the current branch as the base
     Then git donkey succeeds
-    And git donkey reports "Non-interactive"
+    And git donkey reports "Non-interactive stdin/stdout; skipping prompt (treating as 'no')."
     And the local base is left at its behind tip
     And the new worktree starts at the behind tip
 

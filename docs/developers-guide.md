@@ -601,9 +601,11 @@ e-mail address leaked into the recording.
 Application-owned output is asserted exactly, including its final newline. Only
 a diagnostic produced by a third-party tool, such as Git's own fetch error, may
 be normalized, and only through a trailing placeholder that matches the
-non-empty remainder of the stream. Do not strip, lower-case, or substring-match
-application output to make an assertion pass; narrow the snapshot or add a
-placeholder instead.
+non-empty remainder of the stream. When that diagnostic follows application
+progress output, assert it with `require_terminal()`, which matches the literal
+template from a line boundary to the end of the stream. Do not strip,
+lower-case, or substring-match application output to make an assertion pass;
+narrow the snapshot, assert the whole line, or add a placeholder instead.
 
 ### Development dependencies
 
@@ -706,10 +708,24 @@ path is introduced.
 `tests/output_assertions.py` holds the exact-output helpers the integration
 suites share. `stream()` builds a newline-terminated expectation,
 `require_stream()` compares a whole stream and accepts only a trailing
-`{git_error}` placeholder standing in for a diagnostic Git itself produced, and
-`require_line()` finds one complete line inside a longer report. Reach for
-these instead of a substring check; `tests/unit/test_output_assertions.py` pins
-their failure behaviour as well as their success behaviour.
+`{git_error}` placeholder standing in for a diagnostic Git itself produced,
+`require_line()` finds one complete line inside a longer report, and
+`require_terminal()` matches a `{git_error}` template from a line boundary to
+the end of the stream when application progress output precedes it. Reach for
+the narrowest of these that still specifies the behaviour, and never a
+substring check; `tests/unit/test_output_assertions.py` pins their failure
+behaviour as well as their success behaviour.
+
+Whole-stream assertions are preferred wherever a run emits only the text under
+test. Where a run emits progress output first — a `Using remote:` line, a plonk
+summary header — assert the complete line with `require_line()`, or the
+diagnostic with `require_terminal()` when it ends in third-party text. Tests
+that need several entries in a report derive their order from the repository
+itself, for example `git worktree list --porcelain` for plonk recounting, so
+the expectation describes production behaviour rather than test-run order.
+`tests/integration/plonk_helpers.py` records the exit code and both captured
+streams for every plonk invocation; assert against those rather than rendering
+a summary inside the test.
 
 The `git-plonk` test modules are split the same way as the production modules
 they verify. `tests/integration/test_git_plonk_bdd.py` binds the scenarios in
