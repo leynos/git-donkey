@@ -143,8 +143,8 @@ def _ensure_base_branch_available(
 
     A bare name that exists on the principal remote first gains a local
     tracking branch, preserving the reuse behaviour ``git donkey`` has always
-    had. A fully qualified ref and any other commit-ish are resolved without
-    creating a local branch.
+    had. A fully qualified ref is used as written, and any other commit-ish is
+    resolved without creating a local branch.
 
     Parameters
     ----------
@@ -176,6 +176,11 @@ def _ensure_base_branch_available(
                 1,
             )
         return commit
+
+    if base_branch.startswith("refs/"):
+        # A canonical ref is used as written. A bare-name lookup would let a
+        # branch literally named "refs/..." shadow the ref it spells.
+        return _resolve_base_commit(context, base_branch)
 
     if helpers._remote_branch_exists(
         context.repo_home,

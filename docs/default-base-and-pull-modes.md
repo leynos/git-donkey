@@ -97,7 +97,10 @@ A base that names a tag or commit has no local branch to update; the preflight
 accepts it once Git resolves it and skips both the update and the prompt. A
 remote-qualified base behaves like an omitted base: the local branch of the
 same name may be updated, while the new branch still starts at the
-remote-tracking commit.
+remote-tracking commit. A fully qualified local branch, `refs/heads/<branch>`,
+is treated as that local branch for the same comparison. The behind comparison
+uses fully qualified refs, so a tag named like the base branch cannot shadow it
+in Git's ambiguous short-name resolution.
 
 An omitted base continues to select the remote commit even when an opt-in
 update also synchronizes its local counterpart. An explicit local branch base,

@@ -298,10 +298,12 @@ def _base_branch_behind_count(
     if not helpers._local_branch_exists(context.repo_home, local_branch):
         return 0
 
+    # Fully qualified refs, so a tag named like the branch cannot shadow it in
+    # Git's ambiguous short-name resolution.
     _ahead, behind = _ahead_behind(
         context.repo_home,
-        local_branch,
-        f"{context.remote}/{local_branch}",
+        f"refs/heads/{local_branch}",
+        f"refs/remotes/{context.remote}/{local_branch}",
     )
     return behind
 

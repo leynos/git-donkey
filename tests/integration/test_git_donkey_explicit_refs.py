@@ -168,13 +168,11 @@ def test_non_principal_remote_qualified_base_uses_that_remote(
     """A qualified base naming another configured remote is accepted."""
     local_path, remote_path = _setup_repo(tmp_path)
     repo = Repo(local_path)
-    repo.git.remote("rename", "origin", "upstream")
-    # A second, distinct remote: sharing one store would let `origin/main` and
-    # `upstream/main` name the same commit, so a wrong remote could pass.
-    other_remote_path = tmp_path / "other.git"
-    Repo.init(other_remote_path, bare=True)
-    repo.create_remote("origin", other_remote_path.as_posix())
-    repo.remote("origin").push("main")
+    # `origin` stays the first configured (principal) remote. The second
+    # remote gets its own store and a tip that differs from `origin/main`.
+    upstream_path = tmp_path / "upstream.git"
+    Repo.init(upstream_path, bare=True)
+    repo.create_remote("upstream", upstream_path.as_posix())
     seed_repo(repo, "other.txt", "other remote work")
     repo.remote("upstream").push("main")
     remote_tip = repo.head.commit.hexsha
@@ -189,6 +187,7 @@ def test_non_principal_remote_qualified_base_uses_that_remote(
     scenario.local_tip = local_tip
     monkeypatch.chdir(local_path)
     monkeypatch.setattr(donkey.helpers, "_prompt_yes_no", _reject_prompt)
+    assert repo.remotes[0].name == "origin", "origin remains the principal remote"
     assert repo.commit("origin/main").hexsha != repo.commit("upstream/main").hexsha, (
         "the two remotes must offer different tips for the assertion to bite"
     )
@@ -390,4 +389,26 @@ def test_head_expression_resolves_in_the_calling_checkout(
     )
     assert scenario.worktree_head() != first, (
         "the anchor's HEAD does not decide the start point"
+    )
+
+
+def test_canonical_tag_base_is_not_shadowed_by_a_branch_of_that_name(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A fully qualified tag is used as written, whatever else spells its name."""
+    scenario = new_scenario(tmp_path, monkeypatch, "feature/from-tag-ref")
+    repo = scenario.repo
+    tagged = _tag_commit(scenario, "v1.0")
+    seed_repo(repo, "later.txt", "later work")
+    # A local branch whose literal name spells the same ref must not win.
+    repo.git.branch("refs/tags/v1.0", "HEAD")
+    monkeypatch.setattr(donkey.helpers, "_prompt_yes_no", _reject_prompt)
+
+    run_donkey(scenario, capsys, "refs/tags/v1.0")
+
+    assert scenario.exit_code == 0, "a canonical tag ref is accepted"
+    assert scenario.worktree_head() == tagged, (
+        "the tag, not the shadowing branch, supplies the start point"
     )

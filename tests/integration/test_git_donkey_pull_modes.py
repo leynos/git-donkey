@@ -320,3 +320,34 @@ def test_pull_ff_updates_a_canonical_local_base(
     assert repo.commit("feature/canonical-local").hexsha == repo.head.commit.hexsha, (
         "the new branch starts at the updated base"
     )
+
+
+def test_pull_ff_prompt_is_not_fooled_by_a_tag_shadowing_the_base_branch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A tag named like the base branch must not hide that it is behind."""
+    repo = _behind_repo(tmp_path)
+    original_tip = repo.head.commit.hexsha
+    # The tag points at the remote tip, so a short-name comparison against
+    # `main` would report nothing to do and skip the prompt.
+    repo.create_tag("main", ref=repo.commit("origin/main").hexsha)
+    monkeypatch.chdir(repo.working_tree_dir or ".")
+    monkeypatch.setattr(donkey.helpers, "_prompt_yes_no", lambda *_: True)
+
+    assert (
+        donkey.run_git_donkey(
+            "feature/tag-shadow",
+            "origin/main",
+            options=donkey._PullOptions(pull_ff=True),
+        )
+        == 0
+    ), "the behind base is still updated and the worktree created"
+
+    assert repo.commit("refs/heads/main").hexsha == repo.commit("origin/main").hexsha, (
+        "the local branch is fast-forwarded despite the shadowing tag"
+    )
+    assert repo.head.commit.hexsha != original_tip, "the local base moved forward"
+    assert repo.commit("feature/tag-shadow").hexsha == repo.head.commit.hexsha, (
+        "the new branch starts at the updated base"
+    )
