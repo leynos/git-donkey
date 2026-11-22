@@ -351,3 +351,38 @@ def test_pull_ff_prompt_is_not_fooled_by_a_tag_shadowing_the_base_branch(
     assert repo.commit("feature/tag-shadow").hexsha == repo.head.commit.hexsha, (
         "the new branch starts at the updated base"
     )
+
+
+def test_canonical_tag_base_never_prompts_even_with_shadowing_branches(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A canonical tag base has no branch to update, whatever else exists."""
+    repo = _behind_repo(tmp_path)
+    local_tip = repo.head.commit.hexsha
+    remote_tip = repo.commit("origin/main").hexsha
+    repo.create_tag("release-tag", ref=remote_tip)
+    repo.git.branch("refs/tags/release-tag", remote_tip)
+    repo.remote("origin").push(f"{remote_tip}:refs/heads/refs/tags/release-tag")
+    repo.git.branch("-f", "refs/tags/release-tag", local_tip)
+    assert repo.commit("refs/remotes/origin/refs/tags/release-tag").hexsha == (
+        remote_tip
+    ), "the shadowing remote branch must exist for the guard to matter"
+    monkeypatch.chdir(repo.working_tree_dir or ".")
+    monkeypatch.setattr(donkey.helpers, "_prompt_yes_no", _reject_prompt)
+
+    assert (
+        donkey.run_git_donkey(
+            "feature/tag-ref",
+            "refs/tags/release-tag",
+            options=donkey._PullOptions(pull_ff=True),
+        )
+        == 0
+    ), "a canonical tag base creates the worktree without prompting"
+
+    assert repo.commit("feature/tag-ref").hexsha == remote_tip, (
+        "the new branch starts at the tagged commit"
+    )
+    assert repo.commit("refs/heads/refs/tags/release-tag").hexsha == local_tip, (
+        "the unrelated literal branch is left untouched"
+    )

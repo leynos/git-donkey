@@ -322,6 +322,12 @@ def _base_branch_behind_count(
         If the base names neither a branch nor a commit Git can resolve.
 
     """
+    # A canonical tag names no branch to update. Without this guard, literal
+    # branches literally named "refs/tags/..." could still be compared and
+    # offered a pull, which the documented contract rules out.
+    if base_branch.startswith("refs/tags/"):
+        return 0
+
     if not helpers._remote_branch_exists(
         context.repo_home, context.remote, local_branch
     ):
