@@ -249,24 +249,41 @@ def test_returns_none_for_non_revision_input(
 
 
 @pytest.mark.parametrize(
-    ("base_branch", "expected"),
+    ("base_branch", "remote_names", "expected"),
     [
-        ("main", "main"),
-        ("refs/heads/main", "main"),
-        ("refs/remotes/origin/main", "main"),
-        ("refs/remotes/origin/refs/heads/main", "refs/heads/main"),
-        ("refs/remotes/upstream/main", "refs/remotes/upstream/main"),
-        ("v1.0", "v1.0"),
+        ("main", ["origin"], "main"),
+        ("refs/heads/main", ["origin"], "main"),
+        ("refs/remotes/origin/main", ["origin"], "main"),
+        (
+            "refs/remotes/origin/refs/heads/main",
+            ["origin"],
+            "refs/heads/main",
+        ),
+        (
+            "refs/remotes/upstream/main",
+            ["origin", "upstream"],
+            "refs/remotes/upstream/main",
+        ),
+        (
+            "refs/remotes/origin/fork/main",
+            ["origin", "origin/fork"],
+            "refs/remotes/origin/fork/main",
+        ),
+        ("v1.0", ["origin"], "v1.0"),
     ],
 )
 def test_local_branch_for_base_removes_one_namespace(
     base_branch: str,
+    remote_names: list[str],
     expected: str,
 ) -> None:
     """Only one outer ref namespace is removed when naming a local branch."""
-    assert donkey._local_branch_for_base(base_branch, remote="origin") == expected, (
-        "a branch whose own name contains refs/heads/ keeps that segment"
-    )
+    assert (
+        donkey._local_branch_for_base(
+            base_branch, remote="origin", remote_names=remote_names
+        )
+        == expected
+    ), "a base owned by another remote names no principal-remote branch"
 
 
 def test_resolves_message_search_revision(tmp_path: Path) -> None:

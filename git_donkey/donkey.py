@@ -237,14 +237,19 @@ def _ahead_behind(repo: Repo, base: str, compare_ref: str) -> tuple[int, int]:
     return int(ahead), int(behind)
 
 
-def _local_branch_for_base(base_branch: str, *, remote: str) -> str:
+def _local_branch_for_base(
+    base_branch: str,
+    *,
+    remote: str,
+    remote_names: typ.Iterable[str],
+) -> str:
     """Return the local branch name a selected base would update.
 
     A base qualified by the principal remote names the branch of the same
     name, and a directly supplied local ref names its branch. Only one
     namespace is removed, so a branch whose own name contains
     ``refs/heads/`` keeps it. A base qualified by another remote names no
-    local branch this command knows how to update.
+    local branch this command knows how to update, and is returned unchanged.
 
     Parameters
     ----------
@@ -252,7 +257,11 @@ def _local_branch_for_base(base_branch: str, *, remote: str) -> str:
         The base as selected, which may be a branch name, a canonical
         remote-tracking ref, a tag, or another commit-ish.
     remote : str
-        Principal remote whose tracking namespace is stripped.
+        Principal remote whose tracking namespace may be stripped.
+    remote_names : typing.Iterable[str]
+        Configured remote names, used to find the remote that owns the base.
+        A nested remote such as ``origin/fork`` owns ``origin/fork/main`` even
+        though ``origin`` prefixes it.
 
     Returns
     -------
@@ -261,9 +270,12 @@ def _local_branch_for_base(base_branch: str, *, remote: str) -> str:
         base unchanged when it names no principal-remote branch.
 
     """
+    owner = incoming_outgoing_policy.remote_name_for_ref(remote_names, base_branch)
     remote_prefix = f"refs/remotes/{remote}/"
-    if base_branch.startswith(remote_prefix):
-        return base_branch.removeprefix(remote_prefix)
+    if owner is not None:
+        if owner == remote and base_branch.startswith(remote_prefix):
+            return base_branch.removeprefix(remote_prefix)
+        return base_branch
     return base_branch.removeprefix("refs/heads/")
 
 
@@ -419,7 +431,11 @@ def _maybe_update_base_branch(
         return
 
     label = _pull_mode_label(pull_mode)
-    local_branch = _local_branch_for_base(base_branch, remote=context.remote)
+    local_branch = _local_branch_for_base(
+        base_branch,
+        remote=context.remote,
+        remote_names=helpers._configured_remote_names(context.repo_home),
+    )
     behind = _base_branch_behind_count(
         context,
         base_branch=base_branch,
