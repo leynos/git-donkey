@@ -15,7 +15,7 @@ import dataclasses
 import typing as typ
 
 from git import Repo
-from pytest_bdd import given, scenarios, then, when
+from pytest_bdd import given, parsers, scenarios, then, when
 
 from git_donkey import donkey, plonk
 from tests.git_repo_helpers import bare_collection
@@ -33,6 +33,49 @@ if typ.TYPE_CHECKING:
 _SESSION_BRANCH = "issue-201-session"
 _DONKEY_BRANCH = "issue-202-donkey"
 _GENERATED_NAME = "node_modules"
+
+# Each invocation the feature names, mapped to the report mode it records and
+# the call that runs it. Running from the bare directory is the default mode
+# started somewhere else, so it shares that mode's call.
+_PLONK_INVOCATIONS: dict[str, tuple[str, cabc.Callable[[], int | None]]] = {
+    "in the bare collection": ("default", plonk.run_git_plonk),
+    "in hard mode in the bare collection": (
+        "hard",
+        lambda: plonk.run_git_plonk(hard=True),
+    ),
+    "in soft mode in the bare collection": (
+        "soft",
+        lambda: plonk.run_git_plonk(soft=True),
+    ),
+    "from the bare directory": ("default", plonk.run_git_plonk),
+}
+
+
+def _expected_report_lines(
+    scenario: BarePlonkScenario,
+    mode: str,
+) -> tuple[str, ...]:
+    """Build the summary lines the sweep reports for ``mode``."""
+    header = f"git-plonk: mode={mode}"
+    if mode == "hard":
+        return (
+            header,
+            "Removed worktrees:",
+            f"- {scenario.donkey_path}",
+            "Removed branches:",
+            f"- {_DONKEY_BRANCH}",
+        )
+    if mode == "soft":
+        return (
+            header,
+            "Removed generated paths:",
+            f"- {scenario.donkey_path / _GENERATED_NAME}",
+        )
+    return (
+        header,
+        "Removed worktrees:",
+        f"- {scenario.donkey_path}",
+    )
 
 
 @dataclasses.dataclass(slots=True)
@@ -150,78 +193,19 @@ def collection_with_generated_directories(
     return scenario
 
 
-@when("I run git plonk in the bare collection")
-def run_default_plonk(
-    scenario: BarePlonkScenario,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    """Run the default cleanup mode from the session worktree."""
-    _record_run(scenario, capsys, "default", plonk.run_git_plonk)
-    _require_report(
-        scenario,
-        f"git-plonk: mode={scenario.mode}",
-        "Removed worktrees:",
-        f"- {scenario.donkey_path}",
-    )
-
-
-@when("I run git plonk in hard mode in the bare collection")
-def run_hard_plonk(
-    scenario: BarePlonkScenario,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    """Run the hard cleanup mode from the session worktree."""
-    _record_run(
-        scenario,
-        capsys,
-        "hard",
-        lambda: plonk.run_git_plonk(hard=True),
-    )
-    _require_report(
-        scenario,
-        f"git-plonk: mode={scenario.mode}",
-        "Removed worktrees:",
-        f"- {scenario.donkey_path}",
-        "Removed branches:",
-        f"- {_DONKEY_BRANCH}",
-    )
-
-
-@when("I run git plonk in soft mode in the bare collection")
-def run_soft_plonk(
-    scenario: BarePlonkScenario,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    """Run the soft cleanup mode from the session worktree."""
-    _record_run(
-        scenario,
-        capsys,
-        "soft",
-        lambda: plonk.run_git_plonk(soft=True),
-    )
-    _require_report(
-        scenario,
-        f"git-plonk: mode={scenario.mode}",
-        "Removed generated paths:",
-        f"- {scenario.donkey_path / _GENERATED_NAME}",
-    )
-
-
-@when("I run git plonk from the bare directory")
-def run_plonk_from_bare_directory(
+@when(parsers.parse("I run git plonk {invocation}"))
+def run_plonk(
     scenario: BarePlonkScenario,
     capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
+    invocation: str,
 ) -> None:
-    """Run the default cleanup mode from inside the bare repository."""
-    monkeypatch.chdir(scenario.bare_path)
-    _record_run(scenario, capsys, "default", plonk.run_git_plonk)
-    _require_report(
-        scenario,
-        f"git-plonk: mode={scenario.mode}",
-        "Removed worktrees:",
-        f"- {scenario.donkey_path}",
-    )
+    """Run the sweep the step names and assert the report it produced."""
+    if invocation == "from the bare directory":
+        monkeypatch.chdir(scenario.bare_path)
+    mode, call = _PLONK_INVOCATIONS[invocation]
+    _record_run(scenario, capsys, mode, call)
+    _require_report(scenario, *_expected_report_lines(scenario, mode))
 
 
 @then("the completed git donkey worktree is removed")

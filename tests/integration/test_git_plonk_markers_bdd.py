@@ -34,9 +34,16 @@ from tests.integration.plonk_helpers import (
 from tests.output_assertions import require_stream, stream
 
 if typ.TYPE_CHECKING:
+    import collections.abc as cabc
     from pathlib import Path
 
     import pytest
+
+# Each cleanup mode the feature names, mapped to the call that runs it.
+_PLONK_INVOCATIONS: dict[str, cabc.Callable[[], int | None]] = {
+    "default": plonk.run_git_plonk,
+    "hard": lambda: plonk.run_git_plonk(hard=True),
+}
 
 _ISSUE_BRANCH = "issue-123-fix-closed-work"
 _COMPLETION_MARKER = "(#123)"
@@ -150,29 +157,14 @@ def repository_with_a_later_commit(
     return scenario
 
 
-@when("I run git plonk in default mode")
-def run_default_plonk(
+@when(parsers.parse("I run git plonk in {mode} mode"))
+def run_plonk(
     scenario: PlonkScenario,
     capsys: pytest.CaptureFixture[str],
+    mode: str,
 ) -> None:
-    """Run the default cleanup mode and record its report."""
-    record_plonk_run(scenario, capsys, "default", plonk.run_git_plonk)
-    assert scenario.exit_code == 0, "expected default git plonk to succeed"
-
-
-@when("I run git plonk in hard mode")
-def run_hard_plonk(
-    scenario: PlonkScenario,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    """Run the hard cleanup mode and record its report."""
-    record_plonk_run(
-        scenario,
-        capsys,
-        "hard",
-        lambda: plonk.run_git_plonk(hard=True),
-    )
-    assert scenario.exit_code == 0, "expected hard git plonk to succeed"
+    """Run the cleanup mode the step names and record its report."""
+    record_plonk_run(scenario, capsys, mode, _PLONK_INVOCATIONS[mode])
 
 
 @then("the completed worktree is removed")

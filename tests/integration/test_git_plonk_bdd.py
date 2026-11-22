@@ -19,7 +19,7 @@ import typing as typ
 
 import pytest
 from git import Repo
-from pytest_bdd import given, scenarios, then, when
+from pytest_bdd import given, parsers, scenarios, then, when
 
 from git_donkey import cli, plonk
 from tests.integration.conftest import _setup_repo
@@ -39,10 +39,22 @@ from tests.integration.plonk_helpers import (
 from tests.output_assertions import require_stream, stream
 
 if typ.TYPE_CHECKING:
+    import collections.abc as cabc
     from pathlib import Path
 
 # Cyclopts exits with this code when mutually exclusive flags are supplied.
 _USAGE_ERROR_EXIT_CODE = 2
+
+# Each cleanup mode the feature names, mapped to the call that runs it. The
+# dry runs go through the CLI boundary so flag parsing is covered as well.
+_PLONK_INVOCATIONS: dict[str, cabc.Callable[[], int | None]] = {
+    "default": plonk.run_git_plonk,
+    "default dry-run": lambda: cli._plonk_app(["--dry-run"]),
+    "soft": lambda: plonk.run_git_plonk(soft=True),
+    "soft dry-run": lambda: plonk.run_git_plonk(soft=True, dry_run=True),
+    "hard": lambda: plonk.run_git_plonk(hard=True),
+    "hard dry-run": lambda: plonk.run_git_plonk(hard=True, dry_run=True),
+}
 
 
 @given(
@@ -191,89 +203,14 @@ def _require_report(scenario: PlonkScenario, *lines: str) -> None:
     require_stream(scenario.stdout, stream(*lines), context="git plonk stdout")
 
 
-@when("I run git plonk in default mode")
-def run_default_plonk(
+@when(parsers.parse("I run git plonk in {mode} mode"))
+def run_plonk(
     scenario: PlonkScenario,
     capsys: pytest.CaptureFixture[str],
+    mode: str,
 ) -> None:
-    """Run the default cleanup mode and record its report."""
-    record_plonk_run(scenario, capsys, "default", plonk.run_git_plonk)
-    assert scenario.exit_code == 0, "expected default git plonk to succeed"
-
-
-@when("I run git plonk in default dry-run mode")
-def run_default_dry_run_plonk(
-    scenario: PlonkScenario,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    """Run default cleanup in dry-run mode through the CLI boundary."""
-    record_plonk_run(
-        scenario,
-        capsys,
-        "default dry-run",
-        lambda: cli._plonk_app(["--dry-run"]),
-    )
-    assert scenario.exit_code == 0, "expected default dry-run git plonk to succeed"
-
-
-@when("I run git plonk in soft mode")
-def run_soft_plonk(
-    scenario: PlonkScenario,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    """Run the soft cleanup mode and record its report."""
-    record_plonk_run(
-        scenario,
-        capsys,
-        "soft",
-        lambda: plonk.run_git_plonk(soft=True),
-    )
-    assert scenario.exit_code == 0, "expected soft git plonk to succeed"
-
-
-@when("I run git plonk in soft dry-run mode")
-def run_soft_dry_run_plonk(
-    scenario: PlonkScenario,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    """Run soft cleanup in dry-run mode and record its report."""
-    record_plonk_run(
-        scenario,
-        capsys,
-        "soft dry-run",
-        lambda: plonk.run_git_plonk(soft=True, dry_run=True),
-    )
-    assert scenario.exit_code == 0, "expected soft dry-run git plonk to succeed"
-
-
-@when("I run git plonk in hard mode")
-def run_hard_plonk(
-    scenario: PlonkScenario,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    """Run the hard cleanup mode and record its report."""
-    record_plonk_run(
-        scenario,
-        capsys,
-        "hard",
-        lambda: plonk.run_git_plonk(hard=True),
-    )
-    assert scenario.exit_code == 0, "expected hard git plonk to succeed"
-
-
-@when("I run git plonk in hard dry-run mode")
-def run_hard_dry_run_plonk(
-    scenario: PlonkScenario,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    """Run hard cleanup in dry-run mode and record its report."""
-    record_plonk_run(
-        scenario,
-        capsys,
-        "hard dry-run",
-        lambda: plonk.run_git_plonk(hard=True, dry_run=True),
-    )
-    assert scenario.exit_code == 0, "expected hard dry-run git plonk to succeed"
+    """Run the cleanup mode the step names and record its report."""
+    record_plonk_run(scenario, capsys, mode, _PLONK_INVOCATIONS[mode])
 
 
 @when("I run git plonk with soft and hard modes", target_fixture="plonk_exit")

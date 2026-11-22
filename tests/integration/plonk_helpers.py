@@ -176,13 +176,13 @@ def record_plonk_run(
     mode: str,
     call: cabc.Callable[[], int | None],
 ) -> None:
-    """Run a successful ``git plonk`` invocation and record its report.
+    """Run a ``git plonk`` invocation that must succeed and record its report.
 
     The mode is stored in the form the summary header spells it, so a scenario
     can build the exact expected report without repeating how the header is
     punctuated. A successful sweep reports through its summary alone, so any
-    standard error fails here rather than being absorbed by a looser
-    assertion.
+    standard error or non-zero exit code fails here rather than being absorbed
+    by a looser assertion.
 
     Parameters
     ----------
@@ -195,10 +195,21 @@ def record_plonk_run(
     call : cabc.Callable[[], int | None]
         Invocation to run, such as ``plonk.run_git_plonk(hard=True)``.
 
+    Raises
+    ------
+    AssertionError
+        If the sweep exits non-zero or writes to standard error.
+
     """
     scenario.mode = mode
     capture_plonk_run(scenario, capsys, call)
     require_stream(scenario.stderr, "", context="git plonk stderr")
+    if scenario.exit_code != 0:
+        msg = (
+            f"expected {mode} git plonk to succeed, "
+            f"got exit code {scenario.exit_code!r}"
+        )
+        raise AssertionError(msg)
 
 
 def skipped_entry(worktree_path: Path, reason: str) -> str:

@@ -23,7 +23,7 @@ from itertools import starmap
 
 import pytest
 from git import Repo
-from pytest_bdd import given, scenario, scenarios, then, when
+from pytest_bdd import given, parsers, scenario, scenarios, then, when
 
 from git_donkey import plonk
 from tests.integration.conftest import _setup_repo
@@ -47,6 +47,14 @@ if typ.TYPE_CHECKING:
     from pathlib import Path
 
 _UNTRACKED_CONTENT = "work in progress"
+
+# Each cleanup mode the feature names, mapped to the call that runs it.
+_PLONK_INVOCATIONS: dict[str, cabc.Callable[[], int | None]] = {
+    "default": plonk.run_git_plonk,
+    "default dry-run": lambda: plonk.run_git_plonk(dry_run=True),
+    "hard": lambda: plonk.run_git_plonk(hard=True),
+    "hard dry-run": lambda: plonk.run_git_plonk(hard=True, dry_run=True),
+}
 
 
 @pytest.fixture
@@ -91,8 +99,9 @@ def _completed_worktree_scenario(
     return PlonkScenario(local_path=local_path, completed_branch=branch_name)
 
 
-def _leave_untracked_file(scenario: PlonkScenario, branch_name: str) -> None:
+def _leave_untracked_file(scenario: PlonkScenario, branch_name: str | None) -> None:
     """Leave an untracked file in ``branch_name``'s worktree."""
+    assert branch_name is not None, "expected a branch in the scenario"
     untracked = scenario.worktree_path(branch_name) / "scratch.txt"
     untracked.write_text(_UNTRACKED_CONTENT)
 
@@ -170,7 +179,6 @@ def repository_with_clean_and_dirty_completed_worktrees(
 ) -> PlonkScenario:
     """Create one removable completed worktree beside one holding untracked work."""
     scenario = _two_completed_worktrees(tmp_path, monkeypatch)
-    assert scenario.dirty_branch is not None, "expected a dirty branch in scenario"
     _leave_untracked_file(scenario, scenario.dirty_branch)
     return scenario
 
@@ -185,9 +193,8 @@ def repository_with_two_dirty_completed_worktrees(
 ) -> PlonkScenario:
     """Create two completed worktrees that both hold untracked work."""
     scenario = _two_completed_worktrees(tmp_path, monkeypatch)
-    assert scenario.dirty_branch is not None, "expected a dirty branch in scenario"
-    _leave_untracked_file(scenario, scenario.completed_branch)
-    _leave_untracked_file(scenario, scenario.dirty_branch)
+    for branch_name in (scenario.completed_branch, scenario.dirty_branch):
+        _leave_untracked_file(scenario, branch_name)
     return scenario
 
 
@@ -215,59 +222,14 @@ def repository_with_undeletable_branch(
     return scenario
 
 
-@when("I run git plonk in default mode")
-def run_default_plonk(
+@when(parsers.parse("I run git plonk in {mode} mode"))
+def run_plonk(
     scenario: PlonkScenario,
     capsys: pytest.CaptureFixture[str],
+    mode: str,
 ) -> None:
-    """Run the default cleanup mode and record its report."""
-    record_plonk_run(scenario, capsys, "default", plonk.run_git_plonk)
-    assert scenario.exit_code == 0, "expected default git plonk to succeed"
-
-
-@when("I run git plonk in hard mode")
-def run_hard_plonk(
-    scenario: PlonkScenario,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    """Run the hard cleanup mode and record its report."""
-    record_plonk_run(
-        scenario,
-        capsys,
-        "hard",
-        lambda: plonk.run_git_plonk(hard=True),
-    )
-    assert scenario.exit_code == 0, "expected hard git plonk to succeed"
-
-
-@when("I run git plonk in default dry-run mode")
-def run_default_dry_run_plonk(
-    scenario: PlonkScenario,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    """Run default cleanup in dry-run mode and record its report."""
-    record_plonk_run(
-        scenario,
-        capsys,
-        "default dry-run",
-        lambda: plonk.run_git_plonk(dry_run=True),
-    )
-    assert scenario.exit_code == 0, "expected default dry-run git plonk to succeed"
-
-
-@when("I run git plonk in hard dry-run mode")
-def run_hard_dry_run_plonk(
-    scenario: PlonkScenario,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    """Run hard cleanup in dry-run mode and record its report."""
-    record_plonk_run(
-        scenario,
-        capsys,
-        "hard dry-run",
-        lambda: plonk.run_git_plonk(hard=True, dry_run=True),
-    )
-    assert scenario.exit_code == 0, "expected hard dry-run git plonk to succeed"
+    """Run the cleanup mode the step names and record its report."""
+    record_plonk_run(scenario, capsys, mode, _PLONK_INVOCATIONS[mode])
 
 
 @when("I run git plonk in hard mode expecting failure")
