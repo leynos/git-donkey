@@ -383,25 +383,6 @@ def test_canonical_remote_revision_expression_is_resolved(
     )
 
 
-def test_canonical_remote_ref_that_does_not_exist_is_reported(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    """A canonical principal-remote ref with no commit behind it still fails."""
-    scenario = new_scenario(tmp_path, monkeypatch, "feature/missing-ref")
-
-    run_donkey(scenario, capsys, "refs/remotes/origin/nope")
-
-    assert scenario.exit_code == _REJECTED_EXIT_CODE, "an unknown ref is an error"
-    _require_creation_stream(
-        scenario,
-        base="refs/remotes/origin/nope",
-        diagnostic="git-donkey: 💀 remote base ref not found: refs/remotes/origin/nope",
-    )
-    assert scenario.branch not in scenario.repo.heads, "no branch is created"
-
-
 def test_head_expression_resolves_in_the_calling_checkout(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

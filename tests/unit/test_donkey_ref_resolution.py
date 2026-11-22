@@ -171,39 +171,26 @@ def tagged_repo(tmp_path: Path) -> tuple[Repo, str]:
     return repo, repo.head.commit.hexsha
 
 
-def test_resolves_lightweight_tag(tagged_repo: tuple[Repo, str]) -> None:
-    """A lightweight tag resolves to the commit it names."""
+@pytest.mark.parametrize(
+    ("revision", "case"),
+    [
+        pytest.param("lightweight", "lightweight tag", id="lightweight-tag"),
+        pytest.param("annotated", "annotated tag", id="annotated-tag"),
+        pytest.param("{commit}", "full commit ID", id="full-commit-id"),
+        pytest.param("{short}", "abbreviated commit ID", id="abbreviated-commit-id"),
+    ],
+)
+def test_resolves_supported_commit_forms(
+    tagged_repo: tuple[Repo, str],
+    revision: str,
+    case: str,
+) -> None:
+    """Each accepted commit form resolves to its commit."""
     repo, commit = tagged_repo
+    resolved = revision.format(commit=commit, short=commit[:8])
 
-    assert helpers._resolve_commit(repo, "lightweight") == commit, (
-        "a lightweight tag names its commit"
-    )
-
-
-def test_resolves_annotated_tag(tagged_repo: tuple[Repo, str]) -> None:
-    """An annotated tag is peeled to the commit it points at."""
-    repo, commit = tagged_repo
-
-    assert helpers._resolve_commit(repo, "annotated") == commit, (
-        "an annotated tag is peeled to its commit"
-    )
-
-
-def test_resolves_full_commit_id(tagged_repo: tuple[Repo, str]) -> None:
-    """A full object ID resolves to itself."""
-    repo, commit = tagged_repo
-
-    assert helpers._resolve_commit(repo, commit) == commit, (
-        "a full commit ID names its commit"
-    )
-
-
-def test_resolves_abbreviated_commit_id(tagged_repo: tuple[Repo, str]) -> None:
-    """An abbreviated object ID resolves to the full commit ID."""
-    repo, commit = tagged_repo
-
-    assert helpers._resolve_commit(repo, commit[:8]) == commit, (
-        "an abbreviated commit ID is expanded to the full ID"
+    assert helpers._resolve_commit(repo, resolved) == commit, (
+        f"the {case} resolves to its commit"
     )
 
 
