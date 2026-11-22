@@ -16,11 +16,7 @@ from git import Repo
 from git_donkey import slugs, template_cmd, templates
 from tests.git_repo_helpers import configure_repo
 from tests.integration.conftest import _setup_repo
-from tests.output_assertions import (
-    GIT_ERROR_PLACEHOLDER,
-    require_stream,
-    stream,
-)
+from tests.output_assertions import require_stream, stream
 
 if typ.TYPE_CHECKING:
     from pathlib import Path
@@ -120,10 +116,12 @@ def test_git_donkey_template_fails_outside_git_repo(
     )
     captured = capsys.readouterr()
     assert not captured.out, "a failed template lookup prints nothing on stdout"
+    # GitPython's InvalidGitRepositoryError carries the resolved path rather
+    # than Git's own stderr, so the path is asserted literally.
     require_stream(
         captured.err,
         stream(
-            f"[git-donkey-template]: not in a git repository: {GIT_ERROR_PLACEHOLDER}"
+            f"[git-donkey-template]: not in a git repository: {non_repo_dir.resolve()}"
         ),
         context="git-donkey-template stderr",
     )
