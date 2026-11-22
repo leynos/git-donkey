@@ -27,11 +27,21 @@ The ``donkey.worktreesRoot`` Git configuration value replaces either
 directory; a relative value is resolved against the main worktree or the bare
 repository.
 Use the default branch advertised by the first configured remote as the base,
-an explicitly named base branch, or ``.`` for the branch checked out in the
-calling working directory, including when called from a linked worktree.
+or supply an explicit base: a branch name, ``.`` for the branch checked out in
+the calling working directory including when called from a linked worktree, a
+remote-qualified branch such as ``origin/main``, a tag, or any revision Git
+resolves to a commit.
 The default branch need not be named ``main``, and the remote need not be
 named ``origin``.
+The command fetches the first configured remote before resolving an explicit
+base; a ref belonging to another configured remote is resolved as that fetch
+left it.
 Reuse an existing local or remote branch rather than create it again.
+
+An explicit base is interpreted in this order: a fully qualified ``refs/``
+value is used as written; otherwise a literal local branch name keeps its own
+meaning; otherwise a configured ``<remote>/<branch>`` whose remote-tracking
+ref exists is used; otherwise Git resolves the value to a commit.
 
 The command fetches remote references but does not pull, rebase, or prompt by
 default. Unpublished local commits and uncommitted changes in the primary
@@ -52,9 +62,11 @@ BRANCH_NAME
     Branch to check out in the new worktree.
 
 ORIGIN_BRANCH
-    Base branch for a new branch; defaults to the first remote's default
-    branch. The value ``.`` selects the branch checked out in the calling
-    directory.
+    Base for the new branch; defaults to the first remote's default branch.
+    Accepts a local branch name, ``.`` for the calling branch, a
+    remote-qualified branch such as ``origin/main``, a tag, or any revision
+    Git resolves to a commit. A local branch name takes precedence over the
+    remote-tracking ref it might also spell.
 
 --pull-rebase
     Prompt to run ``git pull --rebase`` when the local base is behind its
@@ -76,6 +88,10 @@ out, the command fails rather than updating an unrelated primary checkout.
 With an omitted base, the new branch still starts at the fetched remote
 commit even when an approved update moves the local default branch. Supply
 the local base explicitly, or use ``.``, to include local commits.
+A remote-qualified base such as ``origin/main`` updates the local branch of
+the same name, as an omitted base does, while the new branch still starts at
+the remote-tracking commit. A base that names a tag or commit has no branch
+to update, so it neither prompts nor updates.
 
 -h, --help
     Display command-line help and exit.
@@ -100,6 +116,15 @@ Create a worktree from the remote's default branch::
 Use the current branch as the base::
 
     git donkey feature/example .
+
+Start from the fetched remote tip even when local ``main`` is stale::
+
+    git donkey feature/example origin/main
+
+Start from a tag or a commit::
+
+    git donkey feature/example v1.2.0
+    git donkey feature/example 4f3c2a1
 
 Update a local base by rebase before creating the worktree::
 

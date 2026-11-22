@@ -34,10 +34,13 @@ _donkey_app = App(
     help=(
         "Create a linked worktree at ../{repo}.worktrees/{branch}, or under "
         "donkey.worktreesRoot when that is configured, branching from "
-        "the first remote's default branch, a specified base, or '.' meaning the "
-        "branch currently checked out in the CWD. Fetches remote refs without "
-        "pulling by default. --pull-rebase or --pull-ff enables a confirmation "
-        "prompt to update a behind local base. Reuses existing branches."
+        "the first remote's default branch or an explicit base. A base may be "
+        "a local branch name, '.', a remote-qualified branch such as "
+        "origin/main, a tag, or any revision Git resolves to a commit. Fetches "
+        "the first remote without pulling by default. --pull-rebase or "
+        "--pull-ff enables a confirmation prompt to update a behind local "
+        "base; a tag or commit base has no branch to update and never "
+        "prompts. Reuses existing branches."
     ),
 )
 

@@ -27,9 +27,10 @@ surface keeps working unchanged.
   base updates are now opt-in.
 - Anyone whose local base was not checked out in a worktree and relied on the
   primary checkout being updated: the command now fails instead.
-- Scripts that pass an explicit base or `.`: unaffected. Scripts that pass
-  `--no-pull` with an omitted base keep suppressing updates, but the base now
-  resolves to the remote default instead of local `main`.
+- Scripts that pass an explicit local branch base or `.`: unaffected. A
+  remote-qualified, tag, or commit-ID base that 0.1.0 rejected is now accepted.
+  Scripts that pass `--no-pull` with an omitted base keep suppressing updates,
+  but the base now resolves to the remote default instead of local `main`.
 - Anyone who relied on a new branch inheriting tracking from its base: new
   branches are now created with `--no-track`.
 - Anyone who relied on `git plonk` discarding uncommitted changes in a
@@ -53,7 +54,7 @@ surface keeps working unchanged.
 | Base update                | Prompted and rebased by default                                | No update unless `--pull-rebase` or `--pull-ff` is passed                                     |
 | Base not in a worktree     | Rebases the primary checkout onto the remote base              | Fails with exit code 1                                                                        |
 | Remote default unavailable | Not applicable; the base was local `main`                      | Fails with exit code 1 and asks for an explicit base                                          |
-| Explicit base or `.`       | Selected as supplied                                           | Unchanged                                                                                     |
+| Explicit base or `.`       | Selected as supplied                                           | Unchanged for a local branch; a remote-qualified branch, tag, or commit ID is now accepted    |
 | `--no-pull`                | Suppressed the update prompt                                   | Accepted; selects the same no-update default                                                  |
 | New branch tracking        | Could inherit from the base via `branch.autoSetupMerge`        | Never inherits (`--no-track`)                                                                 |
 | `git plonk` cleanup        | Removed completed worktrees with `git worktree remove --force` | Removes completed worktrees without `--force`; dirty ones are skipped and reported            |
@@ -86,6 +87,24 @@ remote (the first configured remote, as before):
 
 Unpublished local commits and staged, unstaged, or untracked changes in the
 primary checkout are not used as the implicit base.
+
+### Explicit base forms
+
+An explicit base that already worked keeps its meaning: a local branch name
+still selects that branch, and `.` still selects the calling worktree's branch.
+0.2.0 additionally accepts forms that 0.1.0 rejected:
+
+- a remote-qualified branch such as `origin/main`, resolved to
+  `refs/remotes/origin/main` when that ref exists;
+- a tag or any other revision Git resolves to a commit, including a full or
+  abbreviated commit ID.
+
+A fully qualified `refs/` value is used as written, and a literal local branch
+name takes precedence over a remote-tracking ref it might also spell. Only the
+principal remote is fetched, so a ref belonging to another configured remote is
+resolved as that fetch left it. A base that names neither a branch nor a commit
+fails with exit code 1 and reports the supplied base once, without the doubled
+remote prefix 0.1.0 printed.
 
 ### Base updates are opt-in
 
