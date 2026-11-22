@@ -54,7 +54,8 @@ class _WorktreeRequest:
     branch_name
         Branch that should be checked out in the new worktree.
     base_branch
-        Existing branch or fully qualified remote ref used for a new branch.
+        Base the new branch starts from: a local branch name, a
+        remote-tracking ref, a tag, or another commit-ish Git resolves.
     target_path
         Filesystem path for the new worktree checkout.
 
@@ -132,8 +133,33 @@ def _ensure_base_branch_available(
     *,
     context: _WorktreeContext,
     base_branch: str,
-) -> None:
-    """Ensure the base branch exists without localizing an implicit remote ref."""
+) -> str:
+    """Resolve the base to the commit a new branch should start from.
+
+    A bare name that exists on the principal remote first gains a local
+    tracking branch, preserving the reuse behaviour ``git donkey`` has always
+    had. A fully qualified ref and any other commit-ish are resolved without
+    creating a local branch.
+
+    Parameters
+    ----------
+    context : _WorktreeContext
+        Resolved repository state, including the repository and principal
+        remote used to interpret a bare name.
+    base_branch : str
+        Base the new branch should start from.
+
+    Returns
+    -------
+    str
+        Full object ID of the commit the new branch starts from.
+
+    Raises
+    ------
+    SystemExit
+        If the base names neither a branch nor a commit Git can resolve.
+
+    """
     if base_branch.startswith(f"refs/remotes/{context.remote}/"):
         if not helpers._ref_exists(context.repo_home, base_branch):
             helpers._die(
@@ -141,7 +167,7 @@ def _ensure_base_branch_available(
                 f"remote base ref not found: {base_branch}",
                 1,
             )
-        return
+        return _resolve_base_commit(context, base_branch)
 
     if helpers._remote_branch_exists(
         context.repo_home,
@@ -154,15 +180,26 @@ def _ensure_base_branch_available(
             base_branch,
             _GIT_DONKEY_PREFIX,
         )
-        return
+        return _resolve_base_commit(context, f"refs/heads/{base_branch}")
 
-    if not helpers._local_branch_exists(context.repo_home, base_branch):
+    if helpers._local_branch_exists(context.repo_home, base_branch):
+        return _resolve_base_commit(context, f"refs/heads/{base_branch}")
+
+    return _resolve_base_commit(context, base_branch)
+
+
+def _resolve_base_commit(context: _WorktreeContext, base_branch: str) -> str:
+    """Return the commit a base names, or exit with the shared error."""
+    commit = helpers._resolve_commit(context.repo_home, base_branch)
+    if commit is None:
         helpers._die(
             _GIT_DONKEY_PREFIX,
-            f"base branch '{base_branch}' not found locally or on "
-            f"'{context.remote}/{base_branch}'",
+            helpers._base_not_found_message(
+                context.repo_home, base_branch, context.remote
+            ),
             1,
         )
+    return commit
 
 
 def _add_worktree_for_new_branch(
@@ -176,13 +213,12 @@ def _add_worktree_for_new_branch(
         f"'{request.branch_name}' from '{request.base_branch}' in a new worktree"
     )
     try:
-        _ensure_base_branch_available(
+        # Freeze the selected ref once and never track the remote default branch
+        # from a new feature branch, even with branch.autoSetupMerge enabled.
+        start_point = _ensure_base_branch_available(
             context=context,
             base_branch=request.base_branch,
         )
-        # Freeze the selected ref once and never track the remote default branch
-        # from a new feature branch, even with branch.autoSetupMerge enabled.
-        start_point = context.repo_home.commit(request.base_branch).hexsha
         context.repo_home.git.worktree(
             "add",
             "--no-track",
@@ -191,7 +227,7 @@ def _add_worktree_for_new_branch(
             str(request.target_path),
             start_point,
         )
-    except (GitCommandError, ValueError) as exc:
+    except GitCommandError as exc:
         helpers._die(_GIT_DONKEY_PREFIX, f"worktree add failed: {exc}", 1)
 
 

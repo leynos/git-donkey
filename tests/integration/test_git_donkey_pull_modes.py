@@ -30,6 +30,11 @@ def _behind_repo(tmp_path: Path) -> Repo:
     return repo
 
 
+def _reject_prompt(_question: str) -> bool:
+    """Fail if creation from a commit-ish base asks to update a checkout."""
+    pytest.fail("a commit-ish base has no local branch to update")
+
+
 def test_pull_rebase_preserves_local_commits_on_explicit_base(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -203,3 +208,87 @@ def test_pull_updates_linked_base_and_leaves_primary_alone(
     assert repo.commit("feature/linked").hexsha == repo.commit("origin/main").hexsha, (
         "the new branch starts from the updated base"
     )
+
+
+def test_pull_ff_updates_the_local_base_named_by_a_remote_qualified_parent(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A qualified parent behaves like an omitted base for pull preflight."""
+    repo = _behind_repo(tmp_path)
+    original_tip = repo.head.commit.hexsha
+    monkeypatch.chdir(repo.working_tree_dir or ".")
+    monkeypatch.setattr(donkey.helpers, "_prompt_yes_no", lambda *_: True)
+
+    assert (
+        donkey.run_git_donkey(
+            "feature/qualified",
+            "origin/main",
+            options=donkey._PullOptions(pull_ff=True),
+        )
+        == 0
+    ), "an accepted update still creates the worktree"
+
+    assert repo.head.commit.hexsha == repo.commit("origin/main").hexsha, (
+        "the local base named by the parent is fast-forwarded"
+    )
+    assert repo.head.commit.hexsha != original_tip, "the local base moved forward"
+    assert repo.commit("feature/qualified").hexsha == repo.head.commit.hexsha, (
+        "the new branch starts at the updated remote tip"
+    )
+
+
+@pytest.mark.parametrize("parent_kind", ["tag", "commit"])
+def test_commit_ish_parent_skips_the_update_and_the_prompt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    parent_kind: str,
+) -> None:
+    """A tag or commit ID has no branch to update and must not prompt."""
+    repo = _behind_repo(tmp_path)
+    local_tip = repo.head.commit.hexsha
+    remote = repo.commit("origin/main")
+    repo.create_tag("release-tag", ref=remote.hexsha)
+    parent = "release-tag" if parent_kind == "tag" else remote.hexsha
+    monkeypatch.chdir(repo.working_tree_dir or ".")
+    monkeypatch.setattr(donkey.helpers, "_prompt_yes_no", _reject_prompt)
+
+    assert (
+        donkey.run_git_donkey(
+            "feature/commit-ish",
+            parent,
+            options=donkey._PullOptions(pull_ff=True),
+        )
+        == 0
+    ), "a tag or commit base creates the worktree without an update"
+
+    assert repo.head.commit.hexsha == local_tip, "the local base is not updated"
+    assert repo.commit("feature/commit-ish").hexsha == remote.hexsha, (
+        "the new branch starts at the commit the base names"
+    )
+
+
+def test_unresolvable_qualified_parent_fails_before_prompting(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """An unknown qualified base is reported once, before any prompt or write."""
+    repo = _behind_repo(tmp_path)
+    monkeypatch.chdir(repo.working_tree_dir or ".")
+    monkeypatch.setattr(donkey.helpers, "_prompt_yes_no", _reject_prompt)
+
+    with pytest.raises(SystemExit) as excinfo:
+        donkey.run_git_donkey(
+            "feature/invalid-base",
+            "origin/missing",
+            options=donkey._PullOptions(pull_ff=True),
+        )
+
+    stderr = capsys.readouterr().err
+    assert excinfo.value.code == 1, "an unknown parent is a base error"
+    assert "base 'origin/missing' not found" in stderr, (
+        "the error identifies the supplied base once"
+    )
+    assert "origin/origin" not in stderr, "no doubled remote prefix is reported"
+    assert "feature/invalid-base" not in repo.heads, "no branch is created"

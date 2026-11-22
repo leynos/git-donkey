@@ -25,6 +25,7 @@ from git_donkey import (
     donkey_worktrees,
     fetch_refspec,
     helpers,
+    incoming_outgoing_policy,
     layout,
     observability,
     remote_default,
@@ -85,6 +86,45 @@ def choose_base_branch(saved_cwd_branch: str, origin_arg: str) -> str:
     if origin_arg == ".":
         return saved_cwd_branch
     return origin_arg
+
+
+def _normalize_explicit_base(context: _DonkeyContext, base_branch: str) -> str:
+    """Return the canonical remote-tracking ref a qualified base names.
+
+    Resolution preserves the precedence every existing input relies on. A
+    ``refs/`` value and a literal local branch name are used as written, and a
+    configured ``<remote>/<branch>`` prefix is read as a remote-tracking ref
+    only when that ref exists. Any other input is left for Git to resolve.
+
+    Parameters
+    ----------
+    context : _DonkeyContext
+        Resolved repository state, including the repository whose remotes and
+        refs decide the interpretation.
+    base_branch : str
+        The explicit base supplied on the command line, or the calling branch
+        for ``.``.
+
+    Returns
+    -------
+    str
+        The canonical ``refs/remotes/<remote>/<branch>`` ref when the input
+        names one, or ``base_branch`` unchanged.
+
+    """
+    if base_branch.startswith("refs/") or helpers._local_branch_exists(
+        context.repo_home, base_branch
+    ):
+        return base_branch
+
+    remote_names = helpers._configured_remote_names(context.repo_home)
+    if incoming_outgoing_policy.remote_name_for_ref(remote_names, base_branch) is None:
+        return base_branch
+
+    canonical = f"refs/remotes/{base_branch}"
+    if not helpers._ref_exists(context.repo_home, canonical):
+        return base_branch
+    return canonical
 
 
 def _fetch_remote_default_ref(context: _DonkeyContext) -> str:
@@ -199,6 +239,7 @@ def _base_branch_behind_count(
     context: _DonkeyContext,
     *,
     base_branch: str,
+    local_branch: str,
     prefix: str,
 ) -> int:
     """Return how many commits the base branch is behind its remote counterpart.
@@ -206,7 +247,9 @@ def _base_branch_behind_count(
     A base that exists only locally has no remote counterpart to measure
     against, and a base with no local branch has nothing to update. Creating a
     tracking branch to measure the latter would leave behind a branch that no
-    worktree holds and that this command cannot pull into.
+    worktree holds and that this command cannot pull into. A base that names a
+    tag or commit instead of a branch has no branch to update either, and is
+    accepted once Git resolves it, so such a base never prompts.
 
     Parameters
     ----------
@@ -214,7 +257,11 @@ def _base_branch_behind_count(
         Resolved repository state, including the repository and remote used to
         compare the base branch.
     base_branch : str
-        Local branch name to measure against its remote counterpart.
+        The base as selected, which may be a branch, a canonical
+        remote-tracking ref, a tag, or another commit-ish.
+    local_branch : str
+        Local branch name to measure against its remote counterpart, after
+        stripping a principal-remote prefix from ``base_branch``.
     prefix : str
         CLI name used for error messages.
 
@@ -223,33 +270,36 @@ def _base_branch_behind_count(
     int
         The number of commits the local base branch is behind its remote
         counterpart, or zero when there is nothing to compare: the base exists
-        only locally, or only on the remote.
+        only locally, only on the remote, or names no branch at all.
 
     Raises
     ------
     SystemExit
-        If the base branch exists neither locally nor on the remote.
+        If the base names neither a branch nor a commit Git can resolve.
 
     """
     if not helpers._remote_branch_exists(
-        context.repo_home, context.remote, base_branch
+        context.repo_home, context.remote, local_branch
     ):
-        if helpers._local_branch_exists(context.repo_home, base_branch):
+        if helpers._local_branch_exists(context.repo_home, local_branch):
+            return 0
+        if helpers._resolve_commit(context.repo_home, base_branch) is not None:
             return 0
         helpers._die(
             prefix,
-            f"base branch '{base_branch}' not found locally or on "
-            f"'{context.remote}/{base_branch}'",
+            helpers._base_not_found_message(
+                context.repo_home, base_branch, context.remote
+            ),
             1,
         )
 
-    if not helpers._local_branch_exists(context.repo_home, base_branch):
+    if not helpers._local_branch_exists(context.repo_home, local_branch):
         return 0
 
     _ahead, behind = _ahead_behind(
         context.repo_home,
-        base_branch,
-        f"{context.remote}/{base_branch}",
+        local_branch,
+        f"{context.remote}/{local_branch}",
     )
     return behind
 
@@ -338,7 +388,8 @@ def _maybe_update_base_branch(
     local_branch = base_branch.removeprefix(f"refs/remotes/{context.remote}/")
     behind = _base_branch_behind_count(
         context,
-        base_branch=local_branch,
+        base_branch=base_branch,
+        local_branch=local_branch,
         prefix=_GIT_DONKEY_PREFIX,
     )
     if behind <= 0:
@@ -545,8 +596,10 @@ def run_git_donkey(
     branch_name : str
         Branch name for the new worktree.
     origin_branch : str | None
-        Explicit base branch, or '.' for the CWD branch. When omitted, use
-        the fetched default branch on the first configured remote.
+        Explicit base, or '.' for the CWD branch. A base may be a local
+        branch name, a remote-qualified branch such as ``origin/main``, a tag,
+        or any revision Git resolves to a commit. When omitted, use the
+        fetched default branch on the first configured remote.
     no_pull : bool
         Backwards-compatible explicit no-pull flag. Cannot be combined with
         an enabled pull option.
@@ -565,11 +618,13 @@ def run_git_donkey(
     base_kind: observability.BaseKind = (
         "implicit_remote_default" if origin_branch is None else "explicit"
     )
-    base_branch = (
-        _fetch_remote_default_ref(context)
-        if origin_branch is None
-        else choose_base_branch(saved_cwd_branch, origin_branch)
-    )
+    if origin_branch is None:
+        base_branch = _fetch_remote_default_ref(context)
+    else:
+        base_branch = _normalize_explicit_base(
+            context,
+            choose_base_branch(saved_cwd_branch, origin_branch),
+        )
 
     _maybe_update_base_branch(
         context,
