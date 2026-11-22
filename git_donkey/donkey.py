@@ -242,14 +242,14 @@ def _local_branch_for_base(
     *,
     remote: str,
     remote_names: typ.Iterable[str],
-) -> str:
-    """Return the local branch name a selected base would update.
+) -> str | None:
+    """Return the local branch a selected base would update, if any.
 
     A base qualified by the principal remote names the branch of the same
     name, and a directly supplied local ref names its branch. Only one
     namespace is removed, so a branch whose own name contains
-    ``refs/heads/`` keeps it. A base qualified by another remote names no
-    local branch this command knows how to update, and is returned unchanged.
+    ``refs/heads/`` keeps it. A canonical tag, another remote's ref, or
+    another non-branch ``refs/`` value has no local update target.
 
     Parameters
     ----------
@@ -265,18 +265,22 @@ def _local_branch_for_base(
 
     Returns
     -------
-    str
-        The local branch name to compare with its remote counterpart, or the
-        base unchanged when it names no principal-remote branch.
+    str | None
+        The local branch name to compare with its remote counterpart, or
+        ``None`` when the base names no branch this command may update.
 
     """
-    owner = incoming_outgoing_policy.remote_name_for_ref(remote_names, base_branch)
-    remote_prefix = f"refs/remotes/{remote}/"
-    if owner is not None:
-        if owner == remote and base_branch.startswith(remote_prefix):
-            return base_branch.removeprefix(remote_prefix)
-        return base_branch
-    return base_branch.removeprefix("refs/heads/")
+    if base_branch.startswith("refs/remotes/"):
+        owner = incoming_outgoing_policy.remote_name_for_ref(remote_names, base_branch)
+        remote_prefix = f"refs/remotes/{remote}/"
+        if owner != remote or not base_branch.startswith(remote_prefix):
+            return None
+        return base_branch.removeprefix(remote_prefix)
+    if base_branch.startswith("refs/"):
+        if base_branch.startswith("refs/heads/"):
+            return base_branch.removeprefix("refs/heads/")
+        return None
+    return base_branch
 
 
 def _base_branch_behind_count(
@@ -291,9 +295,7 @@ def _base_branch_behind_count(
     A base that exists only locally has no remote counterpart to measure
     against, and a base with no local branch has nothing to update. Creating a
     tracking branch to measure the latter would leave behind a branch that no
-    worktree holds and that this command cannot pull into. A base that names a
-    tag or commit instead of a branch has no branch to update either, and is
-    accepted once Git resolves it, so such a base never prompts.
+    worktree holds and that this command cannot pull into.
 
     Parameters
     ----------
@@ -301,8 +303,7 @@ def _base_branch_behind_count(
         Resolved repository state, including the repository and remote used to
         compare the base branch.
     base_branch : str
-        The base as selected, which may be a branch, a canonical
-        remote-tracking ref, a tag, or another commit-ish.
+        The base as selected, used to resolve a commit when no branch exists.
     local_branch : str
         Local branch name to measure against its remote counterpart, after
         stripping a principal-remote prefix from ``base_branch``.
@@ -314,7 +315,7 @@ def _base_branch_behind_count(
     int
         The number of commits the local base branch is behind its remote
         counterpart, or zero when there is nothing to compare: the base exists
-        only locally, only on the remote, or names no branch at all.
+        only locally, or only on the remote.
 
     Raises
     ------
@@ -322,12 +323,6 @@ def _base_branch_behind_count(
         If the base names neither a branch nor a commit Git can resolve.
 
     """
-    # A canonical tag names no branch to update. Without this guard, literal
-    # branches literally named "refs/tags/..." could still be compared and
-    # offered a pull, which the documented contract rules out.
-    if base_branch.startswith("refs/tags/"):
-        return 0
-
     if not helpers._remote_branch_exists(
         context.repo_home, context.remote, local_branch
     ):
@@ -417,6 +412,22 @@ def _update_base_branch_in_worktree(
         )
 
 
+def _record_base_update_skip(
+    *,
+    pull_mode: _PullMode,
+    base_kind: observability.BaseKind,
+) -> None:
+    """Record a base update skipped because there is nothing behind to pull."""
+    _record(
+        Observation(
+            operation="base_update",
+            outcome="not_behind",
+            pull_mode=_pull_mode_label(pull_mode),
+            base_kind=base_kind,
+        )
+    )
+
+
 def _maybe_update_base_branch(
     context: _DonkeyContext,
     *,
@@ -424,7 +435,12 @@ def _maybe_update_base_branch(
     pull_mode: _PullMode | None,
     base_kind: observability.BaseKind,
 ) -> None:
-    """Update an opted-in, behind local base only after confirmation."""
+    """Update an opted-in, behind local base only after confirmation.
+
+    A base with no local update target — a canonical tag, another remote's
+    ref, or another non-branch ``refs/`` value — is accepted once Git
+    resolves it and skips both the update and the prompt.
+    """
     if pull_mode is None:
         _record(
             Observation(
@@ -442,6 +458,10 @@ def _maybe_update_base_branch(
         remote=context.remote,
         remote_names=helpers._configured_remote_names(context.repo_home),
     )
+    if local_branch is None:
+        _record_base_update_skip(pull_mode=pull_mode, base_kind=base_kind)
+        return
+
     behind = _base_branch_behind_count(
         context,
         base_branch=base_branch,
@@ -449,14 +469,7 @@ def _maybe_update_base_branch(
         prefix=_GIT_DONKEY_PREFIX,
     )
     if behind <= 0:
-        _record(
-            Observation(
-                operation="base_update",
-                outcome="not_behind",
-                pull_mode=label,
-                base_kind=base_kind,
-            )
-        )
+        _record_base_update_skip(pull_mode=pull_mode, base_kind=base_kind)
         return
 
     if not helpers._prompt_yes_no(

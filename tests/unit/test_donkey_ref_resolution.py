@@ -262,20 +262,22 @@ def test_returns_none_for_non_revision_input(
         (
             "refs/remotes/upstream/main",
             ["origin", "upstream"],
-            "refs/remotes/upstream/main",
+            None,
         ),
         (
             "refs/remotes/origin/fork/main",
             ["origin", "origin/fork"],
-            "refs/remotes/origin/fork/main",
+            None,
         ),
+        ("refs/tags/v1.0", ["origin"], None),
+        ("refs/stash", ["origin"], None),
         ("v1.0", ["origin"], "v1.0"),
     ],
 )
 def test_local_branch_for_base_removes_one_namespace(
     base_branch: str,
     remote_names: list[str],
-    expected: str,
+    expected: str | None,
 ) -> None:
     """Only one outer ref namespace is removed when naming a local branch."""
     assert (
@@ -283,7 +285,7 @@ def test_local_branch_for_base_removes_one_namespace(
             base_branch, remote="origin", remote_names=remote_names
         )
         == expected
-    ), "a base owned by another remote names no principal-remote branch"
+    ), "a base owned by another remote or outside refs/heads names no branch"
 
 
 def test_resolves_message_search_revision(tmp_path: Path) -> None:

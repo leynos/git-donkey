@@ -386,3 +386,38 @@ def test_canonical_tag_base_never_prompts_even_with_shadowing_branches(
     assert repo.commit("refs/heads/refs/tags/release-tag").hexsha == local_tip, (
         "the unrelated literal branch is left untouched"
     )
+
+
+def test_foreign_remote_base_never_prompts_despite_a_literal_branch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A non-principal remote base has no local update target, whatever exists."""
+    repo = _behind_repo(tmp_path)
+    remote_tip = repo.commit("origin/main").hexsha
+    local_tip = repo.head.commit.hexsha
+    # A literal branch and remote-tracking ref spelled like the base would let
+    # an over-eager behind check find something to update.
+    repo.create_remote("upstream", repo.remote("origin").url)
+    repo.remote("upstream").fetch()
+    repo.git.branch("refs/remotes/upstream/main", local_tip)
+    repo.remote("upstream").push(f"{remote_tip}:refs/heads/refs/remotes/upstream/main")
+    repo.remote("upstream").fetch()
+    monkeypatch.chdir(repo.working_tree_dir or ".")
+    monkeypatch.setattr(donkey.helpers, "_prompt_yes_no", _reject_prompt)
+
+    assert (
+        donkey.run_git_donkey(
+            "feature/foreign-base",
+            "refs/remotes/upstream/main",
+            options=donkey._PullOptions(pull_ff=True),
+        )
+        == 0
+    ), "a foreign-remote base creates the worktree without prompting"
+
+    assert repo.head.commit.hexsha == local_tip, (
+        "the shadowing local branch is left untouched"
+    )
+    assert repo.commit("feature/foreign-base").hexsha == remote_tip, (
+        "the new branch starts at the foreign remote's tip"
+    )
