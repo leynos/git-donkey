@@ -218,11 +218,13 @@ rather than updating an unrelated primary-checkout branch.
 
 With an omitted base, an enabled pull option may update the corresponding local
 default branch, but the new feature branch still starts at the remote commit. A
-remote-qualified base behaves the same way: the local branch of the same name
-may be updated, while the new branch still starts at the remote-tracking
-commit. A tag or commit base has no local branch to update, so it neither
-prompts nor updates. Supply the local base explicitly, or use `.`, to include
-local commits after an approved update.
+base qualified by the principal remote, such as `origin/main`, behaves the same
+way: the local branch of the same name may be updated, while the new branch
+still starts at the remote-tracking commit. A base qualified by another
+configured remote is resolved from its remote-tracking ref without updating a
+local branch. A tag or commit base also has no local branch to update, so it
+neither prompts nor updates. Supply the local base explicitly, or use `.`, to
+include local commits after an approved update.
 
 The [default-base and pull-mode design](default-base-and-pull-modes.md) records
 the discovery, preservation, and verification contracts. The

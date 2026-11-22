@@ -139,9 +139,12 @@ def _ref_exists(repo: Repo, ref: str) -> bool:
 def _resolve_commit(repo: Repo, revision: str) -> str | None:
     """Resolve a user-supplied revision to the commit it names, if any.
 
-    ``--end-of-options`` stops an input such as ``--all`` from being read as a
-    Git option, and ``^{commit}`` peels an annotated tag while rejecting an
-    object that is not a commit, such as a tree.
+    The revision is resolved first and only the resulting object ID is
+    peeled, because a revision expression such as ``:/^release$`` would
+    otherwise absorb ``^{commit}`` into its own pattern. ``--end-of-options``
+    stops an input such as ``--all`` from being read as a Git option, and
+    ``^{commit}`` peels an annotated tag while rejecting an object that is
+    not a commit, such as a tree.
 
     Parameters
     ----------
@@ -159,11 +162,17 @@ def _resolve_commit(repo: Repo, revision: str) -> str | None:
 
     """
     try:
+        object_id = repo.git.rev_parse(
+            "--verify",
+            "--quiet",
+            "--end-of-options",
+            revision,
+        )
         return repo.git.rev_parse(
             "--verify",
             "--quiet",
             "--end-of-options",
-            f"{revision}^{{commit}}",
+            f"{object_id}^{{commit}}",
         )
     except GitCommandError:
         return None

@@ -246,3 +246,37 @@ def test_returns_none_for_non_revision_input(
     assert helpers._resolve_commit(repo, revision) is None, (
         "--end-of-options keeps an option-like input from listing every ref"
     )
+
+
+@pytest.mark.parametrize(
+    ("base_branch", "expected"),
+    [
+        ("main", "main"),
+        ("refs/heads/main", "main"),
+        ("refs/remotes/origin/main", "main"),
+        ("refs/remotes/origin/refs/heads/main", "refs/heads/main"),
+        ("refs/remotes/upstream/main", "refs/remotes/upstream/main"),
+        ("v1.0", "v1.0"),
+    ],
+)
+def test_local_branch_for_base_removes_one_namespace(
+    base_branch: str,
+    expected: str,
+) -> None:
+    """Only one outer ref namespace is removed when naming a local branch."""
+    assert donkey._local_branch_for_base(base_branch, remote="origin") == expected, (
+        "a branch whose own name contains refs/heads/ keeps that segment"
+    )
+
+
+def test_resolves_message_search_revision(tmp_path: Path) -> None:
+    """A message-search revision is resolved before the commit suffix is added."""
+    repo = git_repo_helpers.seed_repo(tmp_path / "local")
+    release_path = tmp_path / "local" / "release.txt"
+    release_path.write_text("release")
+    repo.index.add([release_path.as_posix()])
+    named = repo.index.commit("release").hexsha
+
+    assert helpers._resolve_commit(repo, ":/^release$") == named, (
+        "^{commit} must not become part of the message-search pattern"
+    )

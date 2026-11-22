@@ -90,10 +90,12 @@ out, the command fails rather than updating an unrelated primary checkout.
 With an omitted base, the new branch still starts at the fetched remote
 commit even when an approved update moves the local default branch. Supply
 the local base explicitly, or use ``.``, to include local commits.
-A remote-qualified base such as ``origin/main`` updates the local branch of
-the same name, as an omitted base does, while the new branch still starts at
-the remote-tracking commit. A base that names a tag or commit has no branch
-to update, so it neither prompts nor updates.
+A base qualified by the principal remote, such as ``origin/main``, updates
+the local branch of the same name, as an omitted base does, while the new
+branch still starts at the remote-tracking commit. A base qualified by
+another configured remote names no local branch this command updates. A base
+that names a tag or commit also has no branch to update, so neither prompts
+nor updates.
 
 -h, --help
     Display command-line help and exit.

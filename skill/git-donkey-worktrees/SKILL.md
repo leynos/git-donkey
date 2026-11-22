@@ -136,7 +136,7 @@ remote-qualified branch such as `origin/main`, a tag, or any revision Git
 resolves to a commit. Git commit resolution applies only after a literal local
 branch of that name and a configured remote-tracking ref have been ruled out.
 Only the principal remote is fetched; another configured remote's ref is
-resolved as that fetch left it.
+resolved as that fetch left it and never triggers a local-base update.
 
 ### Update a base only when requested
 

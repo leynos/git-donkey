@@ -237,6 +237,36 @@ def _ahead_behind(repo: Repo, base: str, compare_ref: str) -> tuple[int, int]:
     return int(ahead), int(behind)
 
 
+def _local_branch_for_base(base_branch: str, *, remote: str) -> str:
+    """Return the local branch name a selected base would update.
+
+    A base qualified by the principal remote names the branch of the same
+    name, and a directly supplied local ref names its branch. Only one
+    namespace is removed, so a branch whose own name contains
+    ``refs/heads/`` keeps it. A base qualified by another remote names no
+    local branch this command knows how to update.
+
+    Parameters
+    ----------
+    base_branch : str
+        The base as selected, which may be a branch name, a canonical
+        remote-tracking ref, a tag, or another commit-ish.
+    remote : str
+        Principal remote whose tracking namespace is stripped.
+
+    Returns
+    -------
+    str
+        The local branch name to compare with its remote counterpart, or the
+        base unchanged when it names no principal-remote branch.
+
+    """
+    remote_prefix = f"refs/remotes/{remote}/"
+    if base_branch.startswith(remote_prefix):
+        return base_branch.removeprefix(remote_prefix)
+    return base_branch.removeprefix("refs/heads/")
+
+
 def _base_branch_behind_count(
     context: _DonkeyContext,
     *,
@@ -389,8 +419,7 @@ def _maybe_update_base_branch(
         return
 
     label = _pull_mode_label(pull_mode)
-    local_branch = base_branch.removeprefix(f"refs/remotes/{context.remote}/")
-    local_branch = local_branch.removeprefix("refs/heads/")
+    local_branch = _local_branch_for_base(base_branch, remote=context.remote)
     behind = _base_branch_behind_count(
         context,
         base_branch=base_branch,

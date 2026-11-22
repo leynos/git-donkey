@@ -95,19 +95,22 @@ bases without a remote counterpart retain the existing skip behaviour.
 
 A base that names a tag or commit has no local branch to update; the preflight
 accepts it once Git resolves it and skips both the update and the prompt. A
-remote-qualified base behaves like an omitted base: the local branch of the
-same name may be updated, while the new branch still starts at the
-remote-tracking commit. A fully qualified local branch, `refs/heads/<branch>`,
-is treated as that local branch for the same comparison. The behind comparison
-uses fully qualified refs, so a tag named like the base branch cannot shadow it
-in Git's ambiguous short-name resolution.
+base qualified by the principal remote behaves like an omitted base: the local
+branch of the same name may be updated, while the new branch still starts at
+the remote-tracking commit. A base qualified by another configured remote names
+no local branch this command updates, because only the principal remote is
+fetched. A fully qualified local branch, `refs/heads/<branch>`, is treated as
+that local branch for the same comparison. Only one outer ref namespace is
+removed, so a principal-remote branch whose own name contains `refs/heads/`
+keeps it. The behind comparison uses fully qualified refs, so a tag named like
+the base branch cannot shadow it in Git's ambiguous short-name resolution.
 
 An omitted base continues to select the remote commit even when an opt-in
 update also synchronizes its local counterpart. An explicit local branch base,
 including `.` for the calling worktree's branch, selects the local branch after
 any confirmed update and therefore can include local commits. A base qualified
-by a remote selects the remote-tracking commit after any confirmed update of
-the local branch of the same name.
+by the principal remote selects its remote-tracking commit after any confirmed
+update of the local branch of the same name.
 
 ## Verification contract
 
@@ -126,8 +129,9 @@ option-shaped input.
 
 Pull-mode tests cover accepted and declined prompts, actual rebase and
 fast-forward operations, divergent histories, hostile pull configuration, and
-base branches held in another worktree. They also cover a remote-qualified
-base, and tag or commit bases that neither prompt nor update. CLI tests
+base branches held in another worktree. They also cover a base qualified by the
+principal remote, a fully qualified local base, a tag that shadows the base
+branch name, and tag or commit bases that neither prompt nor update. CLI tests
 exercise the Cyclopts parser, including conflicting options. Unit tests cover
 advertisement parsing and explicit mode selection.
 
