@@ -178,26 +178,32 @@ def _resolve_commit(repo: Repo, revision: str) -> str | None:
         return None
 
 
-def _is_revision_expression(value: str) -> bool:
-    """Return whether ``value`` carries Git revision-expression syntax.
+def _canonical_ref_component(value: str) -> str:
+    """Return the leading ref path of a value before any revision suffix.
 
-    A Git ref name cannot contain ``~``, ``^``, ``:``, ``?``, ``*``, ``[`` or
-    a backslash, nor the ``@{`` sequence, so any of those means the value is
-    an expression such as ``refs/remotes/origin/main~1`` rather than a literal
-    ref path.
+    A Git ref name cannot contain ``~``, ``^`` or ``:``, nor the ``@{``
+    sequence, so the earliest of those starts a revision suffix. The prefix
+    before it is the ref Git must find exactly; a literal ref path has no
+    suffix and is returned whole. ``@`` alone remains valid in a ref name, so
+    only ``@{`` marks a suffix.
 
     Parameters
     ----------
     value : str
-        Base argument supplied by the caller.
+        Revision expression or literal ref path supplied by the caller.
 
     Returns
     -------
-    bool
-        ``True`` when the value contains revision-expression syntax.
+    str
+        The leading ref path, without any revision suffix.
 
     """
-    return "@{" in value or any(char in "~^:?*[\\" for char in value)
+    end = len(value)
+    for marker in ("~", "^", ":", "@{"):
+        index = value.find(marker)
+        if index != -1:
+            end = min(end, index)
+    return value[:end]
 
 
 def _configured_remote_names(repo: Repo) -> list[str]:

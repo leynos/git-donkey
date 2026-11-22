@@ -136,11 +136,12 @@ A supplied base affects **new branches only**. It does not reset or rebase an
 existing feature branch. The base accepts a local branch name, `.`, a
 remote-qualified branch such as `origin/main`, a tag, or any revision Git
 resolves to a commit. A canonical `refs/...` value is used as written, and a
-missing one is rejected rather than searched for in another namespace. For
-other inputs, Git commit resolution applies only after a literal local branch
-of that name and a configured remote-tracking ref have been ruled out. Only the
-principal remote is fetched; another configured remote's ref is resolved as
-that fetch left it and never triggers a local-base update.
+missing one — including the ref component of an expression such as
+`refs/remotes/origin/main~1` — is rejected rather than searched for in another
+namespace. For other inputs, Git commit resolution applies only after a literal
+local branch of that name and a configured remote-tracking ref have been ruled
+out. Only the principal remote is fetched; another configured remote's ref is
+resolved as that fetch left it and never triggers a local-base update.
 
 ### Update a base only when requested
 

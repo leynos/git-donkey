@@ -49,7 +49,9 @@ before keeps its meaning:
 
 1. A fully qualified `refs/` value is used as written. A canonical ref that
    does not exist is rejected, rather than letting Git's revision resolver find
-   a ref of the same name in another namespace.
+   a ref of the same name in another namespace. The ref component of a revision
+   expression, such as `refs/remotes/origin/main` in
+   `refs/remotes/origin/main~1`, must exist exactly for the same reason.
 2. A literal local branch name is used as that branch, even when the name also
    spells a remote-tracking ref.
 3. A configured `<remote>/<branch>` whose `refs/remotes/<remote>/<branch>`

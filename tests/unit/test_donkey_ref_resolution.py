@@ -304,15 +304,20 @@ def test_resolves_message_search_revision(tmp_path: Path) -> None:
 @pytest.mark.parametrize(
     ("value", "expected"),
     [
-        ("refs/tags/v1.0", False),
-        ("refs/remotes/origin/main", False),
-        ("refs/remotes/origin/main~1", True),
-        ("refs/tags/v1.0^{commit}", True),
-        ("HEAD@{1}", True),
+        ("refs/tags/v1.0", "refs/tags/v1.0"),
+        ("refs/remotes/origin/main", "refs/remotes/origin/main"),
+        ("refs/remotes/origin/main~1", "refs/remotes/origin/main"),
+        ("refs/tags/v1.0^{commit}", "refs/tags/v1.0"),
+        ("refs/heads/main:path", "refs/heads/main"),
+        ("HEAD@{1}", "HEAD"),
+        ("refs/tags/user@example", "refs/tags/user@example"),
     ],
 )
-def test_is_revision_expression(value: str, *, expected: bool) -> None:
-    """Only values with revision syntax are treated as expressions."""
-    assert helpers._is_revision_expression(value) is expected, (
-        "a literal ref path contains none of the revision syntax characters"
+def test_canonical_ref_component_stops_at_a_revision_suffix(
+    value: str,
+    expected: str,
+) -> None:
+    """The ref component ends before any revision suffix."""
+    assert helpers._canonical_ref_component(value) == expected, (
+        "a literal ref path, including a single @, has no suffix"
     )

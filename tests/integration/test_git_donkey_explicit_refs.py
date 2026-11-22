@@ -454,3 +454,26 @@ def test_absent_principal_remote_ref_is_not_satisfied_by_a_shadowing_branch(
     )
     assert scenario.branch not in scenario.repo.heads, "no branch is created"
     assert not scenario.worktree_path().exists(), "no worktree is created"
+
+
+def test_absent_canonical_ref_component_rejects_a_suffixed_expression(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A suffixed expression needs its exact ref, not a namespace fallback."""
+    scenario = new_scenario(tmp_path, monkeypatch, "feature/absent-expression")
+    repo = scenario.repo
+    # A second commit makes the `~1` suffix resolvable, so only the exact-ref
+    # guard can reject this base.
+    seed_repo(repo, "second.txt", "second commit")
+    repo.git.branch("refs/tags/absent", "HEAD")
+
+    run_donkey(scenario, capsys, "refs/tags/absent~1")
+
+    assert scenario.exit_code == _REJECTED_EXIT_CODE, "the absent ref is an error"
+    assert "base 'refs/tags/absent~1' not found" in scenario.stderr, (
+        "the error names the missing ref component"
+    )
+    assert scenario.branch not in scenario.repo.heads, "no branch is created"
+    assert not scenario.worktree_path().exists(), "no worktree is created"

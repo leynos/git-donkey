@@ -124,7 +124,8 @@ An explicit base is interpreted in this order:
 
 1. a fully qualified `refs/` value is used as written, and a canonical ref
    that does not exist is rejected rather than resolved through another
-   namespace;
+   namespace. The ref component of an expression such as
+   `refs/remotes/origin/main~1` must exist for the same reason;
 2. otherwise a literal local branch name keeps its own meaning;
 3. otherwise a configured `<remote>/<branch>` whose remote-tracking ref exists
    is used;

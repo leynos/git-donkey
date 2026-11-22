@@ -172,9 +172,11 @@ def _ensure_base_branch_available(
         # to another namespace when the exact ref is absent, resolving
         # refs/tags/release to a branch literally named refs/tags/release,
         # or refs/remotes/origin/missing to a branch of that literal name.
-        # A revision expression in the same namespace stays supported.
-        if helpers._ref_exists(context.repo_home, base_branch) or (
-            helpers._is_revision_expression(base_branch)
+        # The ref component of a revision expression such as
+        # refs/remotes/origin/main~1 must exist for the same reason.
+        if helpers._ref_exists(
+            context.repo_home,
+            helpers._canonical_ref_component(base_branch),
         ):
             return _resolve_base_commit(context, base_branch)
         if base_branch.startswith(f"refs/remotes/{context.remote}/"):
