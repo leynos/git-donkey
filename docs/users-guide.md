@@ -129,10 +129,12 @@ An explicit base is interpreted in this order:
 4. otherwise Git resolves the value to a commit, including a tag, an
    abbreviated commit ID, and an expression such as `HEAD~2`.
 
-Only the principal remote is fetched, so a ref belonging to another configured
-remote is resolved as that fetch left it. A base that names neither a branch
-nor a commit exits with code 1 and reports the supplied base once, without
-repeating a remote the caller already supplied.
+Revision expressions resolve in the calling checkout, so `HEAD~2` names the
+caller's history even when the command runs from a linked worktree. Only the
+principal remote is fetched, so a ref belonging to another configured remote is
+resolved as that fetch left it. A base that names neither a branch nor a commit
+exits with code 1 and reports the supplied base once, without repeating a
+remote the caller already supplied.
 
 Existing local or remote feature branches are reused with their existing
 tracking rules; the base is used only when creating a new branch. If the

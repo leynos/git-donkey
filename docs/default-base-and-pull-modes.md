@@ -57,7 +57,9 @@ before keeps its meaning:
    accepts a tag, a full or abbreviated commit ID, or another commit-ish.
    `--end-of-options` keeps an option-shaped input such as `--all` from being
    read as a Git option, and `^{commit}` rejects an object that is not a
-   commit, such as a tree.
+   commit, such as a tree. Resolution runs in the calling checkout, so a
+   revision expression such as `HEAD~2` names the caller's history even from a
+   linked worktree.
 
 Only the principal remote is fetched. A base naming another configured remote
 resolves against the remote-tracking ref the principal fetch left in place.

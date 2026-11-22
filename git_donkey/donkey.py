@@ -64,6 +64,7 @@ class _DonkeyContext:
     remote: str
     branch_to_worktree: dict[str, Path]
     worktrees_root: Path
+    caller_repo: Repo
 
 
 def choose_base_branch(saved_cwd_branch: str, origin_arg: str) -> str:
@@ -94,7 +95,8 @@ def _normalize_explicit_base(context: _DonkeyContext, base_branch: str) -> str:
     Resolution preserves the precedence every existing input relies on. A
     ``refs/`` value and a literal local branch name are used as written, and a
     configured ``<remote>/<branch>`` prefix is read as a remote-tracking ref
-    only when that ref exists. Any other input is left for Git to resolve.
+    only when that ref exists. Any other input is left for Git to resolve in
+    the calling checkout.
 
     Parameters
     ----------
@@ -283,7 +285,7 @@ def _base_branch_behind_count(
     ):
         if helpers._local_branch_exists(context.repo_home, local_branch):
             return 0
-        if helpers._resolve_commit(context.repo_home, base_branch) is not None:
+        if helpers._resolve_commit(context.caller_repo, base_branch) is not None:
             return 0
         helpers._die(
             prefix,
@@ -386,6 +388,7 @@ def _maybe_update_base_branch(
 
     label = _pull_mode_label(pull_mode)
     local_branch = base_branch.removeprefix(f"refs/remotes/{context.remote}/")
+    local_branch = local_branch.removeprefix("refs/heads/")
     behind = _base_branch_behind_count(
         context,
         base_branch=base_branch,
@@ -438,6 +441,7 @@ def _create_worktree(
         repo_home=context.repo_home,
         remote=context.remote,
         branch_to_worktree=context.branch_to_worktree,
+        caller_repo=context.caller_repo,
     )
     request = donkey_worktrees._WorktreeRequest(
         branch_name=branch_name,
@@ -513,6 +517,7 @@ def _load_donkey_context() -> tuple[_DonkeyContext, str]:
         remote=remote,
         branch_to_worktree=branch_to_worktree,
         worktrees_root=resolved.worktrees_root,
+        caller_repo=repo_cwd,
     )
     return context, saved_cwd_branch
 

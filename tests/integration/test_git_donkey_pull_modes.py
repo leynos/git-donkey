@@ -292,3 +292,31 @@ def test_unresolvable_qualified_parent_fails_before_prompting(
     )
     assert "origin/origin" not in stderr, "no doubled remote prefix is reported"
     assert "feature/invalid-base" not in repo.heads, "no branch is created"
+
+
+def test_pull_ff_updates_a_canonical_local_base(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A fully qualified local branch is still a local base worth updating."""
+    repo = _behind_repo(tmp_path)
+    original_tip = repo.head.commit.hexsha
+    monkeypatch.chdir(repo.working_tree_dir or ".")
+    monkeypatch.setattr(donkey.helpers, "_prompt_yes_no", lambda *_: True)
+
+    assert (
+        donkey.run_git_donkey(
+            "feature/canonical-local",
+            "refs/heads/main",
+            options=donkey._PullOptions(pull_ff=True),
+        )
+        == 0
+    ), "an accepted update still creates the worktree"
+
+    assert repo.head.commit.hexsha == repo.commit("origin/main").hexsha, (
+        "the fully qualified local base is fast-forwarded"
+    )
+    assert repo.head.commit.hexsha != original_tip, "the local base moved forward"
+    assert repo.commit("feature/canonical-local").hexsha == repo.head.commit.hexsha, (
+        "the new branch starts at the updated base"
+    )

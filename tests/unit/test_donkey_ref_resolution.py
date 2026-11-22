@@ -32,6 +32,7 @@ def _context(repo: Repo) -> donkey._DonkeyContext:
         remote=_PRINCIPAL_REMOTE,
         branch_to_worktree={},
         worktrees_root=Path(repo.working_tree_dir or ".") / "worktrees",
+        caller_repo=repo,
     )
 
 

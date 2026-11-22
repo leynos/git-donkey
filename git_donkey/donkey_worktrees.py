@@ -37,12 +37,17 @@ class _WorktreeContext:
         Remote name used for branch discovery and upstream tracking.
     branch_to_worktree
         Existing branch-to-worktree mapping for collision checks.
+    caller_repo
+        Repository rooted at the calling checkout. Revision expressions are
+        resolved there, so ``HEAD`` means the caller's HEAD even when the
+        caller is a linked worktree.
 
     """
 
     repo_home: Repo
     remote: str
     branch_to_worktree: dict[str, Path]
+    caller_repo: Repo
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -161,13 +166,16 @@ def _ensure_base_branch_available(
 
     """
     if base_branch.startswith(f"refs/remotes/{context.remote}/"):
-        if not helpers._ref_exists(context.repo_home, base_branch):
+        # Resolve rather than require an exact ref: the same namespace can
+        # spell a revision expression such as refs/remotes/origin/main~1.
+        commit = helpers._resolve_commit(context.caller_repo, base_branch)
+        if commit is None:
             helpers._die(
                 _GIT_DONKEY_PREFIX,
                 f"remote base ref not found: {base_branch}",
                 1,
             )
-        return _resolve_base_commit(context, base_branch)
+        return commit
 
     if helpers._remote_branch_exists(
         context.repo_home,
@@ -190,7 +198,7 @@ def _ensure_base_branch_available(
 
 def _resolve_base_commit(context: _WorktreeContext, base_branch: str) -> str:
     """Return the commit a base names, or exit with the shared error."""
-    commit = helpers._resolve_commit(context.repo_home, base_branch)
+    commit = helpers._resolve_commit(context.caller_repo, base_branch)
     if commit is None:
         helpers._die(
             _GIT_DONKEY_PREFIX,

@@ -169,7 +169,12 @@ def test_non_principal_remote_qualified_base_uses_that_remote(
     local_path, remote_path = _setup_repo(tmp_path)
     repo = Repo(local_path)
     repo.git.remote("rename", "origin", "upstream")
-    repo.create_remote("origin", remote_path.as_posix())
+    # A second, distinct remote: sharing one store would let `origin/main` and
+    # `upstream/main` name the same commit, so a wrong remote could pass.
+    other_remote_path = tmp_path / "other.git"
+    Repo.init(other_remote_path, bare=True)
+    repo.create_remote("origin", other_remote_path.as_posix())
+    repo.remote("origin").push("main")
     seed_repo(repo, "other.txt", "other remote work")
     repo.remote("upstream").push("main")
     remote_tip = repo.head.commit.hexsha
@@ -184,12 +189,18 @@ def test_non_principal_remote_qualified_base_uses_that_remote(
     scenario.local_tip = local_tip
     monkeypatch.chdir(local_path)
     monkeypatch.setattr(donkey.helpers, "_prompt_yes_no", _reject_prompt)
+    assert repo.commit("origin/main").hexsha != repo.commit("upstream/main").hexsha, (
+        "the two remotes must offer different tips for the assertion to bite"
+    )
 
     run_donkey(scenario, capsys, "upstream/main")
 
     assert scenario.exit_code == 0, "a non-principal remote may qualify the base"
     assert scenario.worktree_head() == remote_tip, (
         "the new branch starts at that remote's tip"
+    )
+    assert scenario.worktree_head() != repo.commit("origin/main").hexsha, (
+        "the base is resolved from the named remote, not the principal one"
     )
     assert scenario.repo.head.commit.hexsha == local_tip, (
         "the stale local base is left untouched"
@@ -302,4 +313,81 @@ def test_remote_qualified_base_without_an_upstream_still_resolves(
     )
     assert scenario.worktree_repo().active_branch.tracking_branch() is None, (
         "a new branch does not inherit tracking from a remote-qualified base"
+    )
+
+
+def test_canonical_remote_revision_expression_is_resolved(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A canonical remote ref with an ancestor suffix is a valid base."""
+    scenario = new_scenario(tmp_path, monkeypatch, "feature/from-parent")
+    repo = scenario.repo
+    seed_repo(repo, "second.txt", "second commit")
+    repo.remote("origin").push("main")
+    repo.remote("origin").fetch()
+    expected = repo.commit("refs/remotes/origin/main~1").hexsha
+    scenario.remote_tip = repo.commit("refs/remotes/origin/main").hexsha
+    monkeypatch.setattr(donkey.helpers, "_prompt_yes_no", _reject_prompt)
+
+    run_donkey(scenario, capsys, "refs/remotes/origin/main~1")
+
+    assert scenario.exit_code == 0, "a canonical revision expression is accepted"
+    assert scenario.worktree_head() == expected, (
+        "the expression resolves to the commit it names"
+    )
+    assert scenario.worktree_head() != scenario.remote_tip, (
+        "the ancestor, not the ref tip, supplies the start point"
+    )
+
+
+def test_canonical_remote_ref_that_does_not_exist_is_reported(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A canonical principal-remote ref with no commit behind it still fails."""
+    scenario = new_scenario(tmp_path, monkeypatch, "feature/missing-ref")
+
+    run_donkey(scenario, capsys, "refs/remotes/origin/nope")
+
+    assert scenario.exit_code == _REJECTED_EXIT_CODE, "an unknown ref is an error"
+    assert "remote base ref not found" in scenario.stderr, (
+        "the error names the missing remote ref form"
+    )
+    assert scenario.branch not in scenario.repo.heads, "no branch is created"
+
+
+def test_head_expression_resolves_in_the_calling_checkout(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """``HEAD~1`` names the caller's history, even from a linked worktree."""
+    scenario = new_scenario(tmp_path, monkeypatch, "feature/from-caller-head")
+    repo = scenario.repo
+    first = repo.head.commit.hexsha
+    seed_repo(repo, "second.txt", "second commit")
+    second = repo.head.commit.hexsha
+    caller_path = tmp_path / "caller-worktree"
+    repo.git.worktree("add", "-b", "caller/branch", str(caller_path), second)
+    # Advance the caller alone, so its HEAD and the anchor's HEAD differ and
+    # an anchor-relative resolution would choose a different commit.
+    caller_repo = Repo(caller_path)
+    seed_repo(caller_repo, "third.txt", "third commit")
+    third = caller_repo.head.commit.hexsha
+    repo.git.checkout("-b", "anchor/side", first)
+    monkeypatch.chdir(caller_path)
+    monkeypatch.setattr(donkey.helpers, "_prompt_yes_no", _reject_prompt)
+    assert first != second != third, "the three commits are distinct"
+
+    run_donkey(scenario, capsys, "HEAD~1")
+
+    assert scenario.exit_code == 0, "a revision expression is accepted"
+    assert scenario.worktree_head() == second, (
+        "the expression resolves against the calling checkout's HEAD"
+    )
+    assert scenario.worktree_head() != first, (
+        "the anchor's HEAD does not decide the start point"
     )

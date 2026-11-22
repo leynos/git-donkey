@@ -79,6 +79,7 @@ def _stub_context(
         remote="origin",
         branch_to_worktree={},
         worktrees_root=tmp_path / "worktrees",
+        caller_repo=repo,
     )
 
 
@@ -146,11 +147,13 @@ def test_base_update_not_requested_records_the_skip(
     recording_recorder: RecordingRecorder,
 ) -> None:
     """Without a pull mode the skipped update is the only record."""
+    repo = Repo.init(tmp_path)
     context = donkey._DonkeyContext(
-        repo_home=Repo.init(tmp_path),
+        repo_home=repo,
         remote="origin",
         branch_to_worktree={},
         worktrees_root=tmp_path,
+        caller_repo=repo,
     )
 
     donkey._maybe_update_base_branch(

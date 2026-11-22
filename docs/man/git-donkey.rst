@@ -42,6 +42,8 @@ An explicit base is interpreted in this order: a fully qualified ``refs/``
 value is used as written; otherwise a literal local branch name keeps its own
 meaning; otherwise a configured ``<remote>/<branch>`` whose remote-tracking
 ref exists is used; otherwise Git resolves the value to a commit.
+Revision expressions resolve in the calling checkout, including when it is a
+linked worktree.
 
 The command fetches remote references but does not pull, rebase, or prompt by
 default. Unpublished local commits and uncommitted changes in the primary
