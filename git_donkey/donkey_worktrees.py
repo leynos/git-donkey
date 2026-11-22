@@ -178,9 +178,21 @@ def _ensure_base_branch_available(
         return commit
 
     if base_branch.startswith("refs/"):
-        # A canonical ref is used as written. A bare-name lookup would let a
-        # branch literally named "refs/..." shadow the ref it spells.
-        return _resolve_base_commit(context, base_branch)
+        # A canonical ref is used as written. Git would otherwise fall back
+        # to another namespace when the exact ref is absent, resolving
+        # refs/tags/release to a branch literally named refs/tags/release.
+        # A revision expression in the same namespace stays supported.
+        if helpers._ref_exists(context.repo_home, base_branch) or (
+            helpers._is_revision_expression(base_branch)
+        ):
+            return _resolve_base_commit(context, base_branch)
+        helpers._die(
+            _GIT_DONKEY_PREFIX,
+            helpers._base_not_found_message(
+                context.repo_home, base_branch, context.remote
+            ),
+            1,
+        )
 
     if helpers._remote_branch_exists(
         context.repo_home,

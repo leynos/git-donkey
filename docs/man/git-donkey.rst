@@ -39,9 +39,11 @@ left it.
 Reuse an existing local or remote branch rather than create it again.
 
 An explicit base is interpreted in this order: a fully qualified ``refs/``
-value is used as written; otherwise a literal local branch name keeps its own
-meaning; otherwise a configured ``<remote>/<branch>`` whose remote-tracking
-ref exists is used; otherwise Git resolves the value to a commit.
+value is used as written, and a missing canonical ref is an error rather than
+a search of other namespaces; otherwise a literal local branch name keeps its
+own meaning; otherwise a configured ``<remote>/<branch>`` whose
+remote-tracking ref exists is used; otherwise Git resolves the value to a
+commit.
 Revision expressions resolve in the calling checkout, including when it is a
 linked worktree.
 

@@ -178,6 +178,28 @@ def _resolve_commit(repo: Repo, revision: str) -> str | None:
         return None
 
 
+def _is_revision_expression(value: str) -> bool:
+    """Return whether ``value`` carries Git revision-expression syntax.
+
+    A Git ref name cannot contain ``~``, ``^``, ``:``, ``?``, ``*``, ``[`` or
+    a backslash, nor the ``@{`` sequence, so any of those means the value is
+    an expression such as ``refs/remotes/origin/main~1`` rather than a literal
+    ref path.
+
+    Parameters
+    ----------
+    value : str
+        Base argument supplied by the caller.
+
+    Returns
+    -------
+    bool
+        ``True`` when the value contains revision-expression syntax.
+
+    """
+    return "@{" in value or any(char in "~^:?*[\\" for char in value)
+
+
 def _configured_remote_names(repo: Repo) -> list[str]:
     """Return the configured remote names, in configuration order."""
     return [remote.name for remote in repo.remotes]

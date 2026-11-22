@@ -412,3 +412,25 @@ def test_canonical_tag_base_is_not_shadowed_by_a_branch_of_that_name(
     assert scenario.worktree_head() == tagged, (
         "the tag, not the shadowing branch, supplies the start point"
     )
+
+
+def test_absent_canonical_ref_is_not_satisfied_by_a_shadowing_branch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A missing canonical ref is rejected, not resolved in another namespace."""
+    scenario = new_scenario(tmp_path, monkeypatch, "feature/absent-ref")
+    repo = scenario.repo
+    # Git's revision resolver would otherwise find this branch when asked for
+    # the absent refs/tags/absent.
+    repo.git.branch("refs/tags/absent", "HEAD")
+
+    run_donkey(scenario, capsys, "refs/tags/absent")
+
+    assert scenario.exit_code == _REJECTED_EXIT_CODE, "the absent ref is an error"
+    assert "base 'refs/tags/absent' not found" in scenario.stderr, (
+        "the error names the missing canonical ref"
+    )
+    assert scenario.branch not in scenario.repo.heads, "no branch is created"
+    assert not scenario.worktree_path().exists(), "no worktree is created"

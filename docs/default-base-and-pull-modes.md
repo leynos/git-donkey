@@ -47,7 +47,9 @@ remote feature branches retain their separate reuse and tracking behaviour.
 An explicit base is resolved in a fixed order, so every input that worked
 before keeps its meaning:
 
-1. A fully qualified `refs/` value is used as written.
+1. A fully qualified `refs/` value is used as written. A canonical ref that
+   does not exist is rejected, rather than letting Git's revision resolver find
+   a ref of the same name in another namespace.
 2. A literal local branch name is used as that branch, even when the name also
    spells a remote-tracking ref.
 3. A configured `<remote>/<branch>` whose `refs/remotes/<remote>/<branch>`

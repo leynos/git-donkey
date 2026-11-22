@@ -122,7 +122,9 @@ tip can be named explicitly even when the local branch is stale.
 
 An explicit base is interpreted in this order:
 
-1. a fully qualified `refs/` value is used as written;
+1. a fully qualified `refs/` value is used as written, and a canonical ref
+   that does not exist is rejected rather than resolved through another
+   namespace;
 2. otherwise a literal local branch name keeps its own meaning;
 3. otherwise a configured `<remote>/<branch>` whose remote-tracking ref exists
    is used;

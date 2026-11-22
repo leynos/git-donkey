@@ -297,3 +297,20 @@ def test_resolves_message_search_revision(tmp_path: Path) -> None:
     assert helpers._resolve_commit(repo, ":/^release$") == named, (
         "^{commit} must not become part of the message-search pattern"
     )
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("refs/tags/v1.0", False),
+        ("refs/remotes/origin/main", False),
+        ("refs/remotes/origin/main~1", True),
+        ("refs/tags/v1.0^{commit}", True),
+        ("HEAD@{1}", True),
+    ],
+)
+def test_is_revision_expression(value: str, *, expected: bool) -> None:
+    """Only values with revision syntax are treated as expressions."""
+    assert helpers._is_revision_expression(value) is expected, (
+        "a literal ref path contains none of the revision syntax characters"
+    )

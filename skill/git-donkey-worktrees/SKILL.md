@@ -109,11 +109,13 @@ Use a named base branch to include its committed local state without pulling:
 git donkey feature/release-fix release/1.2
 ```
 
-To root a new branch on the fetched remote tip, name the remote explicitly.
-This is the form to use when local `main` is stale and no pull was requested:
+To root a new branch on the fetched remote tip, name the canonical
+remote-tracking ref. This is the form to use when local `main` is stale and no
+pull was requested, and it still selects the remote tip when a local branch
+literally spells `origin/main`:
 
 ```bash
-git donkey feature/remote-tip origin/main
+git donkey feature/remote-tip refs/remotes/origin/main
 ```
 
 To stack new work on the invoking worktree's branch, run these commands **from
@@ -133,7 +135,8 @@ files. Keep the recorded parent tip with the task's handover notes.
 A supplied base affects **new branches only**. It does not reset or rebase an
 existing feature branch. The base accepts a local branch name, `.`, a
 remote-qualified branch such as `origin/main`, a tag, or any revision Git
-resolves to a commit. A canonical `refs/...` value is used as written. For
+resolves to a commit. A canonical `refs/...` value is used as written, and a
+missing one is rejected rather than searched for in another namespace. For
 other inputs, Git commit resolution applies only after a literal local branch
 of that name and a configured remote-tracking ref have been ruled out. Only the
 principal remote is fetched; another configured remote's ref is resolved as
