@@ -29,6 +29,5 @@ Feature: Create worktrees in a bare repository collection
   Scenario: A remote without a fetch refspec is refused
     Given a bare repository collection whose remote has no fetch refspec
     When I run git donkey with the remote default base
-    Then git donkey fails with code 2 and reports "has no fetch refspec"
-    And git donkey reports "git config remote.origin.fetch"
+    Then git donkey fails with code 2 and reports "git-donkey: 💀 remote 'origin' has no fetch refspec, so its branches cannot be tracked (`git clone --bare` configures none); run: git config remote.origin.fetch '+refs/heads/*:refs/remotes/origin/*'"
     And no worktree root is created

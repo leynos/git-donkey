@@ -12,6 +12,11 @@ from git_donkey import cli, incoming_outgoing
 from tests.git_repo_helpers import configure_repo
 from tests.integration.conftest import _setup_repo
 from tests.integration.donkey_helpers import seed_repo
+from tests.output_assertions import (
+    GIT_ERROR_PLACEHOLDER,
+    require_stream,
+    stream,
+)
 
 if typ.TYPE_CHECKING:
     from pathlib import Path
@@ -29,6 +34,12 @@ def _clone_remote(remote_path: Path, clone_path: Path) -> Repo:
     repo = Repo.clone_from(remote_path.as_posix(), clone_path, branch="main")
     configure_repo(repo)
     return repo
+
+
+def _expected_log(repo: Repo, include_ref: str, exclude_ref: str) -> str:
+    """Render the ``git log --oneline --decorate`` report for one comparison side."""
+    listing = repo.git.log("--oneline", "--decorate", include_ref, "--not", exclude_ref)
+    return stream(listing)
 
 
 def _set_main_upstream(repo: Repo) -> None:
@@ -92,7 +103,6 @@ def test_git_incoming_fetches_and_reports_remote_only_commit(
     peer_repo = _clone_remote(remote_path, tmp_path / "peer")
     seed_repo(peer_repo, "remote.txt", "remote")
     peer_repo.remote("origin").push("main")
-    remote_commit = peer_repo.head.commit.hexsha[:7]
 
     exit_code, out, err = run_and_capture(
         local_path,
@@ -100,7 +110,11 @@ def test_git_incoming_fetches_and_reports_remote_only_commit(
     )
 
     assert exit_code == 0, "a remote-only commit must exit 0"
-    assert remote_commit in out, "incoming must print the fetched remote-only commit"
+    require_stream(
+        out,
+        _expected_log(local_repo, "origin/main", "HEAD"),
+        context="git-incoming stdout",
+    )
     assert not err, "a successful comparison must not write to stderr"
 
 
@@ -134,7 +148,6 @@ def test_git_outgoing_reports_local_only_commit(
     _set_main_upstream(repo)
     repo.remote("origin").fetch()
     seed_repo(repo, "local.txt", "local")
-    local_commit = repo.head.commit.hexsha[:7]
 
     exit_code, out, err = run_and_capture(
         local_path,
@@ -143,7 +156,11 @@ def test_git_outgoing_reports_local_only_commit(
     )
 
     assert exit_code == 0, "a local-only commit must exit 0"
-    assert local_commit in out, "outgoing must print the local-only commit"
+    require_stream(
+        out,
+        _expected_log(repo, "HEAD", "origin/main"),
+        context="git-outgoing stdout",
+    )
     assert not err, "a successful comparison must not write to stderr"
 
 
@@ -183,10 +200,14 @@ def test_default_ref_requires_upstream(
 
     assert exit_code == _COULD_NOT_RUN_EXIT_CODE, "a missing upstream must exit 2"
     assert not out, "a missing upstream must print nothing"
-    assert "no upstream branch configured" in err, (
-        "a missing upstream must explain the configuration error"
+    require_stream(
+        err,
+        stream(
+            "git-incoming: no upstream branch configured; set one with "
+            "`git branch --set-upstream-to <remote>/<branch>` or pass a ref"
+        ),
+        context="git-incoming stderr",
     )
-    assert "pass a ref" in err, "a missing upstream must suggest passing a ref"
 
 
 def test_no_fetch_uses_current_remote_tracking_ref(
@@ -226,7 +247,6 @@ def test_explicit_ref_does_not_require_upstream(
     peer_repo = _clone_remote(remote_path, tmp_path / "peer")
     seed_repo(peer_repo, "remote.txt", "remote")
     peer_repo.remote("origin").push("main")
-    remote_commit = peer_repo.head.commit.hexsha[:7]
 
     exit_code, out, err = run_and_capture(
         local_path,
@@ -235,7 +255,11 @@ def test_explicit_ref_does_not_require_upstream(
     )
 
     assert exit_code == 0, "an explicit ref must compare successfully"
-    assert remote_commit in out, "incoming must print the remote-only commit"
+    require_stream(
+        out,
+        _expected_log(local_repo, "origin/main", "HEAD"),
+        context="git-incoming stdout",
+    )
     assert not err, "a successful comparison must not write to stderr"
 
 
@@ -252,7 +276,6 @@ def test_canonical_ref_fetches_owning_remote(
     peer_repo = _clone_remote(remote_path, tmp_path / "peer")
     seed_repo(peer_repo, "remote.txt", "remote")
     peer_repo.remote("origin").push("main")
-    remote_commit = peer_repo.head.commit.hexsha[:7]
 
     exit_code, out, err = run_and_capture(
         local_path,
@@ -261,7 +284,11 @@ def test_canonical_ref_fetches_owning_remote(
     )
 
     assert exit_code == 0, "canonical refs must fetch and report new commits"
-    assert remote_commit in out, "the fetched canonical ref must be reported"
+    require_stream(
+        out,
+        _expected_log(local_repo, "refs/remotes/origin/main", "HEAD"),
+        context="git-incoming stdout",
+    )
     assert not err, "a successful comparison must not write to stderr"
 
 
@@ -279,7 +306,6 @@ def test_git_incoming_entrypoint_reports_remote_only_commit(
     peer_repo = _clone_remote(remote_path, tmp_path / "peer")
     seed_repo(peer_repo, "remote.txt", "remote")
     peer_repo.remote("origin").push("main")
-    remote_commit = peer_repo.head.commit.hexsha[:7]
 
     # No upstream is configured, so the exit code proves the explicit ref
     # parsed from ``argv`` reached the runner.
@@ -291,8 +317,10 @@ def test_git_incoming_entrypoint_reports_remote_only_commit(
 
     captured = capsys.readouterr()
     assert exit_info.value.code == 0, "a remote-only commit must exit 0"
-    assert remote_commit in captured.out, (
-        "the entrypoint must print the remote-only commit"
+    require_stream(
+        captured.out,
+        _expected_log(local_repo, "origin/main", "HEAD"),
+        context="git-incoming stdout",
     )
     assert not captured.err, "a successful comparison must not write to stderr"
     assert [span.operation for span in recording_recorder.spans] == [
@@ -334,7 +362,6 @@ def test_git_outgoing_entrypoint_reports_local_only_commit(
     local_repo = Repo(local_path)
     local_repo.remote("origin").fetch()
     seed_repo(local_repo, "local.txt", "local")
-    local_commit = local_repo.head.commit.hexsha[:7]
 
     # No upstream is configured, so the exit code proves the explicit ref
     # parsed from ``argv`` reached the runner: an ignored argument list would
@@ -348,8 +375,10 @@ def test_git_outgoing_entrypoint_reports_local_only_commit(
 
     captured = capsys.readouterr()
     assert exit_info.value.code == 0, "a local-only commit must exit 0"
-    assert local_commit in captured.out, (
-        "the entrypoint must print the local-only commit"
+    require_stream(
+        captured.out,
+        _expected_log(local_repo, "HEAD", "origin/main"),
+        context="git-outgoing stdout",
     )
     assert not captured.err, "a successful comparison must not write to stderr"
     assert [span.operation for span in recording_recorder.spans] == ["comparison"], (
@@ -368,7 +397,6 @@ def test_git_out_alias_entrypoint_reports_local_only_commit(
     local_repo = Repo(local_path)
     local_repo.remote("origin").fetch()
     seed_repo(local_repo, "local.txt", "local")
-    local_commit = local_repo.head.commit.hexsha[:7]
 
     monkeypatch.chdir(local_path)
     monkeypatch.setattr(sys, "argv", ["git-out", "origin/main", "--no-fetch"])
@@ -378,7 +406,11 @@ def test_git_out_alias_entrypoint_reports_local_only_commit(
 
     captured = capsys.readouterr()
     assert exit_info.value.code == 0, "a local-only commit must exit 0"
-    assert local_commit in captured.out, "the alias must print the local-only commit"
+    require_stream(
+        captured.out,
+        _expected_log(local_repo, "HEAD", "origin/main"),
+        context="git-out stdout",
+    )
     assert not captured.err, "a successful comparison must not write to stderr"
     assert recording_recorder.outcomes("comparison") == ["found"], (
         "the alias must record the comparison outcome"
@@ -402,4 +434,8 @@ def test_fetch_failure_returns_two(
 
     assert exit_code == _COULD_NOT_RUN_EXIT_CODE, "a failed fetch must exit 2, not 1"
     assert not out, "a failed fetch must print no commits"
-    assert "fetch failed" in err, "a failed fetch must be reported on stderr"
+    require_stream(
+        err,
+        stream(f"git-incoming: fetch failed: {GIT_ERROR_PLACEHOLDER}"),
+        context="git-incoming stderr",
+    )

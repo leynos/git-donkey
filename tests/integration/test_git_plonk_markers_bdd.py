@@ -29,12 +29,21 @@ from tests.integration.plonk_helpers import (
     commit_in_worktree,
     commit_message_on_branch,
     create_git_donkey_worktree,
+    record_plonk_run,
 )
+from tests.output_assertions import require_stream, stream
 
 if typ.TYPE_CHECKING:
+    import collections.abc as cabc
     from pathlib import Path
 
     import pytest
+
+# Each cleanup mode the feature names, mapped to the call that runs it.
+_PLONK_INVOCATIONS: dict[str, cabc.Callable[[], int | None]] = {
+    "default": plonk.run_git_plonk,
+    "hard": lambda: plonk.run_git_plonk(hard=True),
+}
 
 _ISSUE_BRANCH = "issue-123-fix-closed-work"
 _COMPLETION_MARKER = "(#123)"
@@ -148,26 +157,14 @@ def repository_with_a_later_commit(
     return scenario
 
 
-@when("I run git plonk in default mode", target_fixture="plonk_output")
-def run_default_plonk(
+@when(parsers.parse("I run git plonk in {mode} mode"))
+def run_plonk(
     scenario: PlonkScenario,
     capsys: pytest.CaptureFixture[str],
-) -> str:
-    """Run the default cleanup mode and capture its report."""
-    exit_code = plonk.run_git_plonk()
-    assert exit_code == 0, "expected default git plonk to succeed"
-    return capsys.readouterr().out
-
-
-@when("I run git plonk in hard mode", target_fixture="plonk_output")
-def run_hard_plonk(
-    scenario: PlonkScenario,
-    capsys: pytest.CaptureFixture[str],
-) -> str:
-    """Run the hard cleanup mode and capture its report."""
-    exit_code = plonk.run_git_plonk(hard=True)
-    assert exit_code == 0, "expected hard git plonk to succeed"
-    return capsys.readouterr().out
+    mode: str,
+) -> None:
+    """Run the cleanup mode the step names and record its report."""
+    record_plonk_run(scenario, capsys, mode, _PLONK_INVOCATIONS[mode])
 
 
 @then("the completed worktree is removed")
@@ -221,19 +218,19 @@ def both_worktrees_sharing_the_marker_are_removed(scenario: PlonkScenario) -> No
 
 
 @then("git plonk reports both worktrees as removed")
-def git_plonk_reports_both_worktrees_as_removed(
-    scenario: PlonkScenario,
-    plonk_output: str,
-) -> None:
-    """Assert the report names both removed worktrees, not merely the first."""
-    assert "Removed worktrees:" in plonk_output, (
-        "expected a removed worktree section in the report"
+def git_plonk_reports_both_worktrees_as_removed(scenario: PlonkScenario) -> None:
+    """Assert the report names both removed worktrees, in the order Git lists them."""
+    wanted = {scenario.worktree_path(branch) for branch in _SHARED_MARKER_BRANCHES}
+    removed = [path for path in scenario.known_worktrees if path in wanted]
+    require_stream(
+        scenario.stdout,
+        stream(
+            f"git-plonk: mode={scenario.mode}",
+            "Removed worktrees:",
+            *(f"- {path}" for path in removed),
+        ),
+        context="git plonk stdout",
     )
-    for branch_name in _SHARED_MARKER_BRANCHES:
-        worktree_path = scenario.worktree_path(branch_name)
-        assert f"- {worktree_path}" in plonk_output, (
-            f"expected {branch_name} to be reported as removed"
-        )
 
 
 scenarios("features/git_plonk_markers.feature")

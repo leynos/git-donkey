@@ -19,17 +19,27 @@ import os
 import shutil
 import sys
 import typing as typ
+from itertools import starmap
 
 import pytest
 from git import Repo
-from pytest_bdd import given, scenario, scenarios, then, when
+from pytest_bdd import given, parsers, scenario, scenarios, then, when
 
 from git_donkey import plonk
 from tests.integration.conftest import _setup_repo
 from tests.integration.plonk_helpers import (
     PlonkScenario,
+    capture_plonk_run,
     commit_completion_marker,
     create_git_donkey_worktree,
+    record_plonk_run,
+    skipped_entry,
+)
+from tests.output_assertions import (
+    GIT_ERROR_PLACEHOLDER,
+    require_line,
+    require_stream,
+    stream,
 )
 
 if typ.TYPE_CHECKING:
@@ -37,6 +47,14 @@ if typ.TYPE_CHECKING:
     from pathlib import Path
 
 _UNTRACKED_CONTENT = "work in progress"
+
+# Each cleanup mode the feature names, mapped to the call that runs it.
+_PLONK_INVOCATIONS: dict[str, cabc.Callable[[], int | None]] = {
+    "default": plonk.run_git_plonk,
+    "default dry-run": lambda: plonk.run_git_plonk(dry_run=True),
+    "hard": lambda: plonk.run_git_plonk(hard=True),
+    "hard dry-run": lambda: plonk.run_git_plonk(hard=True, dry_run=True),
+}
 
 
 @pytest.fixture
@@ -81,8 +99,9 @@ def _completed_worktree_scenario(
     return PlonkScenario(local_path=local_path, completed_branch=branch_name)
 
 
-def _leave_untracked_file(scenario: PlonkScenario, branch_name: str) -> None:
+def _leave_untracked_file(scenario: PlonkScenario, branch_name: str | None) -> None:
     """Leave an untracked file in ``branch_name``'s worktree."""
+    assert branch_name is not None, "expected a branch in the scenario"
     untracked = scenario.worktree_path(branch_name) / "scratch.txt"
     untracked.write_text(_UNTRACKED_CONTENT)
 
@@ -109,17 +128,25 @@ def _two_completed_worktrees(
     )
 
 
-def _assert_skipped_entry(
-    worktree_path: Path,
-    reason: str,
-    plonk_output: str,
-) -> None:
-    """Assert ``plonk_output`` reports ``worktree_path`` as skipped for ``reason``."""
-    assert "Skipped worktrees:" in plonk_output, (
-        "expected a skipped worktree section in the report"
-    )
-    assert f"- {worktree_path} ({reason})" in plonk_output, (
-        f"expected {worktree_path} to be reported as skipped for {reason}"
+def _require_report(scenario: PlonkScenario, *lines: str) -> None:
+    """Assert the run printed exactly ``lines``, each terminated by a newline."""
+    require_stream(scenario.stdout, stream(*lines), context="git plonk stdout")
+
+
+def _require_line(scenario: PlonkScenario, line: str) -> None:
+    """Assert ``line`` is one complete line of the recorded report."""
+    require_line(scenario.stdout, line, context="git plonk stdout")
+
+
+def _skipped_report(
+    scenario: PlonkScenario,
+    *skips: tuple[Path, str],
+) -> tuple[str, ...]:
+    """Build the summary lines for a run that only skipped worktrees."""
+    return (
+        f"git-plonk: mode={scenario.mode}",
+        "Skipped worktrees:",
+        *starmap(skipped_entry, skips),
     )
 
 
@@ -152,7 +179,6 @@ def repository_with_clean_and_dirty_completed_worktrees(
 ) -> PlonkScenario:
     """Create one removable completed worktree beside one holding untracked work."""
     scenario = _two_completed_worktrees(tmp_path, monkeypatch)
-    assert scenario.dirty_branch is not None, "expected a dirty branch in scenario"
     _leave_untracked_file(scenario, scenario.dirty_branch)
     return scenario
 
@@ -167,9 +193,8 @@ def repository_with_two_dirty_completed_worktrees(
 ) -> PlonkScenario:
     """Create two completed worktrees that both hold untracked work."""
     scenario = _two_completed_worktrees(tmp_path, monkeypatch)
-    assert scenario.dirty_branch is not None, "expected a dirty branch in scenario"
-    _leave_untracked_file(scenario, scenario.completed_branch)
-    _leave_untracked_file(scenario, scenario.dirty_branch)
+    for branch_name in (scenario.completed_branch, scenario.dirty_branch):
+        _leave_untracked_file(scenario, branch_name)
     return scenario
 
 
@@ -197,160 +222,143 @@ def repository_with_undeletable_branch(
     return scenario
 
 
-@when("I run git plonk in default mode", target_fixture="plonk_output")
-def run_default_plonk(
+@when(parsers.parse("I run git plonk in {mode} mode"))
+def run_plonk(
     scenario: PlonkScenario,
     capsys: pytest.CaptureFixture[str],
-) -> str:
-    """Run the default cleanup mode and capture its report."""
-    exit_code = plonk.run_git_plonk()
-    assert exit_code == 0, "expected default git plonk to succeed"
-    return capsys.readouterr().out
+    mode: str,
+) -> None:
+    """Run the cleanup mode the step names and record its report."""
+    record_plonk_run(scenario, capsys, mode, _PLONK_INVOCATIONS[mode])
 
 
-@when("I run git plonk in hard mode", target_fixture="plonk_output")
-def run_hard_plonk(
-    scenario: PlonkScenario,
-    capsys: pytest.CaptureFixture[str],
-) -> str:
-    """Run the hard cleanup mode and capture its report."""
-    exit_code = plonk.run_git_plonk(hard=True)
-    assert exit_code == 0, "expected hard git plonk to succeed"
-    return capsys.readouterr().out
-
-
-@when("I run git plonk in default dry-run mode", target_fixture="plonk_output")
-def run_default_dry_run_plonk(
-    scenario: PlonkScenario,
-    capsys: pytest.CaptureFixture[str],
-) -> str:
-    """Run default cleanup in dry-run mode and capture its report."""
-    exit_code = plonk.run_git_plonk(dry_run=True)
-    assert exit_code == 0, "expected default dry-run git plonk to succeed"
-    return capsys.readouterr().out
-
-
-@when("I run git plonk in hard dry-run mode", target_fixture="plonk_output")
-def run_hard_dry_run_plonk(
-    scenario: PlonkScenario,
-    capsys: pytest.CaptureFixture[str],
-) -> str:
-    """Run hard cleanup in dry-run mode and capture its report."""
-    exit_code = plonk.run_git_plonk(hard=True, dry_run=True)
-    assert exit_code == 0, "expected hard dry-run git plonk to succeed"
-    return capsys.readouterr().out
-
-
-@when("I run git plonk in hard mode expecting failure", target_fixture="plonk_output")
+@when("I run git plonk in hard mode expecting failure")
 def run_failing_hard_plonk(
     scenario: PlonkScenario,
     capsys: pytest.CaptureFixture[str],
-) -> str:
+) -> None:
     """Run hard cleanup where Git will refuse the branch deletion."""
-    exit_code = plonk.run_git_plonk(hard=True)
-    assert exit_code == 1, "expected a refused branch deletion to fail the run"
-    return capsys.readouterr().out
+    scenario.mode = "hard"
+    capture_plonk_run(
+        scenario,
+        capsys,
+        lambda: plonk.run_git_plonk(hard=True),
+    )
+    assert scenario.exit_code == 1, "expected a refused branch deletion to fail the run"
+    require_stream(
+        scenario.stderr,
+        f"git-plonk: failed to delete branch '{scenario.completed_branch}': "
+        f"{GIT_ERROR_PLACEHOLDER}",
+        context="git plonk stderr",
+    )
 
 
 @then("git plonk reports the completed worktree as missing")
-def git_plonk_reports_completed_worktree_missing(
-    scenario: PlonkScenario,
-    plonk_output: str,
-) -> None:
+def git_plonk_reports_completed_worktree_missing(scenario: PlonkScenario) -> None:
     """Assert a vanished worktree directory is reported as its own skip reason."""
-    _assert_skipped_entry(
-        scenario.worktree_path(scenario.completed_branch),
-        "worktree directory is missing",
-        plonk_output,
+    _require_report(
+        scenario,
+        *_skipped_report(
+            scenario,
+            (
+                scenario.worktree_path(scenario.completed_branch),
+                "worktree directory is missing",
+            ),
+        ),
     )
 
 
 @then("git plonk reports the dirty worktree as skipped")
-def git_plonk_reports_dirty_worktree_skipped(
-    scenario: PlonkScenario,
-    plonk_output: str,
-) -> None:
+def git_plonk_reports_dirty_worktree_skipped(scenario: PlonkScenario) -> None:
     """Assert a preview still names the candidate it would leave behind."""
     assert scenario.dirty_branch is not None, "expected a dirty branch in scenario"
-    _assert_skipped_entry(
-        scenario.worktree_path(scenario.dirty_branch),
-        "uncommitted changes",
-        plonk_output,
+    _require_line(
+        scenario,
+        skipped_entry(
+            scenario.worktree_path(scenario.dirty_branch),
+            "uncommitted changes",
+        ),
     )
 
 
 @then("git plonk reports both worktrees as skipped")
-def git_plonk_reports_both_worktrees_skipped(
-    scenario: PlonkScenario,
-    plonk_output: str,
-) -> None:
+def git_plonk_reports_both_worktrees_skipped(scenario: PlonkScenario) -> None:
     """Assert a sweep that skipped every candidate names all of them."""
     assert scenario.dirty_branch is not None, "expected a dirty branch in scenario"
     for branch_name in (scenario.completed_branch, scenario.dirty_branch):
-        _assert_skipped_entry(
-            scenario.worktree_path(branch_name),
-            "uncommitted changes",
-            plonk_output,
+        _require_line(
+            scenario,
+            skipped_entry(
+                scenario.worktree_path(branch_name),
+                "uncommitted changes",
+            ),
         )
 
 
 @then("git plonk does not report an empty sweep")
-def git_plonk_does_not_report_an_empty_sweep(plonk_output: str) -> None:
+def git_plonk_does_not_report_an_empty_sweep(scenario: PlonkScenario) -> None:
     """Assert skipping every candidate is not reported as finding nothing."""
-    assert "No matching git donkey worktrees found." not in plonk_output, (
-        "expected skipped candidates to be reported instead of an empty sweep"
-    )
+    assert scenario.dirty_branch is not None, "expected a dirty branch in scenario"
+    wanted = {
+        scenario.worktree_path(scenario.completed_branch),
+        scenario.worktree_path(scenario.dirty_branch),
+    }
+    skips = [
+        (path, "uncommitted changes")
+        for path in scenario.known_worktrees
+        if path in wanted
+    ]
+    _require_report(scenario, *_skipped_report(scenario, *skips))
 
 
 @then("git plonk previews removing the clean worktree")
-def git_plonk_previews_removing_clean_worktree(
-    scenario: PlonkScenario,
-    plonk_output: str,
-) -> None:
-    """Assert the dry run plans to remove only the clean completed worktree."""
-    assert "Planned worktree removals:" in plonk_output, (
-        "expected a planned worktree removal section"
-    )
-    assert f"- {scenario.worktree_path(scenario.completed_branch)}" in plonk_output, (
-        "expected the clean worktree to be listed as a planned removal"
-    )
+def git_plonk_previews_removing_clean_worktree(scenario: PlonkScenario) -> None:
+    """Assert the dry run plans to remove only the clean completed worktree.
+
+    Hard mode plans the branch deletion beside the worktree removal; default
+    mode has no branch plan, and that difference is the report under test.
+    """
+    assert scenario.dirty_branch is not None, "expected a dirty branch in scenario"
+    lines = [
+        f"git-plonk: mode={scenario.mode}",
+        "Planned worktree removals:",
+        f"- {scenario.worktree_path(scenario.completed_branch)}",
+    ]
+    if scenario.mode == "hard dry-run":
+        lines.extend((
+            "Planned branch deletions:",
+            f"- {scenario.completed_branch}",
+        ))
+    lines.extend((
+        "Skipped worktrees:",
+        skipped_entry(
+            scenario.worktree_path(scenario.dirty_branch),
+            "uncommitted changes",
+        ),
+    ))
+    _require_report(scenario, *lines)
 
 
 @then("git plonk previews deleting only the clean branch")
-def git_plonk_previews_deleting_only_clean_branch(
-    scenario: PlonkScenario,
-    plonk_output: str,
-) -> None:
-    """Assert the hard dry run plans to delete the clean branch alone."""
-    assert scenario.dirty_branch is not None, "expected a dirty branch in scenario"
-    assert "Planned branch deletions:" in plonk_output, (
-        "expected a planned branch deletion section"
-    )
-    assert f"- {scenario.completed_branch}\n" in f"{plonk_output}\n", (
-        "expected the clean branch to be listed as a planned deletion"
-    )
-    assert f"- {scenario.dirty_branch}\n" not in f"{plonk_output}\n", (
-        "expected the skipped worktree's branch to stay out of the deletion plan"
-    )
+def git_plonk_previews_deleting_only_clean_branch(scenario: PlonkScenario) -> None:
+    """Assert the hard dry run lists the clean branch in the deletion plan.
+
+    The preceding whole-stream assertion proves the skipped worktree's branch
+    stays out of the plan; this step pins the line the plan does carry.
+    """
+    _require_line(scenario, f"- {scenario.completed_branch}")
 
 
 @then("git plonk reports the failed branch deletion")
-def git_plonk_reports_failed_branch_deletion(
-    scenario: PlonkScenario,
-    plonk_output: str,
-) -> None:
+def git_plonk_reports_failed_branch_deletion(scenario: PlonkScenario) -> None:
     """Assert a refused branch deletion gets its own section and no other."""
-    assert "Failed branch deletions:" in plonk_output, (
-        "expected a failed branch deletion section"
-    )
-    assert f"- {scenario.completed_branch} (branch deletion failed)" in plonk_output, (
-        "expected the refused branch to be named as a failed deletion"
-    )
-    assert "Removed branches:" not in plonk_output, (
-        "expected a refused branch deletion not to be reported as removed"
-    )
-    assert "Skipped worktrees:" not in plonk_output, (
-        "expected a refused branch deletion not to be reported as a skip"
+    _require_report(
+        scenario,
+        f"git-plonk: mode={scenario.mode}",
+        "Removed worktrees:",
+        f"- {scenario.worktree_path(scenario.completed_branch)}",
+        "Failed branch deletions:",
+        f"- {scenario.completed_branch} (branch deletion failed)",
     )
 
 

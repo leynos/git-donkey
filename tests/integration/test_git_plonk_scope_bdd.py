@@ -18,7 +18,7 @@ import dataclasses
 import typing as typ
 
 from git import Repo
-from pytest_bdd import given, scenarios, then, when
+from pytest_bdd import given, parsers, scenarios, then, when
 
 from git_donkey import plonk
 from tests.integration.conftest import _setup_repo
@@ -26,15 +26,25 @@ from tests.integration.plonk_helpers import (
     PlonkScenario,
     commit_completion_marker,
     create_git_donkey_worktree,
+    record_plonk_run,
 )
+from tests.output_assertions import require_stream, stream
 
 if typ.TYPE_CHECKING:
+    import collections.abc as cabc
     from pathlib import Path
 
     import pytest
 
+# Each cleanup mode the feature names, mapped to the call that runs it.
+_PLONK_INVOCATIONS: dict[str, cabc.Callable[[], int | None]] = {
+    "default": plonk.run_git_plonk,
+    "soft": lambda: plonk.run_git_plonk(soft=True),
+    "hard": lambda: plonk.run_git_plonk(hard=True),
+}
 
-@dataclasses.dataclass(frozen=True, slots=True)
+
+@dataclasses.dataclass(slots=True)
 class ScopeScenario(PlonkScenario):
     """Scenario state plus the paths scope assertions need to reach.
 
@@ -215,33 +225,14 @@ def repository_with_symlinked_generated_directory(
     )
 
 
-@when("I run git plonk in default mode", target_fixture="plonk_output")
-def run_default_plonk(
+@when(parsers.parse("I run git plonk in {mode} mode"))
+def run_plonk(
     scenario: ScopeScenario,
     capsys: pytest.CaptureFixture[str],
-) -> str:
-    """Run the default cleanup mode and capture its report."""
-    exit_code = plonk.run_git_plonk()
-    assert exit_code == 0, "expected default git plonk to succeed"
-    return capsys.readouterr().out
-
-
-@when("I run git plonk in hard mode", target_fixture="plonk_output")
-def run_hard_plonk(
-    scenario: ScopeScenario,
-    capsys: pytest.CaptureFixture[str],
-) -> str:
-    """Run the hard cleanup mode and capture its report."""
-    exit_code = plonk.run_git_plonk(hard=True)
-    assert exit_code == 0, "expected hard git plonk to succeed"
-    return capsys.readouterr().out
-
-
-@when("I run git plonk in soft mode")
-def run_soft_plonk(scenario: ScopeScenario) -> None:
-    """Run the soft cleanup mode."""
-    exit_code = plonk.run_git_plonk(soft=True)
-    assert exit_code == 0, "expected soft git plonk to succeed"
+    mode: str,
+) -> None:
+    """Run the cleanup mode the step names and record its report."""
+    record_plonk_run(scenario, capsys, mode, _PLONK_INVOCATIONS[mode])
 
 
 @then("the outside worktree remains")
@@ -262,10 +253,15 @@ def outside_branch_remains(scenario: ScopeScenario) -> None:
 
 
 @then("git plonk reports no matching worktrees")
-def git_plonk_reports_no_matching_worktrees(plonk_output: str) -> None:
+def git_plonk_reports_no_matching_worktrees(scenario: ScopeScenario) -> None:
     """Assert the sweep found nothing in scope and said so."""
-    assert "No matching git donkey worktrees found." in plonk_output, (
-        "expected git plonk to report an empty sweep"
+    require_stream(
+        scenario.stdout,
+        stream(
+            f"git-plonk: mode={scenario.mode}",
+            "No matching git donkey worktrees found.",
+        ),
+        context="git plonk stdout",
     )
 
 

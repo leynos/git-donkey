@@ -15,14 +15,17 @@ import dataclasses
 import typing as typ
 
 from git import Repo
-from pytest_bdd import given, scenarios, then, when
+from pytest_bdd import given, parsers, scenarios, then, when
 
 from git_donkey import donkey, plonk
 from tests.git_repo_helpers import bare_collection
 from tests.integration.conftest import _setup_repo
 from tests.integration.donkey_helpers import seed_repo
+from tests.integration.plonk_helpers import capture_run
+from tests.output_assertions import require_stream, stream
 
 if typ.TYPE_CHECKING:
+    import collections.abc as cabc
     from pathlib import Path
 
     import pytest
@@ -31,19 +34,91 @@ _SESSION_BRANCH = "issue-201-session"
 _DONKEY_BRANCH = "issue-202-donkey"
 _GENERATED_NAME = "node_modules"
 
+# Each invocation the feature names, mapped to the report mode it records and
+# the call that runs it. Running from the bare directory is the default mode
+# started somewhere else, so it shares that mode's call.
+_PLONK_INVOCATIONS: dict[str, tuple[str, cabc.Callable[[], int | None]]] = {
+    "in the bare collection": ("default", plonk.run_git_plonk),
+    "in hard mode in the bare collection": (
+        "hard",
+        lambda: plonk.run_git_plonk(hard=True),
+    ),
+    "in soft mode in the bare collection": (
+        "soft",
+        lambda: plonk.run_git_plonk(soft=True),
+    ),
+    "from the bare directory": ("default", plonk.run_git_plonk),
+}
 
-@dataclasses.dataclass(frozen=True, slots=True)
+
+def _expected_report_lines(
+    scenario: BarePlonkScenario,
+    mode: str,
+) -> tuple[str, ...]:
+    """Build the summary lines the sweep reports for ``mode``."""
+    header = f"git-plonk: mode={mode}"
+    if mode == "hard":
+        return (
+            header,
+            "Removed worktrees:",
+            f"- {scenario.donkey_path}",
+            "Removed branches:",
+            f"- {_DONKEY_BRANCH}",
+        )
+    if mode == "soft":
+        return (
+            header,
+            "Removed generated paths:",
+            f"- {scenario.donkey_path / _GENERATED_NAME}",
+        )
+    return (
+        header,
+        "Removed worktrees:",
+        f"- {scenario.donkey_path}",
+    )
+
+
+@dataclasses.dataclass(slots=True)
 class BarePlonkScenario:
-    """Paths of a bare collection holding a session and a donkey worktree."""
+    """Paths of a bare collection holding a session and a donkey worktree.
+
+    The sweep's result is recorded alongside the paths, so each scenario can
+    pin the report the command produced from wherever it was invoked.
+    """
 
     bare_path: Path
     session_path: Path
     donkey_path: Path
+    mode: str = ""
+    exit_code: int | str | None = None
+    stdout: str = ""
+    stderr: str = ""
 
     @property
     def bare_repo(self) -> Repo:
         """The bare repository at the centre of the collection."""
         return Repo(self.bare_path)
+
+
+def _record_run(
+    scenario: BarePlonkScenario,
+    capsys: pytest.CaptureFixture[str],
+    mode: str,
+    call: cabc.Callable[[], int | None],
+) -> None:
+    """Run a successful sweep and assert it reported through stdout alone."""
+    scenario.mode = mode
+    result = capture_run(capsys, call)
+    scenario.exit_code = result.exit_code
+    scenario.stdout = result.stdout
+    scenario.stderr = result.stderr
+    assert scenario.exit_code == 0, "expected the bare-collection sweep to succeed"
+    require_stream(scenario.stderr, "", context="git plonk stderr")
+
+
+def _require_report(scenario: BarePlonkScenario, *lines: str) -> None:
+    """Assert the sweep printed exactly ``lines``, each terminated by a newline."""
+    require_stream(scenario.stdout, stream(*lines), context="git plonk stdout")
 
 
 def _complete_on_trunk(session_path: Path, markers: tuple[str, ...]) -> None:
@@ -118,32 +193,19 @@ def collection_with_generated_directories(
     return scenario
 
 
-@when("I run git plonk in the bare collection")
-def run_default_plonk(scenario: BarePlonkScenario) -> None:
-    """Run the default cleanup mode from the session worktree."""
-    assert plonk.run_git_plonk() == 0, "expected default git plonk to succeed"
-
-
-@when("I run git plonk in hard mode in the bare collection")
-def run_hard_plonk(scenario: BarePlonkScenario) -> None:
-    """Run the hard cleanup mode from the session worktree."""
-    assert plonk.run_git_plonk(hard=True) == 0, "expected hard git plonk to succeed"
-
-
-@when("I run git plonk in soft mode in the bare collection")
-def run_soft_plonk(scenario: BarePlonkScenario) -> None:
-    """Run the soft cleanup mode from the session worktree."""
-    assert plonk.run_git_plonk(soft=True) == 0, "expected soft git plonk to succeed"
-
-
-@when("I run git plonk from the bare directory")
-def run_plonk_from_bare_directory(
+@when(parsers.parse("I run git plonk {invocation}"))
+def run_plonk(
     scenario: BarePlonkScenario,
+    capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
+    invocation: str,
 ) -> None:
-    """Run the default cleanup mode from inside the bare repository."""
-    monkeypatch.chdir(scenario.bare_path)
-    assert plonk.run_git_plonk() == 0, "expected git plonk to run from a bare directory"
+    """Run the sweep the step names and assert the report it produced."""
+    if invocation == "from the bare directory":
+        monkeypatch.chdir(scenario.bare_path)
+    mode, call = _PLONK_INVOCATIONS[invocation]
+    _record_run(scenario, capsys, mode, call)
+    _require_report(scenario, *_expected_report_lines(scenario, mode))
 
 
 @then("the completed git donkey worktree is removed")

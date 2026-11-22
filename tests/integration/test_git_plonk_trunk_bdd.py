@@ -18,7 +18,6 @@ from __future__ import annotations
 import shutil
 import typing as typ
 
-import pytest
 from git import Repo
 from pytest_bdd import given, scenarios, then, when
 
@@ -27,16 +26,20 @@ from tests.integration.conftest import _setup_repo
 from tests.integration.plonk_helpers import (
     PlonkScenario,
     advertise_remote_default,
+    capture_plonk_run,
     commit_completion_marker,
     commit_message_on_branch,
     create_git_donkey_worktree,
     push_marker_from_clone,
+    record_plonk_run,
     stop_advertising_default_branch,
 )
+from tests.output_assertions import require_stream, stream
 
 if typ.TYPE_CHECKING:
     from pathlib import Path
 
+    import pytest
     from vcr.cassette import Cassette
 
 _COMPLETED_BRANCH = "issue-123-fix-closed-work"
@@ -194,43 +197,56 @@ def repository_with_recorded_github_traffic(
 
 
 @when("I run git plonk in default mode")
-def run_default_plonk(scenario: PlonkScenario) -> None:
-    """Run the default cleanup mode."""
-    exit_code = plonk.run_git_plonk()
-    assert exit_code == 0, "expected default git plonk to succeed"
+def run_default_plonk(
+    scenario: PlonkScenario,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Run the default cleanup mode and record its report."""
+    record_plonk_run(scenario, capsys, "default", plonk.run_git_plonk)
+    assert scenario.exit_code == 0, "expected default git plonk to succeed"
 
 
 @when("I run git plonk in hard mode")
-def run_hard_plonk(scenario: PlonkScenario) -> None:
-    """Run the hard cleanup mode."""
-    exit_code = plonk.run_git_plonk(hard=True)
-    assert exit_code == 0, "expected hard git plonk to succeed"
+def run_hard_plonk(
+    scenario: PlonkScenario,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Run the hard cleanup mode and record its report."""
+    record_plonk_run(
+        scenario,
+        capsys,
+        "hard",
+        lambda: plonk.run_git_plonk(hard=True),
+    )
+    assert scenario.exit_code == 0, "expected hard git plonk to succeed"
 
 
-@when("I run git plonk in default dry-run mode", target_fixture="plonk_output")
+@when("I run git plonk in default dry-run mode")
 def run_default_dry_run_plonk(
     scenario: PlonkScenario,
     capsys: pytest.CaptureFixture[str],
-) -> str:
+) -> None:
     """Run default cleanup in dry-run mode through the CLI boundary."""
-    with pytest.raises(SystemExit) as exc_info:
-        cli._plonk_app(["--dry-run"])
-    assert exc_info.value.code == 0, "expected default dry-run git plonk to succeed"
-    return capsys.readouterr().out
+    record_plonk_run(
+        scenario,
+        capsys,
+        "default dry-run",
+        lambda: cli._plonk_app(["--dry-run"]),
+    )
+    assert scenario.exit_code == 0, "expected default dry-run git plonk to succeed"
 
 
-@when("git plonk fails in default mode", target_fixture="plonk_stderr")
+@when("git plonk fails in default mode")
 def run_failing_default_plonk(
     scenario: PlonkScenario,
     capsys: pytest.CaptureFixture[str],
-) -> str:
-    """Run default cleanup against a trunk it cannot resolve and capture stderr."""
-    with pytest.raises(SystemExit) as exc_info:
-        plonk.run_git_plonk()
-    assert exc_info.value.code == _TRUNK_FAILURE_EXIT_CODE, (
+) -> None:
+    """Run default cleanup against a trunk it cannot resolve."""
+    scenario.mode = "default"
+    capture_plonk_run(scenario, capsys, plonk.run_git_plonk)
+    assert scenario.exit_code == _TRUNK_FAILURE_EXIT_CODE, (
         "expected unresolvable trunk to exit with a failure code"
     )
-    return capsys.readouterr().err
 
 
 @then("the completed worktree is removed")
@@ -266,25 +282,30 @@ def completed_branch_is_deleted(scenario: PlonkScenario) -> None:
 
 
 @then("git plonk reports a missing advertised default branch")
-def git_plonk_reports_a_missing_advertised_default(plonk_stderr: str) -> None:
-    """Assert stderr names the missing advertisement rather than a generic error."""
-    assert "does not advertise a default branch" in plonk_stderr, (
-        "expected git plonk to report the missing advertised default branch"
+def git_plonk_reports_a_missing_advertised_default(scenario: PlonkScenario) -> None:
+    """Assert stderr is exactly the missing-advertisement diagnostic."""
+    remote_name = Repo(scenario.local_path).remotes[0].name
+    assert not scenario.stdout, "a failed sweep prints nothing on stdout"
+    require_stream(
+        scenario.stderr,
+        stream(
+            f"git-plonk: remote '{remote_name}' does not advertise a default branch"
+        ),
+        context="git plonk stderr",
     )
 
 
 @then("git plonk plans to remove the completed worktree")
-def git_plonk_plans_to_remove_the_completed_worktree(
-    scenario: PlonkScenario,
-    plonk_output: str,
-) -> None:
-    """Assert the dry-run plan lists the worktree completed only on the remote."""
-    assert "Planned worktree removals:" in plonk_output, (
-        "expected a planned worktree removal section"
-    )
-    worktree_path = scenario.worktree_path(scenario.completed_branch)
-    assert f"- {worktree_path}" in plonk_output, (
-        "expected the dry run to fetch trunk and plan the removal"
+def git_plonk_plans_to_remove_the_completed_worktree(scenario: PlonkScenario) -> None:
+    """Assert the dry-run plan is exactly the one worktree it would remove."""
+    require_stream(
+        scenario.stdout,
+        stream(
+            f"git-plonk: mode={scenario.mode}",
+            "Planned worktree removals:",
+            f"- {scenario.worktree_path(scenario.completed_branch)}",
+        ),
+        context="git plonk stdout",
     )
 
 

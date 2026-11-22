@@ -46,8 +46,12 @@ class DonkeyScenario:
         scenario needs to assert it was preserved or reused.
     exit_code : int | str | None
         Exit code the workflow returned, or the code it exited with.
+    stdout : str
+        Standard output the workflow produced, recorded from the moment the
+        run started.
     stderr : str
-        Standard error the workflow produced.
+        Standard error the workflow produced, recorded from the moment the
+        run started.
 
     """
 
@@ -57,6 +61,7 @@ class DonkeyScenario:
     remote_tip: str | None = None
     local_tip: str | None = None
     exit_code: int | str | None = None
+    stdout: str = ""
     stderr: str = ""
 
     @property
@@ -158,13 +163,20 @@ def _record_run(
     capsys: pytest.CaptureFixture[str],
     call: cabc.Callable[[], int],
 ) -> None:
-    """Run ``call``, recording its exit code and stderr on ``scenario``."""
+    """Run ``call``, recording its exit code and output on ``scenario``.
+
+    The capture is drained before the call so output produced while a scenario
+    was being seeded cannot be mistaken for the command's own output.
+    """
+    capsys.readouterr()
     try:
         scenario.exit_code = call()
     except SystemExit as exc:
         scenario.exit_code = exc.code
     finally:
-        scenario.stderr = capsys.readouterr().err
+        captured = capsys.readouterr()
+        scenario.stdout = captured.out
+        scenario.stderr = captured.err
 
 
 def run_donkey(

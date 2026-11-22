@@ -32,6 +32,7 @@ from tests.integration.donkey_helpers import (
     run_donkey_without_pulling,
     seed_repo,
 )
+from tests.output_assertions import require_stream, stream
 
 if typ.TYPE_CHECKING:
     from pathlib import Path
@@ -51,9 +52,10 @@ _UNTRACKED_CONTENT = "work in progress"
 
 @dataclasses.dataclass(frozen=True, slots=True)
 class _CliOutcome:
-    """Exit code and stderr captured from one git donkey CLI invocation."""
+    """Exit code and streams captured from one git donkey CLI invocation."""
 
     code: int | str | None
+    stdout: str
     stderr: str
 
 
@@ -200,7 +202,12 @@ def run_donkey_cli_with_flags(
     """Run the CLI boundary with the supplied pull-mode flags."""
     with pytest.raises(SystemExit) as excinfo:
         cli._donkey_app(["feature/x", *flags.split()])
-    return _CliOutcome(code=excinfo.value.code, stderr=capsys.readouterr().err)
+    captured = capsys.readouterr()
+    return _CliOutcome(
+        code=excinfo.value.code,
+        stdout=captured.out,
+        stderr=captured.err,
+    )
 
 
 @then("no branch or worktree is created")
@@ -304,8 +311,14 @@ def cli_reports_a_mutually_exclusive_usage_error(cli_outcome: _CliOutcome) -> No
     assert cli_outcome.code == _USAGE_ERROR_EXIT_CODE, (
         "expected conflicting pull modes to exit with a usage error"
     )
-    assert "mutually exclusive" in cli_outcome.stderr, (
-        "expected the error to name the mutually exclusive options"
+    assert not cli_outcome.stdout, "a rejected flag combination prints nothing"
+    require_stream(
+        cli_outcome.stderr,
+        stream(
+            "git-donkey: 💀 --pull-rebase, --pull-ff, and --no-pull are "
+            "mutually exclusive"
+        ),
+        context="git donkey stderr",
     )
 
 

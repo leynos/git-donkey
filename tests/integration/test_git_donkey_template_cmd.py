@@ -10,16 +10,20 @@ from __future__ import annotations
 
 import typing as typ
 
+import pytest
 from git import Repo
 
 from git_donkey import slugs, template_cmd, templates
 from tests.git_repo_helpers import configure_repo
 from tests.integration.conftest import _setup_repo
+from tests.output_assertions import require_stream, stream
 
 if typ.TYPE_CHECKING:
     from pathlib import Path
 
-    import pytest
+_EMPTY_TEMPLATE_MESSAGE = (
+    "Template directory is empty. Add files here to apply them to new worktrees."
+)
 
 
 def test_git_donkey_template_creates_directory(
@@ -46,10 +50,16 @@ def test_git_donkey_template_creates_directory(
     assert expected_path.exists(), "expected template directory to be created"
     assert expected_path.is_dir(), "expected template path to be a directory"
 
-    # Check output
     captured = capsys.readouterr()
-    assert str(expected_path) in captured.out, (
-        "expected template directory path in output"
+    require_stream(
+        captured.out,
+        stream(f"Template directory: {expected_path}"),
+        context="git-donkey-template stdout",
+    )
+    require_stream(
+        captured.err,
+        stream(_EMPTY_TEMPLATE_MESSAGE),
+        context="git-donkey-template stderr",
     )
 
 
@@ -76,15 +86,13 @@ def test_git_donkey_template_shows_existing_directory(
 
     assert exit_code == 0, "expected git-donkey-template to exit successfully"
 
-    # Check output
     captured = capsys.readouterr()
-    assert str(template_dir) in captured.out, (
-        "expected template directory path in output"
+    require_stream(
+        captured.out,
+        stream(f"Template directory: {template_dir}"),
+        context="git-donkey-template stdout",
     )
-    # Should not show "empty" message since directory has files
-    assert "empty" not in captured.err.lower(), (
-        "expected no empty message when directory has files"
-    )
+    require_stream(captured.err, "", context="git-donkey-template stderr")
 
 
 def test_git_donkey_template_fails_outside_git_repo(
@@ -100,21 +108,22 @@ def test_git_donkey_template_fails_outside_git_repo(
     # Change into the non-repo directory
     monkeypatch.chdir(non_repo_dir)
 
-    # Run git-donkey-template; expect SystemExit
-    exit_code = None
-    try:
-        exit_code = template_cmd.run_git_donkey_template()
-    except SystemExit as e:
-        exit_code = e.code
+    with pytest.raises(SystemExit) as excinfo:
+        template_cmd.run_git_donkey_template()
 
-    assert exit_code != 0, (
-        "expected git-donkey-template to exit non-zero outside a Git repo"
+    assert excinfo.value.code == 1, (
+        "expected git-donkey-template to exit 1 outside a Git repo"
     )
-
-    # helpers._die should emit a clear error message on stderr
     captured = capsys.readouterr()
-    assert "git repository" in captured.err.lower(), (
-        "stderr should report the missing Git repository"
+    assert not captured.out, "a failed template lookup prints nothing on stdout"
+    # GitPython's InvalidGitRepositoryError carries the resolved path rather
+    # than Git's own stderr, so the path is asserted literally.
+    require_stream(
+        captured.err,
+        stream(
+            f"[git-donkey-template]: not in a git repository: {non_repo_dir.resolve()}"
+        ),
+        context="git-donkey-template stderr",
     )
 
 
@@ -138,20 +147,17 @@ def test_git_donkey_template_fails_without_remote(
     # Change into the repo directory
     monkeypatch.chdir(repo_path)
 
-    # Run git-donkey-template; expect SystemExit due to missing remote
-    exit_code = None
-    try:
-        exit_code = template_cmd.run_git_donkey_template()
-    except SystemExit as e:
-        exit_code = e.code
+    with pytest.raises(SystemExit) as excinfo:
+        template_cmd.run_git_donkey_template()
 
-    assert exit_code != 0, "expected non-zero exit code when no remote is configured"
-
-    # Assert that the error message indicates the missing-remote problem
-    captured = capsys.readouterr()
-    assert "remote" in captured.err.lower(), "stderr should report the missing remote"
-    assert "template" in captured.err.lower(), (
-        "stderr should mention the template command context"
+    assert excinfo.value.code == 1, "expected exit 1 when no remote is configured"
+    require_stream(
+        capsys.readouterr().err,
+        stream(
+            "[git-donkey-template]: repository has no remote "
+            "(cannot determine template path)"
+        ),
+        context="git-donkey-template stderr",
     )
 
 
@@ -180,15 +186,15 @@ def test_git_donkey_template_fails_without_origin_remote(
 
     monkeypatch.chdir(repo_path)
 
-    exit_code = None
-    try:
-        exit_code = template_cmd.run_git_donkey_template()
-    except SystemExit as e:
-        exit_code = e.code
+    with pytest.raises(SystemExit) as excinfo:
+        template_cmd.run_git_donkey_template()
 
-    assert exit_code != 0, "expected non-zero exit code when origin remote is missing"
-
-    captured = capsys.readouterr()
-    assert "origin" in captured.err.lower(), (
-        "stderr should report the missing origin remote"
+    assert excinfo.value.code == 1, "expected exit 1 when origin remote is missing"
+    require_stream(
+        capsys.readouterr().err,
+        stream(
+            "[git-donkey-template]: Multiple remotes configured without an "
+            "'origin' remote: upstream, fork"
+        ),
+        context="git-donkey-template stderr",
     )
