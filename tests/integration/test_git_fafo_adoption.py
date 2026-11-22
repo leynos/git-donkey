@@ -21,6 +21,14 @@ from tests.integration._fafo_adoption_stubs import (
     _seed_empty_initial_with_tag,
     _seed_nonempty_default,
 )
+from tests.output_assertions import require_stream, stream
+
+# The complete conflict message a repository that cannot be adopted reports.
+_NOT_EMPTY_MESSAGE = (
+    "git-fafo: ⚔️ GitHub repository 'example/demo-repo' already exists and is "
+    "not empty. Pick a new name or delete the existing repository before "
+    "running git-fafo again."
+)
 
 if typ.TYPE_CHECKING:
     from collections import abc as cabc
@@ -79,6 +87,7 @@ def test_git_fafo_adopts_existing_empty_initial_commit_with_yes(
 def test_git_fafo_rejects_existing_repo_without_confirmation(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     """git-fafo should not adopt an existing repository without confirmation."""
     remote_path = _create_bare_remote(tmp_path)
@@ -93,12 +102,24 @@ def test_git_fafo_rejects_existing_repo_without_confirmation(
     assert excinfo.value.code == 1, (
         "expected git-fafo to exit with code 1 when adoption is declined"
     )
+    captured = capsys.readouterr()
+    assert not captured.out, "a declined adoption prints nothing on stdout"
+    require_stream(
+        captured.err,
+        stream(
+            "git-fafo: ⚔️ GitHub repository 'example/demo-repo' already exists. "
+            "Pass --yes to adopt it when it has no commits or only an empty "
+            "initial commit."
+        ),
+        context="git-fafo stderr",
+    )
     assert not (tmp_path / "demo-repo").exists(), "expected no local scaffold"
 
 
 def test_git_fafo_validates_remote_before_scaffolding(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     """A non-empty remote must be rejected before any scaffolding runs.
 
@@ -129,6 +150,13 @@ def test_git_fafo_validates_remote_before_scaffolding(
     assert excinfo.value.code == 1, (
         "expected git-fafo to exit with code 1 when the remote is non-empty"
     )
+    captured = capsys.readouterr()
+    assert not captured.out, "a rejected remote prints nothing on stdout"
+    require_stream(
+        captured.err,
+        stream(_NOT_EMPTY_MESSAGE),
+        context="git-fafo stderr",
+    )
     assert not (tmp_path / "demo-repo").exists(), "expected no local scaffold"
 
 
@@ -143,6 +171,7 @@ def test_git_fafo_validates_remote_before_scaffolding(
 def test_git_fafo_rejects_remote_with_additional_refs(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
     seed_remote: cabc.Callable[[Path, Path], None],
 ) -> None:
     """A remote with extra branches or tags is not empty and must be rejected.
@@ -166,5 +195,12 @@ def test_git_fafo_rejects_remote_with_additional_refs(
 
     assert excinfo.value.code == 1, (
         "expected git-fafo to exit with code 1 when the remote has extra refs"
+    )
+    captured = capsys.readouterr()
+    assert not captured.out, "a rejected remote prints nothing on stdout"
+    require_stream(
+        captured.err,
+        stream(_NOT_EMPTY_MESSAGE),
+        context="git-fafo stderr",
     )
     assert not (tmp_path / "demo-repo").exists(), "expected no local scaffold"

@@ -17,8 +17,8 @@ from tests.integration.conftest import _setup_repo
 from tests.integration.donkey_helpers import seed_repo
 from tests.output_assertions import (
     GIT_ERROR_PLACEHOLDER,
-    require_line,
-    require_terminal,
+    require_stream,
+    stream,
 )
 
 if typ.TYPE_CHECKING:
@@ -275,9 +275,15 @@ def test_failed_base_update_records_the_git_failure(
         )
 
     assert excinfo.value.code == 1, "divergence under --ff-only is still an error"
-    require_terminal(
-        capsys.readouterr().err,
-        f"git-donkey: 💀 update failed (pull --ff-only): {GIT_ERROR_PLACEHOLDER}",
+    captured = capsys.readouterr()
+    assert not captured.out, "a failed update prints nothing on stdout"
+    require_stream(
+        captured.err,
+        stream(
+            "Using remote: origin",
+            f"Updating existing worktree at: {repo.working_tree_dir}",
+            f"git-donkey: 💀 update failed (pull --ff-only): {GIT_ERROR_PLACEHOLDER}",
+        ),
         context="git donkey stderr",
     )
     assert recording_recorder.outcomes("base_update") == ["started", "failure"], (
@@ -362,10 +368,16 @@ def test_unselectable_template_records_unavailable(
     exit_code = donkey.run_git_donkey("feature/ambiguous-template", "main")
 
     assert exit_code == 0, "an unusable template selection is not a failure"
-    require_line(
-        capsys.readouterr().err,
-        "git-donkey: Multiple remotes configured without an 'origin' remote: "
-        "upstream, mirror",
+    captured = capsys.readouterr()
+    require_stream(
+        captured.err,
+        stream(
+            "Using remote: upstream",
+            "Creating new branch 'feature/ambiguous-template' from 'main' in a "
+            "new worktree",
+            "git-donkey: Multiple remotes configured without an 'origin' remote: "
+            "upstream, mirror",
+        ),
         context="git donkey stderr",
     )
     assert recording_recorder.outcomes("template_overlay") == ["unavailable"], (

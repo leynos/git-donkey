@@ -19,7 +19,6 @@ from tests.integration.conftest import _setup_repo
 from tests.output_assertions import (
     GIT_ERROR_PLACEHOLDER,
     require_stream,
-    require_terminal,
     stream,
 )
 
@@ -119,9 +118,13 @@ def test_git_donkey_template_fails_outside_git_repo(
     assert excinfo.value.code == 1, (
         "expected git-donkey-template to exit 1 outside a Git repo"
     )
-    require_terminal(
-        capsys.readouterr().err,
-        f"[git-donkey-template]: not in a git repository: {GIT_ERROR_PLACEHOLDER}",
+    captured = capsys.readouterr()
+    assert not captured.out, "a failed template lookup prints nothing on stdout"
+    require_stream(
+        captured.err,
+        stream(
+            f"[git-donkey-template]: not in a git repository: {GIT_ERROR_PLACEHOLDER}"
+        ),
         context="git-donkey-template stderr",
     )
 

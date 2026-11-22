@@ -72,6 +72,35 @@ def test_require_stream_rejects_an_empty_git_error() -> None:
         )
 
 
+def test_require_stream_accepts_a_terminal_placeholder_with_a_newline() -> None:
+    """A whole-stream template may keep the final newline after the placeholder."""
+    require_stream(
+        stream("Using remote: origin", "git-donkey: fetch failed: fatal: boom"),
+        stream(
+            "Using remote: origin",
+            f"git-donkey: fetch failed: {GIT_ERROR_PLACEHOLDER}",
+        ),
+    )
+
+
+def test_require_stream_rejects_a_git_error_without_a_final_newline() -> None:
+    """Git's text may span lines, but the application's final newline stays."""
+    with pytest.raises(pytest.fail.Exception):
+        require_stream(
+            "git-donkey: fetch failed: fatal: boom",
+            f"git-donkey: fetch failed: {GIT_ERROR_PLACEHOLDER}",
+        )
+
+
+def test_require_stream_rejects_a_newline_only_git_error() -> None:
+    """A lone newline is not the diagnostic the placeholder stands in for."""
+    with pytest.raises(pytest.fail.Exception):
+        require_stream(
+            "git-donkey: fetch failed: \n",
+            f"git-donkey: fetch failed: {GIT_ERROR_PLACEHOLDER}",
+        )
+
+
 def test_require_stream_rejects_a_changed_literal_prefix() -> None:
     """Text before the placeholder should still be compared exactly."""
     with pytest.raises(pytest.fail.Exception):
@@ -125,6 +154,21 @@ def test_require_terminal_rejects_an_empty_git_error() -> None:
     """The diagnostic must carry the third-party text the placeholder stands for."""
     with pytest.raises(pytest.fail.Exception):
         require_terminal("git-donkey: fetch failed: ", _GIT_FAILURE_TEMPLATE)
+
+
+def test_require_terminal_rejects_a_git_error_without_a_final_newline() -> None:
+    """The terminating newline belongs to the application and must survive."""
+    with pytest.raises(pytest.fail.Exception):
+        require_terminal(
+            "git-donkey: fetch failed: fatal: boom",
+            _GIT_FAILURE_TEMPLATE,
+        )
+
+
+def test_require_terminal_rejects_a_newline_only_git_error() -> None:
+    """A lone newline is not the diagnostic the placeholder stands in for."""
+    with pytest.raises(pytest.fail.Exception):
+        require_terminal("git-donkey: fetch failed: \n", _GIT_FAILURE_TEMPLATE)
 
 
 def test_require_terminal_rejects_a_mid_line_match() -> None:

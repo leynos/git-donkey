@@ -48,8 +48,10 @@ def test_git_fafo_existing_repo_early_return(
 
     assert exit_code == 1, "expected git-fafo to return error for existing path"
     assert not called, "expected no git-fafo commands to run"
+    captured = capsys.readouterr()
+    assert not captured.out, "an early return prints nothing on stdout"
     require_stream(
-        capsys.readouterr().err,
+        captured.err,
         stream("You did that one already!"),
         context="git-fafo stderr",
     )

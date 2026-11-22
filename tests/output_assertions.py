@@ -32,7 +32,7 @@ import pytest
 
 #: Placeholder for a diagnostic produced by a third-party tool such as Git.
 #: It is only accepted as the final characters of a template, and it must match
-#: a non-empty remainder of the stream.
+#: a newline-terminated, non-empty remainder of the stream.
 GIT_ERROR_PLACEHOLDER = "{git_error}"
 
 
@@ -66,11 +66,13 @@ def require_stream(
 ) -> None:
     """Fail unless ``actual`` is exactly ``expected_template``.
 
-    A template whose final characters are :data:`GIT_ERROR_PLACEHOLDER`
-    accepts any non-empty remainder in that position. That is how a stream
-    that ends with Git's own error text is pinned without restating Git's
-    wording. Every other character is compared literally, including the final
-    newline.
+    A template whose final characters are :data:`GIT_ERROR_PLACEHOLDER`,
+    optionally followed by the stream's final newline, accepts the
+    newline-terminated remainder in that position provided it carries more
+    than whitespace. That is how a stream that ends with Git's own error text
+    is pinned without restating Git's wording; Git's multi-line text is
+    allowed, but the application's final newline is still required. Every
+    other character is compared literally, including the final newline.
 
     Parameters
     ----------
@@ -104,10 +106,10 @@ def require_stream(
 
     prefix = _git_error_prefix(expected_template)
     external_text = actual.removeprefix(prefix)
-    if not actual.startswith(prefix) or not external_text:
+    if not actual.startswith(prefix) or not _is_external_diagnostic(external_text):
         pytest.fail(
             f"expected {context} to start with {prefix!r} followed by a "
-            f"non-empty external diagnostic\nreceived: {actual!r}"
+            f"newline-terminated external diagnostic\nreceived: {actual!r}"
         )
 
 
@@ -122,8 +124,8 @@ def require_terminal(
     Some commands report progress before they fail, so their diagnostic is the
     tail of the stream rather than all of it. The template must begin at a line
     boundary, and its final :data:`GIT_ERROR_PLACEHOLDER` must match the
-    non-empty remainder of the stream, which is where Git's own error text
-    sits.
+    newline-terminated, non-empty remainder of the stream, which is where Git's
+    own error text sits.
 
     Parameters
     ----------
@@ -153,11 +155,12 @@ def require_terminal(
         0,
         *(index + 1 for index, char in enumerate(actual) if char == "\n"),
     ):
-        if actual.startswith(prefix, position) and actual[position + len(prefix) :]:
+        remainder = actual[position + len(prefix) :]
+        if actual.startswith(prefix, position) and _is_external_diagnostic(remainder):
             return
     pytest.fail(
         f"expected {context} to end with the diagnostic {prefix!r} followed by "
-        f"a non-empty external diagnostic\nreceived: {actual!r}"
+        f"a newline-terminated external diagnostic\nreceived: {actual!r}"
     )
 
 
@@ -198,18 +201,24 @@ def require_line(
     )
 
 
+def _is_external_diagnostic(remainder: str) -> bool:
+    """Return whether ``remainder`` is a newline-terminated, non-empty diagnostic."""
+    return remainder.endswith("\n") and bool(remainder.strip())
+
+
 def _git_error_prefix(expected_template: str) -> str:
     """Return the literal prefix of a template ending with the placeholder."""
+    template = expected_template.removesuffix("\n")
     if (
-        not expected_template.endswith(GIT_ERROR_PLACEHOLDER)
-        or expected_template.count(GIT_ERROR_PLACEHOLDER) != 1
+        not template.endswith(GIT_ERROR_PLACEHOLDER)
+        or template.count(GIT_ERROR_PLACEHOLDER) != 1
     ):
         message = (
             f"{GIT_ERROR_PLACEHOLDER} must be the only placeholder and the "
             f"final characters of the template: {expected_template!r}"
         )
         raise ValueError(message)
-    return expected_template.removesuffix(GIT_ERROR_PLACEHOLDER)
+    return template.removesuffix(GIT_ERROR_PLACEHOLDER)
 
 
 def _fail_stream(actual: str, expected: str, context: str) -> typ.NoReturn:

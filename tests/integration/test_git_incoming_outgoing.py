@@ -15,7 +15,6 @@ from tests.integration.donkey_helpers import seed_repo
 from tests.output_assertions import (
     GIT_ERROR_PLACEHOLDER,
     require_stream,
-    require_terminal,
     stream,
 )
 
@@ -435,8 +434,8 @@ def test_fetch_failure_returns_two(
 
     assert exit_code == _COULD_NOT_RUN_EXIT_CODE, "a failed fetch must exit 2, not 1"
     assert not out, "a failed fetch must print no commits"
-    require_terminal(
+    require_stream(
         err,
-        f"git-incoming: fetch failed: {GIT_ERROR_PLACEHOLDER}",
+        stream(f"git-incoming: fetch failed: {GIT_ERROR_PLACEHOLDER}"),
         context="git-incoming stderr",
     )

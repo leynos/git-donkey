@@ -285,6 +285,7 @@ def completed_branch_is_deleted(scenario: PlonkScenario) -> None:
 def git_plonk_reports_a_missing_advertised_default(scenario: PlonkScenario) -> None:
     """Assert stderr is exactly the missing-advertisement diagnostic."""
     remote_name = Repo(scenario.local_path).remotes[0].name
+    assert not scenario.stdout, "a failed sweep prints nothing on stdout"
     require_stream(
         scenario.stderr,
         stream(

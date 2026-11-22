@@ -299,14 +299,16 @@ def git_plonk_reports_both_worktrees_skipped(scenario: PlonkScenario) -> None:
 def git_plonk_does_not_report_an_empty_sweep(scenario: PlonkScenario) -> None:
     """Assert skipping every candidate is not reported as finding nothing."""
     assert scenario.dirty_branch is not None, "expected a dirty branch in scenario"
-    _require_report(
-        scenario,
-        *_skipped_report(
-            scenario,
-            (scenario.worktree_path(scenario.completed_branch), "uncommitted changes"),
-            (scenario.worktree_path(scenario.dirty_branch), "uncommitted changes"),
-        ),
-    )
+    wanted = {
+        scenario.worktree_path(scenario.completed_branch),
+        scenario.worktree_path(scenario.dirty_branch),
+    }
+    skips = [
+        (path, "uncommitted changes")
+        for path in scenario.known_worktrees
+        if path in wanted
+    ]
+    _require_report(scenario, *_skipped_report(scenario, *skips))
 
 
 @then("git plonk previews removing the clean worktree")
