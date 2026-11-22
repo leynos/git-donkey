@@ -54,14 +54,16 @@ before keeps its meaning:
    spells a remote-tracking ref.
 3. A configured `<remote>/<branch>` whose `refs/remotes/<remote>/<branch>`
    exists is normalized to that canonical remote-tracking ref.
-4. Anything else is resolved with
-   `git rev-parse --verify --quiet --end-of-options <base>^{commit}`, which
-   accepts a tag, a full or abbreviated commit ID, or another commit-ish.
-   `--end-of-options` keeps an option-shaped input such as `--all` from being
-   read as a Git option, and `^{commit}` rejects an object that is not a
-   commit, such as a tree. Resolution runs in the calling checkout, so a
-   revision expression such as `HEAD~2` names the caller's history even from a
-   linked worktree.
+4. Anything else is resolved in two stages:
+   `git rev-parse --verify --quiet --end-of-options <base>` resolves the
+   unchanged value to an object ID, and
+   `git rev-parse --verify --quiet --end-of-options <object-id>^{commit}` peels
+   that object to a commit. Resolving first keeps `^{commit}` out of a
+   message-search pattern such as `:/^release$`; `--end-of-options` in both
+   calls keeps an option-shaped input such as `--all` from being read as a Git
+   option, and `^{commit}` rejects an object that is not a commit, such as a
+   tree. Resolution runs in the calling checkout, so a revision expression such
+   as `HEAD~2` names the caller's history even from a linked worktree.
 
 Only the principal remote is fetched. A base naming another configured remote
 resolves against the remote-tracking ref the principal fetch left in place.

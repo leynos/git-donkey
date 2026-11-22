@@ -434,3 +434,23 @@ def test_absent_canonical_ref_is_not_satisfied_by_a_shadowing_branch(
     )
     assert scenario.branch not in scenario.repo.heads, "no branch is created"
     assert not scenario.worktree_path().exists(), "no worktree is created"
+
+
+def test_absent_principal_remote_ref_is_not_satisfied_by_a_shadowing_branch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A missing principal-remote ref is rejected, not found elsewhere."""
+    scenario = new_scenario(tmp_path, monkeypatch, "feature/absent-remote")
+    repo = scenario.repo
+    repo.git.branch("refs/remotes/origin/absent", "HEAD")
+
+    run_donkey(scenario, capsys, "refs/remotes/origin/absent")
+
+    assert scenario.exit_code == _REJECTED_EXIT_CODE, "the absent ref is an error"
+    assert "remote base ref not found: refs/remotes/origin/absent" in scenario.stderr, (
+        "the error names the missing principal-remote ref"
+    )
+    assert scenario.branch not in scenario.repo.heads, "no branch is created"
+    assert not scenario.worktree_path().exists(), "no worktree is created"

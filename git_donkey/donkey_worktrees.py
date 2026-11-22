@@ -143,8 +143,10 @@ def _ensure_base_branch_available(
 
     A bare name that exists on the principal remote first gains a local
     tracking branch, preserving the reuse behaviour ``git donkey`` has always
-    had. A fully qualified ref is used as written, and any other commit-ish is
-    resolved without creating a local branch.
+    had. A fully qualified ref is used as written, and a canonical ref that
+    does not exist is rejected rather than resolved through another namespace.
+    A revision expression such as ``refs/remotes/origin/main~1`` is resolved,
+    as is any other commit-ish, without creating a local branch.
 
     Parameters
     ----------
@@ -165,27 +167,22 @@ def _ensure_base_branch_available(
         If the base names neither a branch nor a commit Git can resolve.
 
     """
-    if base_branch.startswith(f"refs/remotes/{context.remote}/"):
-        # Resolve rather than require an exact ref: the same namespace can
-        # spell a revision expression such as refs/remotes/origin/main~1.
-        commit = helpers._resolve_commit(context.caller_repo, base_branch)
-        if commit is None:
-            helpers._die(
-                _GIT_DONKEY_PREFIX,
-                f"remote base ref not found: {base_branch}",
-                1,
-            )
-        return commit
-
     if base_branch.startswith("refs/"):
         # A canonical ref is used as written. Git would otherwise fall back
         # to another namespace when the exact ref is absent, resolving
-        # refs/tags/release to a branch literally named refs/tags/release.
+        # refs/tags/release to a branch literally named refs/tags/release,
+        # or refs/remotes/origin/missing to a branch of that literal name.
         # A revision expression in the same namespace stays supported.
         if helpers._ref_exists(context.repo_home, base_branch) or (
             helpers._is_revision_expression(base_branch)
         ):
             return _resolve_base_commit(context, base_branch)
+        if base_branch.startswith(f"refs/remotes/{context.remote}/"):
+            helpers._die(
+                _GIT_DONKEY_PREFIX,
+                f"remote base ref not found: {base_branch}",
+                1,
+            )
         helpers._die(
             _GIT_DONKEY_PREFIX,
             helpers._base_not_found_message(
