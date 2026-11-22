@@ -141,6 +141,12 @@ branch name, and tag or commit bases that neither prompt nor update. CLI tests
 exercise the Cyclopts parser, including conflicting options. Unit tests cover
 advertisement parsing and explicit mode selection.
 
+The integration tests assert complete command output streams with the shared
+`tests/output_assertions.py` helpers, following the repository's exact-output
+policy. A run's progress lines and its final diagnostic are therefore specified
+exactly rather than matched as substrings, and a doubled remote name cannot
+pass unnoticed.
+
 The change does not alter remote selection, template overlays, `git track`,
 branch cleanup, or the confirmation policy for existing updates. `git plonk`
 shares this discovery for its completion trunk, so a `git plonk` run fetches

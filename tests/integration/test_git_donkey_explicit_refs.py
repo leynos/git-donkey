@@ -24,18 +24,22 @@ from tests.integration.donkey_helpers import (
     run_donkey,
     seed_repo,
 )
+from tests.output_assertions import require_stream, stream
 
 if typ.TYPE_CHECKING:
     from pathlib import Path
 
 _REJECTED_EXIT_CODE = 1
 
-# Each unresolvable base and the one message that identifies it.
+# Each unresolvable base and the complete diagnostic that identifies it.
 _UNRESOLVABLE_BASES = {
-    "origin/nope": "base 'origin/nope' not found",
-    "refs/remotes/origin/nope": "remote base ref not found",
+    "origin/nope": "git-donkey: 💀 base 'origin/nope' not found",
+    "refs/remotes/origin/nope": (
+        "git-donkey: 💀 remote base ref not found: refs/remotes/origin/nope"
+    ),
     "no-such-tag": (
-        "base branch 'no-such-tag' not found locally or on 'origin/no-such-tag'"
+        "git-donkey: 💀 base branch 'no-such-tag' not found locally or on "
+        "'origin/no-such-tag'"
     ),
 }
 
@@ -61,6 +65,34 @@ def _stale_local_main(
     return scenario
 
 
+def _require_creation_stream(
+    scenario: DonkeyScenario,
+    *,
+    base: str,
+    diagnostic: str | None = None,
+) -> None:
+    """Assert the complete stderr of a run that creates a new branch."""
+    lines = [
+        "Using remote: origin",
+        f"Creating new branch '{scenario.branch}' from '{base}' in a new worktree",
+    ]
+    if diagnostic is not None:
+        lines.append(diagnostic)
+    require_stream(scenario.stderr, stream(*lines), context="git donkey stderr")
+
+
+def _require_reuse_stream(scenario: DonkeyScenario) -> None:
+    """Assert the complete stderr of a run that reuses an existing branch."""
+    require_stream(
+        scenario.stderr,
+        stream(
+            "Using remote: origin",
+            f"Creating worktree for existing local branch '{scenario.branch}'",
+        ),
+        context="git donkey stderr",
+    )
+
+
 @pytest.mark.parametrize("base", ["origin/main", "refs/remotes/origin/main"])
 def test_remote_qualified_base_roots_the_new_branch_on_the_remote_tip(
     tmp_path: Path,
@@ -81,9 +113,7 @@ def test_remote_qualified_base_roots_the_new_branch_on_the_remote_tip(
     assert scenario.repo.head.commit.hexsha == scenario.local_tip, (
         "the stale local base is left untouched"
     )
-    assert "origin/origin" not in scenario.stderr, (
-        "the doubled-remote error never appears"
-    )
+    _require_creation_stream(scenario, base="refs/remotes/origin/main")
 
 
 def test_remote_qualified_base_creates_no_local_tracking_branch_of_the_base(
@@ -111,6 +141,7 @@ def test_remote_qualified_base_creates_no_local_tracking_branch_of_the_base(
     run_donkey(scenario, capsys, "origin/release/1.2")
 
     assert scenario.exit_code == 0, "a qualified non-default branch is accepted"
+    _require_creation_stream(scenario, base="refs/remotes/origin/release/1.2")
     assert scenario.worktree_head() == remote_tip, (
         "the new branch starts at the named remote branch"
     )
@@ -133,6 +164,7 @@ def test_tag_base_roots_the_new_branch_at_the_tagged_commit(
     run_donkey(scenario, capsys, "v1.0")
 
     assert scenario.exit_code == 0, "a tag is an accepted base"
+    _require_creation_stream(scenario, base="v1.0")
     assert scenario.worktree_head() == tagged, (
         "the new branch starts at the tagged commit, not the branch tip"
     )
@@ -155,6 +187,7 @@ def test_commit_id_base_roots_the_new_branch_at_that_commit(
     run_donkey(scenario, capsys, base)
 
     assert scenario.exit_code == 0, "a commit ID is an accepted base"
+    _require_creation_stream(scenario, base=base)
     assert scenario.worktree_head() == start, (
         "the new branch starts at the commit the ID names"
     )
@@ -195,6 +228,7 @@ def test_non_principal_remote_qualified_base_uses_that_remote(
     run_donkey(scenario, capsys, "upstream/main")
 
     assert scenario.exit_code == 0, "a non-principal remote may qualify the base"
+    _require_creation_stream(scenario, base="refs/remotes/upstream/main")
     assert scenario.worktree_head() == remote_tip, (
         "the new branch starts at that remote's tip"
     )
@@ -219,11 +253,10 @@ def test_unresolvable_base_fails_without_creating_anything(
     run_donkey(scenario, capsys, base)
 
     assert scenario.exit_code == _REJECTED_EXIT_CODE, "an unknown base is an error"
-    assert _UNRESOLVABLE_BASES[base] in scenario.stderr, (
-        "the error identifies the base once"
-    )
-    assert "origin/origin" not in scenario.stderr, (
-        "a qualified base is never reported with a doubled remote"
+    _require_creation_stream(
+        scenario,
+        base=base,
+        diagnostic=_UNRESOLVABLE_BASES[base],
     )
     assert scenario.branch not in scenario.repo.heads, "no branch is created"
     assert not scenario.worktree_path().exists(), "no worktree is created"
@@ -240,7 +273,12 @@ def test_option_shaped_base_is_rejected_instead_of_listing_refs(
     run_donkey(scenario, capsys, "--all")
 
     assert scenario.exit_code == _REJECTED_EXIT_CODE, "an option-shaped base fails"
-    assert "--all" in scenario.stderr, "the error quotes the supplied base"
+    _require_creation_stream(
+        scenario,
+        base="--all",
+        diagnostic="git-donkey: 💀 base branch '--all' not found locally or on "
+        "'origin/--all'",
+    )
     assert scenario.branch not in scenario.repo.heads, "no branch is created"
 
 
@@ -261,6 +299,7 @@ def test_local_branch_wins_over_a_colliding_remote_qualified_name(
     run_donkey(scenario, capsys, "origin/main")
 
     assert scenario.exit_code == 0, "the literal branch name is accepted"
+    _require_creation_stream(scenario, base="origin/main")
     assert scenario.worktree_head() == literal_tip, (
         "an existing local branch keeps its literal meaning"
     )
@@ -287,6 +326,7 @@ def test_reused_branch_ignores_the_supplied_base(
     run_donkey(scenario, capsys, "origin/main")
 
     assert scenario.exit_code == 0, "the existing branch is reused"
+    _require_reuse_stream(scenario)
     assert scenario.worktree_head() == existing_tip, (
         "the reused branch keeps its own tip instead of adopting the base"
     )
@@ -307,6 +347,7 @@ def test_remote_qualified_base_without_an_upstream_still_resolves(
     run_donkey(scenario, capsys, "origin/main")
 
     assert scenario.exit_code == 0, "the base resolves from the remote ref alone"
+    _require_creation_stream(scenario, base="refs/remotes/origin/main")
     assert scenario.worktree_head() == scenario.repo.commit("origin/main").hexsha, (
         "the new branch starts at the remote-tracking commit"
     )
@@ -333,6 +374,7 @@ def test_canonical_remote_revision_expression_is_resolved(
     run_donkey(scenario, capsys, "refs/remotes/origin/main~1")
 
     assert scenario.exit_code == 0, "a canonical revision expression is accepted"
+    _require_creation_stream(scenario, base="refs/remotes/origin/main~1")
     assert scenario.worktree_head() == expected, (
         "the expression resolves to the commit it names"
     )
@@ -352,8 +394,10 @@ def test_canonical_remote_ref_that_does_not_exist_is_reported(
     run_donkey(scenario, capsys, "refs/remotes/origin/nope")
 
     assert scenario.exit_code == _REJECTED_EXIT_CODE, "an unknown ref is an error"
-    assert "remote base ref not found" in scenario.stderr, (
-        "the error names the missing remote ref form"
+    _require_creation_stream(
+        scenario,
+        base="refs/remotes/origin/nope",
+        diagnostic="git-donkey: 💀 remote base ref not found: refs/remotes/origin/nope",
     )
     assert scenario.branch not in scenario.repo.heads, "no branch is created"
 
@@ -384,6 +428,7 @@ def test_head_expression_resolves_in_the_calling_checkout(
     run_donkey(scenario, capsys, "HEAD~1")
 
     assert scenario.exit_code == 0, "a revision expression is accepted"
+    _require_creation_stream(scenario, base="HEAD~1")
     assert scenario.worktree_head() == second, (
         "the expression resolves against the calling checkout's HEAD"
     )
@@ -409,6 +454,7 @@ def test_canonical_tag_base_is_not_shadowed_by_a_branch_of_that_name(
     run_donkey(scenario, capsys, "refs/tags/v1.0")
 
     assert scenario.exit_code == 0, "a canonical tag ref is accepted"
+    _require_creation_stream(scenario, base="refs/tags/v1.0")
     assert scenario.worktree_head() == tagged, (
         "the tag, not the shadowing branch, supplies the start point"
     )
@@ -429,8 +475,10 @@ def test_absent_canonical_ref_is_not_satisfied_by_a_shadowing_branch(
     run_donkey(scenario, capsys, "refs/tags/absent")
 
     assert scenario.exit_code == _REJECTED_EXIT_CODE, "the absent ref is an error"
-    assert "base 'refs/tags/absent' not found" in scenario.stderr, (
-        "the error names the missing canonical ref"
+    _require_creation_stream(
+        scenario,
+        base="refs/tags/absent",
+        diagnostic="git-donkey: 💀 base 'refs/tags/absent' not found",
     )
     assert scenario.branch not in scenario.repo.heads, "no branch is created"
     assert not scenario.worktree_path().exists(), "no worktree is created"
@@ -449,8 +497,11 @@ def test_absent_principal_remote_ref_is_not_satisfied_by_a_shadowing_branch(
     run_donkey(scenario, capsys, "refs/remotes/origin/absent")
 
     assert scenario.exit_code == _REJECTED_EXIT_CODE, "the absent ref is an error"
-    assert "remote base ref not found: refs/remotes/origin/absent" in scenario.stderr, (
-        "the error names the missing principal-remote ref"
+    _require_creation_stream(
+        scenario,
+        base="refs/remotes/origin/absent",
+        diagnostic="git-donkey: 💀 remote base ref not found: "
+        "refs/remotes/origin/absent",
     )
     assert scenario.branch not in scenario.repo.heads, "no branch is created"
     assert not scenario.worktree_path().exists(), "no worktree is created"
@@ -472,8 +523,10 @@ def test_absent_canonical_ref_component_rejects_a_suffixed_expression(
     run_donkey(scenario, capsys, "refs/tags/absent~1")
 
     assert scenario.exit_code == _REJECTED_EXIT_CODE, "the absent ref is an error"
-    assert "base 'refs/tags/absent~1' not found" in scenario.stderr, (
-        "the error names the missing ref component"
+    _require_creation_stream(
+        scenario,
+        base="refs/tags/absent~1",
+        diagnostic="git-donkey: 💀 base 'refs/tags/absent~1' not found",
     )
     assert scenario.branch not in scenario.repo.heads, "no branch is created"
     assert not scenario.worktree_path().exists(), "no worktree is created"

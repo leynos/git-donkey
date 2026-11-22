@@ -213,6 +213,7 @@ def test_pull_updates_linked_base_and_leaves_primary_alone(
 def test_pull_ff_updates_the_local_base_named_by_a_remote_qualified_parent(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     """A qualified parent behaves like an omitted base for pull preflight."""
     repo = _behind_repo(tmp_path)
@@ -236,12 +237,23 @@ def test_pull_ff_updates_the_local_base_named_by_a_remote_qualified_parent(
     assert repo.commit("feature/qualified").hexsha == repo.head.commit.hexsha, (
         "the new branch starts at the updated remote tip"
     )
+    require_stream(
+        capsys.readouterr().err,
+        stream(
+            "Using remote: origin",
+            f"Updating existing worktree at: {repo.working_tree_dir}",
+            "Creating new branch 'feature/qualified' from "
+            "'refs/remotes/origin/main' in a new worktree",
+        ),
+        context="git donkey stderr",
+    )
 
 
 @pytest.mark.parametrize("parent_kind", ["tag", "commit"])
 def test_commit_ish_parent_skips_the_update_and_the_prompt(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
     parent_kind: str,
 ) -> None:
     """A tag or commit ID has no branch to update and must not prompt."""
@@ -266,6 +278,15 @@ def test_commit_ish_parent_skips_the_update_and_the_prompt(
     assert repo.commit("feature/commit-ish").hexsha == remote.hexsha, (
         "the new branch starts at the commit the base names"
     )
+    require_stream(
+        capsys.readouterr().err,
+        stream(
+            "Using remote: origin",
+            f"Creating new branch 'feature/commit-ish' from '{parent}' in a "
+            "new worktree",
+        ),
+        context="git donkey stderr",
+    )
 
 
 def test_unresolvable_qualified_parent_fails_before_prompting(
@@ -285,18 +306,22 @@ def test_unresolvable_qualified_parent_fails_before_prompting(
             options=donkey._PullOptions(pull_ff=True),
         )
 
-    stderr = capsys.readouterr().err
     assert excinfo.value.code == 1, "an unknown parent is a base error"
-    assert "base 'origin/missing' not found" in stderr, (
-        "the error identifies the supplied base once"
+    require_stream(
+        capsys.readouterr().err,
+        stream(
+            "Using remote: origin",
+            "git-donkey: 💀 base 'origin/missing' not found",
+        ),
+        context="git donkey stderr",
     )
-    assert "origin/origin" not in stderr, "no doubled remote prefix is reported"
     assert "feature/invalid-base" not in repo.heads, "no branch is created"
 
 
 def test_pull_ff_updates_a_canonical_local_base(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     """A fully qualified local branch is still a local base worth updating."""
     repo = _behind_repo(tmp_path)
@@ -320,11 +345,22 @@ def test_pull_ff_updates_a_canonical_local_base(
     assert repo.commit("feature/canonical-local").hexsha == repo.head.commit.hexsha, (
         "the new branch starts at the updated base"
     )
+    require_stream(
+        capsys.readouterr().err,
+        stream(
+            "Using remote: origin",
+            f"Updating existing worktree at: {repo.working_tree_dir}",
+            "Creating new branch 'feature/canonical-local' from "
+            "'refs/heads/main' in a new worktree",
+        ),
+        context="git donkey stderr",
+    )
 
 
 def test_pull_ff_prompt_is_not_fooled_by_a_tag_shadowing_the_base_branch(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     """A tag named like the base branch must not hide that it is behind."""
     repo = _behind_repo(tmp_path)
@@ -351,11 +387,22 @@ def test_pull_ff_prompt_is_not_fooled_by_a_tag_shadowing_the_base_branch(
     assert repo.commit("feature/tag-shadow").hexsha == repo.head.commit.hexsha, (
         "the new branch starts at the updated base"
     )
+    require_stream(
+        capsys.readouterr().err,
+        stream(
+            "Using remote: origin",
+            f"Updating existing worktree at: {repo.working_tree_dir}",
+            "Creating new branch 'feature/tag-shadow' from "
+            "'refs/remotes/origin/main' in a new worktree",
+        ),
+        context="git donkey stderr",
+    )
 
 
 def test_canonical_tag_base_never_prompts_even_with_shadowing_branches(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     """A canonical tag base has no branch to update, whatever else exists."""
     repo = _behind_repo(tmp_path)
@@ -386,11 +433,21 @@ def test_canonical_tag_base_never_prompts_even_with_shadowing_branches(
     assert repo.commit("refs/heads/refs/tags/release-tag").hexsha == local_tip, (
         "the unrelated literal branch is left untouched"
     )
+    require_stream(
+        capsys.readouterr().err,
+        stream(
+            "Using remote: origin",
+            "Creating new branch 'feature/tag-ref' from "
+            "'refs/tags/release-tag' in a new worktree",
+        ),
+        context="git donkey stderr",
+    )
 
 
 def test_foreign_remote_base_never_prompts_despite_a_literal_branch(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     """A non-principal remote base has no local update target, whatever exists."""
     repo = _behind_repo(tmp_path)
@@ -420,4 +477,13 @@ def test_foreign_remote_base_never_prompts_despite_a_literal_branch(
     )
     assert repo.commit("feature/foreign-base").hexsha == remote_tip, (
         "the new branch starts at the foreign remote's tip"
+    )
+    require_stream(
+        capsys.readouterr().err,
+        stream(
+            "Using remote: origin",
+            "Creating new branch 'feature/foreign-base' from "
+            "'refs/remotes/upstream/main' in a new worktree",
+        ),
+        context="git donkey stderr",
     )
