@@ -511,3 +511,29 @@ def test_absent_canonical_ref_component_rejects_a_suffixed_expression(
     )
     assert scenario.branch not in scenario.repo.heads, "no branch is created"
     assert not scenario.worktree_path().exists(), "no worktree is created"
+
+
+def test_per_worktree_ref_resolves_in_the_calling_checkout(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A worktree-private ref is resolved where the caller can see it."""
+    scenario = new_scenario(tmp_path, monkeypatch, "feature/from-worktree-ref")
+    repo = scenario.repo
+    first = repo.head.commit.hexsha
+    seed_repo(repo, "second.txt", "second commit")
+    caller_path = tmp_path / "worktree-ref-caller"
+    repo.git.worktree("add", "-b", "caller/refs", str(caller_path), "main")
+    caller_repo = Repo(caller_path)
+    caller_repo.git.update_ref("refs/worktree/base", first)
+    monkeypatch.chdir(caller_path)
+    monkeypatch.setattr(donkey.helpers, "_prompt_yes_no", _reject_prompt)
+
+    run_donkey(scenario, capsys, "refs/worktree/base")
+
+    assert scenario.exit_code == 0, "a per-worktree ref is an accepted base"
+    assert scenario.worktree_head() == first, (
+        "the ref resolves to the commit it names in the calling checkout"
+    )
+    _require_creation_stream(scenario, base="refs/worktree/base")

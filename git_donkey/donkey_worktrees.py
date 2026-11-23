@@ -175,7 +175,7 @@ def _ensure_base_branch_available(
         # The ref component of a revision expression such as
         # refs/remotes/origin/main~1 must exist for the same reason.
         if helpers._ref_exists(
-            context.repo_home,
+            context.caller_repo,
             helpers._canonical_ref_component(base_branch),
         ):
             return _resolve_base_commit(context, base_branch)

@@ -475,6 +475,9 @@ def test_foreign_remote_base_never_prompts_despite_a_literal_branch(
     assert repo.head.commit.hexsha == local_tip, (
         "the shadowing local branch is left untouched"
     )
+    assert repo.commit("refs/heads/refs/remotes/upstream/main").hexsha == local_tip, (
+        "the literal branch is never an update target"
+    )
     assert repo.commit("feature/foreign-base").hexsha == remote_tip, (
         "the new branch starts at the foreign remote's tip"
     )
