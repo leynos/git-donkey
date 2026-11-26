@@ -27,7 +27,7 @@ jobs:
       # The action installs its own (latest) uv, so it runs before the pinned
       # install below, which then owns PATH for every later step.
       - name: Dead-code gate
-        uses: leynos/shared-actions/.github/actions/df12-skylos@a0519a1476ab769ca7b8badfa794f3751213f1ea
+        uses: leynos/shared-actions/.github/actions/df12-skylos@ab6505246c6b043b742a225e428e00448c0a37af
 
       - name: Install uv
         uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
@@ -50,7 +50,7 @@ jobs:
       - name: Install mdtablefix
         # `make check-fmt` runs `mdtablefix --check --git`; 0.6.0 is the
         # first release with `--check` and `--git`.
-        uses: leynos/shared-actions/.github/actions/install-mdtablefix@7d751eded578e48dacf43ab173d5820e6437c474
+        uses: leynos/shared-actions/.github/actions/install-mdtablefix@ab6505246c6b043b742a225e428e00448c0a37af
         with:
           version: "0.6.1"
 
@@ -58,7 +58,7 @@ jobs:
         id: makeutil
         # A digest-verified prebuilt release, cached by the action itself,
         # rather than a from-source build.
-        uses: leynos/shared-actions/.github/actions/install-makeutil@ebe2f3105334283441f4c915eb979a0f4b9f2c04
+        uses: leynos/shared-actions/.github/actions/install-makeutil@ab6505246c6b043b742a225e428e00448c0a37af
 
       - name: Verify makeutil
         # Prove the installed binary runs, matches the release the action
@@ -110,7 +110,7 @@ jobs:
       # publishes the report.
       - name: Run tests with coverage
         if: github.event_name == 'pull_request'
-        uses: leynos/shared-actions/.github/actions/generate-coverage@759da19f0379b6d2d7ddef93b7ad4c3b98154e41
+        uses: leynos/shared-actions/.github/actions/generate-coverage@ab6505246c6b043b742a225e428e00448c0a37af
         # Pinned to the interpreter setup-python installs, in both lanes:
         # the action builds its coverage environment with whatever
         # interpreter uv finds first, which an earlier step's managed
