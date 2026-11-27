@@ -39,7 +39,8 @@ downloaded and verified.
 - A re-pushed tag must be safe to run again without manual cleanup, except
   when the destinations already disagree, which must fail loudly.
 - The job holding the PyPI Trusted Publishing credential must resolve no
-  third-party code and hold no GitHub token.
+  third-party code, must not receive a `GH_TOKEN`, must persist no checkout
+  credentials, and must hold no GitHub write permission.
 - Each job's permissions must be the minimum it needs.
 - A missing or incomplete source distribution must fail a pull request rather
   than a tag.
@@ -156,8 +157,10 @@ PyPI already requires:
 matching `v*.*.*`, and holds only `contents: read` for its sparse checkout of
 `scripts/` plus `id-token: write` for Trusted Publishing. It never receives
 `contents: write`, so it cannot create, edit, or upload to the GitHub Release;
-that stays in `draft-release` and `publish-release`. `publish-pypi` receives no
-`GH_TOKEN`, and its release scripts use only the Python standard library, so no
+that stays in `draft-release` and `publish-release`. The checkout action still
+receives the workflow's read-only token, but `persist-credentials: false` keeps
+it out of the checkout on disk, and no step passes a `GH_TOKEN`.
+`publish-pypi`'s release scripts use only the Python standard library, so no
 third-party package is resolved while the OIDC credential is live.
 
 ### Queued concurrency
@@ -207,7 +210,8 @@ carry a version above 0.2.0.
 - A pull request whose build lacks an sdist fails before the tag exists.
 - The GitHub Release receives exactly the bytes PyPI holds, plus the Sigstore
   bundle, and stays a draft until both destinations agree.
-- `publish-pypi` holds no GitHub token and no attestation permission.
+- `publish-pypi` receives no `GH_TOKEN`, persists no checkout credentials,
+  holds no GitHub write permission, and has no attestation permission.
 - Publication history is observable through the workflow run, the GitHub
   Release, and the repository's attestation store, without a new service.
 

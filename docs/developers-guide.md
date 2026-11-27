@@ -85,6 +85,10 @@ any other spelling fails before anything is attested or published. The workflow
 reports whether the version is a pre-release and reuses that answer for the
 GitHub Release.
 
+[ADR-004](adrs/adr-0004-release-pipeline.md) records the reconciliation rules,
+the rerun behaviour, and the known limitation that a release completed from
+carried bytes carries the completing run's attestation bundle.
+
 The job graph is:
 
 1. `check-version` compares the tag with the manifest and checks that the

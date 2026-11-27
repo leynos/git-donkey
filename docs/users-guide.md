@@ -30,16 +30,22 @@ uv tool install git-donkey
 ```
 
 Released versions are published to PyPI and, with identical bytes, to the tag's
-GitHub Release. Each release also carries a Sigstore bundle recording the
-workflow run that built the files. To verify a downloaded wheel, use GitHub CLI
-2.102.0 or newer:
+GitHub Release. To verify a downloaded wheel, use GitHub CLI 2.102.0 or newer.
+This example uses the stable `v1.2.3` tag. A pre-release tag may produce a
+differently spelled wheel filename, so verify the file the download actually
+produced:
 
 ```shell
-gh release download v<version> --repo leynos/git-donkey --pattern 'git_donkey-*'
-gh attestation verify git_donkey-<version>-py3-none-any.whl \
+gh release download v1.2.3 --repo leynos/git-donkey --pattern 'git_donkey-*'
+gh attestation verify git_donkey-1.2.3-py3-none-any.whl \
   --repo leynos/git-donkey \
   --signer-workflow leynos/git-donkey/.github/workflows/release.yml
 ```
+
+The command verifies the file against the repository's attestation store. The
+release also carries a Sigstore bundle, but when a release is completed from
+bytes published by an earlier run, that bundle belongs to the completing run
+and may not attest every file; the store remains authoritative.
 
 For an unreleased source checkout, run `uv tool install .` from the repository
 root instead. The wheel includes a section-one manual for every console script:
