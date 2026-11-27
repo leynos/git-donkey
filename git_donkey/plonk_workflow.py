@@ -24,7 +24,6 @@ from git_donkey.plonk_records import (
     _PlonkContext,
     _PlonkMode,
     _RemovableCandidate,
-    _SkipReason,
     _UnverifiedReason,
 )
 
@@ -129,80 +128,79 @@ def _candidate_fields(candidate: _PlonkCandidate) -> dict[str, object]:
     }
 
 
-def _log_planned_candidate(
+@dataclasses.dataclass(frozen=True, slots=True)
+class _PlannedAction:
+    """Structured-log event for one planned or performed removal action."""
+
+    operation: str
+    real_message: str
+    planned_message: str
+    include_worktree: bool = True
+    include_detail: bool = False
+
+
+_REMOVE_WORKTREE_ACTION = _PlannedAction(
+    operation="remove_worktree",
+    real_message="Removing completed git-plonk worktree",
+    planned_message="Planning completed git-plonk worktree removal",
+    include_detail=True,
+)
+_BRANCH_DELETION_ACTION = _PlannedAction(
+    operation="delete_branch",
+    real_message="Deleting completed git-plonk branch",
+    planned_message="Planning completed git-plonk branch deletion",
+    include_worktree=False,
+)
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class _CandidateLeftEvent:
+    """Structured-log event for a skipped or unverified candidate."""
+
+    message: str
+    operation: str
+    reason: str
+
+
+def _log_planned_action(
     removable: _RemovableCandidate,
     mode: _PlonkMode,
+    action: _PlannedAction,
     *,
     dry_run: bool,
 ) -> None:
-    """Log the planned removal of one clean completed candidate."""
+    """Log one planned or performed removal action for a candidate."""
     candidate = removable.candidate
+    fields: dict[str, object] = {
+        "mode": mode.value,
+        "operation": action.operation,
+        "dry_run": dry_run,
+        "signal": removable.evidence.signal,
+    }
+    if action.include_detail:
+        fields["detail"] = removable.evidence.detail
+    if action.include_worktree:
+        fields.update(_candidate_fields(candidate))
+    else:
+        fields.update(_branch_fields(candidate))
     _LOGGER.info(
-        "Planning completed git-plonk worktree removal"
-        if dry_run
-        else "Removing completed git-plonk worktree",
-        extra={
-            "mode": mode.value,
-            "operation": "remove_worktree",
-            "dry_run": dry_run,
-            "signal": removable.evidence.signal,
-            "detail": removable.evidence.detail,
-            **_candidate_fields(candidate),
-        },
+        action.planned_message if dry_run else action.real_message,
+        extra=fields,
     )
 
 
-def _log_planned_branch_deletion(
-    removable: _RemovableCandidate,
-    mode: _PlonkMode,
-    *,
-    dry_run: bool,
-) -> None:
-    """Log the planned branch deletion for one removed candidate."""
-    candidate = removable.candidate
-    _LOGGER.info(
-        "Planning completed git-plonk branch deletion"
-        if dry_run
-        else "Deleting completed git-plonk branch",
-        extra={
-            "mode": mode.value,
-            "operation": "delete_branch",
-            "dry_run": dry_run,
-            "signal": removable.evidence.signal,
-            **_branch_fields(candidate),
-        },
-    )
-
-
-def _log_skipped_candidate(
+def _log_candidate_left(
     candidate: _PlonkCandidate,
-    reason: _SkipReason,
     mode: _PlonkMode,
+    event: _CandidateLeftEvent,
 ) -> None:
-    """Log a completed candidate that git-plonk left in place."""
+    """Log a candidate that was left in place."""
     _LOGGER.info(
-        "Skipping git-plonk candidate",
+        event.message,
         extra={
             "mode": mode.value,
-            "operation": "skip_worktree",
-            "reason": reason.value,
-            **_candidate_fields(candidate),
-        },
-    )
-
-
-def _log_unverified_candidate(
-    candidate: _PlonkCandidate,
-    reason: _UnverifiedReason,
-    mode: _PlonkMode,
-) -> None:
-    """Log a candidate no completion tier could resolve."""
-    _LOGGER.info(
-        "Leaving git-plonk candidate unverified",
-        extra={
-            "mode": mode.value,
-            "operation": "completion_resolution",
-            "reason": reason.value,
+            "operation": event.operation,
+            "reason": event.reason,
             **_candidate_fields(candidate),
         },
     )

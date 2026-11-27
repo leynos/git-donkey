@@ -28,8 +28,9 @@ from git_donkey.plonk_records import (
     _UnverifiedWorktree,
 )
 from git_donkey.plonk_workflow import (
+    _CandidateLeftEvent,
     _CleanupOptions,
-    _log_unverified_candidate,
+    _log_candidate_left,
     _record_signal_step,
     _record_unverified,
 )
@@ -254,6 +255,14 @@ def _resolve_fallbacks(
             )
             continue
         unverified.append(_UnverifiedWorktree(candidate.worktree_path, reason))
-        _log_unverified_candidate(candidate, reason, state.mode)
+        _log_candidate_left(
+            candidate,
+            state.mode,
+            _CandidateLeftEvent(
+                "Leaving git-plonk candidate unverified",
+                "completion_resolution",
+                reason.value,
+            ),
+        )
         _record_unverified(state.mode, reason)
     return unverified

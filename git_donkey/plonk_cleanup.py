@@ -26,9 +26,11 @@ from git_donkey.plonk_records import (
     _SkipReason,
 )
 from git_donkey.plonk_workflow import (
-    _log_planned_branch_deletion,
-    _log_planned_candidate,
-    _log_skipped_candidate,
+    _BRANCH_DELETION_ACTION,
+    _REMOVE_WORKTREE_ACTION,
+    _CandidateLeftEvent,
+    _log_candidate_left,
+    _log_planned_action,
     _record_failure,
     _record_signal_step,
     _record_step,
@@ -67,6 +69,15 @@ class _CleanupTally:
     failed_branch_deletions: list[str] = dataclasses.field(default_factory=list)
 
 
+def _candidate_skip_event(reason: _SkipReason) -> _CandidateLeftEvent:
+    """Return the structured-log event for a skipped candidate."""
+    return _CandidateLeftEvent(
+        "Skipping git-plonk candidate",
+        "skip_worktree",
+        reason.value,
+    )
+
+
 def _clean_completed_candidate(
     removable: _RemovableCandidate,
     state: _SweepState,
@@ -99,7 +110,7 @@ def _clean_completed_candidate(
     mode = state.mode
     reason = adapter.skip_reason(candidate.worktree_path)
     if reason is not None:
-        _log_skipped_candidate(candidate, reason, mode)
+        _log_candidate_left(candidate, mode, _candidate_skip_event(reason))
         _record_step(
             "worktree_preflight",
             "skipped",
@@ -109,10 +120,14 @@ def _clean_completed_candidate(
         return _CandidateOutcome(skip_reason=reason)
 
     _record_step("worktree_preflight", "success", mode)
-    _log_planned_candidate(removable, mode, dry_run=state.options.dry_run)
+    _log_planned_action(
+        removable, mode, _REMOVE_WORKTREE_ACTION, dry_run=state.options.dry_run
+    )
     if not state.options.dry_run:
         if not adapter.remove_worktree(candidate.worktree_path):
-            _log_skipped_candidate(candidate, _SkipReason.REMOVAL_FAILED, mode)
+            _log_candidate_left(
+                candidate, mode, _candidate_skip_event(_SkipReason.REMOVAL_FAILED)
+            )
             _record_failure("worktree_removal", mode)
             return _CandidateOutcome(skip_reason=_SkipReason.REMOVAL_FAILED)
         _record_signal_step(
@@ -125,7 +140,9 @@ def _clean_completed_candidate(
     if mode is not _PlonkMode.HARD:
         return _CandidateOutcome()
 
-    _log_planned_branch_deletion(removable, mode, dry_run=state.options.dry_run)
+    _log_planned_action(
+        removable, mode, _BRANCH_DELETION_ACTION, dry_run=state.options.dry_run
+    )
     if state.options.dry_run:
         return _CandidateOutcome()
     if not adapter.delete_branch(candidate.branch_name):
