@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import concurrent.futures
 import csv
 import dataclasses
 import hashlib
@@ -12,6 +13,8 @@ import os
 import shutil
 import sys
 import tarfile
+import threading
+import time
 import tomllib
 import typing as typ
 import zipfile
@@ -35,6 +38,19 @@ else:
     import fcntl
 
 _ROOT = Path(__file__).resolve().parents[2]
+# uv reports an uncached requirement through either the resolver hint or the
+# client's bare cache-miss message. Only a failure carrying one of them may be
+# retried online; any other failure keeps its own diagnostic instead of being
+# mislabelled as a cache miss.
+_CACHE_MISS_MARKERS = (
+    "because the network was disabled",
+    "Network connectivity is disabled, but the requested data wasn't found",
+)
+_CACHE_MISS_MARKER = _CACHE_MISS_MARKERS[0]
+_CONCURRENT_WORKERS = 2
+# Long enough for an unserialised second worker to enter its probe, short
+# enough to keep the concurrency test fast.
+_PROBE_WINDOW = 0.3
 pytestmark = pytest.mark.timeout(180)
 
 
@@ -220,39 +236,68 @@ def _build_backend_probe(root: Path) -> Path:
     return project
 
 
+def _reports_cache_miss(result: CommandResult) -> bool:
+    """Whether an offline uv failure reports a requirement missing from the cache."""
+    return result.returncode != 0 and any(
+        marker in result.output for marker in _CACHE_MISS_MARKERS
+    )
+
+
+type _RunUv = typ.Callable[..., CommandResult]
+type _FileLock = typ.Callable[[int | typ.IO[str], int], None]
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class _CacheWarmUpTools:
+    """Injected dependencies for warming the build-backend cache."""
+
+    run_uv: _RunUv = _run_uv
+    file_lock: _FileLock = fcntl.flock
+
+
+_CACHE_WARM_UP_TOOLS = _CacheWarmUpTools()
+
+
 def _warm_backend_cache(
     cache: Path,
     work: Path,
     environment: dict[str, str],
+    *,
+    tools: _CacheWarmUpTools = _CACHE_WARM_UP_TOOLS,
 ) -> None:
     """Prove the build backends resolve offline, warming a cold cache once.
 
     The lock serialises pytest-xdist workers, which each run a session fixture,
-    so a cold checkout still performs a single online warm-up. The probe and
-    the measured builds stay offline once the backends are cached.
+    so a cold checkout still performs a single online warm-up. Only a reported
+    cache miss permits that online build; any other probe failure keeps its own
+    diagnostic. The probe and measured builds stay offline once cached.
     """
     cache.mkdir(parents=True, exist_ok=True)
     probe = _build_backend_probe(work)
     run_environment = environment | {"UV_CACHE_DIR": str(cache)}
     build = ("build", "--python", sys.executable, "--wheel")
-    lock_path = cache / "manpage-build-backends.lock"
-    with lock_path.open("a", encoding="utf-8") as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)
+    with (cache / "manpage-build-backends.lock").open("a", encoding="utf-8") as lock:
+        tools.file_lock(lock, fcntl.LOCK_EX)
         try:
-            if _run_uv(build, probe, run_environment).returncode == 0:
+            failed = tools.run_uv(build, probe, run_environment)
+            if failed.returncode == 0:
                 return
-            warmed = _run_uv(build, probe, run_environment, offline=False)
+            assert _reports_cache_miss(failed), (
+                "the build-backend probe failed for a reason other than a "
+                f"missing cache entry:\n{failed.output}"
+            )
+            warmed = tools.run_uv(build, probe, run_environment, offline=False)
             assert warmed.returncode == 0, (
                 "the build backends must be cached before the offline builds "
                 f"run; warming them failed:\n{warmed.output}"
             )
-            cached = _run_uv(build, probe, run_environment)
+            cached = tools.run_uv(build, probe, run_environment)
             assert cached.returncode == 0, (
                 "the warmed cache must resolve the build backends offline:\n"
                 f"{cached.output}"
             )
         finally:
-            fcntl.flock(lock, fcntl.LOCK_UN)
+            tools.file_lock(lock, fcntl.LOCK_UN)
 
 
 @pytest.fixture(scope="session")
@@ -531,58 +576,168 @@ def _recording_uv(
 
 def test_backend_probe_skips_the_online_build_when_backends_are_cached(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A cache that resolves the backends needs no network access."""
     calls: list[bool] = []
-    monkeypatch.setattr(
-        sys.modules[__name__],
-        "_run_uv",
-        _recording_uv([CommandResult(0, "", "")], calls),
+    _warm_backend_cache(
+        tmp_path / "cache",
+        tmp_path / "work",
+        {},
+        tools=_CacheWarmUpTools(
+            run_uv=_recording_uv([CommandResult(0, "", "")], calls),
+        ),
     )
-    _warm_backend_cache(tmp_path / "cache", tmp_path / "work", {})
     assert calls == [True], "a warm cache must only run the offline probe"
 
 
 def test_backend_probe_warms_a_cold_cache_with_one_online_build(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A cache miss warms online once and then resolves offline."""
     calls: list[bool] = []
     results = [
-        CommandResult(2, "", "network disabled"),
+        CommandResult(2, "", _CACHE_MISS_MARKER),
         CommandResult(0, "", ""),
         CommandResult(0, "", ""),
     ]
-    monkeypatch.setattr(
-        sys.modules[__name__],
-        "_run_uv",
-        _recording_uv(results, calls),
+    _warm_backend_cache(
+        tmp_path / "cache",
+        tmp_path / "work",
+        {},
+        tools=_CacheWarmUpTools(run_uv=_recording_uv(results, calls)),
     )
-    _warm_backend_cache(tmp_path / "cache", tmp_path / "work", {})
     assert calls == [True, False, True], (
         "a cold cache must probe, warm once, then re-probe offline"
     )
 
 
-def test_backend_probe_reports_a_failed_warm_up(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_backend_probe_reports_a_failed_warm_up(tmp_path: Path) -> None:
     """A warm-up failure keeps the cache precondition visible."""
     calls: list[bool] = []
     results = [
-        CommandResult(2, "", "network disabled"),
+        CommandResult(2, "", _CACHE_MISS_MARKER),
         CommandResult(1, "", "network unreachable"),
     ]
-    monkeypatch.setattr(
-        sys.modules[__name__],
-        "_run_uv",
-        _recording_uv(results, calls),
-    )
     with pytest.raises(AssertionError, match="warming them failed"):
-        _warm_backend_cache(tmp_path / "cache", tmp_path / "work", {})
+        _warm_backend_cache(
+            tmp_path / "cache",
+            tmp_path / "work",
+            {},
+            tools=_CacheWarmUpTools(run_uv=_recording_uv(results, calls)),
+        )
     assert calls == [True, False], (
         "a failed warm-up must stop before the offline re-probe"
     )
+
+
+def test_backend_probe_preserves_a_non_cache_failure(tmp_path: Path) -> None:
+    """A probe failure unrelated to the cache is not retried online."""
+    calls: list[bool] = []
+    results = [CommandResult(2, "", "No space left on device")]
+    with pytest.raises(
+        AssertionError,
+        match="reason other than a missing cache entry",
+    ):
+        _warm_backend_cache(
+            tmp_path / "cache",
+            tmp_path / "work",
+            {},
+            tools=_CacheWarmUpTools(run_uv=_recording_uv(results, calls)),
+        )
+    assert calls == [True], "only the offline probe may run for a build failure"
+
+
+@pytest.mark.parametrize("message", _CACHE_MISS_MARKERS)
+def test_cache_miss_detection_accepts_both_uv_offline_messages(message: str) -> None:
+    """Both uv offline messages permit the online warm-up."""
+    assert _reports_cache_miss(CommandResult(2, "", message)), (
+        f"uv's offline cache-miss form must be recognised: {message}"
+    )
+
+
+def test_cache_miss_detection_rejects_other_failures() -> None:
+    """A failure without an offline marker keeps its own diagnostic."""
+    assert not _reports_cache_miss(CommandResult(2, "", "No space left on device")), (
+        "a non-cache failure must not be treated as a cache miss"
+    )
+
+
+@dataclasses.dataclass(slots=True)
+class _CacheModel:
+    """Model the shared uv cache and exclusive lock for warm-up tests."""
+
+    calls: list[bool] = dataclasses.field(default_factory=list)
+    cached: bool = False
+    online: int = 0
+    probes: int = 0
+    lock_attempts: int = 0
+    lock: threading.Lock = dataclasses.field(default_factory=threading.Lock)
+    first_probe: threading.Event = dataclasses.field(default_factory=threading.Event)
+    second_locked: threading.Event = dataclasses.field(default_factory=threading.Event)
+
+    def run(
+        self,
+        arguments: tuple[str, ...],
+        cwd: Path,
+        environment: dict[str, str],
+        *,
+        offline: bool = True,
+    ) -> CommandResult:
+        """Model a cache that fills after the first online build."""
+        if offline and not self.cached:
+            with self.lock:
+                self.calls.append(offline)
+                self.probes += 1
+            # Hold the first cold probe open until the other worker is at the
+            # cache lock. Serialised workers block there; unserialised ones
+            # probe during this window, which is what this test must detect.
+            if self.first_probe.is_set():
+                time.sleep(_PROBE_WINDOW)
+                return CommandResult(2, "", _CACHE_MISS_MARKER)
+            self.first_probe.set()
+            assert self.second_locked.wait(timeout=10), (
+                "the other worker must attempt the cache lock"
+            )
+            time.sleep(_PROBE_WINDOW)
+            return CommandResult(2, "", _CACHE_MISS_MARKER)
+        with self.lock:
+            self.calls.append(offline)
+        if offline:
+            return CommandResult(0, "", "")
+        self.cached = True
+        self.online += 1
+        return CommandResult(0, "", "")
+
+    def track_flock(self, descriptor: int | typ.IO[str], operation: int) -> None:
+        """Record an exclusive-lock attempt before it may block."""
+        if operation == fcntl.LOCK_EX:
+            with self.lock:
+                self.lock_attempts += 1
+                if self.lock_attempts == _CONCURRENT_WORKERS:
+                    self.second_locked.set()
+        fcntl.flock(descriptor, operation)
+
+
+def test_backend_probe_warms_once_for_concurrent_workers(tmp_path: Path) -> None:
+    """Workers sharing a cold cache perform one online warm-up."""
+    model = _CacheModel()
+    cache = tmp_path / "cache"
+    with concurrent.futures.ThreadPoolExecutor(max_workers=_CONCURRENT_WORKERS) as pool:
+        futures = [
+            pool.submit(
+                _warm_backend_cache,
+                cache,
+                tmp_path / f"work-{index}",
+                {},
+                tools=_CacheWarmUpTools(
+                    run_uv=model.run,
+                    file_lock=model.track_flock,
+                ),
+            )
+            for index in range(_CONCURRENT_WORKERS)
+        ]
+        for future in futures:
+            future.result(timeout=60)
+    assert model.probes == 1, "a worker must not probe while the lock is held"
+    assert model.online == 1, "concurrent workers must warm the cache once"
+    assert model.calls.count(False) == 1, "only the warm-up may run online"
