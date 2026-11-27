@@ -1,20 +1,27 @@
-"""Exercise manpage generation, wheel installation, and sdist rebuilding."""
+"""Exercise manpage generation, wheel installation, and sdist rebuilding.
+
+Build both distributions from checkout inputs and from the source archive with
+offline ``uv build`` calls, then install and uninstall the wheel to check page
+placement. A session fixture prepares uv's build-backend cache: it probes a
+minimal project that declares the repository's exact ``[build-system]``
+requirements, performs one online build only for a recognised cache miss, and
+keeps every other failure's diagnostic. A file lock serialises that warm-up
+across pytest-xdist workers. The measured builds stay offline, so they prove a
+distribution build needs no network. ``make test`` runs this module after its
+``make build`` prerequisite, the cache lives in ``.uv-cache``, and
+``docs/manpages-design.md`` records the design.
+"""
 
 from __future__ import annotations
 
 import base64
-import concurrent.futures
 import csv
 import dataclasses
 import hashlib
 import io
-import json
-import os
 import shutil
 import sys
 import tarfile
-import threading
-import time
 import tomllib
 import typing as typ
 import zipfile
@@ -23,34 +30,18 @@ from email.parser import BytesParser
 from pathlib import Path, PurePosixPath
 
 import pytest
-from plumbum import local
+
+from tests.integration.manpage_backend_cache import (
+    CommandResult,
+    environment,
+    run_uv,
+    warm_backend_cache,
+)
 
 if typ.TYPE_CHECKING:
-    import collections.abc as cabc
     from email.message import Message
 
-if sys.platform == "win32":
-    pytest.skip(
-        "the packaging tests build POSIX virtual environments",
-        allow_module_level=True,
-    )
-else:
-    import fcntl
-
 _ROOT = Path(__file__).resolve().parents[2]
-# uv reports an uncached requirement through either the resolver hint or the
-# client's bare cache-miss message. Only a failure carrying one of them may be
-# retried online; any other failure keeps its own diagnostic instead of being
-# mislabelled as a cache miss.
-_CACHE_MISS_MARKERS = (
-    "because the network was disabled",
-    "Network connectivity is disabled, but the requested data wasn't found",
-)
-_CACHE_MISS_MARKER = _CACHE_MISS_MARKERS[0]
-_CONCURRENT_WORKERS = 2
-# Long enough for an unserialised second worker to enter its probe, short
-# enough to keep the concurrency test fast.
-_PROBE_WINDOW = 0.3
 pytestmark = pytest.mark.timeout(180)
 
 
@@ -100,69 +91,9 @@ def _copy_sources(destination: Path) -> Path:
     return destination
 
 
-def _environment(root: Path) -> dict[str, str]:
-    """Isolate user-facing paths and reuse the build cache the fixture warms."""
-    # Makefile UV_ENV overrides the setup-uv action's outer cache setting.
-    cache = _ROOT / ".uv-cache"
-    return os.environ | {
-        "UV_CACHE_DIR": str(cache),
-        "UV_PYTHON_DOWNLOADS": "never",
-        "UV_LINK_MODE": "copy",
-        "XDG_DATA_HOME": str(root / "xdg-data"),
-        "XDG_CONFIG_HOME": str(root / "xdg-config"),
-        "DOCUTILSCONFIG": "",
-    }
-
-
 def _venv_python(environment: Path) -> Path:
     """Return the interpreter inside an isolated installation environment."""
     return environment / "bin/python"
-
-
-@dataclasses.dataclass(frozen=True, slots=True)
-class CommandResult:
-    """Capture an external command's exit status and output.
-
-    Attributes
-    ----------
-    returncode : int
-        Exit status reported by the process.
-    stdout : str
-        Captured standard output.
-    stderr : str
-        Captured standard error.
-
-    """
-
-    returncode: int
-    stdout: str
-    stderr: str
-
-    @property
-    def output(self) -> str:
-        """Combined output, so diagnostics survive a failed assertion."""
-        return self.stdout + self.stderr
-
-
-def _run_uv(
-    arguments: tuple[str, ...],
-    cwd: Path,
-    environment: dict[str, str],
-    *,
-    offline: bool = True,
-) -> CommandResult:
-    """Run uv without shell parsing, offline unless a caller is warming the cache."""
-    executable = shutil.which("uv")
-    assert executable is not None, "uv is required for packaging integration tests"
-    prefix = ("--offline",) if offline else ()
-    returncode, stdout, stderr = local[executable].run(
-        (*prefix, *arguments),
-        retcode=None,
-        cwd=cwd,
-        env=environment,
-        timeout=120,
-    )
-    return CommandResult(returncode, stdout, stderr)
 
 
 def _assert_success(result: CommandResult) -> None:
@@ -194,112 +125,6 @@ def _package_metadata(wheel: Path) -> Message:
         )
 
 
-def _build_requirements() -> tuple[str, ...]:
-    """Read the build backends the packaging builds must resolve."""
-    config = tomllib.loads((_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-    return tuple(config["build-system"]["requires"])
-
-
-def _build_backend_probe(root: Path) -> Path:
-    """Write a minimal project that resolves only the build-system requirements.
-
-    Keeping the probe free of the manual-generation hook means a failed probe
-    reports a cache miss rather than a defect in the real build.
-
-    Returns
-    -------
-    Path
-        Root of the generated probe project.
-
-    """
-    project = root / "probe"
-    package = project / "src" / "build_backend_probe"
-    package.mkdir(parents=True)
-    (package / "__init__.py").write_text("", encoding="utf-8")
-    requires = ", ".join(json.dumps(item) for item in _build_requirements())
-    (project / "pyproject.toml").write_text(
-        "\n".join((
-            "[build-system]",
-            f"requires = [{requires}]",
-            'build-backend = "hatchling.build"',
-            "",
-            "[project]",
-            'name = "build-backend-probe"',
-            'version = "0.0.0"',
-            "",
-            "[tool.hatch.build.targets.wheel]",
-            'packages = ["src/build_backend_probe"]',
-            "",
-        )),
-        encoding="utf-8",
-    )
-    return project
-
-
-def _reports_cache_miss(result: CommandResult) -> bool:
-    """Whether an offline uv failure reports a requirement missing from the cache."""
-    return result.returncode != 0 and any(
-        marker in result.output for marker in _CACHE_MISS_MARKERS
-    )
-
-
-type _RunUv = typ.Callable[..., CommandResult]
-type _FileLock = typ.Callable[[int | typ.IO[str], int], None]
-
-
-@dataclasses.dataclass(frozen=True, slots=True)
-class _CacheWarmUpTools:
-    """Injected dependencies for warming the build-backend cache."""
-
-    run_uv: _RunUv = _run_uv
-    file_lock: _FileLock = fcntl.flock
-
-
-_CACHE_WARM_UP_TOOLS = _CacheWarmUpTools()
-
-
-def _warm_backend_cache(
-    cache: Path,
-    work: Path,
-    environment: dict[str, str],
-    *,
-    tools: _CacheWarmUpTools = _CACHE_WARM_UP_TOOLS,
-) -> None:
-    """Prove the build backends resolve offline, warming a cold cache once.
-
-    The lock serialises pytest-xdist workers, which each run a session fixture,
-    so a cold checkout still performs a single online warm-up. Only a reported
-    cache miss permits that online build; any other probe failure keeps its own
-    diagnostic. The probe and measured builds stay offline once cached.
-    """
-    cache.mkdir(parents=True, exist_ok=True)
-    probe = _build_backend_probe(work)
-    run_environment = environment | {"UV_CACHE_DIR": str(cache)}
-    build = ("build", "--python", sys.executable, "--wheel")
-    with (cache / "manpage-build-backends.lock").open("a", encoding="utf-8") as lock:
-        tools.file_lock(lock, fcntl.LOCK_EX)
-        try:
-            failed = tools.run_uv(build, probe, run_environment)
-            if failed.returncode == 0:
-                return
-            assert _reports_cache_miss(failed), (
-                "the build-backend probe failed for a reason other than a "
-                f"missing cache entry:\n{failed.output}"
-            )
-            warmed = tools.run_uv(build, probe, run_environment, offline=False)
-            assert warmed.returncode == 0, (
-                "the build backends must be cached before the offline builds "
-                f"run; warming them failed:\n{warmed.output}"
-            )
-            cached = tools.run_uv(build, probe, run_environment)
-            assert cached.returncode == 0, (
-                "the warmed cache must resolve the build backends offline:\n"
-                f"{cached.output}"
-            )
-        finally:
-            tools.file_lock(lock, fcntl.LOCK_UN)
-
-
 @pytest.fixture(scope="session")
 def build_backends(tmp_path_factory: pytest.TempPathFactory) -> None:
     """Make the build backends resolvable by the module's offline builds.
@@ -312,7 +137,7 @@ def build_backends(tmp_path_factory: pytest.TempPathFactory) -> None:
     offline, so they still prove that building a distribution needs no network.
     """
     root = tmp_path_factory.mktemp("manpage-backends")
-    _warm_backend_cache(_ROOT / ".uv-cache", root, _environment(root))
+    warm_backend_cache(_ROOT / ".uv-cache", root, environment(root))
 
 
 @pytest.fixture(scope="module")
@@ -330,21 +155,21 @@ def distributions(
     """
     root = tmp_path_factory.mktemp("manpage-packaging")
     source = _copy_sources(root / "source")
-    environment = _environment(root)
+    build_environment = environment(root)
     # Stale outputs must never hide a broken or omitted generation command.
     for command in _commands():
         (source / f"docs/man/{command}.1").write_text("stale manual", encoding="utf-8")
     _assert_success(
-        _run_uv(
+        run_uv(
             ("build", "--python", sys.executable, "--sdist", "--wheel"),
             source,
-            environment,
+            build_environment,
         )
     )
     (wheel,) = (source / "dist").glob("*.whl")
     (sdist,) = (source / "dist").glob("*.tar.gz")
     _assert_success(
-        _run_uv(
+        run_uv(
             (
                 "build",
                 "--python",
@@ -355,11 +180,11 @@ def distributions(
                 str(root / "rebuilt"),
             ),
             root,
-            environment,
+            build_environment,
         )
     )
     (rebuilt_wheel,) = (root / "rebuilt").glob("*.whl")
-    return DistributionBuild(root, wheel, sdist, rebuilt_wheel, environment)
+    return DistributionBuild(root, wheel, sdist, rebuilt_wheel, build_environment)
 
 
 def test_wheel_contains_complete_recorded_manpages(
@@ -472,7 +297,7 @@ def test_install_places_and_removes_environment_manpages(
     """Install without promoting files into the user manpath."""
     environment = distributions.root / "environment"
     _assert_success(
-        _run_uv(
+        run_uv(
             ("venv", "--python", sys.executable, str(environment)),
             distributions.root,
             distributions.environment,
@@ -483,7 +308,7 @@ def test_install_places_and_removes_environment_manpages(
     # graph cannot be resolved offline: loctocat requires halo, whose only
     # published wheel targets Python 2.
     _assert_success(
-        _run_uv(
+        run_uv(
             (
                 "pip",
                 "install",
@@ -504,7 +329,7 @@ def test_install_places_and_removes_environment_manpages(
         "installing must not populate the user manpath"
     )
     _assert_success(
-        _run_uv(
+        run_uv(
             ("pip", "uninstall", "--python", str(interpreter), "git-donkey"),
             distributions.root,
             distributions.environment,
@@ -531,216 +356,13 @@ def test_broken_manual_source_fails_the_build(
     else:
         with manual.open("a", encoding="utf-8") as stream:
             stream.write("\n.. nonexistent-manpage-directive::\n")
-    result = _run_uv(
+    result = run_uv(
         ("build", "--python", sys.executable, "--wheel"),
         source,
-        _environment(tmp_path),
+        environment(tmp_path),
     )
     assert result.returncode != 0, f"a {failure} source must fail the build"
     assert "git-donkey.rst" in result.output, "build must name the offending source"
     assert not list((source / "dist").glob("*.whl")), (
         "a failed build must not publish a wheel"
     )
-
-
-def test_backend_probe_declares_the_project_build_system(tmp_path: Path) -> None:
-    """The probe resolves exactly the real build-system requirements."""
-    probe = _build_backend_probe(tmp_path)
-    actual = tomllib.loads((probe / "pyproject.toml").read_text(encoding="utf-8"))
-    expected = tomllib.loads((_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-    assert actual["build-system"] == expected["build-system"], (
-        "the probe must mirror the real build-system table"
-    )
-
-
-def _recording_uv(
-    results: cabc.Iterable[CommandResult],
-    calls: list[bool],
-) -> cabc.Callable[..., CommandResult]:
-    """Return a uv stand-in that records offline flags and yields fixed results."""
-    remaining = iter(results)
-
-    def run(
-        arguments: tuple[str, ...],
-        cwd: Path,
-        environment: dict[str, str],
-        *,
-        offline: bool = True,
-    ) -> CommandResult:
-        """Record the offline flag and return the next fixed result."""
-        calls.append(offline)
-        return next(remaining)
-
-    return run
-
-
-def test_backend_probe_skips_the_online_build_when_backends_are_cached(
-    tmp_path: Path,
-) -> None:
-    """A cache that resolves the backends needs no network access."""
-    calls: list[bool] = []
-    _warm_backend_cache(
-        tmp_path / "cache",
-        tmp_path / "work",
-        {},
-        tools=_CacheWarmUpTools(
-            run_uv=_recording_uv([CommandResult(0, "", "")], calls),
-        ),
-    )
-    assert calls == [True], "a warm cache must only run the offline probe"
-
-
-def test_backend_probe_warms_a_cold_cache_with_one_online_build(
-    tmp_path: Path,
-) -> None:
-    """A cache miss warms online once and then resolves offline."""
-    calls: list[bool] = []
-    results = [
-        CommandResult(2, "", _CACHE_MISS_MARKER),
-        CommandResult(0, "", ""),
-        CommandResult(0, "", ""),
-    ]
-    _warm_backend_cache(
-        tmp_path / "cache",
-        tmp_path / "work",
-        {},
-        tools=_CacheWarmUpTools(run_uv=_recording_uv(results, calls)),
-    )
-    assert calls == [True, False, True], (
-        "a cold cache must probe, warm once, then re-probe offline"
-    )
-
-
-def test_backend_probe_reports_a_failed_warm_up(tmp_path: Path) -> None:
-    """A warm-up failure keeps the cache precondition visible."""
-    calls: list[bool] = []
-    results = [
-        CommandResult(2, "", _CACHE_MISS_MARKER),
-        CommandResult(1, "", "network unreachable"),
-    ]
-    with pytest.raises(AssertionError, match="warming them failed"):
-        _warm_backend_cache(
-            tmp_path / "cache",
-            tmp_path / "work",
-            {},
-            tools=_CacheWarmUpTools(run_uv=_recording_uv(results, calls)),
-        )
-    assert calls == [True, False], (
-        "a failed warm-up must stop before the offline re-probe"
-    )
-
-
-def test_backend_probe_preserves_a_non_cache_failure(tmp_path: Path) -> None:
-    """A probe failure unrelated to the cache is not retried online."""
-    calls: list[bool] = []
-    results = [CommandResult(2, "", "No space left on device")]
-    with pytest.raises(
-        AssertionError,
-        match="reason other than a missing cache entry",
-    ) as caught:
-        _warm_backend_cache(
-            tmp_path / "cache",
-            tmp_path / "work",
-            {},
-            tools=_CacheWarmUpTools(run_uv=_recording_uv(results, calls)),
-        )
-    assert "No space left on device" in str(caught.value), (
-        "a non-cache probe failure must keep its original diagnostic"
-    )
-    assert calls == [True], "only the offline probe may run for a build failure"
-
-
-@pytest.mark.parametrize("message", _CACHE_MISS_MARKERS)
-def test_cache_miss_detection_accepts_both_uv_offline_messages(message: str) -> None:
-    """Both uv offline messages permit the online warm-up."""
-    assert _reports_cache_miss(CommandResult(2, "", message)), (
-        f"uv's offline cache-miss form must be recognised: {message}"
-    )
-
-
-def test_cache_miss_detection_rejects_other_failures() -> None:
-    """A failure without an offline marker keeps its own diagnostic."""
-    assert not _reports_cache_miss(CommandResult(2, "", "No space left on device")), (
-        "a non-cache failure must not be treated as a cache miss"
-    )
-
-
-@dataclasses.dataclass(slots=True)
-class _CacheModel:
-    """Model the shared uv cache and exclusive lock for warm-up tests."""
-
-    calls: list[bool] = dataclasses.field(default_factory=list)
-    cached: bool = False
-    online: int = 0
-    probes: int = 0
-    lock_attempts: int = 0
-    lock: threading.Lock = dataclasses.field(default_factory=threading.Lock)
-    first_probe: threading.Event = dataclasses.field(default_factory=threading.Event)
-    second_locked: threading.Event = dataclasses.field(default_factory=threading.Event)
-
-    def run(
-        self,
-        arguments: tuple[str, ...],
-        cwd: Path,
-        environment: dict[str, str],
-        *,
-        offline: bool = True,
-    ) -> CommandResult:
-        """Model a cache that fills after the first online build."""
-        if offline and not self.cached:
-            with self.lock:
-                self.calls.append(offline)
-                self.probes += 1
-            # Hold the first cold probe open until the other worker is at the
-            # cache lock. Serialised workers block there; unserialised ones
-            # probe during this window, which is what this test must detect.
-            if self.first_probe.is_set():
-                time.sleep(_PROBE_WINDOW)
-                return CommandResult(2, "", _CACHE_MISS_MARKER)
-            self.first_probe.set()
-            assert self.second_locked.wait(timeout=10), (
-                "the other worker must attempt the cache lock"
-            )
-            time.sleep(_PROBE_WINDOW)
-            return CommandResult(2, "", _CACHE_MISS_MARKER)
-        with self.lock:
-            self.calls.append(offline)
-        if offline:
-            return CommandResult(0, "", "")
-        self.cached = True
-        self.online += 1
-        return CommandResult(0, "", "")
-
-    def track_flock(self, descriptor: int | typ.IO[str], operation: int) -> None:
-        """Record an exclusive-lock attempt before it may block."""
-        if operation == fcntl.LOCK_EX:
-            with self.lock:
-                self.lock_attempts += 1
-                if self.lock_attempts == _CONCURRENT_WORKERS:
-                    self.second_locked.set()
-        fcntl.flock(descriptor, operation)
-
-
-def test_backend_probe_warms_once_for_concurrent_workers(tmp_path: Path) -> None:
-    """Workers sharing a cold cache perform one online warm-up."""
-    model = _CacheModel()
-    cache = tmp_path / "cache"
-    with concurrent.futures.ThreadPoolExecutor(max_workers=_CONCURRENT_WORKERS) as pool:
-        futures = [
-            pool.submit(
-                _warm_backend_cache,
-                cache,
-                tmp_path / f"work-{index}",
-                {},
-                tools=_CacheWarmUpTools(
-                    run_uv=model.run,
-                    file_lock=model.track_flock,
-                ),
-            )
-            for index in range(_CONCURRENT_WORKERS)
-        ]
-        for future in futures:
-            future.result(timeout=60)
-    assert model.probes == 1, "a worker must not probe while the lock is held"
-    assert model.online == 1, "concurrent workers must warm the cache once"
-    assert model.calls.count(False) == 1, "only the warm-up may run online"
