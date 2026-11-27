@@ -51,6 +51,7 @@ transfer them with the bundle, and pass both to the verifier:
 gh attestation trusted-root > trusted_root.jsonl
 gh attestation verify git_donkey-1.2.3-py3-none-any.whl \
   --repo leynos/git-donkey \
+  --signer-workflow leynos/git-donkey/.github/workflows/release.yml \
   --bundle git-donkey-v1.2.3-run7-1.attestations.jsonl \
   --custom-trusted-root trusted_root.jsonl
 ```

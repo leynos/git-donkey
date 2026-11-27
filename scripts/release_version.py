@@ -7,10 +7,12 @@
 
 ``release.yml`` runs this in its ``check-version`` job: the tag's version,
 with one leading ``v`` removed, must equal the declared string exactly, and the
-step reports whether the version is a pre-release. It uses the runner's
-preinstalled ``python3`` and the standard library only, as the other release
-helpers do and for the same reason: no third-party code is resolved in the
-release path.
+step reports whether the version is a pre-release. Packaging requires the
+declared version to be a PEP 440 version, so the pre-release classification
+follows PEP 440 labels; another spelling cannot match the manifest. It uses
+the runner's preinstalled ``python3`` and the standard library only, as the
+other release helpers do and for the same reason: no third-party code is
+resolved in the release path.
 
 Examples
 --------
@@ -32,8 +34,8 @@ if typ.TYPE_CHECKING:
 
 #: Every PEP 440 label, longest spelling first, so a left-to-right scan splits
 #: a run of letters as PEP 440 does: ``1adev3`` reads as ``a`` then ``dev``,
-#: and ``preview`` never as ``pre``. SemVer ``0.2.0-beta.1`` uses the same
-#: labels.
+#: and ``preview`` never as ``pre``. A hyphenated spelling such as
+#: ``0.2.0-beta1`` uses the same labels.
 _LABEL = re.compile(r"preview|alpha|beta|post|pre|rev|dev|rc|a|b|c|r")
 #: The labels that make a pre-release or development release; the others
 #: (``post``, ``rev``, ``r``) spell a post-release.
@@ -57,7 +59,7 @@ def is_prerelease(version: str) -> bool:
     Parameters
     ----------
     version : str
-        A release version in SemVer or PEP 440 spelling.
+        A PEP 440 release version, as ``pyproject.toml`` declares.
 
     Returns
     -------
