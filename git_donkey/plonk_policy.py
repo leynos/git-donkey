@@ -229,14 +229,15 @@ def _merge_commit_pattern(branch_name: str) -> re.Pattern[str]:
 
 
 def _is_branch_boundary(character: str) -> bool:
-    """Return whether ``character`` can end a branch-name token."""
+    """Return whether ``character`` can end a branch-name token by itself."""
     if not character:
         return True
-    return (
-        character.isspace()
-        or character in _PROSE_QUOTES
-        or character in _FORBIDDEN_REF_CHARS
-    )
+    return character.isspace() or character in _FORBIDDEN_REF_CHARS
+
+
+def _is_quoted_pair(before: str, after: str) -> bool:
+    """Return whether ``before`` and ``after`` are a matching prose quote pair."""
+    return before == after and before in _PROSE_QUOTES
 
 
 def _mentions_branch(message: str, branch_name: str) -> bool:
@@ -246,7 +247,8 @@ def _mentions_branch(message: str, branch_name: str) -> bool:
         before = message[index - 1] if index else ""
         after_index = index + len(branch_name)
         after = message[after_index] if after_index < len(message) else ""
-        if _is_branch_boundary(before) and _is_branch_boundary(after):
+        plain_boundary = _is_branch_boundary(before) and _is_branch_boundary(after)
+        if plain_boundary or _is_quoted_pair(before, after):
             return True
         start = index + 1
     return False

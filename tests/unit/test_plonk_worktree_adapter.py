@@ -20,7 +20,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from git import Repo
+from git import GitCommandError, Repo
 
 from git_donkey import plonk, plonk_adapters, plonk_records
 from tests import git_repo_helpers
@@ -262,6 +262,20 @@ def test_upstream_state_uses_the_last_remote_value(tmp_path: Path) -> None:
     )
 
 
+def test_upstream_state_preserves_unicode_line_separator(tmp_path: Path) -> None:
+    """Git permits U+2028 in refs, so records must split on LF only."""
+    repo, _remote_path, branch = _repository_with_tracking(tmp_path, "unset")
+    exotic = f"{branch}\u2028next"
+    repo.git.branch(exotic)
+    repo.git.push("origin", f"{exotic}:refs/heads/{exotic}")
+    repo.git.config(f"branch.{branch}.remote", "origin")
+    repo.git.config(f"branch.{branch}.merge", f"refs/heads/{exotic}")
+
+    state = plonk._GitWorktreeAdapter(repo).upstream_state(branch)
+
+    assert state == "present", "expected the full ref containing U+2028 to be queried"
+
+
 def test_preflight_ignores_inherited_repository_location(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -286,6 +300,26 @@ def test_preflight_ignores_inherited_repository_location(
     assert reason is None, (
         "expected the preflight to inspect the clean candidate, not the "
         "repository location inherited from the invoking hook"
+    )
+
+
+def test_preflight_reports_an_unreadable_state_as_a_skip(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A failed dirty check must not abort the cleanup batch."""
+    repo, worktree_path = _worktree_with_dirt(tmp_path, "clean")
+
+    def fail_is_dirty(self: Repo, **kwargs: object) -> bool:
+        """Simulate a Git failure while reading the candidate's status."""
+        raise GitCommandError(["git", "status"], 128)
+
+    monkeypatch.setattr(Repo, "is_dirty", fail_is_dirty)
+
+    reason = plonk._GitWorktreeAdapter(repo).skip_reason(worktree_path)
+
+    assert reason is plonk_records._SkipReason.UNREADABLE, (
+        "expected an unreadable worktree state to be reported as a skip"
     )
 
 

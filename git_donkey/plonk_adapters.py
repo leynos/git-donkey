@@ -125,7 +125,7 @@ class _GitWorktreeAdapter:
     @staticmethod
     def _mentions_exact_ref(output: str, ref: str) -> bool:
         """Return whether ``git ls-remote`` output names ``ref`` exactly."""
-        return any(line.rpartition("\t")[2] == ref for line in output.splitlines())
+        return any(line.rpartition("\t")[2] == ref for line in output.split("\n"))
 
     def _ls_remote_state(self, remote: str, merge_ref: str) -> UpstreamState:
         """Return the upstream state a bounded ``ls-remote`` reports."""
@@ -186,9 +186,13 @@ class _GitWorktreeAdapter:
             # `--get` returns the effective (last) remote; Git reads the first
             # merge value for @{upstream}, so that list keeps its order.
             remote = self.repo.git.config("--get", f"branch.{branch_name}.remote")
-            merges = self.repo.git.config(
-                "--get-all", f"branch.{branch_name}.merge"
-            ).splitlines()
+            merges = [
+                line
+                for line in self.repo.git.config(
+                    "--get-all", f"branch.{branch_name}.merge"
+                ).split("\n")
+                if line
+            ]
         except GitCommandError as exc:
             return "unset" if exc.status == _CONFIG_KEY_UNSET_STATUS else "unknown"
         merge_ref = merges[0] if merges else ""
@@ -239,6 +243,10 @@ class _GitWorktreeAdapter:
                         return _SkipReason.DIRTY
             except (InvalidGitRepositoryError, NoSuchPathError):
                 return _SkipReason.UNAVAILABLE
+            except GitCommandError:
+                # An unreadable index or worktree state must not abort the
+                # batch; report it as a skip and continue with the next one.
+                return _SkipReason.UNREADABLE
             return None
 
     def remove_worktree(self, worktree_path: Path) -> bool:

@@ -33,9 +33,9 @@ _GH_PROMPT_DISABLED_ENV = "GH_PROMPT_DISABLED"
 _GH_HOST_ENV = "GH_HOST"
 _GH_FIELDS = "number,headRefName,baseRefName,headRepositoryOwner"
 _GH_MISSING_STATUS = 127
-# A small page lets the local identity filter see past a fork's same-named
-# branch without asking for an unbounded result set.
-_GH_RESULT_LIMIT = 10
+# A bounded page lets the local identity filter see past same-named fork
+# branches without unbounded pagination. 100 is the REST API's maximum page.
+_GH_RESULT_LIMIT = 100
 _GITHUB_HOST = "github.com"
 # GitHub serves SSH from a dedicated host on port 443 for networks that block
 # port 22; a remote using it still names the same repository.
@@ -46,20 +46,24 @@ _INVALID_PATH_COMPONENTS = frozenset({".", ".."})
 _VALID_PATH_COMPONENT = re.compile(r"^[A-Za-z0-9_.-]+$")
 _REPOSITORY_NAME = r"(?P<name>[^/]+?)(?:\.git)?"
 _OWNER = r"(?P<owner>[^/]+)"
-_GITHUB_URL_PATTERNS = (
-    re.compile(rf"^git@{re.escape(_GITHUB_HOST)}:{_OWNER}/{_REPOSITORY_NAME}$"),
-    re.compile(
-        rf"^ssh://git@{re.escape(_GITHUB_HOST)}(?::\d+)?/{_OWNER}/{_REPOSITORY_NAME}$"
-    ),
-    re.compile(
-        rf"^ssh://git@{re.escape(_GITHUB_SSH_HOST)}(?::\d+)?/"
-        rf"{_OWNER}/{_REPOSITORY_NAME}$"
-    ),
-    re.compile(rf"^git://{re.escape(_GITHUB_HOST)}/{_OWNER}/{_REPOSITORY_NAME}$"),
-    re.compile(
-        rf"^https?://(?:[^@/]+@)?{re.escape(_GITHUB_HOST)}(?::(?:80|443))?/"
-        rf"{_OWNER}/{_REPOSITORY_NAME}/?$"
-    ),
+_GITHUB_URL_PATTERNS = tuple(
+    re.compile(pattern, re.IGNORECASE)
+    for pattern in (
+        rf"^git@{re.escape(_GITHUB_HOST)}:{_OWNER}/{_REPOSITORY_NAME}$",
+        (
+            rf"^ssh://git@{re.escape(_GITHUB_HOST)}(?::\d+)?/"
+            rf"{_OWNER}/{_REPOSITORY_NAME}$"
+        ),
+        (
+            rf"^ssh://git@{re.escape(_GITHUB_SSH_HOST)}(?::\d+)?/"
+            rf"{_OWNER}/{_REPOSITORY_NAME}$"
+        ),
+        rf"^git://{re.escape(_GITHUB_HOST)}/{_OWNER}/{_REPOSITORY_NAME}$",
+        (
+            rf"^https?://(?:[^@/]+@)?{re.escape(_GITHUB_HOST)}(?::(?:80|443))?/"
+            rf"{_OWNER}/{_REPOSITORY_NAME}/?$"
+        ),
+    )
 )
 
 type _LookupState = typ.Literal["merged", "not_merged", "unknown"]

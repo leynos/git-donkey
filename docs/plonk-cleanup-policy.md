@@ -143,8 +143,8 @@ outcome is unknown. A branch with no configured upstream is `unset`.
 Only `gone` is completion evidence. `unset`, `present`, and `unknown` leave the
 candidate unverified, and the summary preserves the distinction. The tier is
 opt-in because a deleted branch cannot distinguish a merged change from an
-abandoned one; it is an offline approximation, not proof. The flag is not valid
-with `--soft`.
+abandoned one; it is a heuristic, not proof. The flag is not valid with
+`--soft`.
 
 ### Unverified reasons
 
@@ -174,6 +174,8 @@ vocabulary:
 
 - `uncommitted changes`: the worktree exists and Git refuses to remove it.
 - `worktree directory is missing`: the recorded path is not a worktree.
+- `worktree state could not be read`: the preflight could not query Git, so
+  the worktree is left alone and the sweep continues.
 - `worktree removal failed`: Git refused for another reason; the refusal is
   also reported on stderr and logged.
 

@@ -303,13 +303,14 @@ def test_verbatim_issue_branch_in_a_commit_message_completes_it() -> None:
     ], "expected the verbatim branch name to complete the issue branch"
 
 
-def test_verbatim_branch_in_prose_quotes_completes_it() -> None:
-    """Backticks are a supported prose boundary around an exact branch name."""
+@pytest.mark.parametrize("quote", ["`", '"', "'"])
+def test_verbatim_branch_in_prose_quotes_completes_it(quote: str) -> None:
+    """A matching prose quote pair is a supported exact-name boundary."""
     candidate = _issue_candidate()
 
     completed = plonk_policy.completed_candidates(
         [candidate],
-        [f"Merge `{_ISSUE_BRANCH}` into main"],
+        [f"Merge {quote}{_ISSUE_BRANCH}{quote} into main"],
     )
 
     assert completed == [
@@ -330,6 +331,7 @@ def test_verbatim_branch_in_prose_quotes_completes_it() -> None:
         pytest.param(f"{_ISSUE_BRANCH}@v2", id="at-suffix"),
         pytest.param(f"{_ISSUE_BRANCH}!retry", id="bang-suffix"),
         pytest.param(f"{_ISSUE_BRANCH}.v2", id="dot-suffix"),
+        pytest.param(f"{_ISSUE_BRANCH}'follow-up", id="unpaired-quote-suffix"),
     ],
 )
 def test_verbatim_branch_matcher_is_bounded(message: str) -> None:

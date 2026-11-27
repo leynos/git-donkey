@@ -105,6 +105,12 @@ _EXPECTED_ARGUMENTS = [
             id="https-explicit-default-port",
         ),
         pytest.param(
+            "https://GitHub.com/leynos/git-donkey.git",
+            "leynos",
+            "git-donkey",
+            id="mixed-case-host",
+        ),
+        pytest.param(
             "https://token@github.com/leynos/git-donkey.git",
             "leynos",
             "git-donkey",

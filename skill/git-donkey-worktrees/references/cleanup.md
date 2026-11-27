@@ -59,8 +59,10 @@ The check protects only what Git itself would refuse to discard:
 - Committed but unpushed commits do not protect a worktree. Default mode keeps
   the branch, so those commits survive on it; hard mode does not.
 - A registered worktree whose directory is missing is skipped with the reason
-  `worktree directory is missing`. Any other refusal during removal is reported
-  as `worktree removal failed`, and the worktree stays registered.
+  `worktree directory is missing`. A status query that cannot read Git state is
+  skipped as `worktree state could not be read`, and the sweep continues. Any
+  other refusal during removal is reported as `worktree removal failed`, and
+  the worktree stays registered.
 
 Hard mode deletes a branch only after its worktree was removed, using
 `git branch -D`. That deletion performs no merged or ancestry check, so a

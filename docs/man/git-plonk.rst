@@ -170,7 +170,8 @@ Remove completed worktrees after reviewing the preview::
 
     git plonk
 
-Disable the GitHub fallback for a sweep that must stay offline::
+Disable the GitHub merged-pull-request lookup (the advertised trunk is
+still fetched)::
 
     git plonk --no-github
 
