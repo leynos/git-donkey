@@ -155,18 +155,18 @@ reconciliation PyPI already requires:
 - `stage-github` refuses a name that PyPI's index does not list, so every
   missing release asset is the byte sequence PyPI serves rather than this run's
   rebuild.
-- After the distributions are uploaded, `publish-release` assembles a
-  run-unique `git-donkey-<tag>-run<run_id>-<attempt>.attestations.jsonl` bundle
-  from the attestation store for every distribution the release now holds. The
-  attached bundle therefore attests carried bytes as well as this run's build;
-  the `attest` job's bundle remains in the run artefact and the attestation
-  store. Before assembling, it verifies every distribution, including one
-  carried from an earlier run, against this repository, `release.yml`, the tag,
-  and the triggering commit, so a moved tag cannot publish assets built for
-  another commit.
-- A rerun that finds every name published and a bundle attached stages and
-  uploads nothing, and `publish-release` edits nothing because the release is
-  already visible with the right pre-release flag.
+- After the distributions are uploaded, `publish-release` verifies every
+  distribution the release holds, including one carried from an earlier run,
+  against this repository, `release.yml`, the tag, and the triggering commit.
+  It then assembles a run-unique
+  `git-donkey-<tag>-run<run_id>-<attempt>.attestations.jsonl` bundle from the
+  attestation store for every distribution, and replaces the attached bundle
+  whenever it does not cover every distribution. The `attest` job's bundle
+  remains in the run artefact and the attestation store.
+- A rerun that finds every name published and a covering bundle attached
+  stages and uploads nothing, and `publish-release` edits nothing because the
+  release is already visible with the right pre-release flag; it still verifies
+  the release's provenance read-only.
 
 ### Least privilege and the `pypi` environment
 
@@ -204,13 +204,13 @@ build backend does not produce.
 
 `scripts/release_assets_cli.py`, `scripts/release_version.py`,
 `scripts/release_gh_version.py`, `scripts/release_assets.py`,
-`scripts/release_github_upload.py`, and `scripts/release_provenance.py` use
-only the Python standard library. They run under the runner's preinstalled
-`python3`, not through `uv run`, because `publish-pypi` holds the PyPI OIDC
-credential and must not resolve any third-party package while it is live. This
-is a deliberate, documented exception to
-[scripting standards](../scripting-standards.md). Every network call stays in
-the workflow's own `curl` and `gh` steps.
+`scripts/release_github_upload.py`, `scripts/release_bundle.py`, and
+`scripts/release_provenance.py` use only the Python standard library. They run
+under the runner's preinstalled `python3`, not through `uv run`, because
+`publish-pypi` holds the PyPI OIDC credential and must not resolve any
+third-party package while it is live. This is a deliberate, documented
+exception to [scripting standards](../scripting-standards.md). Every network
+call stays in the workflow's own `curl` and `gh` steps.
 
 ### The 0.2.0 restriction
 

@@ -428,11 +428,28 @@ def test_pypi_bytes_are_verified_before_the_release_upload() -> None:
 
 
 def test_the_attached_bundle_covers_the_published_bytes() -> None:
-    """The bundle is assembled from the store after the distributions upload."""
-    assembly = step("publish-release", _ASSEMBLY_STEP)
-    assert assembly["if"] == "steps.stage.outputs.pending == 'true'", (
-        "the bundle is assembled only when a distribution or bundle is missing"
+    """The bundle is verified and assembled from the store after upload."""
+    coverage = step("publish-release", "Check the attached bundle coverage")
+    assert coverage["id"] == "coverage", "the coverage result feeds the assembly"
+    coverage_script = step_script(
+        "publish-release", "Check the attached bundle coverage"
     )
+    for fragment in (
+        "gh release download",
+        "bundle-coverage",
+        "--bundles release-bundles",
+    ):
+        assert fragment in coverage_script, (
+            f"the coverage check must include {fragment!r}"
+        )
+    assembly = step("publish-release", _ASSEMBLY_STEP)
+    assert "if" not in assembly, (
+        "the assembly must verify existing distributions on every run"
+    )
+    assert assembly["env"] == {
+        "PENDING": "${{ steps.stage.outputs.pending }}",
+        "COVERED": "${{ steps.coverage.outputs.covered }}",
+    }, "the assembly must know whether the bundle needs rebuilding"
     script = step_script("publish-release", _ASSEMBLY_STEP)
     for fragment in (
         "gh attestation verify",
@@ -442,6 +459,7 @@ def test_the_attached_bundle_covers_the_published_bytes() -> None:
         "--predicate-type https://slsa.dev/provenance/v1",
         'gh release download "${GITHUB_REF_NAME}"',
         ".attestations.jsonl",
+        'if [ "${PENDING}" = true ] || [ "${COVERED}" = false ]; then',
         'gh release upload "${GITHUB_REF_NAME}" "${bundle}"',
     ):
         assert fragment in script, f"the bundle assembly must include {fragment!r}"
@@ -453,6 +471,11 @@ def test_the_attached_bundle_covers_the_published_bytes() -> None:
         "the distribution upload must run only when files were staged"
     )
     names = [item.get("name") for item in _job("publish-release")["steps"]]
+    assert (
+        names.index("List the release assets")
+        < names.index("Check the attached bundle coverage")
+        < names.index("Stage the assets the release lacks")
+    ), "coverage must be known before staging decides whether to rebuild"
     assert (
         names.index("Upload the assets the release lacks")
         < names.index(_ASSEMBLY_STEP)

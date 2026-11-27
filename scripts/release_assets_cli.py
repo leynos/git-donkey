@@ -14,8 +14,9 @@ release time, and every network call stays in the workflow's ``curl`` and
 Cyclopts and Python 3.13 defaults. Each subcommand is one step of
 ``release.yml``: ``carryover`` and ``release-complete`` (``draft-release``),
 ``stage-pypi`` (``publish-pypi``), then ``stage-github``, ``check-fetched``,
-``check-provenance``, and ``verify`` (``publish-release``). The reconciliation
-logic itself lives in ``scripts/release_assets.py`` and
+``check-provenance``, ``bundle-coverage``, and ``verify``
+(``publish-release``). The reconciliation logic itself lives in
+``scripts/release_assets.py``, ``scripts/release_bundle.py``, and
 ``scripts/release_github_upload.py``; this module only wires it to ``argparse``
 and the workflow's ``GITHUB_OUTPUT`` protocol.
 """
@@ -36,6 +37,7 @@ from scripts.release_assets import (
     verify,
     write_output,
 )
+from scripts.release_bundle import read_bundle_subjects, uncovered
 from scripts.release_github_upload import (
     check_fetched,
     check_provenance,
@@ -55,6 +57,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--index", type=Path)
     parser.add_argument("--github-files", type=Path)
     parser.add_argument("--provenance", type=Path)
+    parser.add_argument("--bundles", type=Path)
     parser.add_argument("--output", type=Path)
     return parser
 
@@ -136,6 +139,16 @@ def _release_complete(state: State, args: argparse.Namespace) -> None:
     write_output("complete", value=not problems)
 
 
+def _bundle_coverage(state: State, args: argparse.Namespace) -> None:
+    """Report whether the attached bundle covers every release distribution."""
+    bundles = _path(args, "bundles")
+    paths = sorted(bundles.iterdir()) if bundles.is_dir() else []
+    missing = uncovered(state.github, read_bundle_subjects(paths))
+    for name in missing:
+        print(f"::notice::{name} is not covered by the attached bundle")
+    write_output("covered", value=not missing)
+
+
 _COMMANDS: dict[str, cabc.Callable[[State, argparse.Namespace], None]] = {
     "carryover": _carryover,
     "stage-pypi": _stage_pypi,
@@ -144,6 +157,7 @@ _COMMANDS: dict[str, cabc.Callable[[State, argparse.Namespace], None]] = {
     "check-provenance": _check_provenance,
     "verify": _verify,
     "release-complete": _release_complete,
+    "bundle-coverage": _bundle_coverage,
 }
 
 

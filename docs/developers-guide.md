@@ -105,10 +105,11 @@ The job graph is:
 5. `publish-pypi` runs in the `pypi` environment and uploads only the names
    PyPI lacks through Trusted Publishing.
 6. `publish-release` gives the GitHub Release the names it lacks, takes PyPI's
-   bytes for any name PyPI already holds, assembles a provenance bundle for
-   every published distribution from the attestation store, verifies that both
-   destinations hold the same digests and that the bundle is attached, and then
-   makes the release visible.
+   bytes for any name PyPI already holds, verifies every distribution's
+   provenance for this tag and commit, and assembles or rebuilds a bundle that
+   covers every published distribution from the attestation store. It then
+   verifies that both destinations hold the same digests and that the bundle is
+   attached, and makes the release visible.
 
 `make build-release` runs the same `uv build` locally, so a contributor can
 inspect both distributions. Only the workflow publishes; never upload a

@@ -56,6 +56,7 @@ _UPLOAD_STEP = "Upload the assets the release lacks"
 _PRE_PROVENANCE = (
     "Fetch the PyPI index",
     "List the release assets",
+    "Check the attached bundle coverage",
     "Stage the assets the release lacks",
     "Check the fetched PyPI bytes",
 )
@@ -117,8 +118,17 @@ def _publish_release(fake: FakeRelease, *, verify: bool = True) -> pth.Path:
     written = outputs(cwd / "output")
     if written["files"] == "true":
         _step("publish-release", _UPLOAD_STEP, cwd, env)
-    if written["pending"] == "true":
-        _step("publish-release", _ASSEMBLY_STEP, cwd, env)
+    if written["pending"] == "true" or written["covered"] == "false":
+        _step(
+            "publish-release",
+            _ASSEMBLY_STEP,
+            cwd,
+            {
+                **env,
+                "PENDING": written["pending"],
+                "COVERED": written["covered"],
+            },
+        )
     if verify:
         _step(
             "publish-release", "Check both destinations hold the same bytes", cwd, env
@@ -312,6 +322,7 @@ def test_a_rerun_after_success_uploads_nothing(fake: FakeRelease) -> None:
     written = outputs(cwd / "output")
     assert written["files"] == "false", "the release must need no distributions"
     assert written["pending"] == "false", "the release must need no bundle"
+    assert written["covered"] == "true", "the attached bundle must cover every file"
     assert not any(call[:2] == ["release", "upload"] for call in fake.calls("gh")), (
         "a fully published re-run must not upload"
     )
@@ -357,7 +368,11 @@ def test_an_existing_asset_from_another_commit_stops_publication(
     for name in _PRE_PROVENANCE:
         _step("publish-release", name, cwd, env)
 
-    completed = run_bash(step_script("publish-release", _ASSEMBLY_STEP), cwd, env)
+    completed = run_bash(
+        step_script("publish-release", _ASSEMBLY_STEP),
+        cwd,
+        {**env, "PENDING": "false", "COVERED": "false"},
+    )
 
     assert completed.returncode != 0, (
         "an asset attested for another commit must stop publication"
@@ -376,12 +391,14 @@ def test_bytes_that_do_not_match_the_index_are_never_uploaded(
     """A PyPI download whose digest differs from the index stops the upload."""
     _draft_and_publish_pypi(fake)
     cwd, env = _job_directory(fake, "publish-release")
-    for name in _PUBLISH_STEPS[:2]:
+    for name in _PRE_PROVENANCE[:3]:
         _step("publish-release", name, cwd, env)
     (fake.pypi / _PYPI_ONLY).write_bytes(b"tampered in transit")
-    _step("publish-release", _PUBLISH_STEPS[2], cwd, env)
+    _step("publish-release", "Stage the assets the release lacks", cwd, env)
 
-    completed = run_bash(step_script("publish-release", _PUBLISH_STEPS[3]), cwd, env)
+    completed = run_bash(
+        step_script("publish-release", "Check the fetched PyPI bytes"), cwd, env
+    )
 
     assert completed.returncode != 0, "a download must match PyPI's digest"
     assert _PYPI_ONLY in completed.stderr, "the failure must name the file"

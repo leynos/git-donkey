@@ -28,11 +28,13 @@ second upload of an existing asset name fails, as ``gh`` does without
 
 from __future__ import annotations
 
+import base64
 import json
 import os
 import shutil
 import sys
 import typing as typ
+from fnmatch import fnmatch
 from pathlib import Path
 
 from tests.release_asset_provenance import sha256_hex
@@ -114,15 +116,17 @@ def _gh_upload(files: list[str]) -> int:
 
 
 def _gh_download(args: list[str]) -> int:
-    """Copy the asset ``--pattern`` names into ``--dir``."""
+    """Copy the assets ``--pattern`` matches into ``--dir``."""
     pattern = args[args.index("--pattern") + 1]
     target = Path(args[args.index("--dir") + 1])
-    source = _directory("FAKE_GITHUB_ASSETS") / pattern
-    if not source.exists():
+    assets = _directory("FAKE_GITHUB_ASSETS")
+    matches = sorted(path for path in assets.iterdir() if fnmatch(path.name, pattern))
+    if not matches:
         print(f"asset {pattern} not found", file=sys.stderr)
         return 1
     target.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(source, target / pattern)
+    for source in matches:
+        shutil.copyfile(source, target / source.name)
     return 0
 
 
@@ -222,6 +226,20 @@ def _verification_output(records: list[dict[str, object]]) -> str:
     return json.dumps(result)
 
 
+def _bundle_line(record: dict[str, object]) -> str:
+    """Render one attestation as a Sigstore-shaped JSON-lines bundle."""
+    statement = {
+        "subject": [
+            {
+                "name": record.get("subject_name"),
+                "digest": {"sha256": record["sha256"]},
+            }
+        ]
+    }
+    payload = base64.b64encode(json.dumps(statement).encode()).decode()
+    return json.dumps({"dsseEnvelope": {"payload": payload}})
+
+
 def _gh_attestation_download(args: list[str]) -> int:
     """Write the fake attestation records for one artefact as a JSONL bundle."""
     asset = Path(args[2])
@@ -232,7 +250,7 @@ def _gh_attestation_download(args: list[str]) -> int:
         return 1
     target = Path(f"sha256-{digest}.jsonl")
     target.write_text(
-        "\n".join(json.dumps(record) for record in records) + "\n",
+        "\n".join(_bundle_line(record) for record in records) + "\n",
         encoding="utf-8",
     )
     return 0

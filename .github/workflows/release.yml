@@ -387,6 +387,19 @@ jobs:
         run: |
           set -euo pipefail
           gh release view "${GITHUB_REF_NAME}" --json assets > release-assets.json
+      # A combined bundle can exist and still omit a distribution a later run
+      # added. Coverage, not mere existence, decides whether it must be rebuilt.
+      - name: Check the attached bundle coverage
+        id: coverage
+        run: |
+          set -euo pipefail
+          mkdir -p release-bundles
+          if jq -e '.assets[] | select(.name | endswith(".attestations.jsonl") or endswith(".sigstore.json"))' release-assets.json > /dev/null; then
+            gh release download "${GITHUB_REF_NAME}" --pattern '*.attestations.jsonl' --dir release-bundles || true
+            gh release download "${GITHUB_REF_NAME}" --pattern '*.sigstore.json' --dir release-bundles || true
+          fi
+          python3 -m scripts.release_assets_cli bundle-coverage --publish dist/publish \
+            --assets release-assets.json --bundles release-bundles
       # Every missing name is fetched from PyPI, whose bytes are canonical. A
       # fully published re-run stages nothing, so the upload steps below are
       # skipped and the release is unchanged.
@@ -457,7 +470,9 @@ jobs:
       # published re-run skips this step and keeps its existing bundle.
       - name: Assemble the release attestations
         id: attestations
-        if: steps.stage.outputs.pending == 'true'
+        env:
+          PENDING: ${{ steps.stage.outputs.pending }}
+          COVERED: ${{ steps.coverage.outputs.covered }}
         run: |
           set -euo pipefail
           gh release view "${GITHUB_REF_NAME}" --json assets > release-assets.json
@@ -488,9 +503,11 @@ jobs:
             cat "${work}"/*.jsonl >> assembled-attestations/bundles.jsonl
             rm -rf "${work}"
           done
-          bundle="git-donkey-${GITHUB_REF_NAME}-run${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.attestations.jsonl"
-          cp assembled-attestations/bundles.jsonl "${bundle}"
-          gh release upload "${GITHUB_REF_NAME}" "${bundle}"
+          if [ "${PENDING}" = true ] || [ "${COVERED}" = false ]; then
+            bundle="git-donkey-${GITHUB_REF_NAME}-run${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.attestations.jsonl"
+            cp assembled-attestations/bundles.jsonl "${bundle}"
+            gh release upload "${GITHUB_REF_NAME}" "${bundle}"
+          fi
       - name: Check both destinations hold the same bytes
         id: verify
         run: |

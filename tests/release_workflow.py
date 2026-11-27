@@ -307,6 +307,8 @@ class FakeRelease:
             "GITHUB_RUN_ID": "7",
             "GITHUB_RUN_ATTEMPT": "1",
             "IS_PRERELEASE": "false",
+            "PENDING": "false",
+            "COVERED": "false",
             "GH_REPO": _DEFAULT_REPOSITORY,
             **extra,
         }

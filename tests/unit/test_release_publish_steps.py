@@ -247,6 +247,23 @@ def test_the_index_dependent_commands_require_the_index(
     )
 
 
+def test_bundle_coverage_requires_the_bundle_directory(tmp_path: pth.Path) -> None:
+    """The coverage check cannot silently treat a missing directory as clear."""
+    link_scripts(tmp_path)
+    _touch(tmp_path / "dist" / "publish", *_ARTEFACTS, _SDIST)
+    (tmp_path / "assets.json").write_text('{"assets": []}', encoding="utf-8")
+    completed = run_bash(
+        "python3 -m scripts.release_assets_cli bundle-coverage "
+        "--publish dist/publish --assets assets.json",
+        tmp_path,
+    )
+
+    assert completed.returncode == 1, "bundle-coverage must reject a missing path"
+    assert "--bundles is required for bundle-coverage" in completed.stderr, (
+        "the CLI must explain that the bundle directory is required"
+    )
+
+
 def test_a_transient_failure_is_retried_and_counted(tmp_path: pth.Path) -> None:
     """A 503 then a 429 then a 200 succeeds on the third attempt."""
     fake, completed, written = _fetch_and_skip(tmp_path, "503,429,200")
