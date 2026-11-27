@@ -264,29 +264,26 @@ def _run_gh(arguments: typ.Sequence[str]) -> subprocess.CompletedProcess[str]:
     )
 
 
-def _payload_is_matching(
+def _matching_pull_request_number(
     record: object,
     query: _PullRequestQuery,
-) -> bool:
-    """Return whether one JSON record matches ``query`` exactly."""
-    if not isinstance(record, dict):
-        return False
-    record_map = typ.cast("dict[str, object]", record)
-    owner = record_map.get("headRepositoryOwner")
-    number = record_map.get("number")
-    if not isinstance(owner, dict):
-        return False
-    owner_map = typ.cast("dict[str, object]", owner)
-    login = owner_map.get("login")
-    return (
-        record_map.get("headRefName") == query.head_branch
-        and record_map.get("baseRefName") == query.base_branch
-        and isinstance(login, str)
-        and login.casefold() == query.owner.casefold()
-        and isinstance(number, int)
-        and not isinstance(number, bool)
-        and number > 0
-    )
+) -> int | None:
+    """Return the PR number when ``record`` matches every identity field."""
+    match record:
+        case {
+            "number": int() as number,
+            "headRefName": str() as head,
+            "baseRefName": str() as base,
+            "headRepositoryOwner": {"login": str() as login},
+        }:
+            if isinstance(number, bool) or number <= 0:
+                return None
+            if head != query.head_branch or base != query.base_branch:
+                return None
+            if login.casefold() != query.owner.casefold():
+                return None
+            return number
+    return None
 
 
 def _pull_request_from_payload(
@@ -302,11 +299,9 @@ def _pull_request_from_payload(
     # owner, so select the first record that matches every identity field
     # instead of rejecting the page on its first row.
     for record in payload:
-        if not _payload_is_matching(record, query):
-            continue
-        record_map = typ.cast("dict[str, object]", record)
-        number = record_map["number"]
-        return _MergedPullRequest("merged", typ.cast("int", number))
+        number = _matching_pull_request_number(record, query)
+        if number is not None:
+            return _MergedPullRequest("merged", number)
     return _MergedPullRequest("unknown")
 
 
@@ -345,6 +340,8 @@ def merged_pull_request(
         return _MergedPullRequest("unknown")
     try:
         payload = json.loads(completed.stdout)
-    except json.JSONDecodeError:
+    except (ValueError, RecursionError):
+        # JSONDecodeError is a ValueError; the integer conversion limit and
+        # deeply nested input are the other ways malformed output can fail.
         return _MergedPullRequest("unknown")
     return _pull_request_from_payload(payload, query)

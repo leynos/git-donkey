@@ -303,16 +303,30 @@ def test_preflight_ignores_inherited_repository_location(
     )
 
 
+@pytest.mark.parametrize(
+    "error",
+    [
+        pytest.param(
+            GitCommandError(["git", "status"], 128),
+            id="git-command-error",
+        ),
+        pytest.param(
+            UnicodeEncodeError("ascii", "é", 0, 1, "ordinal not in range"),
+            id="encoding-error",
+        ),
+    ],
+)
 def test_preflight_reports_an_unreadable_state_as_a_skip(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    error: Exception,
 ) -> None:
     """A failed dirty check must not abort the cleanup batch."""
     repo, worktree_path = _worktree_with_dirt(tmp_path, "clean")
 
     def fail_is_dirty(self: Repo, **kwargs: object) -> bool:
-        """Simulate a Git failure while reading the candidate's status."""
-        raise GitCommandError(["git", "status"], 128)
+        """Simulate a failure while reading the candidate's status."""
+        raise error
 
     monkeypatch.setattr(Repo, "is_dirty", fail_is_dirty)
 

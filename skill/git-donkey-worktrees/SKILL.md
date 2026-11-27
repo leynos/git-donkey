@@ -261,7 +261,8 @@ reason to escalate to `--hard` or `--soft`.
 For creation or reuse, report the branch, absolute worktree path, chosen base,
 starting commit, whether any pull occurred, and unexpected overlay changes. For
 cleanup, report the mode and completion flags, inspected trunk ref, reviewed
-targets, each removal's completion signal, retained branches, each skipped
+targets, each default or hard worktree removal's completion signal, the
+generated paths removed by soft cleanup, retained branches, each skipped
 worktree with its reported reason, each unverified worktree with its fixed
 reason, any failed branch deletion, and the exit status. Skips and unverified
 worktrees exit `0`; a refused branch deletion exits `1` with its worktree

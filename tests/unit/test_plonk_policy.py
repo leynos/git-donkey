@@ -332,6 +332,10 @@ def test_verbatim_branch_in_prose_quotes_completes_it(quote: str) -> None:
         pytest.param(f"{_ISSUE_BRANCH}!retry", id="bang-suffix"),
         pytest.param(f"{_ISSUE_BRANCH}.v2", id="dot-suffix"),
         pytest.param(f"{_ISSUE_BRANCH}'follow-up", id="unpaired-quote-suffix"),
+        pytest.param(
+            f"prefix'{_ISSUE_BRANCH}'suffix",
+            id="quoted-substring-in-longer-ref",
+        ),
     ],
 )
 def test_verbatim_branch_matcher_is_bounded(message: str) -> None:

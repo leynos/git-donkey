@@ -43,7 +43,8 @@ class _PlonkRunOptions:
     upstream_gone : bool
         Treat a branch whose configured upstream no longer exists as completed.
         The check is opt-in because a deleted branch cannot distinguish a
-        merged change from an abandoned one.
+        merged change from an abandoned one, and a remote that hides refs
+        cannot prove absence.
 
     """
 

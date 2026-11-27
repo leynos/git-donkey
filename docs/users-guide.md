@@ -461,8 +461,10 @@ longer exists as completed. It reads `branch.<name>.remote` and
 deleted branch completes a candidate: an upstream that still exists, was never
 configured, or cannot be queried leaves it unverified. The signal is opt-in
 because a deleted branch cannot distinguish a merged change from an abandoned
-one. Neither `--no-github` nor `--upstream-gone` is valid with `--soft`, which
-does not judge completion.
+one. A remote configured to hide refs with `uploadpack.hideRefs` can make an
+existing upstream look deleted, so the check cannot prove absence in that case.
+Neither `--no-github` nor `--upstream-gone` is valid with `--soft`, which does
+not judge completion.
 
 ### Trunk and cleanup rules
 

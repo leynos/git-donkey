@@ -243,9 +243,9 @@ class _GitWorktreeAdapter:
                         return _SkipReason.DIRTY
             except (InvalidGitRepositoryError, NoSuchPathError):
                 return _SkipReason.UNAVAILABLE
-            except GitCommandError:
-                # An unreadable index or worktree state must not abort the
-                # batch; report it as a skip and continue with the next one.
+            except (GitCommandError, UnicodeError):
+                # An unreadable index, worktree state, or path name must not
+                # abort the batch; report it as a skip and continue.
                 return _SkipReason.UNREADABLE
             return None
 

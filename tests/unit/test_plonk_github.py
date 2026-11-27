@@ -270,6 +270,20 @@ def test_invalid_json_fails_closed() -> None:
     )
 
 
+@pytest.mark.parametrize(
+    "payload",
+    [
+        pytest.param("9" * 5000, id="integer-conversion-limit"),
+        pytest.param("[" * 2000 + "]" * 2000, id="deeply-nested"),
+    ],
+)
+def test_decoder_errors_fail_closed(payload: str) -> None:
+    """Decoder limits are lookup failures, not sweep failures."""
+    assert _lookup(payload).state == "unknown", (
+        "expected a decoder failure to map to unknown"
+    )
+
+
 def test_non_zero_exit_fails_closed() -> None:
     """A failed gh invocation must not count as a merged pull request."""
     result = _lookup([_record()], returncode=1)

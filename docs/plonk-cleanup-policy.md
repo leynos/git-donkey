@@ -143,8 +143,9 @@ outcome is unknown. A branch with no configured upstream is `unset`.
 Only `gone` is completion evidence. `unset`, `present`, and `unknown` leave the
 candidate unverified, and the summary preserves the distinction. The tier is
 opt-in because a deleted branch cannot distinguish a merged change from an
-abandoned one; it is a heuristic, not proof. The flag is not valid with
-`--soft`.
+abandoned one; it is a heuristic, not proof. A remote that hides refs with
+`uploadpack.hideRefs` does not advertise an existing branch, so exit status 2
+cannot prove absence there either. The flag is not valid with `--soft`.
 
 ### Unverified reasons
 
@@ -181,7 +182,9 @@ vocabulary:
 
 A locked worktree is not detected by the preflight, because the lock is a
 registration property rather than a working-tree state. The unforced removal
-refuses it, and it is reported as `worktree removal failed`.
+refuses it, and it is reported as `worktree removal failed`. A worktree with a
+populated submodule is treated the same way: the preflight does not classify it
+as dirty, and the unforced removal refuses it.
 
 Skips keep the run's exit code at 0. A skip is a reported decision, not a
 failure of the command. A branch Git refuses to delete is reported as a failed

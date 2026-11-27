@@ -62,7 +62,9 @@ The check protects only what Git itself would refuse to discard:
   `worktree directory is missing`. A status query that cannot read Git state is
   skipped as `worktree state could not be read`, and the sweep continues. Any
   other refusal during removal is reported as `worktree removal failed`, and
-  the worktree stays registered.
+  the worktree stays registered. A locked worktree or one with a populated
+  submodule takes this path: the preflight does not call it dirty, and the
+  unforced removal refuses it.
 
 Hard mode deletes a branch only after its worktree was removed, using
 `git branch -D`. That deletion performs no merged or ancestry check, so a
@@ -146,8 +148,9 @@ upstream no longer exists as completed. The check reads `branch.<name>.remote`
 and `branch.<name>.merge` and runs `git ls-remote --exit-code --heads`. Only
 `gone` completes a candidate; `unset`, `present`, and `unknown` leave it
 unverified. The signal is weak because a deleted branch cannot distinguish a
-merged change from an abandoned one. Use it only when the operator accepts that
-risk.
+merged change from an abandoned one, and a remote that hides refs with
+`uploadpack.hideRefs` can make an existing branch look deleted. Use it only
+when the operator accepts those risks.
 
 A candidate no tier resolves is reported under `Unverified worktrees:` with one
 of the fixed reasons `no completion signal found`,
@@ -294,10 +297,12 @@ soft mode as an unsolicited disk-pressure or post-task housekeeping action.
 Re-read `git worktree list --porcelain`, check retained branch refs and paths,
 and inspect surviving checkouts after execution. Compare actual results with
 the reviewed preview, including each skipped worktree and its reason and each
-unverified worktree and its fixed reason. Check that every removal line named
-the completion signal the preview reported. Confirm that default mode retained
-branches, soft mode retained worktrees and branches, or hard mode deleted only
-the local branches of removed worktrees, as applicable.
+unverified worktree and its fixed reason. For default or hard cleanup, check
+that every worktree removal line named the completion signal the preview
+reported; for soft cleanup, compare the removed generated paths with the
+preview. Confirm that default mode retained branches, soft mode retained
+worktrees and branches, or hard mode deleted only the local branches of removed
+worktrees, as applicable.
 
 Read the exit status. `0` means the sweep did everything it planned, reported
 skips and unverified worktrees included. `1` means trunk could not be resolved,

@@ -247,9 +247,19 @@ def _mentions_branch(message: str, branch_name: str) -> bool:
         before = message[index - 1] if index else ""
         after_index = index + len(branch_name)
         after = message[after_index] if after_index < len(message) else ""
-        plain_boundary = _is_branch_boundary(before) and _is_branch_boundary(after)
-        if plain_boundary or _is_quoted_pair(before, after):
+        if _is_branch_boundary(before) and _is_branch_boundary(after):
             return True
+        if _is_quoted_pair(before, after):
+            quote_width = len(before)
+            outer_before = (
+                message[index - quote_width - 1] if index > quote_width else ""
+            )
+            after_quote_index = index + len(branch_name) + quote_width
+            outer_after = (
+                message[after_quote_index] if after_quote_index < len(message) else ""
+            )
+            if _is_branch_boundary(outer_before) and _is_branch_boundary(outer_after):
+                return True
         start = index + 1
     return False
 
@@ -323,7 +333,7 @@ def _resolve_messages(
     """
     found: dict[int, _CompletionEvidence] = {}
     for message in messages:
-        for index in sorted(pending):
+        for index in tuple(pending):
             evidence = matcher_list[index].evidence_in(message)
             if evidence is not None:
                 found[index] = evidence

@@ -143,6 +143,8 @@ OPTIONS
     The check is opt-in because a deleted branch cannot distinguish a merged
     change from an abandoned one; an upstream that still exists, was never
     configured, or cannot be queried leaves the candidate unverified.
+    A remote that hides refs with ``uploadpack.hideRefs`` can make an existing
+    upstream look deleted, so this check cannot prove absence there.
     Not valid with ``--soft``.
 
 -h, --help
