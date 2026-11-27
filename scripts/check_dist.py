@@ -29,6 +29,9 @@ import typing as typ
 import zipfile
 from pathlib import Path
 
+if typ.TYPE_CHECKING:
+    import collections.abc as cabc
+
 _ERROR = "::error title=check-dist::"
 _SDIST_SUFFIX = ".tar.gz"
 _WHEEL_SUFFIX = ".whl"
@@ -100,21 +103,30 @@ def _wheel_problems(wheel: Path, commands: tuple[str, ...]) -> list[str]:
     return problems
 
 
+def _read_archive(
+    archive: Path,
+    checker: cabc.Callable[[Path, tuple[str, ...]], list[str]],
+    commands: tuple[str, ...],
+) -> list[str]:
+    """Return one archive's problems, or its read failure as a problem."""
+    try:
+        return checker(archive, commands)
+    except (OSError, tarfile.TarError, zipfile.BadZipFile) as error:
+        return [f"{archive.name} could not be read: {error}"]
+
+
 def _archive_problems(root: Path, sdists: list[Path], wheels: list[Path]) -> list[str]:
     """Collect the content problems of every archive in the build."""
     commands = console_scripts(root)
-    problems: list[str] = []
-    for sdist in sdists:
-        try:
-            problems.extend(_sdist_problems(sdist, commands))
-        except (OSError, tarfile.TarError) as error:
-            problems.append(f"{sdist.name} could not be read: {error}")
-    for wheel in wheels:
-        try:
-            problems.extend(_wheel_problems(wheel, commands))
-        except (OSError, zipfile.BadZipFile) as error:
-            problems.append(f"{wheel.name} could not be read: {error}")
-    return problems
+    checkers = [
+        *((sdist, _sdist_problems) for sdist in sdists),
+        *((wheel, _wheel_problems) for wheel in wheels),
+    ]
+    return [
+        problem
+        for archive, checker in checkers
+        for problem in _read_archive(archive, checker, commands)
+    ]
 
 
 def check_dist(dist: Path, root: Path) -> list[str]:

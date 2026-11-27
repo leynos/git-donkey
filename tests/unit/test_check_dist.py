@@ -87,6 +87,22 @@ class _Build:
     wheel_members: dict[str, bytes] | None = None
 
 
+def _sdist_names(count: int) -> list[str]:
+    """Return ``count`` sdist names, the first with the canonical name."""
+    return [
+        _SDIST if index == 0 else f"{_REPOSITORY}-{index}.tar.gz"
+        for index in range(count)
+    ]
+
+
+def _wheel_names(count: int) -> list[str]:
+    """Return ``count`` wheel names, the first with the canonical name."""
+    return [
+        _WHEEL if index == 0 else f"{_REPOSITORY}-{index}-py3-none-any.whl"
+        for index in range(count)
+    ]
+
+
 def _build(tmp_path: Path, build: _Build | None = None) -> tuple[Path, Path]:
     """Create a repository root and a dist directory holding the build."""
     build = build or _Build()
@@ -97,11 +113,9 @@ def _build(tmp_path: Path, build: _Build | None = None) -> tuple[Path, Path]:
     dist.mkdir()
     sdist_members = build.sdist_members or _sdist_members()
     wheel_members = build.wheel_members or _wheel_members()
-    for index in range(build.sdists):
-        name = _SDIST if index == 0 else f"{_REPOSITORY}-{index}.tar.gz"
+    for name in _sdist_names(build.sdists):
         _write_sdist(dist / name, sdist_members)
-    for index in range(build.wheels):
-        name = _WHEEL if index == 0 else f"{_REPOSITORY}-{index}-py3-none-any.whl"
+    for name in _wheel_names(build.wheels):
         _write_wheel(dist / name, wheel_members)
     return root, dist
 
