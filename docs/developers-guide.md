@@ -526,7 +526,9 @@ application import paths.
 
 ## Lint workflow
 
-`make lint` runs seven checks in order. The `lint` target invokes them as:
+`make lint` first runs its `yamllint` and `actionlint` prerequisites (see
+[YAML lint](#yaml-lint)), then seven checks in order. The `lint` recipe invokes
+those seven as:
 
 ```make
 $(RUFF) check
@@ -565,16 +567,20 @@ The two Pylint passes share `PYLINT_TARGETS`, which defaults to
 machine's cores with a floor of two, keeping the pass parallel on small
 continuous integration runners while leaving headroom on large shared machines.
 
-Running `make lint` requires `uv` and `pyscn` on `PATH`; the Makefile's `TOOLS`
-list and `ensure_tool` check fail early with a clear message if `uv` is missing.
-`pyscn` is the one lint tool `uv` does not provide, so continuous integration
-installs it with `uv tool install pyscn`. Everything else needs no separate
-installation: Ruff and `df12-skylos` run via `uv tool run` at pinned versions,
-while interrogate, both Pylint passes, and ambrleaks run via `uv run` from the
-project virtual environment. The project requires Python 3.13 or newer, but
-`uv` provisions a suitable CPython interpreter for the virtual environment, so
-contributors need no matching system Python. No Node.js tooling is needed for
-`make lint`; that belongs to the separate `markdownlint` and `nixie` targets.
+Running `make lint` requires `uv`, `pyscn`, `yamllint` and `actionlint` on
+`PATH`; the Makefile's `TOOLS` list and `ensure_tool` check fail early with a
+clear message if `uv` is missing. `pyscn` is the one Python lint tool `uv` does
+not provide, so continuous integration installs it with
+`uv tool install pyscn`; continuous integration installs `yamllint` and
+`actionlint` with the `install-yaml-lint` action, and locally they need
+installing as described in [YAML lint](#yaml-lint). Every other tool needs no
+separate installation: Ruff and `df12-skylos` run via `uv tool run` at pinned
+versions, while interrogate, both Pylint passes, and ambrleaks run via `uv run`
+from the project virtual environment. The project requires Python 3.13 or
+newer, but `uv` provisions a suitable CPython interpreter for the virtual
+environment, so contributors need no matching system Python. No Node.js tooling
+is needed for `make lint`; that belongs to the separate `markdownlint` and
+`nixie` targets.
 
 ### Snapshot tests
 
@@ -828,3 +834,25 @@ uv run pytest tests/unit/test_manpage_sources.py \
 The packaging tests drive `uv` offline, so `make build` must run first to
 populate the cache they reuse. `make test` depends on `make build` and runs
 both manual test files as well.
+
+## YAML lint
+
+`make lint` runs `make yamllint` and `make actionlint` as prerequisites.
+`make yamllint` runs `yamllint --strict` over every tracked `.yml` and `.yaml`
+file, reading `.yamllint.yml`, which extends the estate base
+`.yamllint-estate.yml` (a verbatim copy of the concordat canon; do not edit
+it). The base ignores Helm chart templates (`**/charts/**/templates/`), so a
+tracked file there is passed to yamllint but not checked, and a local `ignore`
+in `.yamllint.yml` replaces that entry rather than adding to it. Run it from
+the repository root, because yamllint resolves `extends` against the current
+directory. `make actionlint` checks the GitHub Actions workflows, accepting the
+runner labels in `.github/actionlint.yaml`, and runs ShellCheck over their
+`run:` scripts when it is on `PATH`.
+
+Install the tools locally at the versions CI uses:
+`uv tool install yamllint==1.38.0`, and the `actionlint` 1.7.12 and
+`shellcheck` 0.11.0 release binaries (a package manager's builds can differ and
+change what the lint reports). CI installs the same pinned versions with the
+`install-yaml-lint` action of `leynos/shared-actions` before it runs
+`make lint`. The `YAMLLINT` and `ACTIONLINT` variables name the commands when
+they are not on `PATH`.
