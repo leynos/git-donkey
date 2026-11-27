@@ -526,7 +526,9 @@ application import paths.
 
 ## Lint workflow
 
-`make lint` runs seven checks in order. The `lint` target invokes them as:
+`make lint` first runs its `yamllint` and `actionlint` prerequisites (see
+[YAML lint](#yaml-lint)), then seven checks in order. The `lint` recipe invokes
+those seven as:
 
 ```make
 $(RUFF) check
@@ -565,16 +567,20 @@ The two Pylint passes share `PYLINT_TARGETS`, which defaults to
 machine's cores with a floor of two, keeping the pass parallel on small
 continuous integration runners while leaving headroom on large shared machines.
 
-Running `make lint` requires `uv` and `pyscn` on `PATH`; the Makefile's `TOOLS`
-list and `ensure_tool` check fail early with a clear message if `uv` is missing.
-`pyscn` is the one lint tool `uv` does not provide, so continuous integration
-installs it with `uv tool install pyscn`. Everything else needs no separate
-installation: Ruff and `df12-skylos` run via `uv tool run` at pinned versions,
-while interrogate, both Pylint passes, and ambrleaks run via `uv run` from the
-project virtual environment. The project requires Python 3.13 or newer, but
-`uv` provisions a suitable CPython interpreter for the virtual environment, so
-contributors need no matching system Python. No Node.js tooling is needed for
-`make lint`; that belongs to the separate `markdownlint` and `nixie` targets.
+Running `make lint` requires `uv`, `pyscn`, `yamllint` and `actionlint` on
+`PATH`; the Makefile's `TOOLS` list and `ensure_tool` check fail early with a
+clear message if `uv` is missing. `pyscn` is the one Python lint tool `uv` does
+not provide, so continuous integration installs it with
+`uv tool install pyscn`; continuous integration installs `yamllint` and
+`actionlint` with the `install-yaml-lint` action, and locally they need
+installing as described in [YAML lint](#yaml-lint). Every other tool needs no
+separate installation: Ruff and `df12-skylos` run via `uv tool run` at pinned
+versions, while interrogate, both Pylint passes, and ambrleaks run via `uv run`
+from the project virtual environment. The project requires Python 3.13 or
+newer, but `uv` provisions a suitable CPython interpreter for the virtual
+environment, so contributors need no matching system Python. No Node.js tooling
+is needed for `make lint`; that belongs to the separate `markdownlint` and
+`nixie` targets.
 
 ### Snapshot tests
 
