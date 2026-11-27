@@ -43,9 +43,9 @@ gh attestation verify git_donkey-1.2.3-py3-none-any.whl \
 ```
 
 The command verifies the file against the repository's attestation store. The
-release also carries a Sigstore bundle, but when a release is completed from
-bytes published by an earlier run, that bundle belongs to the completing run
-and may not attest every file; the store remains authoritative.
+release also carries a combined attestation bundle covering every published
+file, which can be passed to `gh attestation verify --bundle` for an offline
+check.
 
 For an unreleased source checkout, run `uv tool install .` from the repository
 root instead. The wheel includes a section-one manual for every console script:

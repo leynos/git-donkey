@@ -224,7 +224,8 @@ def test_stage_pypi_requires_the_provenance_directory(tmp_path: pth.Path) -> Non
 
 
 @pytest.mark.parametrize(
-    "command", ["stage-github", "check-fetched", "check-provenance"]
+    "command",
+    ["stage-github", "check-fetched", "check-provenance", "release-complete"],
 )
 def test_the_index_dependent_commands_require_the_index(
     tmp_path: pth.Path, command: str
@@ -236,7 +237,7 @@ def test_the_index_dependent_commands_require_the_index(
     completed = run_bash(
         f"python3 -m scripts.release_assets_cli {command} "
         "--publish dist/publish --assets assets.json --output github-upload "
-        "--bundles dist/attestations --provenance pypi-provenance",
+        "--provenance pypi-provenance",
         tmp_path,
     )
 

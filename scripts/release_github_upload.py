@@ -13,11 +13,9 @@ owns how their GitHub upload set is assembled and checked.
 
 from __future__ import annotations
 
-import shutil
 import typing as typ
 
 from scripts.release_assets import (
-    BUNDLE_SUFFIX,
     ReleaseAssetError,
     State,
     require_digest,
@@ -66,34 +64,13 @@ def _require_pypi_bytes(
     return fetch
 
 
-def _copy_unattached_bundles(
-    bundles: Path,
-    github: cabc.Mapping[str, str | None],
-    output: Path,
-    *,
-    pending: bool,
-) -> None:
-    """Copy this run's bundle when a distribution or a first bundle needs it.
-
-    A re-run that finds every distribution published and a bundle already
-    attached stages nothing, so it uploads nothing and changes nothing.
-    """
-    if not pending and any(name.endswith(BUNDLE_SUFFIX) for name in github):
-        return
-    for bundle in sorted(bundles.iterdir()):
-        if bundle.name not in github:
-            shutil.copyfile(bundle, output / bundle.name)
-
-
-def stage_github(state: State, bundles: Path, output: Path) -> list[tuple[str, str]]:
+def stage_github(state: State, output: Path) -> list[tuple[str, str]]:
     """Stage what the GitHub Release lacks; return the PyPI files to fetch.
 
     Parameters
     ----------
     state : State
         The staged artefacts and both destinations' holdings.
-    bundles : pathlib.Path
-        The directory holding this run's Sigstore bundles.
     output : pathlib.Path
         The GitHub upload directory, created when absent.
 
@@ -111,7 +88,6 @@ def stage_github(state: State, bundles: Path, output: Path) -> list[tuple[str, s
     lacking = sorted(state.plan().github_uploads)
     fetch = _require_pypi_bytes(state, lacking)
     output.mkdir(parents=True, exist_ok=True)
-    _copy_unattached_bundles(bundles, state.github, output, pending=bool(lacking))
     return fetch
 
 

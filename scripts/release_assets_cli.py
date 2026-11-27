@@ -12,8 +12,8 @@ holds the PyPI publishing credential, so it resolves no third-party code at
 release time, and every network call stays in the workflow's ``curl`` and
 ``gh`` steps. That is the documented exception to the scripting standards'
 Cyclopts and Python 3.13 defaults. Each subcommand is one step of
-``release.yml``: ``carryover`` (``draft-release``), ``stage-pypi``
-(``publish-pypi``), then ``stage-github``, ``check-fetched``,
+``release.yml``: ``carryover`` and ``release-complete`` (``draft-release``),
+``stage-pypi`` (``publish-pypi``), then ``stage-github``, ``check-fetched``,
 ``check-provenance``, and ``verify`` (``publish-release``). The reconciliation
 logic itself lives in ``scripts/release_assets.py`` and
 ``scripts/release_github_upload.py``; this module only wires it to ``argparse``
@@ -31,6 +31,7 @@ from scripts.release_assets import (
     ReleaseAssetError,
     State,
     carryover,
+    has_bundle,
     stage_pypi,
     verify,
     write_output,
@@ -54,7 +55,6 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--index", type=Path)
     parser.add_argument("--github-files", type=Path)
     parser.add_argument("--provenance", type=Path)
-    parser.add_argument("--bundles", type=Path)
     parser.add_argument("--output", type=Path)
     return parser
 
@@ -92,11 +92,11 @@ def _stage_github(state: State, args: argparse.Namespace) -> None:
     # Without the index PyPI looks empty, so every artefact would be staged
     # from the local build instead of fetched from PyPI's published bytes.
     _path(args, "index")
-    output = _path(args, "output")
-    fetch = stage_github(state, _path(args, "bundles"), output)
+    fetch = stage_github(state, _path(args, "output"))
     for name, url in fetch:
         print(f"{name}\t{url}")
-    write_output("pending", value=bool(fetch) or any(output.iterdir()))
+    write_output("files", value=bool(fetch))
+    write_output("pending", value=bool(fetch) or not has_bundle(state.github))
 
 
 def _check_fetched(state: State, args: argparse.Namespace) -> None:
@@ -127,6 +127,15 @@ def _verify(state: State, args: argparse.Namespace) -> None:
     print("PyPI and the GitHub Release hold the same bytes for every artefact.")
 
 
+def _release_complete(state: State, args: argparse.Namespace) -> None:
+    """Report whether a published release already holds every canonical byte."""
+    _path(args, "index")
+    problems = verify(state, _path(args, "output"))
+    for problem in problems:
+        print(f"::notice::{problem}")
+    write_output("complete", value=not problems)
+
+
 _COMMANDS: dict[str, cabc.Callable[[State, argparse.Namespace], None]] = {
     "carryover": _carryover,
     "stage-pypi": _stage_pypi,
@@ -134,6 +143,7 @@ _COMMANDS: dict[str, cabc.Callable[[State, argparse.Namespace], None]] = {
     "check-fetched": _check_fetched,
     "check-provenance": _check_provenance,
     "verify": _verify,
+    "release-complete": _release_complete,
 }
 
 

@@ -237,6 +237,105 @@ def test_a_mismatched_prerelease_flag_is_corrected(tmp_path: pth.Path) -> None:
     )
 
 
+def _published_release(
+    tmp_path: pth.Path, *, complete: bool
+) -> tuple[FakeRelease, dict[str, str]]:
+    """Seed a published release and PyPI, optionally missing one asset."""
+    fake = fake_release(tmp_path)
+    fake.create_release(draft=False, prerelease=False)
+    link_scripts(tmp_path)
+    publish = tmp_path / "dist" / "publish"
+    publish.mkdir(parents=True)
+    names = ("git_donkey-1-py3-none-any.whl", _CARRIED_ASSET)
+    for name in names:
+        (publish / name).write_bytes(b"published")
+        (fake.pypi / name).write_bytes(b"published")
+        (fake.github / name).write_bytes(b"published")
+    (fake.github / "git-donkey-v1.2.3-run1-1.sigstore.json").write_bytes(b"bundle")
+    if not complete:
+        (fake.github / _CARRIED_ASSET).unlink()
+    return fake, fake.env()
+
+
+def _run_redraft_check(
+    tmp_path: pth.Path, fake: FakeRelease, env: dict[str, str]
+) -> dict[str, str]:
+    """Run the index and completeness steps, returning their outputs."""
+    fetch = run_bash(
+        step_script("draft-release", "Fetch the PyPI index"), tmp_path, env
+    )
+    assert fetch.returncode == 0, fetch.stderr
+    report = run_bash(
+        step_script(
+            "draft-release", "Check whether an already published release is complete"
+        ),
+        tmp_path,
+        env,
+    )
+    assert report.returncode == 0, report.stderr
+    return outputs(tmp_path / "github-output")
+
+
+def test_an_incomplete_published_release_returns_to_draft(
+    tmp_path: pth.Path,
+) -> None:
+    """A visible release missing an asset is hidden before reconciliation."""
+    fake, env = _published_release(tmp_path, complete=False)
+
+    written = _run_redraft_check(tmp_path, fake, env)
+    completed = run_bash(
+        step_script("draft-release", "Return an incomplete published release to draft"),
+        tmp_path,
+        env,
+    )
+
+    expected = {
+        "attempts": "1",
+        "status": "200",
+        "published": "true",
+        "complete": "false",
+    }
+    assert written == expected, "the check must report a published, incomplete release"
+    assert completed.returncode == 0, completed.stderr
+    edits = [call for call in fake.calls("gh") if call[:2] == ["release", "edit"]]
+    assert edits == [["release", "edit", _TAG, "--draft=true"]], (
+        "the incomplete release must be returned to draft once"
+    )
+    assert fake.release_state()["isDraft"] is True, (
+        "the incomplete release must not stay visible"
+    )
+
+
+def test_a_complete_published_release_is_not_redrafted(tmp_path: pth.Path) -> None:
+    """A fully reconciled published release is left visible and unchanged."""
+    fake, env = _published_release(tmp_path, complete=True)
+
+    written = _run_redraft_check(tmp_path, fake, env)
+
+    assert written["published"] == "true", "the release is published"
+    assert written["complete"] == "true", "the release is complete"
+    assert not any(call[:2] == ["release", "edit"] for call in fake.calls("gh")), (
+        "a complete release must not be edited"
+    )
+
+
+def test_a_draft_release_is_not_checked_for_completeness(
+    tmp_path: pth.Path,
+) -> None:
+    """A draft is already hidden, so no completeness decision is needed."""
+    fake = fake_release(tmp_path)
+    link_scripts(tmp_path)
+    (tmp_path / "dist" / "publish").mkdir(parents=True)
+
+    written = _run_redraft_check(tmp_path, fake, fake.env())
+
+    assert written["published"] == "false", "a draft is not published"
+    assert "complete" not in written, "a draft needs no completeness verdict"
+    assert not any(call[:2] == ["release", "edit"] for call in fake.calls("gh")), (
+        "a draft must not be edited"
+    )
+
+
 def _carried_asset(fake: FakeRelease) -> tuple[pth.Path, dict[str, str]]:
     """Seed one local build and a differently built GitHub Release asset."""
     link_scripts(fake.root)

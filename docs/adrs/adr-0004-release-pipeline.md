@@ -67,14 +67,14 @@ Adopt per-filename reconciliation with least-privilege jobs and
 `permissions: {}` at the workflow's top level, so no job inherits a scope it
 did not declare.
 
-| Job               | Needs                                            | Permissions                                                | Responsibility                                                      |
-| ----------------- | ------------------------------------------------ | ---------------------------------------------------------- | ------------------------------------------------------------------- |
-| `check-version`   | none                                             | `contents: read`                                           | Compare the tag with `pyproject.toml`; report pre-release status.   |
-| `build`           | none                                             | `contents: read`                                           | Build the sdist, then the wheel from it, through the shared action. |
-| `attest`          | `check-version`, `build`                         | `contents: read`, `id-token: write`, `attestations: write` | Collect one sdist and every wheel, attest them, stage the bundle.   |
-| `draft-release`   | `check-version`, `attest`                        | `contents: write`, `attestations: read`                    | Create or reuse the draft; snapshot and verify carried assets.      |
-| `publish-pypi`    | `attest`, `draft-release`                        | `contents: read`, `id-token: write`                        | Publish only the names PyPI lacks, under the `pypi` environment.    |
-| `publish-release` | `check-version`, `draft-release`, `publish-pypi` | `contents: write`, `attestations: read`                    | Upload missing release assets, verify both destinations, publish.   |
+| Job               | Needs                                            | Permissions                                                | Responsibility                                                                 |
+| ----------------- | ------------------------------------------------ | ---------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| `check-version`   | none                                             | `contents: read`                                           | Compare the tag with `pyproject.toml`; report pre-release status.              |
+| `build`           | none                                             | `contents: read`                                           | Build the sdist, then the wheel from it, through the shared action.            |
+| `attest`          | `check-version`, `build`                         | `contents: read`, `id-token: write`, `attestations: write` | Collect one sdist and every wheel, attest them, stage the bundle.              |
+| `draft-release`   | `check-version`, `attest`                        | `contents: write`, `attestations: read`                    | Create or reuse the draft; snapshot and verify carried assets.                 |
+| `publish-pypi`    | `attest`, `draft-release`                        | `contents: read`, `id-token: write`                        | Publish only the names PyPI lacks, under the `pypi` environment.               |
+| `publish-release` | `check-version`, `draft-release`, `publish-pypi` | `contents: write`, `attestations: read`                    | Upload missing assets, assemble the bundle, verify both destinations, publish. |
 
 _Table 1: Release job responsibilities and token scopes._
 
@@ -128,10 +128,12 @@ in place of bytes PyPI serves.
 
 Before `publish-release` makes the release visible, it re-reads both the PyPI
 index and the release's asset list and confirms every artefact name has an
-identical SHA-256 digest on both sides and that the release carries a Sigstore
-bundle. A name that already differs between the destinations, or PyPI bytes
-that no run attested for this tag and commit, fails the job and leaves the
-release a draft.
+identical SHA-256 digest on both sides and that the release carries a
+provenance bundle. The combined bundle is assembled from the attestation store
+for the exact bytes the release holds, so a carried asset cannot be paired with
+a bundle for a different rebuild. A name that already differs between the
+destinations, PyPI bytes that no run attested for this tag and commit, or a
+release asset with no attestation fails the job and leaves the release a draft.
 
 Recovery for a disagreeing GitHub asset is deliberately manual: an
 administrator deletes the offending asset from the GitHub Release, because
@@ -141,15 +143,25 @@ bytes no run attested, a new version must be published.
 
 ### Rerun adaptations
 
-Two decisions make a fully published re-run a no-op, beyond the reconciliation
-PyPI already requires:
+These decisions make a fully published re-run a no-op, beyond the
+reconciliation PyPI already requires:
 
-- `stage-github` copies this run's bundle only when a distribution needs
-  uploading or the release has no bundle. A rerun that finds every name
-  published and a bundle attached stages nothing, so the upload step is skipped.
-- `publish-release` reads the release's `isDraft` and `isPrerelease` state and
-  edits it only when the release is still a draft or its pre-release flag
-  differs from the version check's answer.
+- `draft-release` checks whether an already published release is complete. If
+  it is not, the release is returned to draft before reconciliation, so an
+  inconsistent release is never visible while a repair runs or fails. A
+  complete published release is left visible and untouched.
+- `stage-github` refuses a name that PyPI's index does not list, so every
+  missing release asset is the byte sequence PyPI serves rather than this run's
+  rebuild.
+- After the distributions are uploaded, `publish-release` assembles a
+  run-unique `git-donkey-<tag>-run<run_id>-<attempt>.attestations.jsonl` bundle
+  from the attestation store for every distribution the release now holds. The
+  attached bundle therefore attests carried bytes as well as this run's build;
+  the `attest` job's bundle remains in the run artefact and the attestation
+  store.
+- A rerun that finds every name published and a bundle attached stages and
+  uploads nothing, and `publish-release` edits nothing because the release is
+  already visible with the right pre-release flag.
 
 ### Least privilege and the `pypi` environment
 
@@ -227,11 +239,8 @@ carry a version above 0.2.0.
 - PyPI's existing 0.2.0 files carry no provenance this repository attests, so
   they cannot be carried to the GitHub Release. The next release must use a
   higher version.
-- When a release is completed from bytes carried over from an earlier run, the
-  attached bundle is the completing run's bundle, which attests that run's
-  build. The attestation store remains the authoritative record for every
-  published file, and verifying a carried file against the attached bundle
-  fails closed rather than passing incorrectly. Extending the bundle to cover
-  carried bytes is tracked in [issue #203][bundle-coverage].
-
-[bundle-coverage]: https://github.com/leynos/git-donkey/issues/203
+- Assembling the combined bundle requires the attestation store to hold a
+  record for every distribution the release holds. The draft and publication
+  provenance gates establish that for carried bytes, and `attest` establishes
+  it for this run's build, so a missing record fails the release rather than
+  producing a partial bundle.

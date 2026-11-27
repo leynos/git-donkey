@@ -35,6 +35,7 @@ _GH_VERSION_COMMAND = "gh --version | python3 scripts/release_gh_version.py"
 _FETCH_INDEX = "Fetch the PyPI index"
 _PROVENANCE_STEP = "Verify provenance of PyPI bytes"
 _PROVENANCE_DIR = "pypi-provenance"
+_ASSEMBLY_STEP = "Assemble the release attestations"
 #: A floor, not the exact count, so adding a step does not require an edit.
 _MIN_SCANNED_SCRIPTS = 20
 
@@ -97,18 +98,21 @@ def test_every_job_holds_only_the_scopes_it_needs() -> None:
     )
 
 
-def test_checkouts_do_not_persist_the_token() -> None:
-    """A checked-out repository must not keep a usable token on disk."""
+def test_every_checkout_disables_persisted_credentials() -> None:
+    """No checkout leaves a usable token on disk, in any workflow or action."""
+    documents = _ci_documents()
     checkouts = [
         item
-        for job in jobs(WORKFLOW).values()
-        for item in typ.cast("dict[str, typ.Any]", job).get("steps", [])
+        for document in documents.values()
+        for item in _declared_steps(typ.cast("dict[str, typ.Any]", document))
         if str(item.get("uses", "")).startswith("actions/checkout@")
     ]
-    assert checkouts, "the version check must check the repository out"
-    assert all(item["with"]["persist-credentials"] is False for item in checkouts), (
-        "every checkout must disable persisted credentials"
-    )
+    assert checkouts, "the scan must reach the repository's checkouts"
+    assert all(
+        typ.cast("dict[str, typ.Any]", item.get("with", {})).get("persist-credentials")
+        is False
+        for item in checkouts
+    ), "every checkout must disable persisted credentials"
 
 
 def test_every_remote_action_is_pinned_to_a_commit() -> None:
@@ -176,7 +180,10 @@ def test_the_index_lookup_retries_and_is_bounded() -> None:
     """Both index readers share one bounded, retrying, timed-out lookup."""
     script = step_script("publish-pypi", _FETCH_INDEX)
     assert step_script("publish-release", _FETCH_INDEX) == script, (
-        "both jobs must read the index through the same script"
+        "publish-release must read the index through the same script"
+    )
+    assert step_script("draft-release", _FETCH_INDEX) == script, (
+        "draft-release must read the index through the same script"
     )
     for fragment in (
         'while [ "${attempt}" -lt 6 ]; do',
@@ -355,16 +362,19 @@ def test_the_release_is_published_only_after_pypi() -> None:
     fetched = names.index("Check the fetched PyPI bytes")
     provenance = names.index(_PROVENANCE_STEP)
     upload = names.index("Upload the assets the release lacks")
+    attestations = names.index(_ASSEMBLY_STEP)
     check = names.index("Check both destinations hold the same bytes")
     assert (
         fetched
         < provenance
         < upload
+        < attestations
         < check
         < names.index("Publish the GitHub Release")
     ), (
-        "provenance must precede the upload, and the digests must be compared "
-        "after the upload and before the release"
+        "provenance must precede the upload, the bundle must be assembled "
+        "from the uploaded bytes, and the digests must be compared before "
+        "the release"
     )
     publish = step_script("publish-release", "Publish the GitHub Release")
     assert "--draft=false" in publish, "the release must stop being a draft"
@@ -415,6 +425,61 @@ def test_pypi_bytes_are_verified_before_the_release_upload() -> None:
     assert script.index("done < pypi-fetch.tsv") < script.index(
         '[ "${failed}" -eq 0 ] || exit 1'
     ), "the gate must finish verifying every file before it exits"
+
+
+def test_the_attached_bundle_covers_the_published_bytes() -> None:
+    """The bundle is assembled from the store after the distributions upload."""
+    assembly = step("publish-release", _ASSEMBLY_STEP)
+    assert assembly["if"] == "steps.stage.outputs.pending == 'true'", (
+        "the bundle is assembled only when a distribution or bundle is missing"
+    )
+    script = step_script("publish-release", _ASSEMBLY_STEP)
+    for fragment in (
+        "gh attestation download",
+        "--predicate-type https://slsa.dev/provenance/v1",
+        'gh release download "${GITHUB_REF_NAME}"',
+        ".attestations.jsonl",
+        'gh release upload "${GITHUB_REF_NAME}" "${bundle}"',
+    ):
+        assert fragment in script, f"the bundle assembly must include {fragment!r}"
+    assert "${{" not in script, (
+        "the bundle assembly must not interpolate workflow expressions"
+    )
+    upload = step("publish-release", "Upload the assets the release lacks")
+    assert upload["if"] == "steps.stage.outputs.files == 'true'", (
+        "the distribution upload must run only when files were staged"
+    )
+    names = [item.get("name") for item in _job("publish-release")["steps"]]
+    assert (
+        names.index("Upload the assets the release lacks")
+        < names.index(_ASSEMBLY_STEP)
+        < names.index("Check both destinations hold the same bytes")
+    ), "the bundle must cover the bytes already uploaded to the release"
+
+
+def test_an_incomplete_published_release_returns_to_draft() -> None:
+    """A visible release that is not complete is hidden before repair."""
+    names = [item.get("name") for item in _job("draft-release")["steps"]]
+    check = names.index("Check whether an already published release is complete")
+    edit = names.index("Return an incomplete published release to draft")
+    assert check < edit, "the completeness check must precede the edit"
+    script = step_script(
+        "draft-release", "Check whether an already published release is complete"
+    )
+    for fragment in (
+        "--json isDraft,assets",
+        "release-complete",
+        "--index pypi-index.json",
+    ):
+        assert fragment in script, f"the re-draft check must include {fragment!r}"
+    edit_step = step("draft-release", "Return an incomplete published release to draft")
+    assert edit_step["if"] == (
+        "steps.redraft.outputs.published == 'true' "
+        "&& steps.redraft.outputs.complete == 'false'"
+    ), "the edit must run only for a published, incomplete release"
+    assert "--draft=true" in step_script(
+        "draft-release", "Return an incomplete published release to draft"
+    ), "the release must be returned to draft"
 
 
 def test_nothing_is_ever_overwritten_and_pypi_holds_no_github_token() -> None:

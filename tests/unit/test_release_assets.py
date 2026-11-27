@@ -16,12 +16,15 @@ import pytest
 
 from scripts import release_assets
 from scripts.release_assets import (
+    ATTESTATIONS_SUFFIX,
     BUNDLE_SUFFIX,
     PypiFile,
     ReleaseAssetError,
     Source,
     State,
     carryover,
+    has_bundle,
+    is_bundle,
     local_names,
     mismatches,
     plan,
@@ -325,8 +328,33 @@ def test_verify_requires_agreeing_digests_and_an_attached_bundle(
     )
     assert problems == [
         expected,
-        "the GitHub Release holds no Sigstore bundle",
+        "the GitHub Release holds no provenance bundle",
     ], "the differing digest and the missing bundle must both be reported"
+
+
+@pytest.mark.parametrize(
+    ("name", "expected"),
+    [
+        (f"git-donkey-v1.0.0-run1-1{BUNDLE_SUFFIX}", True),
+        (f"git-donkey-v1.0.0-run1-1{ATTESTATIONS_SUFFIX}", True),
+        (_NAME, False),
+        ("git-donkey-v1.0.0.sigstore.txt", False),
+    ],
+    ids=["run-bundle", "combined-bundle", "distribution", "other-suffix"],
+)
+def test_bundle_names_cover_both_formats(name: str, *, expected: bool) -> None:
+    """A single-run bundle and the combined attestations both count."""
+    assert is_bundle(name) is expected, (
+        "the release must recognise both provenance bundle formats"
+    )
+
+
+def test_has_bundle_detects_a_combined_bundle() -> None:
+    """A release holding only the combined attestations counts as bundled."""
+    assert has_bundle({_NAME: None, f"g{ATTESTATIONS_SUFFIX}": None}), (
+        "the combined attestation bundle must satisfy the release check"
+    )
+    assert not has_bundle({_NAME: None}), "a release without a bundle is incomplete"
 
 
 def test_verify_accepts_agreeing_destinations_with_a_bundle(tmp_path: Path) -> None:

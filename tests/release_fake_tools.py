@@ -217,6 +217,22 @@ def _verification_output(records: list[dict[str, object]]) -> str:
     return json.dumps(result)
 
 
+def _gh_attestation_download(args: list[str]) -> int:
+    """Write the fake attestation records for one artefact as a JSONL bundle."""
+    asset = Path(args[2])
+    digest = sha256_hex(asset.read_bytes())
+    records = _attestations_for_digest(Path(os.environ["FAKE_ATTESTATIONS"]), digest)
+    if not records:
+        print(f"No attestations found for sha256 {digest}", file=sys.stderr)
+        return 1
+    target = Path(f"sha256-{digest}.jsonl")
+    target.write_text(
+        "\n".join(json.dumps(record) for record in records) + "\n",
+        encoding="utf-8",
+    )
+    return 0
+
+
 def _gh_attestation_verify(args: list[str]) -> int:
     """Verify fake digest records against the workflow's identity policy."""
     if failure := os.environ.get("FAKE_ATTEST_FAIL"):
@@ -258,6 +274,13 @@ def _gh_release_view(args: list[str]) -> int:
     match fields:
         case "assets":
             print(_assets_json())
+        case "isDraft,assets":
+            print(
+                json.dumps({
+                    "isDraft": state.get("isDraft"),
+                    "assets": json.loads(_assets_json())["assets"],
+                })
+            )
         case "isDraft,isPrerelease":
             print(
                 json.dumps({
@@ -285,6 +308,8 @@ def _gh_release_edit(args: list[str]) -> int:
     for argument in args:
         if argument == "--draft=false":
             state["isDraft"] = False
+        elif argument == "--draft=true":
+            state["isDraft"] = True
         elif argument.startswith("--prerelease="):
             state["isPrerelease"] = argument.split("=", 1)[1] == "true"
     _write_release_state(state)
@@ -324,6 +349,11 @@ def gh(args: list[str]) -> int:
         and len(args) >= _MIN_ATTESTATION_ARGUMENTS
     ):
         return _gh_attestation_verify(args)
+    if (
+        args[:2] == ["attestation", "download"]
+        and len(args) >= _MIN_ATTESTATION_ARGUMENTS
+    ):
+        return _gh_attestation_download(args)
     if len(args) < _MIN_RELEASE_ARGUMENTS or args[0] != "release":
         return _unsupported_gh_operation(args)
     return _gh_release(args)

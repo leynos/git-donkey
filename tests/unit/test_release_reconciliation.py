@@ -39,6 +39,7 @@ if typ.TYPE_CHECKING:
 
 _TAG = "v1.2.3"
 _BUNDLE = f"git-donkey-v1.2.3-run7-1{BUNDLE_SUFFIX}"
+_ASSEMBLED_BUNDLE = "git-donkey-v1.2.3-run7-1.attestations.jsonl"
 #: One name per reconciliation case: PyPI only, GitHub only, neither, both.
 _PYPI_ONLY, _GITHUB_ONLY, _NEITHER, _BOTH = (
     "git_donkey-1-cp313-linux.whl",
@@ -50,6 +51,7 @@ _ARTEFACTS = (_PYPI_ONLY, _GITHUB_ONLY, _NEITHER, _BOTH)
 #: The provenance gate sits after the index-digest check and before the
 #: upload, so nothing unverified can reach the release.
 _PROVENANCE_STEP = "Verify provenance of PyPI bytes"
+_ASSEMBLY_STEP = "Assemble the release attestations"
 _UPLOAD_STEP = "Upload the assets the release lacks"
 _PRE_PROVENANCE = (
     "Fetch the PyPI index",
@@ -112,8 +114,11 @@ def _publish_release(fake: FakeRelease, *, verify: bool = True) -> pth.Path:
     cwd, env = _job_directory(fake, "publish-release")
     for name in _PUBLISH_STEPS:
         _step("publish-release", name, cwd, env)
-    if outputs(cwd / "output")["pending"] == "true":
+    written = outputs(cwd / "output")
+    if written["files"] == "true":
         _step("publish-release", _UPLOAD_STEP, cwd, env)
+    if written["pending"] == "true":
+        _step("publish-release", _ASSEMBLY_STEP, cwd, env)
     if verify:
         _step(
             "publish-release", "Check both destinations hold the same bytes", cwd, env
@@ -135,6 +140,7 @@ def _seeded(root: pth.Path) -> FakeRelease:
     release.attest_approved(release.github / _GITHUB_ONLY)
     (release.pypi / _BOTH).write_bytes(b"both")
     (release.github / _BOTH).write_bytes(b"both")
+    release.attest_approved(release.github / _BOTH)
     return release
 
 
@@ -167,11 +173,14 @@ def test_every_name_converges_on_its_canonical_bytes(fake: FakeRelease) -> None:
         _NEITHER: _local(_NEITHER),
         _BOTH: b"both",
     }
-    assert _holdings(fake.pypi) == expected, (
-        "PyPI must hold each name's canonical bytes"
+    published = _holdings(fake.pypi)
+    released = _holdings(fake.github)
+    assert published == expected, "PyPI must hold each name's canonical bytes"
+    assert {name: released[name] for name in expected} == expected, (
+        "the release must hold the same bytes as PyPI"
     )
-    assert _holdings(fake.github) == {**expected, _BUNDLE: b"bundle"}, (
-        "the release must hold the same bytes plus the Sigstore bundle"
+    assert _ASSEMBLED_BUNDLE in released, (
+        "the release must carry the assembled attestation bundle"
     )
 
 
@@ -267,10 +276,10 @@ def test_each_destination_is_sent_only_what_it_lacks(fake: FakeRelease) -> None:
     _publish_release(fake)
 
     uploads = [call for call in fake.calls("gh") if call[:2] == ["release", "upload"]]
-    assert len(uploads) == 1, uploads
-    sent = sorted(_basename(path) for path in uploads[0][3:])
-    assert sent == sorted((_PYPI_ONLY, _NEITHER, _BUNDLE)), (
-        "the release must receive only the names it lacks"
+    assert uploads, "the release must receive the names it lacks"
+    sent = sorted(_basename(path) for call in uploads for path in call[3:])
+    assert sent == sorted((_PYPI_ONLY, _NEITHER, _ASSEMBLED_BUNDLE)), (
+        "the release must receive only the names it lacks plus its bundle"
     )
     assert not any("--clobber" in call for call in fake.calls("gh")), (
         "no upload may overwrite an existing asset"
@@ -300,9 +309,9 @@ def test_a_rerun_after_success_uploads_nothing(fake: FakeRelease) -> None:
     assert outputs(fake.root / "publish-pypi" / "output")["remaining"] == "false", (
         "PyPI must need nothing"
     )
-    assert outputs(cwd / "output")["pending"] == "false", (
-        "the release must need nothing"
-    )
+    written = outputs(cwd / "output")
+    assert written["files"] == "false", "the release must need no distributions"
+    assert written["pending"] == "false", "the release must need no bundle"
     assert not any(call[:2] == ["release", "upload"] for call in fake.calls("gh")), (
         "a fully published re-run must not upload"
     )
@@ -314,6 +323,7 @@ def test_a_rerun_after_success_uploads_nothing(fake: FakeRelease) -> None:
 def test_the_check_fails_when_the_destinations_disagree(fake: FakeRelease) -> None:
     """Differing bytes under one name stop the release before it is visible."""
     (fake.github / _BOTH).write_bytes(b"clobbered by an earlier workflow")
+    fake.attest_approved(fake.github / _BOTH)
     _draft_and_publish_pypi(fake)
     cwd = _publish_release(fake, verify=False)
 
@@ -376,9 +386,9 @@ def test_a_pypi_only_name_uploads_when_the_bundle_is_already_attached(
 
     cwd = _publish_release(fake)
 
-    assert outputs(cwd / "output")["pending"] == "true", (
-        "the missing release name must be staged"
-    )
+    written = outputs(cwd / "output")
+    assert written["files"] == "true", "the missing release name must be staged"
+    assert written["pending"] == "true", "the missing name needs a bundle"
     assert (
         fake.github / _PYPI_ONLY
     ).read_bytes() == f"published {_PYPI_ONLY}".encode(), (

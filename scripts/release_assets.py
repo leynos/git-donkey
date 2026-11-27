@@ -32,8 +32,39 @@ if typ.TYPE_CHECKING:
 #: The PEP 691 JSON simple index; relative file URLs resolve against it.
 INDEX_URL = "https://pypi.org/simple/git-donkey/"
 
-#: The suffix of this repository's run-unique Sigstore bundles.
+#: The suffix of a single-run Sigstore bundle.
 BUNDLE_SUFFIX = ".sigstore.json"
+
+#: The suffix of the combined attestation bundle attached to a release.
+ATTESTATIONS_SUFFIX = ".attestations.jsonl"
+
+
+def is_bundle(name: str) -> bool:
+    """Return whether a release asset name denotes a provenance bundle.
+
+    Parameters
+    ----------
+    name : str
+        Release asset filename.
+
+    Returns
+    -------
+    bool
+        ``True`` for a single-run Sigstore bundle or the combined
+        attestation bundle.
+
+    Examples
+    --------
+    >>> is_bundle("git-donkey-v1.2.3-run7-1.attestations.jsonl")
+    True
+    """
+    return name.endswith((BUNDLE_SUFFIX, ATTESTATIONS_SUFFIX))
+
+
+def has_bundle(assets: cabc.Mapping[str, object]) -> bool:
+    """Return whether a release holds at least one provenance bundle."""
+    return any(is_bundle(name) for name in assets)
+
 
 #: Artefact names this module will stage. Wheel and sdist names never need
 #: more, and the bound keeps a name safe as a path and as a TSV field.
@@ -371,15 +402,15 @@ def verify(state: State, staged: Path) -> list[str]:
     -------
     list[str]
         One message per missing or differing name; empty when both
-        destinations agree and the release carries a Sigstore bundle.
+        destinations agree and the release carries a provenance bundle.
     """
     pypi = {name: file.sha256 for name, file in state.pypi.items()}
     problems = mismatches(local_names(state.publish), pypi, state.github)
     problems.extend(
         f"{path.name} is missing from the GitHub Release"
         for path in sorted(staged.iterdir())
-        if path.name.endswith(BUNDLE_SUFFIX) and path.name not in state.github
+        if is_bundle(path.name) and path.name not in state.github
     )
-    if not any(name.endswith(BUNDLE_SUFFIX) for name in state.github):
-        problems.append("the GitHub Release holds no Sigstore bundle")
+    if not has_bundle(state.github):
+        problems.append("the GitHub Release holds no provenance bundle")
     return problems

@@ -22,7 +22,9 @@ permissions: {}
 # attested file stays in place when its digest matches GitHub's; an unverified
 # differing asset stops PyPI staging. Each destination receives only names it
 # lacks, never overwriting, and `publish-release` checks both hold the same
-# digests before the release becomes visible. The decisions live in
+# digests before the release becomes visible. The attached attestation bundle
+# is assembled from the store after upload, so it covers every published file,
+# including bytes carried from an earlier run. The decisions live in
 # `scripts/release_assets.py`; network calls stay in these steps.
 jobs:
   # Runs beside the build rather than before it, so the paid build lane never
@@ -78,8 +80,8 @@ jobs:
   # Attests exactly the files this run built, before anything leaves the run,
   # and hands them on as one artefact. Bytes a later job carries over from an
   # earlier run were attested by that run; every run's attestation stays in
-  # the repository's attestation store, and its bundle is kept under a
-  # run-unique name so no release asset is ever overwritten.
+  # the repository's attestation store, and the release's attached bundle is
+  # assembled from those records under a run-unique name.
   attest:
     needs:
       - check-version
@@ -180,6 +182,60 @@ jobs:
             flags+=(--prerelease)
           fi
           gh release create "${GITHUB_REF_NAME}" "${flags[@]}"
+
+      # The bounded index lookup shared by every reconciliation job. The
+      # runner's curl cannot report `%{num_retries}`, so the loop retries a
+      # network error, 429, or 5xx itself and counts the attempts.
+      - name: Fetch the PyPI index
+        id: index
+        run: &fetch-index |
+          set -euo pipefail
+          attempt=0
+          status=000
+          while [ "${attempt}" -lt 6 ]; do
+            attempt=$((attempt + 1))
+            status=$(curl --silent --show-error --location \
+              --connect-timeout 10 --max-time 60 \
+              --output pypi-index.json --write-out '%{http_code}' \
+              --header 'Accept: application/vnd.pypi.simple.v1+json' \
+              https://pypi.org/simple/git-donkey/) || status=000
+            case "${status}" in
+              000|429|5??) [ "${attempt}" -lt 6 ] && sleep 2 ;;
+              *) break ;;
+            esac
+          done
+          printf 'attempts=%s\nstatus=%s\n' "${attempt}" "${status}" >> "${GITHUB_OUTPUT}"
+          case "${status}" in
+            200) ;;
+            404) echo '{"files": []}' > pypi-index.json ;;
+            *)
+              echo "PyPI simple index returned HTTP ${status}." >&2
+              exit 1
+              ;;
+          esac
+      # A published release that no longer matches the canonical bytes must not
+      # stay visible while reconciliation runs or fails.
+      - name: Check whether an already published release is complete
+        id: redraft
+        run: |
+          set -euo pipefail
+          gh release view "${GITHUB_REF_NAME}" --json isDraft,assets > draft-state.json
+          if [ "$(jq -r '.isDraft' draft-state.json)" = true ]; then
+            echo "published=false" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          echo "published=true" >> "${GITHUB_OUTPUT}"
+          jq '{assets: .assets}' draft-state.json > draft-assets.json
+          mkdir -p github-state/files
+          python3 -m scripts.release_assets_cli release-complete --publish dist/publish \
+            --index pypi-index.json --assets draft-assets.json --output github-state/files
+      - name: Return an incomplete published release to draft
+        if: >-
+          steps.redraft.outputs.published == 'true'
+          && steps.redraft.outputs.complete == 'false'
+        run: |
+          set -euo pipefail
+          gh release edit "${GITHUB_REF_NAME}" --draft=true
       - name: Snapshot the release assets
         id: snapshot
         run: |
@@ -271,36 +327,12 @@ jobs:
         with:
           name: release-github-state
           path: github-state
-      # `publish-release` reuses this script through its anchor. The runner's
-      # curl cannot report `%{num_retries}`, so the loop retries a network
-      # error, 429, or 5xx itself and counts the attempts.
+      # `draft-release` and `publish-release` reuse this script through its
+      # anchor. The runner's curl cannot report `%{num_retries}`, so the loop
+      # retries a network error, 429, or 5xx itself and counts the attempts.
       - name: Fetch the PyPI index
         id: index
-        run: &fetch-index |
-          set -euo pipefail
-          attempt=0
-          status=000
-          while [ "${attempt}" -lt 6 ]; do
-            attempt=$((attempt + 1))
-            status=$(curl --silent --show-error --location \
-              --connect-timeout 10 --max-time 60 \
-              --output pypi-index.json --write-out '%{http_code}' \
-              --header 'Accept: application/vnd.pypi.simple.v1+json' \
-              https://pypi.org/simple/git-donkey/) || status=000
-            case "${status}" in
-              000|429|5??) [ "${attempt}" -lt 6 ] && sleep 2 ;;
-              *) break ;;
-            esac
-          done
-          printf 'attempts=%s\nstatus=%s\n' "${attempt}" "${status}" >> "${GITHUB_OUTPUT}"
-          case "${status}" in
-            200) ;;
-            404) echo '{"files": []}' > pypi-index.json ;;
-            *)
-              echo "PyPI simple index returned HTTP ${status}." >&2
-              exit 1
-              ;;
-          esac
+        run: *fetch-index
       # PyPI rejects a second upload of an existing filename, so names it holds
       # are dropped, and a name only the GitHub Release holds is sent with
       # GitHub's bytes rather than this run's rebuild.
@@ -351,16 +383,16 @@ jobs:
         run: |
           set -euo pipefail
           gh release view "${GITHUB_REF_NAME}" --json assets > release-assets.json
-      # A bundle is staged only when a distribution needs uploading or the
-      # release has no bundle at all, so a fully published re-run stages
-      # nothing and the upload step below is skipped.
+      # Every missing name is fetched from PyPI, whose bytes are canonical. A
+      # fully published re-run stages nothing, so the upload steps below are
+      # skipped and the release is unchanged.
       - name: Stage the assets the release lacks
         id: stage
         run: |
           set -euo pipefail
           python3 -m scripts.release_assets_cli stage-github --publish dist/publish \
             --index pypi-index.json --assets release-assets.json \
-            --bundles dist/attestations --output github-upload > pypi-fetch.tsv
+            --output github-upload > pypi-fetch.tsv
           while IFS=$'\t' read -r name url; do
             curl --silent --show-error --location --fail \
               --retry 5 --retry-all-errors --retry-delay 2 \
@@ -411,10 +443,40 @@ jobs:
       # No `--clobber`: an asset the release already holds is canonical.
       - name: Upload the assets the release lacks
         id: upload
-        if: steps.stage.outputs.pending == 'true'
+        if: steps.stage.outputs.files == 'true'
         run: |
           set -euo pipefail
           gh release upload "${GITHUB_REF_NAME}" github-upload/*
+      # The attached bundle must attest every byte the release now holds,
+      # including bytes carried from an earlier run, so it is assembled from
+      # the attestation store after the distributions are uploaded. A fully
+      # published re-run skips this step and keeps its existing bundle.
+      - name: Assemble the release attestations
+        id: attestations
+        if: steps.stage.outputs.pending == 'true'
+        run: |
+          set -euo pipefail
+          gh release view "${GITHUB_REF_NAME}" --json assets > release-assets.json
+          mkdir -p assembled-attestations
+          : > assembled-attestations/bundles.jsonl
+          jq -r '.assets[].name' release-assets.json | while IFS= read -r name; do
+            case "${name}" in
+              *.sigstore.json|*.attestations.jsonl) continue ;;
+            esac
+            work="$(mktemp -d)"
+            gh release download "${GITHUB_REF_NAME}" --pattern "${name}" --dir "${work}"
+            (
+              cd "${work}"
+              gh attestation download "$(realpath "${work}/${name}")" \
+                --repo "${GITHUB_REPOSITORY}" \
+                --predicate-type https://slsa.dev/provenance/v1
+            )
+            cat "${work}"/*.jsonl >> assembled-attestations/bundles.jsonl
+            rm -rf "${work}"
+          done
+          bundle="git-donkey-${GITHUB_REF_NAME}-run${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.attestations.jsonl"
+          cp assembled-attestations/bundles.jsonl "${bundle}"
+          gh release upload "${GITHUB_REF_NAME}" "${bundle}"
       - name: Check both destinations hold the same bytes
         id: verify
         run: |

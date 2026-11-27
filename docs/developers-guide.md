@@ -99,14 +99,16 @@ The job graph is:
    and at least one wheel with the complete manual-page inventory.
 3. `attest` collects every wheel and the one sdist, records build provenance,
    and hands them and a run-unique Sigstore bundle to later jobs.
-4. `draft-release` creates or reuses the tag's draft release and verifies any
-   assets a previous run left behind.
+4. `draft-release` creates or reuses the tag's draft release, returns an
+   already published release to draft when it is no longer complete, and
+   verifies any assets a previous run left behind.
 5. `publish-pypi` runs in the `pypi` environment and uploads only the names
    PyPI lacks through Trusted Publishing.
 6. `publish-release` gives the GitHub Release the names it lacks, takes PyPI's
-   bytes for any name PyPI already holds, verifies that both destinations hold
-   the same digests and that the bundle is attached, and then makes the release
-   visible.
+   bytes for any name PyPI already holds, assembles a provenance bundle for
+   every published distribution from the attestation store, verifies that both
+   destinations hold the same digests and that the bundle is attached, and then
+   makes the release visible.
 
 `make build-release` runs the same `uv build` locally, so a contributor can
 inspect both distributions. Only the workflow publishes; never upload a
@@ -126,6 +128,10 @@ the release already holds a differing asset, or PyPI holds bytes that no run
 attested for this tag and commit, the run fails and names the file. Delete the
 offending GitHub Release asset and rerun; PyPI's files cannot be deleted, so
 untraceable PyPI bytes require a new version.
+
+An already published release that no longer matches the canonical bytes is
+returned to draft before reconciliation, so it is never visible while a repair
+fails. A complete published release is left visible and is not edited.
 
 The release helpers in `scripts/` are checked by `interrogate` and both Pylint
 passes along with the package and tests. They use only the standard library so
