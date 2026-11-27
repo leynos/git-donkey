@@ -108,9 +108,10 @@ gh auth status
 
 Plonk parses the raw URL without applying `insteadOf`, so a transport rewrite
 to a local mirror does not change which GitHub repository is queried. Use
-`--no-github` when the sweep must make no network call, and treat a missing or
-unauthenticated `gh` as disabling the tier rather than as evidence of
-completion.
+`--no-github` when the sweep must make no GitHub API call; default and hard
+runs still discover and fetch the advertised trunk from the principal remote.
+Treat a missing or unauthenticated `gh` as disabling the tier rather than as
+evidence of completion.
 
 ## Treat completion evidence as a claim to verify
 
@@ -228,8 +229,9 @@ git -C "$main_worktree" plonk --soft --dry-run
 git -C "$main_worktree" plonk --hard --dry-run
 ```
 
-When the sweep must make no network call, add `--no-github`, and when the
-operator has accepted the gone-upstream risk, add `--upstream-gone`:
+When the sweep must make no GitHub API call, add `--no-github`; the default or
+hard run still fetches the advertised trunk. When the operator has accepted the
+gone-upstream risk, add `--upstream-gone`:
 
 ```bash
 git -C "$main_worktree" plonk --no-github --dry-run
@@ -306,8 +308,9 @@ decisions rather than reporting that no matching worktrees were found.
 If the GitHub fallback was part of the run, confirm from the preview and the
 summary which candidates it resolved. Do not infer a merge from a branch name,
 a closed issue, or a deleted upstream alone. If `gh` was missing or failed, the
-affected candidates are unverified and remain on disk; treat that as a reason
-to investigate, not as permission to force a removal.
+affected candidates remain unverified unless another tier completes them, and
+otherwise remain on disk; treat that as a reason to investigate, not as
+permission to force a removal.
 
 Cleanup can partially succeed before a later removal fails. Report completed
 and failed actions separately, re-inspect state, and stop rather than retrying

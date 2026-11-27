@@ -309,6 +309,8 @@ def test_verbatim_issue_branch_in_a_commit_message_completes_it() -> None:
         pytest.param(f"prefix-{_ISSUE_BRANCH}", id="prefixed"),
         pytest.param(f"{_ISSUE_BRANCH}-extra", id="suffixed"),
         pytest.param(f"prefix-{_ISSUE_BRANCH}-suffix", id="both-sides"),
+        pytest.param(f"{_ISSUE_BRANCH}+v2", id="plus-suffix"),
+        pytest.param(f"{_ISSUE_BRANCH}@v2", id="at-suffix"),
     ],
 )
 def test_verbatim_branch_matcher_is_bounded(message: str) -> None:

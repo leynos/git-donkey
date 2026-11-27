@@ -30,6 +30,7 @@ import typing as typ
 
 _DEFAULT_TIMEOUT_SECONDS = 10.0
 _GH_PROMPT_DISABLED_ENV = "GH_PROMPT_DISABLED"
+_GH_HOST_ENV = "GH_HOST"
 _GH_FIELDS = "number,headRefName,baseRefName,headRepositoryOwner"
 _GH_MISSING_STATUS = 127
 _GITHUB_HOST = "github.com"
@@ -53,7 +54,7 @@ _GITHUB_URL_PATTERNS = (
     ),
     re.compile(rf"^git://{re.escape(_GITHUB_HOST)}/{_OWNER}/{_REPOSITORY_NAME}$"),
     re.compile(
-        rf"^https?://(?:[^@/]+@)?{re.escape(_GITHUB_HOST)}/"
+        rf"^https?://(?:[^@/]+@)?{re.escape(_GITHUB_HOST)}(?::(?:80|443))?/"
         rf"{_OWNER}/{_REPOSITORY_NAME}/?$"
     ),
 )
@@ -205,6 +206,8 @@ def _gh_arguments(query: _PullRequestQuery) -> list[str]:
         f"{query.owner}/{query.repository}",
         "--head",
         query.head_branch,
+        "--base",
+        query.base_branch,
         "--state",
         "merged",
         "--json",
@@ -239,6 +242,9 @@ def _run_gh(arguments: typ.Sequence[str]) -> subprocess.CompletedProcess[str]:
     environment = os.environ.copy()
     # A prompt in a non-interactive sweep would block until the timeout.
     environment[_GH_PROMPT_DISABLED_ENV] = "1"
+    # The parsed URL is always github.com, so pin gh to that host rather than
+    # letting a configured GitHub Enterprise host reinterpret `owner/name`.
+    environment[_GH_HOST_ENV] = _GITHUB_HOST
     # Args are fixed plus local branch names, and shell=False is explicit.
     return subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true]
         [executable, *arguments[1:]],
@@ -272,6 +278,7 @@ def _payload_is_matching(
         and login.casefold() == query.owner.casefold()
         and isinstance(number, int)
         and not isinstance(number, bool)
+        and number > 0
     )
 
 
@@ -321,7 +328,7 @@ def merged_pull_request(
     arguments = _gh_arguments(query)
     try:
         completed = run(arguments)
-    except (OSError, subprocess.SubprocessError):
+    except (OSError, subprocess.SubprocessError, UnicodeDecodeError):
         return _MergedPullRequest("unknown")
     if completed.returncode != 0:
         return _MergedPullRequest("unknown")

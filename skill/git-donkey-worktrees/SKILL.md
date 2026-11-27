@@ -237,24 +237,24 @@ Default and hard runs, previews included, contact the principal remote: plonk
 discovers and fetches its advertised default branch before every sweep, and
 fails without removing anything when the remote is unreachable or advertises no
 default branch. A GitHub fallback, when enabled, additionally queries `gh`; use
-`--no-github` when the sweep must make no network call. Start with the preview
-for the requested mode and the exact flags from a deliberately selected
-invoking worktree, normally the main worktree, or the bare directory in a bare
-collection. Keep that location and those flags unchanged between preview and
-execution:
+`--no-github` to suppress that GitHub API call, not the required trunk fetch.
+Start with the preview for the requested mode and the exact flags from a
+deliberately selected invoking worktree, normally the main worktree, or the
+bare directory in a bare collection. Keep that location and those flags
+unchanged between preview and execution:
 
 ```bash
 git -C "$main_worktree" plonk --dry-run
 ```
 
 Use `--soft --dry-run` for generated directories or `--hard --dry-run` only
-when branch deletion is in scope. Add `--no-github` to keep the sweep offline,
-or `--upstream-gone` only when the operator accepts that a deleted branch may
-have been abandoned rather than merged; either flag changes the candidate set,
-so re-review the preview. There is no documented per-path or per-branch
-selector. If the preview reaches beyond the authorized scope, do not execute
-that plonk mode. A no-op result is not a reason to escalate to `--hard` or
-`--soft`.
+when branch deletion is in scope. Add `--no-github` to suppress the GitHub API
+lookup (the trunk fetch still happens), or `--upstream-gone` only when the
+operator accepts that a deleted branch may have been abandoned rather than
+merged; either flag changes the candidate set, so re-review the preview. There
+is no documented per-path or per-branch selector. If the preview reaches beyond
+the authorized scope, do not execute that plonk mode. A no-op result is not a
+reason to escalate to `--hard` or `--soft`.
 
 ## Report the result
 

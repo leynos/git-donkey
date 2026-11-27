@@ -129,19 +129,23 @@ def _configured_remote_url(repo: Repo, remote: str) -> str:
 
     The GitHub fallback must see the URL the user configured, not the endpoint
     a URL rewrite sends traffic to: a repository whose remote is rewritten to a
-    local mirror is still a GitHub repository. An unreadable or unset value
-    disables the fallback rather than guessing a repository.
+    local mirror is still a GitHub repository. A remote may configure several
+    URLs; Git fetches from the first, so that is the one parsed here. An
+    unreadable or unset value disables the fallback rather than guessing a
+    repository.
 
     Returns
     -------
     str
-        The raw configured URL, or an empty string when it cannot be read.
+        The first raw configured URL, or an empty string when it cannot be
+        read.
 
     """
     try:
-        return repo.git.config("--get", f"remote.{remote}.url")
+        values = repo.git.config("--get-all", f"remote.{remote}.url").splitlines()
     except GitCommandError:
         return ""
+    return values[0] if values else ""
 
 
 def _resolve_layout(

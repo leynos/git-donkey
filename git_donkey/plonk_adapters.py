@@ -5,8 +5,9 @@ to Git and the filesystem. :class:`_GitWorktreeAdapter` reads trunk history and
 a branch's upstream configuration, performs the unforced worktree removal, and
 deletes a local branch only when the caller asks for hard mode.
 :class:`_FilesystemCleanupAdapter` removes the generated directories soft mode
-owns. Every destructive call is reported as a boolean rather than raised, so a
-refusal can be reported and the sweep can continue.
+owns. The Git mutation methods report a refusal as a boolean so the sweep can
+report it and continue; filesystem removal is not caught, so a soft-cleanup
+error stops the run before any summary is printed.
 
 Nothing in this module decides whether a worktree is complete or whether it is
 safe to discard; those are policy questions answered elsewhere.
@@ -15,7 +16,9 @@ safe to discard; those are policy questions answered elsewhere.
 from __future__ import annotations
 
 import logging
+import os
 import shutil
+import subprocess  # ruff: ignore[suspicious-subprocess-import]  # bounded ls-remote
 import typing as typ
 
 from git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
@@ -28,9 +31,11 @@ if typ.TYPE_CHECKING:
 
 _LOGGER = logging.getLogger(__name__)
 # `git ls-remote --exit-code` reports "no matching refs" with this status, and
-# `git config --get` reports an unset key with this one.
+# `git config --get-all` reports an unset key with this one.
 _LS_REMOTE_NO_MATCH_STATUS = 2
 _CONFIG_KEY_UNSET_STATUS = 1
+_LS_REMOTE_TIMEOUT_SECONDS = 10.0
+_GIT_TERMINAL_PROMPT_ENV = "GIT_TERMINAL_PROMPT"
 _SOFT_TARGET_NAMES = (
     "target",
     "node_modules",
@@ -53,6 +58,69 @@ class _GitWorktreeAdapter:
         """Keep the repository every query and mutation runs against."""
         self.repo = repo
 
+    def _ls_remote(
+        self,
+        arguments: typ.Sequence[str],
+    ) -> subprocess.CompletedProcess[str] | None:
+        """Run ``git ls-remote`` with a deadline, or return ``None`` if it cannot.
+
+        GitPython offers no timeout, so a remote that accepts a connection and
+        then stalls could block the sweep indefinitely. This helper runs the
+        same Git command directly, closes standard input, disables terminal
+        prompts, and maps a timeout, decoding failure, or execution error to
+        ``None`` so the caller can report ``unknown`` rather than hang.
+
+        Returns
+        -------
+        subprocess.CompletedProcess[str] | None
+            The completed process, or ``None`` when the deadline or an execution
+            error prevented an answer.
+
+        """
+        executable = shutil.which("git")
+        if executable is None:
+            return None
+        environment = os.environ.copy()
+        environment[_GIT_TERMINAL_PROMPT_ENV] = "0"
+        try:
+            return subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true]
+                [executable, "ls-remote", *arguments],
+                cwd=self.repo.working_tree_dir or self.repo.git_dir,
+                capture_output=True,
+                text=True,
+                timeout=_LS_REMOTE_TIMEOUT_SECONDS,
+                check=False,
+                stdin=subprocess.DEVNULL,
+                env=environment,
+            )
+        except (OSError, subprocess.SubprocessError, UnicodeDecodeError):
+            return None
+
+    @staticmethod
+    def _mentions_exact_ref(output: str, ref: str) -> bool:
+        """Return whether ``git ls-remote`` output names ``ref`` exactly."""
+        return any(line.rpartition("\t")[2] == ref for line in output.splitlines())
+
+    def _ls_remote_state(self, remote: str, merge_ref: str) -> UpstreamState:
+        """Return the upstream state a bounded ``ls-remote`` reports."""
+        completed = self._ls_remote(
+            ("--exit-code", "--heads", remote, merge_ref),
+        )
+        if completed is None:
+            return "unknown"
+        if completed.returncode == _LS_REMOTE_NO_MATCH_STATUS:
+            return "gone"
+        if completed.returncode != 0:
+            return "unknown"
+        # `ls-remote` patterns match the tail of a ref, so a longer branch such
+        # as `other/refs/heads/<name>` can make the command exit 0 without the
+        # configured ref existing. Require the exact ref before saying present.
+        return (
+            "present"
+            if self._mentions_exact_ref(completed.stdout, merge_ref)
+            else "gone"
+        )
+
     def history_messages(self, ref: str) -> typ.Iterator[str]:
         """Return commit messages from ``ref`` history."""
         for commit in self.repo.iter_commits(ref):
@@ -66,11 +134,13 @@ class _GitWorktreeAdapter:
         """Return whether ``branch_name``'s configured upstream exists.
 
         The branch's own configuration names the remote and merge ref; the
-        remote is then queried with ``git ls-remote --exit-code --heads``. The
-        distinctions matter to the caller: ``unset`` means the branch was never
-        pushed, ``present`` means it still exists, ``gone`` means it was
-        deleted, and ``unknown`` means the remote could not answer. Only
-        ``gone`` is completion evidence, and even that is opt-in because a
+        remote is then queried with a bounded ``git ls-remote --exit-code
+        --heads``. Git uses the first value of a multi-valued
+        ``branch.<name>.merge`` for ``@{upstream}``, so the first entry is the
+        one checked. The distinctions matter to the caller: ``unset`` means the
+        branch was never pushed, ``present`` means it still exists, ``gone``
+        means it was deleted, and ``unknown`` means the remote could not answer.
+        Only ``gone`` is completion evidence, and even that is opt-in because a
         deleted branch cannot distinguish a merged change from an abandoned
         one.
 
@@ -87,29 +157,23 @@ class _GitWorktreeAdapter:
 
         """
         try:
-            remote = self.repo.git.config("--get", f"branch.{branch_name}.remote")
-            merge_ref = self.repo.git.config("--get", f"branch.{branch_name}.merge")
+            remotes = self.repo.git.config(
+                "--get-all", f"branch.{branch_name}.remote"
+            ).splitlines()
+            merges = self.repo.git.config(
+                "--get-all", f"branch.{branch_name}.merge"
+            ).splitlines()
         except GitCommandError as exc:
             return "unset" if exc.status == _CONFIG_KEY_UNSET_STATUS else "unknown"
+        remote = remotes[0] if remotes else ""
+        merge_ref = merges[0] if merges else ""
         if not remote or not merge_ref:
             return "unset"
         if not merge_ref.startswith("refs/heads/"):
             # A merge ref outside refs/heads is not a branch this check knows
             # how to query, so the honest answer is unknown.
             return "unknown"
-        merge_branch = merge_ref.removeprefix("refs/heads/")
-        try:
-            self.repo.git.ls_remote(
-                "--exit-code",
-                "--heads",
-                remote,
-                f"refs/heads/{merge_branch}",
-            )
-        except GitCommandError as exc:
-            if exc.status == _LS_REMOTE_NO_MATCH_STATUS:
-                return "gone"
-            return "unknown"
-        return "present"
+        return self._ls_remote_state(remote, merge_ref)
 
     @staticmethod
     def skip_reason(worktree_path: Path) -> _SkipReason | None:

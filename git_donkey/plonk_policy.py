@@ -40,6 +40,10 @@ _CLOSING_KEYWORD_PATTERN = (
     r"(?<![\w-])(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s*:?\s*"
     r"#{issue_number}(?!\d)"
 )
+# Characters that can continue a Git ref token beyond the letters, digits, and
+# separators the simple boundary used to cover. A branch name followed by any
+# of these is a longer token, not the branch itself.
+_REF_BOUNDARY_CHARS = r"[\w./+@{}~^=-]"
 
 
 class CompletionCandidate(typ.Protocol):
@@ -228,7 +232,9 @@ def _merge_commit_pattern(branch_name: str) -> re.Pattern[str]:
 
 def _branch_name_pattern(branch_name: str) -> re.Pattern[str]:
     """Return the bounded verbatim-branch matcher for ``branch_name``."""
-    return re.compile(rf"(?<![\w./-]){re.escape(branch_name)}(?![\w./-])")
+    return re.compile(
+        rf"(?<!{_REF_BOUNDARY_CHARS}){re.escape(branch_name)}(?!{_REF_BOUNDARY_CHARS})"
+    )
 
 
 def _offline_matchers(candidate: CompletionCandidate) -> _OfflineMatchers:
@@ -302,10 +308,8 @@ def _resolve_messages(
     """
     found: dict[int, _CompletionEvidence] = {}
     for message in messages:
-        for index, matchers in enumerate(matcher_list):
-            if index not in pending:
-                continue
-            evidence = matchers.evidence_in(message)
+        for index in sorted(pending):
+            evidence = matcher_list[index].evidence_in(message)
             if evidence is not None:
                 found[index] = evidence
                 pending.remove(index)

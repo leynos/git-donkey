@@ -36,6 +36,8 @@ _EXPECTED_ARGUMENTS = [
     f"{_OWNER}/{_REPOSITORY}",
     "--head",
     _HEAD_BRANCH,
+    "--base",
+    _BASE_BRANCH,
     "--state",
     "merged",
     "--json",
@@ -97,6 +99,12 @@ _EXPECTED_ARGUMENTS = [
             id="https-without-suffix",
         ),
         pytest.param(
+            "https://github.com:443/leynos/git-donkey.git",
+            "leynos",
+            "git-donkey",
+            id="https-explicit-default-port",
+        ),
+        pytest.param(
             "https://token@github.com/leynos/git-donkey.git",
             "leynos",
             "git-donkey",
@@ -138,6 +146,10 @@ def test_supported_github_remote_urls_are_parsed(
         pytest.param("git@github.com:-leynos/git-donkey.git", id="option-like-owner"),
         pytest.param("git@github.com:leynos/git donkey.git", id="space-in-name"),
         pytest.param("git@github.com:leynos/git;donkey.git", id="punctuation-in-name"),
+        pytest.param(
+            "https://github.com:8443/leynos/git-donkey.git",
+            id="non-default-https-port",
+        ),
     ],
 )
 def test_non_github_remote_urls_are_rejected(url: str) -> None:
@@ -213,6 +225,8 @@ def test_empty_result_is_not_merged() -> None:
         pytest.param(_record(number="61"), id="string-number"),
         pytest.param(_record(number=True), id="boolean-number"),
         pytest.param(_record(number=None), id="missing-number"),
+        pytest.param(_record(number=0), id="zero-number"),
+        pytest.param(_record(number=-1), id="negative-number"),
         pytest.param("not-a-record", id="non-object-record"),
     ],
 )
@@ -251,6 +265,7 @@ def test_process_errors_fail_closed() -> None:
     for error in (
         subprocess.TimeoutExpired(["gh"], 10),
         OSError("gh disappeared"),
+        UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid start byte"),
     ):
 
         def run(
@@ -313,6 +328,9 @@ def test_run_gh_disables_prompts_and_closes_stdin(
     environment = typ.cast("dict[str, str]", captured["env"])
     assert environment[plonk_github._GH_PROMPT_DISABLED_ENV] == "1", (
         "expected prompts to be disabled for a non-interactive sweep"
+    )
+    assert environment[plonk_github._GH_HOST_ENV] == "github.com", (
+        "expected the lookup to be pinned to the parsed GitHub host"
     )
     assert captured["check"] is False, "expected the exit status to be inspected"
     assert captured["capture_output"] is True, "expected both streams to be captured"

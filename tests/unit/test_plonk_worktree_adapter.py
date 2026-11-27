@@ -14,6 +14,7 @@ included, because the subprocess that reports the refusal ran too.
 from __future__ import annotations
 
 import shutil
+import subprocess  # ruff: ignore[suspicious-subprocess-import]  # asserts timeout mapping
 import typing as typ
 from pathlib import Path
 from types import SimpleNamespace
@@ -21,7 +22,7 @@ from types import SimpleNamespace
 import pytest
 from git import Repo
 
-from git_donkey import plonk, plonk_records
+from git_donkey import plonk, plonk_adapters, plonk_records
 from tests import git_repo_helpers
 
 if typ.TYPE_CHECKING:
@@ -210,6 +211,71 @@ def test_removal_leaves_a_dirty_worktree_on_disk(
     assert "failed to remove worktree" in capsys.readouterr().err, (
         "the refusal is reported to the user"
     )
+
+
+def test_upstream_state_uses_the_first_merge_entry(tmp_path: Path) -> None:
+    """Git uses the first merge value for ``@{upstream}``, so this check must too."""
+    repo, _remote_path, branch = _repository_with_tracking(tmp_path, "present")
+    repo.git.config("--add", f"branch.{branch}.merge", "refs/heads/missing")
+
+    state = plonk._GitWorktreeAdapter(repo).upstream_state(branch)
+
+    assert state == "present", (
+        "expected the first, still-present merge entry to be authoritative"
+    )
+
+
+def test_upstream_state_reports_gone_when_only_a_later_merge_entry_exists(
+    tmp_path: Path,
+) -> None:
+    """A missing first merge entry is gone even when a later entry exists."""
+    repo, _remote_path, branch = _repository_with_tracking(tmp_path, "present")
+    repo.git.config(f"branch.{branch}.merge", "refs/heads/missing")
+    repo.git.config("--add", f"branch.{branch}.merge", f"refs/heads/{branch}")
+
+    state = plonk._GitWorktreeAdapter(repo).upstream_state(branch)
+
+    assert state == "gone", (
+        "expected the first, missing merge entry to decide the upstream state"
+    )
+
+
+def test_upstream_state_maps_a_timeout_to_unknown(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A stalled upstream should become unknown rather than block the sweep."""
+    repo, _remote_path, branch = _repository_with_tracking(tmp_path, "present")
+
+    def fail_run(*args: object, **kwargs: object) -> None:
+        """Simulate a Git subprocess that exceeds the deadline."""
+        raise subprocess.TimeoutExpired(["git", "ls-remote"], 10)
+
+    monkeypatch.setattr(
+        plonk_adapters.shutil,
+        "which",
+        lambda name: "/usr/bin/git",
+    )
+    monkeypatch.setattr(plonk_adapters.subprocess, "run", fail_run)
+
+    state = plonk._GitWorktreeAdapter(repo).upstream_state(branch)
+
+    assert state == "unknown", (
+        "expected a timed-out upstream query to be reported as unknown"
+    )
+
+
+def test_exact_ref_match_rejects_a_longer_branch_tail() -> None:
+    """``ls-remote`` patterns match a ref tail, so presence needs an exact check."""
+    output = "abc123\trefs/heads/other/refs/heads/issue-123-fix\n"
+
+    assert not plonk._GitWorktreeAdapter._mentions_exact_ref(
+        output, "refs/heads/issue-123-fix"
+    ), "expected a longer ref with the same tail not to count as present"
+    assert plonk._GitWorktreeAdapter._mentions_exact_ref(
+        f"{output}def456\trefs/heads/issue-123-fix\n",
+        "refs/heads/issue-123-fix",
+    ), "expected the exact ref to count as present"
 
 
 def test_delete_branch_removes_the_branch_and_times_the_deletion(

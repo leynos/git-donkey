@@ -118,13 +118,19 @@ because a repository whose transport is rewritten to a local mirror is still a
 GitHub repository.
 
 The fallback is enabled by default only when the principal remote is GitHub and
-`gh` is installed. A result is accepted only when its head branch, base branch
-(the advertised trunk), and head owner all match the query. A failed,
-timed-out, malformed, or mismatched response is `unknown`, never `merged`, and
-an empty result is a definitive "no merged pull request" rather than a failure.
-A missing `gh` is reported once per run as a notice, and the sweep fails closed.
-`--no-github` disables the tier explicitly; it is not valid with `--soft`,
-which does not judge completion.
+`gh` is installed. The query is scoped to the head branch and the advertised
+base branch, and a result is accepted only when its head branch, base branch,
+and head owner all match. A failed, timed-out, malformed, or mismatched
+response is `unknown`, never `merged`, and an empty result is a definitive "no
+merged pull request" rather than a failure. A missing `gh` is reported once per
+run as a notice, and the sweep fails closed. `--no-github` disables the tier
+explicitly; it is not valid with `--soft`, which does not judge completion.
+
+As with the history-marker tier, the fallback does not require the local branch
+tip to equal the merged head. A commit made locally after the merge does not
+invalidate the evidence: default mode keeps the branch, so the commit survives,
+and hard mode deletes it only when the operator explicitly asks for branch
+deletion.
 
 ### Opt-in upstream-gone check
 
@@ -170,6 +176,10 @@ vocabulary:
 - `worktree directory is missing`: the recorded path is not a worktree.
 - `worktree removal failed`: Git refused for another reason; the refusal is
   also reported on stderr and logged.
+
+A locked worktree is not detected by the preflight, because the lock is a
+registration property rather than a working-tree state. The unforced removal
+refuses it, and it is reported as `worktree removal failed`.
 
 Skips keep the run's exit code at 0. A skip is a reported decision, not a
 failure of the command. A branch Git refuses to delete is reported as a failed

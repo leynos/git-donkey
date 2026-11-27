@@ -428,6 +428,30 @@ def test_fetched_trunk_ref_ignores_a_stale_remote_head_alias(
     )
 
 
+def test_configured_remote_url_uses_the_first_fetch_url(tmp_path: Path) -> None:
+    """Git fetches from the first configured URL, so the fallback parses it."""
+    repo = git_repo_helpers.seed_repo(tmp_path / "repo")
+    repo.create_remote("origin", "git@github.com:leynos/first.git")
+    repo.git.config(
+        "--add",
+        "remote.origin.url",
+        "git@github.com:leynos/second.git",
+    )
+
+    assert plonk._configured_remote_url(repo, "origin") == (
+        "git@github.com:leynos/first.git"
+    ), "expected the first raw URL, matching Git's fetch behaviour"
+
+
+def test_configured_remote_url_is_empty_when_unset(tmp_path: Path) -> None:
+    """A repository without the remote URL should not guess a fallback."""
+    repo = git_repo_helpers.seed_repo(tmp_path / "repo")
+
+    assert not plonk._configured_remote_url(repo, "origin"), (
+        "expected an unset remote URL to disable the GitHub fallback"
+    )
+
+
 def test_advertised_trunk_reads_the_advertisement_without_fetching(
     tmp_path: Path,
 ) -> None:
