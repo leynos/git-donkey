@@ -374,16 +374,19 @@ def test_bundle_names_cover_both_formats(name: str, *, expected: bool) -> None:
 
 
 def test_has_bundle_detects_a_combined_bundle() -> None:
-    """A release holding only the combined attestations counts as bundled."""
+    """Only the combined attestations complete a release."""
     assert has_bundle({_NAME: None, f"g{ATTESTATIONS_SUFFIX}": None}), (
         "the combined attestation bundle must satisfy the release check"
     )
     assert not has_bundle({_NAME: None}), "a release without a bundle is incomplete"
+    assert not has_bundle({_NAME: None, f"g{BUNDLE_SUFFIX}": None}), (
+        "a single-run bundle cannot cover every published distribution"
+    )
 
 
 def test_verify_accepts_agreeing_destinations_with_a_bundle(tmp_path: Path) -> None:
     """Both destinations holding the same bytes and a bundle is clear."""
-    bundle = f"git-donkey-v1.0.0-run1-1{BUNDLE_SUFFIX}"
+    bundle = f"git-donkey-v1.0.0-run1-1{ATTESTATIONS_SUFFIX}"
     state = _state(
         tmp_path,
         local={_NAME: "local"},

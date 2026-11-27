@@ -91,15 +91,33 @@ def _sdist_problems(sdist: Path, commands: tuple[str, ...]) -> list[str]:
     return problems
 
 
+def _wheel_data_prefix(wheel: Path) -> str:
+    """Return the wheel's root data-directory prefix for manual pages."""
+    stem = wheel.name.removesuffix(_WHEEL_SUFFIX)
+    distribution, version = stem.split("-", 2)[:2]
+    return f"{distribution}-{version}{_MAN_DATA_SUFFIX}"
+
+
 def _wheel_problems(wheel: Path, commands: tuple[str, ...]) -> list[str]:
-    """Describe the manual pages one wheel lacks."""
+    """Describe the manual pages one wheel lacks or installs unexpectedly."""
     with zipfile.ZipFile(wheel) as archive:
         members = archive.namelist()
-    problems: list[str] = []
-    for command in commands:
-        page = f"{_MAN_DATA_SUFFIX}{command}.1"
-        if not any(member.endswith(page) for member in members):
-            problems.append(f"{wheel.name} is missing the {command} manual page")
+    prefix = _wheel_data_prefix(wheel)
+    installed = {
+        member.removeprefix(prefix).removesuffix(".1")
+        for member in members
+        if member.startswith(prefix) and member.endswith(".1")
+    }
+    expected = set(commands)
+    problems = [
+        f"{wheel.name} is missing the {command} manual page"
+        for command in commands
+        if command not in installed
+    ]
+    problems.extend(
+        f"{wheel.name} carries unexpected manual page {name}.1"
+        for name in sorted(installed - expected)
+    )
     return problems
 
 

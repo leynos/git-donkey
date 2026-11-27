@@ -62,8 +62,18 @@ def is_bundle(name: str) -> bool:
 
 
 def has_bundle(assets: cabc.Mapping[str, object]) -> bool:
-    """Return whether a release holds at least one provenance bundle."""
-    return any(is_bundle(name) for name in assets)
+    """Return whether a release holds the combined attestation bundle.
+
+    A single-run ``.sigstore.json`` bundle is a provenance record, but it can
+    cover only the run that produced it. Completion requires the combined
+    bundle that is assembled from the store for every published distribution.
+
+    Returns
+    -------
+    bool
+        Whether a combined attestation bundle is attached.
+    """
+    return any(name.endswith(ATTESTATIONS_SUFFIX) for name in assets)
 
 
 #: Artefact names this module will stage. Wheel and sdist names never need

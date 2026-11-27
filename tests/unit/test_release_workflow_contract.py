@@ -435,6 +435,9 @@ def test_the_attached_bundle_covers_the_published_bytes() -> None:
     )
     script = step_script("publish-release", _ASSEMBLY_STEP)
     for fragment in (
+        "gh attestation verify",
+        '--source-ref "${GITHUB_REF}"',
+        '--source-digest "${GITHUB_SHA}"',
         "gh attestation download",
         "--predicate-type https://slsa.dev/provenance/v1",
         'gh release download "${GITHUB_REF_NAME}"',

@@ -251,7 +251,7 @@ def _published_release(
         (publish / name).write_bytes(b"published")
         (fake.pypi / name).write_bytes(b"published")
         (fake.github / name).write_bytes(b"published")
-    (fake.github / "git-donkey-v1.2.3-run1-1.sigstore.json").write_bytes(b"bundle")
+    (fake.github / "git-donkey-v1.2.3-run1-1.attestations.jsonl").write_bytes(b"bundle")
     if not complete:
         (fake.github / _CARRIED_ASSET).unlink()
     return fake, fake.env()
@@ -274,6 +274,20 @@ def _run_redraft_check(
     )
     assert report.returncode == 0, report.stderr
     return outputs(tmp_path / "github-output")
+
+
+def _redraft_fires(written: dict[str, str]) -> bool:
+    """Return whether the workflow's re-draft guard would run the edit.
+
+    The same expression is pinned in the workflow contract test; this helper
+    lets the step tests exercise the branch the runner would take.
+
+    Returns
+    -------
+    bool
+        Whether the guard would run the re-draft edit.
+    """
+    return written.get("published") != "false" and written.get("complete") != "true"
 
 
 def test_an_incomplete_published_release_returns_to_draft(
@@ -311,6 +325,15 @@ def test_a_complete_published_release_is_not_redrafted(tmp_path: pth.Path) -> No
     fake, env = _published_release(tmp_path, complete=True)
 
     written = _run_redraft_check(tmp_path, fake, env)
+    if _redraft_fires(written):
+        completed = run_bash(
+            step_script(
+                "draft-release", "Return an incomplete published release to draft"
+            ),
+            tmp_path,
+            env,
+        )
+        assert completed.returncode == 0, completed.stderr
 
     assert written["published"] == "true", "the release is published"
     assert written["complete"] == "true", "the release is complete"

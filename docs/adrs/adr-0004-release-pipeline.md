@@ -93,7 +93,8 @@ sdist fails continuous integration rather than the tag.
 `scripts/check_dist.py` requires exactly one sdist and at least one wheel,
 requires the sdist to carry the manual-page sources and Docutils configuration,
 refuses generated `.roff` pages in the sdist, and requires every wheel to carry
-one generated page per console script declared in `pyproject.toml`.
+exactly one generated page per console script declared in `pyproject.toml`, at
+the wheel's data-directory path and nowhere else.
 
 `attest` collects every wheel and exactly one sdist from the downloaded build
 artefacts, attests them with `actions/attest-build-provenance`, and hands the
@@ -128,12 +129,13 @@ in place of bytes PyPI serves.
 
 Before `publish-release` makes the release visible, it re-reads both the PyPI
 index and the release's asset list and confirms every artefact name has an
-identical SHA-256 digest on both sides and that the release carries a
-provenance bundle. The combined bundle is assembled from the attestation store
-for the exact bytes the release holds, so a carried asset cannot be paired with
-a bundle for a different rebuild. A name that already differs between the
-destinations, PyPI bytes that no run attested for this tag and commit, or a
-release asset with no attestation fails the job and leaves the release a draft.
+identical SHA-256 digest on both sides and that the release carries the
+combined attestation bundle. That bundle is assembled from the store for the
+exact bytes the release holds, and every distribution is verified against this
+repository, `release.yml`, the tag, and the triggering commit before it is
+assembled. A name that already differs between the destinations, PyPI bytes
+that no run attested for this tag and commit, or a release asset with no
+attestation fails the job and leaves the release a draft.
 
 Recovery for a disagreeing GitHub asset is deliberately manual: an
 administrator deletes the offending asset from the GitHub Release, because
@@ -158,7 +160,10 @@ reconciliation PyPI already requires:
   from the attestation store for every distribution the release now holds. The
   attached bundle therefore attests carried bytes as well as this run's build;
   the `attest` job's bundle remains in the run artefact and the attestation
-  store.
+  store. Before assembling, it verifies every distribution, including one
+  carried from an earlier run, against this repository, `release.yml`, the tag,
+  and the triggering commit, so a moved tag cannot publish assets built for
+  another commit.
 - A rerun that finds every name published and a bundle attached stages and
   uploads nothing, and `publish-release` edits nothing because the release is
   already visible with the right pre-release flag.

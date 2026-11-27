@@ -342,6 +342,34 @@ def test_the_check_fails_when_the_destinations_disagree(fake: FakeRelease) -> No
     )
 
 
+def test_an_existing_asset_from_another_commit_stops_publication(
+    tmp_path: pth.Path,
+) -> None:
+    """A moved tag cannot publish assets attested for a different commit."""
+    fake = fake_release(tmp_path)
+    for name in _ARTEFACTS:
+        (fake.pypi / name).write_bytes(b"published")
+        (fake.github / name).write_bytes(b"published")
+        fake.add_attestation(
+            fake.github / name, AttestationOverrides(source_digest="b" * 40)
+        )
+    cwd, env = _job_directory(fake, "publish-release")
+    for name in _PRE_PROVENANCE:
+        _step("publish-release", name, cwd, env)
+
+    completed = run_bash(step_script("publish-release", _ASSEMBLY_STEP), cwd, env)
+
+    assert completed.returncode != 0, (
+        "an asset attested for another commit must stop publication"
+    )
+    assert "No attestations satisfy the verification policy" in completed.stderr, (
+        "the failure must come from the identity policy"
+    )
+    assert not any(call[:2] == ["release", "upload"] for call in fake.calls("gh")), (
+        "no asset may be uploaded after a failed verification"
+    )
+
+
 def test_bytes_that_do_not_match_the_index_are_never_uploaded(
     fake: FakeRelease,
 ) -> None:

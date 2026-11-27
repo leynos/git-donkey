@@ -469,6 +469,16 @@ jobs:
             esac
             work="$(mktemp -d)"
             gh release download "${GITHUB_REF_NAME}" --pattern "${name}" --dir "${work}"
+            # Every distribution the release will hold must be attested for
+            # this tag and commit, including assets a previous run left behind.
+            gh attestation verify "${work}/${name}" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --signer-workflow "${GITHUB_REPOSITORY}/.github/workflows/release.yml" \
+              --source-ref "${GITHUB_REF}" \
+              --source-digest "${GITHUB_SHA}" \
+              --predicate-type https://slsa.dev/provenance/v1 \
+              --deny-self-hosted-runners \
+              --format json > "${work}/${name}.json"
             (
               cd "${work}"
               gh attestation download "$(realpath "${work}/${name}")" \

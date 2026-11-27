@@ -196,6 +196,29 @@ def test_a_wheel_without_a_manual_page_fails(tmp_path: Path) -> None:
     ], "the missing manual page must be named"
 
 
+def test_a_wheel_page_outside_the_data_directory_fails(tmp_path: Path) -> None:
+    """A page outside the wheel's data root would not install as documented."""
+    members = _wheel_members()
+    page = members.pop(f"{_REPOSITORY}.data/data/share/man/man1/git-track.1")
+    members[f"backup/{_REPOSITORY}.data/data/share/man/man1/git-track.1"] = page
+    root, dist = _build(tmp_path, _Build(wheel_members=members))
+
+    assert check_dist(dist, root) == [
+        f"{_WHEEL} is missing the git-track manual page"
+    ], "a page outside the data directory must not count as installed"
+
+
+def test_a_wheel_with_an_extra_manual_page_fails(tmp_path: Path) -> None:
+    """An obsolete page must not reach the installed manual directory."""
+    members = _wheel_members()
+    members[f"{_REPOSITORY}.data/data/share/man/man1/obsolete.1"] = b""
+    root, dist = _build(tmp_path, _Build(wheel_members=members))
+
+    assert check_dist(dist, root) == [
+        f"{_WHEEL} carries unexpected manual page obsolete.1"
+    ], "an extra manual page must be named"
+
+
 def test_the_console_script_inventory_comes_from_pyproject(
     tmp_path: Path,
 ) -> None:
