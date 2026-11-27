@@ -29,6 +29,18 @@ environment:
 uv tool install git-donkey
 ```
 
+Released versions are published to PyPI and, with identical bytes, to the tag's
+GitHub Release. Each release also carries a Sigstore bundle recording the
+workflow run that built the files. To verify a downloaded wheel, use GitHub CLI
+2.102.0 or newer:
+
+```shell
+gh release download v<version> --repo leynos/git-donkey --pattern 'git_donkey-*'
+gh attestation verify git_donkey-<version>-py3-none-any.whl \
+  --repo leynos/git-donkey \
+  --signer-workflow leynos/git-donkey/.github/workflows/release.yml
+```
+
 For an unreleased source checkout, run `uv tool install .` from the repository
 root instead. The wheel includes a section-one manual for every console script:
 `git-donkey(1)`, `git-track(1)`, `git-fafo(1)`, `git-plonk(1)`,
