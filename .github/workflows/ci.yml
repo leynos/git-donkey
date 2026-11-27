@@ -10,6 +10,24 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # Runs the build the release publishes, so a missing or incomplete source
+  # distribution fails the pull request rather than the tag.
+  build-dist:
+    runs-on: ubuntu-latest
+    permissions:
+      # Least privilege: this job only reads repository contents.
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v4
+        with:
+          persist-credentials: false
+      - name: Build distributions
+        uses: ./.github/actions/pure-python-wheel
+        with:
+          python-version: '3.13'
+          artifact-name: wheels-pure
+
   lint-test:
     runs-on: ubuntu-latest
     permissions:

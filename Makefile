@@ -37,13 +37,13 @@ TYPOS_CONFIG_BUILDER = $(UV_ENV) uv tool run --python 3.14 --from \
         typos-config-builder
 # The docstring gate scans these targets recursively, subject to interrogate's
 # default exclusions; a test checks that every tracked Python file lies under one.
-INTERROGATE_TARGETS ?= git_donkey tests conftest.py
+INTERROGATE_TARGETS ?= git_donkey tests scripts conftest.py
 # Level 2 prints a MISSED row per undocumented definition, which the
 # `interrogate` target fails on: the rounded percentage alone can pass a lone gap.
 INTERROGATE_FLAGS ?= -vv --fail-under 100
 INTERROGATE ?= $(UV_ENV) uv run interrogate
 # Pylint targets shared by both passes.
-PYLINT_TARGETS ?= git_donkey tests
+PYLINT_TARGETS ?= git_donkey tests scripts
 # Spend a tenth of the available cores on Pylint, leaving room for the other
 # agents and builds sharing this machine. The floor of two keeps the pass
 # parallel on small CI runners, whose core count never reaches the tenth.
@@ -80,8 +80,8 @@ all: build check-fmt lint typecheck test spelling
 build: uv .venv ## Build virtual-env and install deps
 	$(UV_ENV) uv sync --group dev
 
-build-release: ## Build artefacts (sdist & wheel)
-	python -m build --sdist --wheel
+build-release: uv ## Build artefacts (sdist & wheel)
+	$(UV_ENV) uv build
 
 clean: ## Remove build artifacts
 	rm -rf build dist *.egg-info \
