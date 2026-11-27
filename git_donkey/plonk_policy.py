@@ -40,10 +40,11 @@ _CLOSING_KEYWORD_PATTERN = (
     r"(?<![\w-])(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s*:?\s*"
     r"#{issue_number}(?!\d)"
 )
-# Characters that can continue a Git ref token beyond the letters, digits, and
-# separators the simple boundary used to cover. A branch name followed by any
-# of these is a longer token, not the branch itself.
-_REF_BOUNDARY_CHARS = r"[\w./+@{}~^=-]"
+# A branch name is a complete token only when the characters around it cannot
+# continue a ref. Git forbids these characters in ref names; whitespace and the
+# prose quoting characters below are also accepted as token boundaries.
+_FORBIDDEN_REF_CHARS = frozenset("~^:?*[\\")
+_PROSE_QUOTES = frozenset("`\"'")
 
 
 class CompletionCandidate(typ.Protocol):
@@ -183,7 +184,6 @@ class _OfflineMatchers:
     marker_pattern: re.Pattern[str] | None
     closing_keyword: re.Pattern[str] | None
     merge_commit: re.Pattern[str] | None
-    branch_name_pattern: re.Pattern[str] | None
 
     @property
     def has_matchers(self) -> bool:
@@ -207,9 +207,7 @@ class _OfflineMatchers:
                     "merge_commit",
                     f"{merge.group('owner')}/{self.candidate.branch_name}",
                 )
-        if self.branch_name_pattern is not None and self.branch_name_pattern.search(
-            message
-        ):
+        if _mentions_branch(message, self.candidate.branch_name):
             return _CompletionEvidence("branch_name", self.candidate.branch_name)
         return None
 
@@ -230,11 +228,28 @@ def _merge_commit_pattern(branch_name: str) -> re.Pattern[str]:
     )
 
 
-def _branch_name_pattern(branch_name: str) -> re.Pattern[str]:
-    """Return the bounded verbatim-branch matcher for ``branch_name``."""
-    return re.compile(
-        rf"(?<!{_REF_BOUNDARY_CHARS}){re.escape(branch_name)}(?!{_REF_BOUNDARY_CHARS})"
+def _is_branch_boundary(character: str) -> bool:
+    """Return whether ``character`` can end a branch-name token."""
+    if not character:
+        return True
+    return (
+        character.isspace()
+        or character in _PROSE_QUOTES
+        or character in _FORBIDDEN_REF_CHARS
     )
+
+
+def _mentions_branch(message: str, branch_name: str) -> bool:
+    """Return whether ``message`` names ``branch_name`` as a complete token."""
+    start = 0
+    while (index := message.find(branch_name, start)) != -1:
+        before = message[index - 1] if index else ""
+        after_index = index + len(branch_name)
+        after = message[after_index] if after_index < len(message) else ""
+        if _is_branch_boundary(before) and _is_branch_boundary(after):
+            return True
+        start = index + 1
+    return False
 
 
 def _offline_matchers(candidate: CompletionCandidate) -> _OfflineMatchers:
@@ -248,14 +263,12 @@ def _offline_matchers(candidate: CompletionCandidate) -> _OfflineMatchers:
             marker_pattern=marker_pattern,
             closing_keyword=None,
             merge_commit=None,
-            branch_name_pattern=None,
         )
     return _OfflineMatchers(
         candidate=candidate,
         marker_pattern=marker_pattern,
         closing_keyword=_closing_keyword_pattern(candidate.issue_number),
         merge_commit=_merge_commit_pattern(candidate.branch_name),
-        branch_name_pattern=_branch_name_pattern(candidate.branch_name),
     )
 
 

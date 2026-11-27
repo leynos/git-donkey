@@ -43,7 +43,7 @@ _EXPECTED_ARGUMENTS = [
     "--json",
     "number,headRefName,baseRefName,headRepositoryOwner",
     "--limit",
-    "1",
+    str(plonk_github._GH_RESULT_LIMIT),
 ]
 
 
@@ -208,6 +208,17 @@ def test_owner_comparison_is_case_insensitive() -> None:
     )
 
 
+def test_matching_record_after_a_fork_is_accepted() -> None:
+    """A fork row ahead of the configured owner's row must not hide it."""
+    fork_record = _record(headRepositoryOwner={"login": "fork"})
+
+    result = _lookup([fork_record, _record()])
+
+    assert result == plonk_github._MergedPullRequest("merged", 61), (
+        "expected the local identity filter to consider the whole page"
+    )
+
+
 def test_empty_result_is_not_merged() -> None:
     """No merged pull request is a definitive answer, not an unknown."""
     assert _lookup([]) == plonk_github._MergedPullRequest("not_merged"), (
@@ -260,27 +271,29 @@ def test_non_zero_exit_fails_closed() -> None:
     assert result.state == "unknown", "expected a failed gh query to be unknown"
 
 
-def test_process_errors_fail_closed() -> None:
-    """A timeout or missing executable must degrade to unknown, not raise."""
-    for error in (
-        subprocess.TimeoutExpired(["gh"], 10),
-        OSError("gh disappeared"),
-        UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid start byte"),
-    ):
+@pytest.mark.parametrize(
+    "error",
+    [
+        pytest.param(subprocess.TimeoutExpired(["gh"], 10), id="timeout"),
+        pytest.param(OSError("gh disappeared"), id="os-error"),
+        pytest.param(
+            UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid start byte"),
+            id="decode-error",
+        ),
+    ],
+)
+def test_process_errors_fail_closed(error: BaseException) -> None:
+    """A timeout, execution error, or decoding failure must be unknown."""
 
-        def run(
-            arguments: typ.Sequence[str],
-            *,
-            error: BaseException = error,
-        ) -> subprocess.CompletedProcess[str]:
-            """Raise the configured process error."""
-            raise error
+    def run(arguments: typ.Sequence[str]) -> subprocess.CompletedProcess[str]:
+        """Raise the configured process error."""
+        raise error
 
-        result = plonk_github.merged_pull_request(_QUERY, run=run)
+    result = plonk_github.merged_pull_request(_QUERY, run=run)
 
-        assert result.state == "unknown", (
-            f"expected {type(error).__name__} to map to unknown"
-        )
+    assert result.state == "unknown", (
+        f"expected {type(error).__name__} to map to unknown"
+    )
 
 
 def test_gh_available_reflects_path_lookup(monkeypatch: pytest.MonkeyPatch) -> None:

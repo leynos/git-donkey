@@ -19,6 +19,7 @@ import typing as typ
 from git_donkey import helpers, plonk_github, plonk_policy
 from git_donkey.plonk_records import (
     GIT_PLONK_PREFIX,
+    UpstreamState,
     _CompletionEvidence,
     _PlonkCandidate,
     _PlonkContext,
@@ -60,6 +61,9 @@ class _SweepState:
     github_lookups : dict[str, tuple[_CompletionEvidence | None, _UnverifiedReason]]
         Merged-pull-request results already obtained, so each branch is looked
         up at most once per sweep.
+    upstream_states : dict[str, UpstreamState]
+        Upstream verdicts already obtained, so every worktree on a branch sees
+        the same answer.
 
     """
 
@@ -73,6 +77,7 @@ class _SweepState:
     github_lookups: dict[str, tuple[_CompletionEvidence | None, _UnverifiedReason]] = (
         dataclasses.field(default_factory=dict)
     )
+    upstream_states: dict[str, UpstreamState] = dataclasses.field(default_factory=dict)
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -168,7 +173,10 @@ def _upstream_evidence(
     candidate: _PlonkCandidate,
 ) -> tuple[_CompletionEvidence | None, _UnverifiedReason]:
     """Return the opt-in upstream check's verdict for one candidate."""
-    match state.adapter.upstream_state(candidate.branch_name):
+    branch_name = candidate.branch_name
+    if branch_name not in state.upstream_states:
+        state.upstream_states[branch_name] = state.adapter.upstream_state(branch_name)
+    match state.upstream_states[branch_name]:
         case "gone":
             return (
                 _CompletionEvidence("upstream_gone", candidate.branch_name),

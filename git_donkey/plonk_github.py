@@ -33,6 +33,9 @@ _GH_PROMPT_DISABLED_ENV = "GH_PROMPT_DISABLED"
 _GH_HOST_ENV = "GH_HOST"
 _GH_FIELDS = "number,headRefName,baseRefName,headRepositoryOwner"
 _GH_MISSING_STATUS = 127
+# A small page lets the local identity filter see past a fork's same-named
+# branch without asking for an unbounded result set.
+_GH_RESULT_LIMIT = 10
 _GITHUB_HOST = "github.com"
 # GitHub serves SSH from a dedicated host on port 443 for networks that block
 # port 22; a remote using it still names the same repository.
@@ -213,7 +216,7 @@ def _gh_arguments(query: _PullRequestQuery) -> list[str]:
         "--json",
         _GH_FIELDS,
         "--limit",
-        "1",
+        str(_GH_RESULT_LIMIT),
     ]
 
 
@@ -291,12 +294,16 @@ def _pull_request_from_payload(
         return _MergedPullRequest("unknown")
     if not payload:
         return _MergedPullRequest("not_merged")
-    record = payload[0]
-    if not _payload_is_matching(record, query):
-        return _MergedPullRequest("unknown")
-    record_map = typ.cast("dict[str, object]", record)
-    number = record_map["number"]
-    return _MergedPullRequest("merged", typ.cast("int", number))
+    # The page may contain a fork's same-named branch ahead of the configured
+    # owner, so select the first record that matches every identity field
+    # instead of rejecting the page on its first row.
+    for record in payload:
+        if not _payload_is_matching(record, query):
+            continue
+        record_map = typ.cast("dict[str, object]", record)
+        number = record_map["number"]
+        return _MergedPullRequest("merged", typ.cast("int", number))
+    return _MergedPullRequest("unknown")
 
 
 def merged_pull_request(

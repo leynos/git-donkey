@@ -240,6 +240,55 @@ def test_upstream_state_reports_gone_when_only_a_later_merge_entry_exists(
     )
 
 
+def test_upstream_state_uses_the_last_remote_value(tmp_path: Path) -> None:
+    """Git uses the last ``branch.<name>.remote`` value for ``@{upstream}``."""
+    repo, _origin = git_repo_helpers.repo_with_remote_default(
+        tmp_path / "local", tmp_path / "origin.git"
+    )
+    old_remote = tmp_path / "old.git"
+    Repo.init(old_remote, bare=True)
+    repo.create_remote("old", old_remote.as_posix())
+    branch = _WORKTREE_BRANCH
+    repo.git.branch(branch)
+    repo.git.push("origin", f"{branch}:refs/heads/{branch}")
+    repo.git.config(f"branch.{branch}.remote", "old")
+    repo.git.config("--add", f"branch.{branch}.remote", "origin")
+    repo.git.config(f"branch.{branch}.merge", f"refs/heads/{branch}")
+
+    state = plonk._GitWorktreeAdapter(repo).upstream_state(branch)
+
+    assert state == "present", (
+        "expected the effective origin remote to be probed, not the old one"
+    )
+
+
+def test_preflight_ignores_inherited_repository_location(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A hook's repository variables must not redirect the preflight."""
+    repo, clean_worktree = _worktree_with_dirt(tmp_path, "clean")
+    dirty_worktree = tmp_path / "repo.worktrees" / "dirty"
+    repo.git.worktree(
+        "add",
+        "-q",
+        dirty_worktree.as_posix(),
+        "-b",
+        "dirty",
+    )
+    (dirty_worktree / "README.md").write_text("changed")
+    dirty_repo = Repo(dirty_worktree)
+    monkeypatch.setenv("GIT_DIR", str(dirty_repo.git_dir))
+    monkeypatch.setenv("GIT_WORK_TREE", dirty_worktree.as_posix())
+
+    reason = plonk._GitWorktreeAdapter(repo).skip_reason(clean_worktree)
+
+    assert reason is None, (
+        "expected the preflight to inspect the clean candidate, not the "
+        "repository location inherited from the invoking hook"
+    )
+
+
 def test_upstream_state_maps_a_timeout_to_unknown(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

@@ -15,6 +15,7 @@ safe to discard; those are policy questions answered elsewhere.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 import shutil
@@ -36,6 +37,17 @@ _LS_REMOTE_NO_MATCH_STATUS = 2
 _CONFIG_KEY_UNSET_STATUS = 1
 _LS_REMOTE_TIMEOUT_SECONDS = 10.0
 _GIT_TERMINAL_PROMPT_ENV = "GIT_TERMINAL_PROMPT"
+# GitPython reads these from the process environment when it constructs a
+# repository. A hook that exports them for the invoking worktree would make the
+# preflight inspect that worktree instead of the candidate.
+_REPOSITORY_LOCATION_ENV = (
+    "GIT_DIR",
+    "GIT_WORK_TREE",
+    "GIT_INDEX_FILE",
+    "GIT_COMMON_DIR",
+    "GIT_OBJECT_DIRECTORY",
+    "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+)
 _SOFT_TARGET_NAMES = (
     "target",
     "node_modules",
@@ -49,6 +61,20 @@ _SOFT_TARGET_NAMES = (
     "build",
     "coverage",
 )
+
+
+@contextlib.contextmanager
+def _clean_git_environment() -> typ.Iterator[None]:
+    """Temporarily remove repository-location variables from the environment."""
+    saved = {
+        key: os.environ.pop(key)
+        for key in _REPOSITORY_LOCATION_ENV
+        if key in os.environ
+    }
+    try:
+        yield
+    finally:
+        os.environ.update(saved)
 
 
 class _GitWorktreeAdapter:
@@ -135,14 +161,14 @@ class _GitWorktreeAdapter:
 
         The branch's own configuration names the remote and merge ref; the
         remote is then queried with a bounded ``git ls-remote --exit-code
-        --heads``. Git uses the first value of a multi-valued
-        ``branch.<name>.merge`` for ``@{upstream}``, so the first entry is the
-        one checked. The distinctions matter to the caller: ``unset`` means the
-        branch was never pushed, ``present`` means it still exists, ``gone``
-        means it was deleted, and ``unknown`` means the remote could not answer.
-        Only ``gone`` is completion evidence, and even that is opt-in because a
-        deleted branch cannot distinguish a merged change from an abandoned
-        one.
+        --heads``. Git uses the last ``branch.<name>.remote`` value and the
+        first ``branch.<name>.merge`` value for ``@{upstream}``, so those are
+        the entries checked. The distinctions matter to the caller: ``unset``
+        means the branch was never pushed, ``present`` means it still exists,
+        ``gone`` means it was deleted, and ``unknown`` means the remote could
+        not answer. Only ``gone`` is completion evidence, and even that is
+        opt-in because a deleted branch cannot distinguish a merged change from
+        an abandoned one.
 
         Parameters
         ----------
@@ -157,15 +183,14 @@ class _GitWorktreeAdapter:
 
         """
         try:
-            remotes = self.repo.git.config(
-                "--get-all", f"branch.{branch_name}.remote"
-            ).splitlines()
+            # `--get` returns the effective (last) remote; Git reads the first
+            # merge value for @{upstream}, so that list keeps its order.
+            remote = self.repo.git.config("--get", f"branch.{branch_name}.remote")
             merges = self.repo.git.config(
                 "--get-all", f"branch.{branch_name}.merge"
             ).splitlines()
         except GitCommandError as exc:
             return "unset" if exc.status == _CONFIG_KEY_UNSET_STATUS else "unknown"
-        remote = remotes[0] if remotes else ""
         merge_ref = merges[0] if merges else ""
         if not remote or not merge_ref:
             return "unset"
@@ -202,15 +227,18 @@ class _GitWorktreeAdapter:
             remove it unprompted.
 
         """
-        with observability.get_recorder().span("worktree_preflight"):
+        with (
+            observability.get_recorder().span("worktree_preflight"),
+            _clean_git_environment(),
+        ):
             if not worktree_path.is_dir():
                 return _SkipReason.UNAVAILABLE
             try:
-                worktree_repo = Repo(worktree_path)
+                with Repo(worktree_path) as worktree_repo:
+                    if worktree_repo.is_dirty(untracked_files=True):
+                        return _SkipReason.DIRTY
             except (InvalidGitRepositoryError, NoSuchPathError):
                 return _SkipReason.UNAVAILABLE
-            if worktree_repo.is_dirty(untracked_files=True):
-                return _SkipReason.DIRTY
             return None
 
     def remove_worktree(self, worktree_path: Path) -> bool:
