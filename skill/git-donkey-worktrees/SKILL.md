@@ -11,9 +11,10 @@ description: >-
 compatibility: >-
   Requires Git and both git-donkey and git-plonk on PATH. Verify that git
   donkey --help supports remote-default bases, --no-pull, --pull-ff, and
-  --pull-rebase, and that git plonk --help supports --soft, --hard, and
-  --dry-run and describes skipping worktrees with uncommitted or untracked
-  files, since older releases force removal instead.
+  --pull-rebase, and that git plonk --help supports --soft, --hard, --dry-run,
+  --no-github, and --upstream-gone, describes the offline, GitHub, and upstream
+  completion tiers, and describes skipping worktrees with uncommitted or
+  untracked files, since older releases force removal instead.
 ---
 
 # Worktree management with git donkey and git plonk
@@ -75,7 +76,9 @@ NUL-aware parser rather than a shell loop.
 
 Follow existing issue or roadmap naming conventions when the task has a real
 identifier. Do not invent an issue number to enable cleanup. Ordinary feature
-names are valid, but default and hard plonk modes do not recognize every name.
+names are valid, but completion for them may depend on the GitHub fallback,
+which requires a GitHub principal remote, an installed and authenticated `gh`,
+and a merged pull request whose head and base branches and head owner match.
 
 Validate a task-specific branch name, then let donkey select the remote default:
 
@@ -221,26 +224,34 @@ do not retire a parent worktree until its dependent work has been accounted for.
 
 **Read [the cleanup checklist](references/cleanup.md) before every cleanup,
 including `--soft`.** It documents safeguards the command does not enforce.
-Plonk skips a completed worktree holding modified, staged, or untracked files
+Plonk resolves completion from offline history, then the read-only GitHub
+merged-pull-request fallback, then the opt-in gone-upstream check, and reports
+each removal's signal. A candidate no tier resolves is reported as unverified
+and kept. None of these signals proves that current work is safe to discard:
+plonk skips a completed worktree holding modified, staged, or untracked files
 and reports it, but it deletes ignored files with the worktree, and `--hard`
 deletes a removed worktree's local branch with `git branch -D`, without a
-merged check. Completion markers do not prove that current work is safe to
-discard.
+merged check.
 
 Default and hard runs, previews included, contact the principal remote: plonk
 discovers and fetches its advertised default branch before every sweep, and
 fails without removing anything when the remote is unreachable or advertises no
-default branch. Start with the preview for the requested mode from a
-deliberately selected invoking worktree, normally the main worktree, or the
-bare directory in a bare collection. Keep that location unchanged between
-preview and execution:
+default branch. A GitHub fallback, when enabled, additionally queries `gh`; use
+`--no-github` when the sweep must make no network call. Start with the preview
+for the requested mode and the exact flags from a deliberately selected
+invoking worktree, normally the main worktree, or the bare directory in a bare
+collection. Keep that location and those flags unchanged between preview and
+execution:
 
 ```bash
 git -C "$main_worktree" plonk --dry-run
 ```
 
 Use `--soft --dry-run` for generated directories or `--hard --dry-run` only
-when branch deletion is in scope. There is no documented per-path or per-branch
+when branch deletion is in scope. Add `--no-github` to keep the sweep offline,
+or `--upstream-gone` only when the operator accepts that a deleted branch may
+have been abandoned rather than merged; either flag changes the candidate set,
+so re-review the preview. There is no documented per-path or per-branch
 selector. If the preview reaches beyond the authorized scope, do not execute
 that plonk mode. A no-op result is not a reason to escalate to `--hard` or
 `--soft`.
@@ -249,10 +260,11 @@ that plonk mode. A no-op result is not a reason to escalate to `--hard` or
 
 For creation or reuse, report the branch, absolute worktree path, chosen base,
 starting commit, whether any pull occurred, and unexpected overlay changes. For
-cleanup, report the mode, inspected trunk ref, reviewed targets, actual
-removals, retained branches, each skipped worktree with its reported reason,
-any failed branch deletion, and the exit status. Skips exit `0`; a refused
-branch deletion exits `1` with its worktree already removed. Distinguish a
-preview, a completed operation, and a partial failure. Do not imply a push,
-merge, rebase, or remote-branch deletion took place when none was requested or
-performed.
+cleanup, report the mode and completion flags, inspected trunk ref, reviewed
+targets, each removal's completion signal, retained branches, each skipped
+worktree with its reported reason, each unverified worktree with its fixed
+reason, any failed branch deletion, and the exit status. Skips and unverified
+worktrees exit `0`; a refused branch deletion exits `1` with its worktree
+already removed. Distinguish a preview, a completed operation, and a partial
+failure. Do not imply a push, merge, rebase, or remote-branch deletion took
+place when none was requested or performed.

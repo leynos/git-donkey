@@ -17,17 +17,22 @@ path-based scope, not a provenance check: a manually created worktree under
 that directory can also qualify. It does not sweep arbitrary unregistered
 directories.
 
-- Default mode removes clean worktrees whose recognized branch marker occurs in
-  the selected trunk history. It keeps local branches.
-- `--hard` uses the same candidate test and cleanliness check, and also deletes
-  the local branch of each worktree it removed. It never deletes remote
+- Default mode removes clean worktrees whose completion a tier resolves. It
+  keeps local branches. A branch no tier resolves is reported as unverified and
+  kept.
+- `--hard` uses the same completion tiers and cleanliness check, and also
+  deletes the local branch of each worktree it removed. It never deletes remote
   branches and does not broaden completion matching.
 - `--soft` removes named generated directories from **all** worktrees in scope,
   irrespective of branch naming or completion. It keeps worktree registrations
   and branches, but does not check whether the directory contains tracked files.
 - `--dry-run` previews the selected mode without deleting paths or branches. It
-  reports the worktrees a real run would skip, and why. `--soft` and `--hard`
-  are mutually exclusive.
+  reports the worktrees a real run would skip or leave unverified, and why.
+  `--soft` and `--hard` are mutually exclusive.
+- `--no-github` disables the GitHub merged-pull-request fallback. It is not
+  valid with `--soft`.
+- `--upstream-gone` adds the opt-in check that a branch's configured upstream
+  no longer exists. It is not valid with `--soft`.
 
 Default and hard modes exclude the invoking worktree. Soft mode does **not**
 exclude it. All modes can affect other agents' worktrees. Execute a reviewed
@@ -92,21 +97,69 @@ add a nonexistent `git plonk --fetch`, `--remote`, or `--base` option. When the
 remote cannot be reached, report that cleanup could not resolve trunk rather
 than substitute local history.
 
-## Treat completion markers as hints
+The advertised branch is also the base branch the GitHub fallback requires a
+merged pull request to target. Before relying on that tier, inspect the raw
+configured URL and the CLI session:
 
-An issue-style branch such as `issue-123-short-title` maps to `(#123)`; the
-matcher also accepts `(#123.)`. A roadmap branch such as
-`road-1-2-3a-4-short-title` maps to `(road.1.2.3a.4)` and accepts an optional
-final dot inside the parentheses. Unrecognized branches such as `feature/plain`
-remain untouched by default and hard modes. Do not rename a branch just to make
-cleanup recognize it.
+```bash
+git -C "$main_worktree" config --get "remote.$remote.url"
+gh auth status
+```
 
-Plonk scans commit messages, not GitHub issue state, pull-request merge status,
-patch equivalence, or branch ancestry. A matching reference anywhere in a trunk
-commit message is enough. A squash-merge suffix often names a pull request,
-which may have a different number from the issue in the branch name. Verify
-that the marker really corresponds to the completed work; neither a closed
-issue nor an unrelated `(#123)` establishes that relationship.
+Plonk parses the raw URL without applying `insteadOf`, so a transport rewrite
+to a local mirror does not change which GitHub repository is queried. Use
+`--no-github` when the sweep must make no network call, and treat a missing or
+unauthenticated `gh` as disabling the tier rather than as evidence of
+completion.
+
+## Treat completion evidence as a claim to verify
+
+Completion is resolved in three tiers, and each removal line names the tier
+that justified it. Do not treat any tier as proof that the work is safe to
+discard; verify the actual merge and the worktree's contents.
+
+**Offline history.** An issue-style branch such as `issue-123-short-title` maps
+to `(#123)`; the matcher also accepts `(#123.)`. A df12-build roadmap branch
+such as `roadmap-2-2-1` or `roadmap-2-2-1-addendum` maps to `(2.2.1)`, with two
+to four numeric components. A legacy roadmap branch such as
+`road-1-2-3a-4-short-title` maps to `(road.1.2.3a.4)`, and a task id may end
+the name. An issue branch also accepts a closing keyword such as `Closes #123`,
+a classic merge commit naming the exact branch, and the branch name appearing
+verbatim in a bounded context. Unrecognized branches such as `feature/plain`
+have no offline matcher. Do not rename a branch just to make cleanup recognize
+it.
+
+**GitHub fallback.** For a branch no offline signal resolves, plonk asks
+whether a merged pull request exists for that head branch when the principal
+remote is GitHub and `gh` is installed. It accepts only a result whose head
+branch, base branch (the advertised trunk), and head owner match. A failed,
+timed-out, malformed, or mismatched response is unknown, never merged. `gh`
+being absent is reported once and disables the tier. `--no-github` disables it
+explicitly. The fallback is read-only and never merges, closes, or edits
+anything.
+
+**Opt-in upstream check.** `--upstream-gone` treats a branch whose configured
+upstream no longer exists as completed. The check reads `branch.<name>.remote`
+and `branch.<name>.merge` and runs `git ls-remote --exit-code --heads`. Only
+`gone` completes a candidate; `unset`, `present`, and `unknown` leave it
+unverified. The signal is weak because a deleted branch cannot distinguish a
+merged change from an abandoned one. Use it only when the operator accepts that
+risk.
+
+A candidate no tier resolves is reported under `Unverified worktrees:` with one
+of the fixed reasons `no completion signal found`,
+`GitHub completion lookup failed`, `no upstream branch configured`,
+`upstream branch still exists`, or `upstream state unknown`. It is never
+removed. An unverified result is not a failure: it leaves the exit status at
+`0`.
+
+A matching reference anywhere in a trunk commit message is enough for the
+offline tier. That is weaker than it looks: it does not prove patch
+equivalence, branch ancestry, or that the merged work matches the branch. A
+squash-merge suffix often names a pull request, which may have a different
+number from the issue in the branch name. Verify that the evidence really
+corresponds to the completed work; neither a closed issue nor an unrelated
+`(#123)` establishes that relationship.
 
 A branch may contain new commits after an earlier matching merge. Several
 worktrees can also share the same issue marker. Review every candidate
@@ -175,6 +228,22 @@ git -C "$main_worktree" plonk --soft --dry-run
 git -C "$main_worktree" plonk --hard --dry-run
 ```
 
+When the sweep must make no network call, add `--no-github`, and when the
+operator has accepted the gone-upstream risk, add `--upstream-gone`:
+
+```bash
+git -C "$main_worktree" plonk --no-github --dry-run
+```
+
+```bash
+git -C "$main_worktree" plonk --upstream-gone --dry-run
+```
+
+Either flag changes the candidate set: `--no-github` can move candidates from
+removal to unverified, and `--upstream-gone` can add candidates that default
+mode would keep. Re-run the preview with the exact flags that will be used for
+execution, and review the resulting set again.
+
 Only after the corresponding checks and authorization succeed, execute the same
 command with `--dry-run` removed. The command offers no per-target selector. If
 any candidate is unsafe or out of scope, stop the batch. Do not invent an
@@ -220,17 +289,25 @@ soft mode as an unsolicited disk-pressure or post-task housekeeping action.
 
 Re-read `git worktree list --porcelain`, check retained branch refs and paths,
 and inspect surviving checkouts after execution. Compare actual results with
-the reviewed preview, including each skipped worktree and its reason. Confirm
-that default mode retained branches, soft mode retained worktrees and branches,
-or hard mode deleted only the local branches of removed worktrees, as
-applicable.
+the reviewed preview, including each skipped worktree and its reason and each
+unverified worktree and its fixed reason. Check that every removal line named
+the completion signal the preview reported. Confirm that default mode retained
+branches, soft mode retained worktrees and branches, or hard mode deleted only
+the local branches of removed worktrees, as applicable.
 
 Read the exit status. `0` means the sweep did everything it planned, reported
-skips included. `1` means trunk could not be resolved, or a branch deletion
-failed after its worktree was removed. `2` means the command could not run. A
-skip is not an error, and a failed branch deletion is not a skip; a run in
-which every candidate was skipped lists those skips rather than reporting that
-no matching worktrees were found.
+skips and unverified worktrees included. `1` means trunk could not be resolved,
+or a branch deletion failed after its worktree was removed. `2` means the
+command could not run, including an invalid flag combination. A skip and an
+unverified worktree are not errors, and a failed branch deletion is not a skip;
+a run in which every candidate was skipped or left unverified lists those
+decisions rather than reporting that no matching worktrees were found.
+
+If the GitHub fallback was part of the run, confirm from the preview and the
+summary which candidates it resolved. Do not infer a merge from a branch name,
+a closed issue, or a deleted upstream alone. If `gh` was missing or failed, the
+affected candidates are unverified and remain on disk; treat that as a reason
+to investigate, not as permission to force a removal.
 
 Cleanup can partially succeed before a later removal fails. Report completed
 and failed actions separately, re-inspect state, and stop rather than retrying

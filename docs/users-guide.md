@@ -424,12 +424,47 @@ session worktrees, are never removed or cleaned.
 git plonk
 ```
 
-Default mode removes worktrees whose branch name has a recognized completion
-marker and whose marker appears in canonical trunk history. Issue branches
-named like `issue-123-short-title` match commits containing `(#123)`. Roadmap
-branches named like `road-1-2-3a-4-short-title` match commits containing
-`(road.1.2.3a.4)` or `(road.1.2.3a.4.)`. Branches with unrecognized names or no
-matching trunk history marker are left alone.
+Default mode removes worktrees when a completion tier resolves the branch and
+the worktree is clean. Three branch-name shapes are recognized offline:
+
+- `issue-123-short-title` completes on `(#123)` in trunk history;
+- df12-build roadmap branches such as `roadmap-2-2-1` and
+  `roadmap-2-2-1-addendum` complete on the un-namespaced dotted id `(2.2.1)`,
+  which may have two to four components; and
+- legacy roadmap branches such as `road-1-2-3a-4-short-title` complete on
+  `(road.1.2.3a.4)`. A task id may end the name, so `road-1-2-3a-4` works too.
+
+An issue branch also accepts the signals GitHub writes into commit messages: a
+closing keyword such as `Closes #123`, with `Fixes` and `Resolves` and their
+inflections, an optional colon, and no owner or repository prefix; a classic
+merge commit such as `Merge pull request #45 from owner/issue-123-short-title`
+whose branch segment matches exactly, whatever its pull-request number; and the
+branch name appearing verbatim in a bounded context.
+
+### GitHub fallback
+
+When no offline signal resolves a branch, `git plonk` asks GitHub whether a
+merged pull request exists for it. The fallback is enabled by default when the
+principal remote is GitHub and `gh` is installed. The query is read-only, and a
+result is accepted only when its head branch, base branch (the advertised
+trunk), and head owner match the request. A failed, timed-out, malformed, or
+mismatched response counts as unknown, never merged. Pass `--no-github` to
+disable the fallback. A missing `gh` is reported once as a notice and also
+disables it.
+
+### Upstream-gone check
+
+The opt-in `--upstream-gone` check treats a branch whose configured upstream no
+longer exists as completed. It reads `branch.<name>.remote` and
+`branch.<name>.merge` and asks
+`git ls-remote --exit-code --heads <remote> refs/heads/<branch>`. Only a
+deleted branch completes a candidate: an upstream that still exists, was never
+configured, or cannot be queried leaves it unverified. The signal is opt-in
+because a deleted branch cannot distinguish a merged change from an abandoned
+one. Neither `--no-github` nor `--upstream-gone` is valid with `--soft`, which
+does not judge completion.
+
+### Trunk and cleanup rules
 
 The trunk is the default branch the principal remote advertises, discovered with
 `git ls-remote --symref <remote> HEAD` and fetched explicitly, exactly as
@@ -465,15 +500,16 @@ Hard mode removes completed worktrees and deletes their matching local branches:
 git plonk --hard
 ```
 
-Hard mode uses the same history-marker check and the same cleanliness preflight
-as default mode. The branch is deleted only after its worktree is removed, so a
+Hard mode uses the same completion tiers and the same cleanliness preflight as
+default mode. The branch is deleted only after its worktree is removed, so a
 skipped worktree keeps its branch. It deletes local branches only; it never
 forces a removal and never deletes remote branches.
 
 Dry-run mode prints the actions `git plonk` would take and exits without
-removing generated paths, worktrees, or branches. Skips appear in the preview
-too, because a preview that hid them would misrepresent the run it previews. It
-can be combined with the default, soft, or hard cleanup mode:
+removing generated paths, worktrees, or branches. Skips and unverified
+worktrees appear in the preview too, because a preview that hid them would
+misrepresent the run it previews. It can be combined with the default, soft, or
+hard cleanup mode:
 
 ```shell
 git plonk --dry-run
@@ -481,25 +517,32 @@ git plonk --soft --dry-run
 git plonk --hard --dry-run
 ```
 
-Every run ends with a summary. Removals are listed under their own headings,
-and each skipped worktree is listed with the reason it was left alone:
+Every run ends with a summary. Each removal names the signal that justified it,
+each skipped worktree names why it was left alone, and a candidate no tier
+resolved is listed as unverified with one of the fixed reasons
+`no completion signal found`, `GitHub completion lookup failed`,
+`no upstream branch configured`, `upstream branch still exists`, or
+`upstream state unknown`:
 
 ```text
 git-plonk: mode=hard
 Removed worktrees:
-- /home/user/demo.worktrees/issue-123-fix
-- /home/user/demo.worktrees/issue-321-old
+- /home/user/demo.worktrees/issue-123-fix (completed by marker (#123))
+- /home/user/demo.worktrees/fix-markdown-gates (completed by merged pull request #61)
 Removed branches:
 - issue-123-fix
+- fix-markdown-gates
 Failed branch deletions:
 - issue-321-old (branch deletion failed)
 Skipped worktrees:
 - /home/user/demo.worktrees/issue-456-dirty (uncommitted changes)
-- /home/user/demo.worktrees/issue-789-gone (worktree directory is missing)
+Unverified worktrees:
+- /home/user/demo.worktrees/adopt-whitaker (no completion signal found)
 ```
 
 A run in which every candidate is skipped reports the skips rather than
-claiming that no matching worktrees were found.
+claiming that no matching worktrees were found. Unverified worktrees are never
+removed, and, like a skip, they leave the exit status at 0.
 
 ## git donkey-template
 
@@ -532,11 +575,12 @@ ordinary editing in a checkout already selected for a task.
 
 The skill requires Git plus `git-donkey` and `git-plonk` on `PATH`. It expects
 `git donkey` to support remote-default bases, `--no-pull`, `--pull-ff`, and
-`--pull-rebase`, and `git plonk` to support `--soft`, `--hard`, and
-`--dry-run`, whose help text describes skipping worktrees that hold uncommitted
-or untracked files rather than forcing their removal, as older releases did.
-The skill tells the agent to check `git donkey --help` and `git plonk --help`
-before relying on these behaviours.
+`--pull-rebase`, and `git plonk` to support `--soft`, `--hard`, `--dry-run`,
+`--no-github`, and `--upstream-gone`, whose help text describes the offline,
+GitHub, and upstream completion tiers, and skipping worktrees that hold
+uncommitted or untracked files rather than forcing their removal, as older
+releases did. The skill tells the agent to check `git donkey --help` and
+`git plonk --help` before relying on these behaviours.
 
 ### When it activates
 

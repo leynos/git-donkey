@@ -58,6 +58,7 @@ surface keeps working unchanged.
 | New branch tracking        | Could inherit from the base via `branch.autoSetupMerge`        | Never inherits (`--no-track`)                                                                 |
 | `git plonk` cleanup        | Removed completed worktrees with `git worktree remove --force` | Removes completed worktrees without `--force`; dirty ones are skipped and reported            |
 | `git plonk --hard`         | Deleted local branches after a forced worktree removal         | Deletes local branches only after an unforced removal, so a skipped worktree keeps its branch |
+| `git plonk` completion     | Matched issue and roadmap markers only                         | Offline markers and issue signals, GitHub merged-PR fallback, then opt-in gone upstream       |
 | `git plonk` trunk          | Read `<remote>/HEAD`, falling back to local `main`             | The fetched default branch the principal remote advertises                                    |
 | `git plonk --soft`         | Removed generated directories only                             | Unchanged                                                                                     |
 | Bare repository            | `git donkey` and `git plonk` exited with code 2                | Both run; worktrees are created beside the bare directory                                     |
@@ -165,8 +166,20 @@ discard uncommitted work. In 0.2.0 cleanup is unforced:
   so a partial sweep is visible to scripts; a skip still leaves the status at
   `0`, because a skip is a reported decision.
 
+Completion recognition is broader than 0.1.0's marker-only check. Issue,
+df12-build roadmap, and legacy roadmap branch names are recognized offline;
+issue branches also accept closing keywords, classic merge commits, and the
+verbatim branch name. A branch no offline signal resolves can be completed by a
+read-only GitHub merged-pull-request lookup when the principal remote is GitHub
+and `gh` is installed; `--no-github` disables it. `--upstream-gone` opts in to
+treating a deleted upstream as completion. A candidate no tier resolves is
+listed under `Unverified worktrees:` and kept, and unverified worktrees, like
+skips, leave the exit status at `0`. Each removal now names the signal that
+justified it.
+
 `git plonk --soft` is unchanged: it still removes generated directories only,
-and never touches worktrees or branches.
+and never touches worktrees or branches. It cannot be combined with
+`--no-github` or `--upstream-gone`, which judge completion.
 
 Completion history now comes from the shared discovery described above: the
 principal remote's advertised symbolic `HEAD`, fetched explicitly into

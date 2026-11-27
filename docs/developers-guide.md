@@ -309,11 +309,12 @@ the named branch into `refs/remotes/{remote}/{branch}`.
 fetch for base selection. For completion history, `git_donkey.plonk` splits the
 same resolution into a query and a command, because a query must not fetch:
 `_advertised_trunk()` selects the principal remote and reads the default name
-it advertises, while `_fetch_canonical_trunk_ref()` composes that query with
-`fetch_default_branch_ref()` and returns the remote-tracking ref. The two
-commands therefore cannot disagree about which branch is trunk. Fetching
-explicitly matters because a narrow fetch configuration may omit the default
-branch, and a stale local `remote/HEAD` alias is not trusted.
+it advertises, while `_resolve_trunk()` composes that query with
+`fetch_default_branch_ref()` and returns the remote, the branch, and the
+remote-tracking ref. The two commands therefore cannot disagree about which
+branch is trunk. Fetching explicitly matters because a narrow fetch
+configuration may omit the default branch, and a stale local `remote/HEAD`
+alias is not trusted.
 
 ### Adding a pull mode
 
