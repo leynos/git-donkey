@@ -75,7 +75,7 @@ def _copy_sources(destination: Path) -> Path:
 
 
 def _environment(root: Path) -> dict[str, str]:
-    """Isolate user-facing paths and reuse the build cache populated by make build."""
+    """Isolate user-facing paths and reuse the build cache the fixture warms."""
     # Makefile UV_ENV overrides the setup-uv action's outer cache setting.
     cache = _ROOT / ".uv-cache"
     return os.environ | {
@@ -122,12 +122,15 @@ def _run_uv(
     arguments: tuple[str, ...],
     cwd: Path,
     environment: dict[str, str],
+    *,
+    offline: bool = True,
 ) -> CommandResult:
-    """Run the required uv executable without shell parsing or network access."""
+    """Run uv without shell parsing, offline unless a caller is warming the cache."""
     executable = shutil.which("uv")
     assert executable is not None, "uv is required for packaging integration tests"
+    prefix = ("--offline",) if offline else ()
     returncode, stdout, stderr = local[executable].run(
-        ("--offline", *arguments),
+        (*prefix, *arguments),
         retcode=None,
         cwd=cwd,
         env=environment,
@@ -165,8 +168,39 @@ def _package_metadata(wheel: Path) -> Message:
         )
 
 
+@pytest.fixture(scope="session")
+def build_backends(tmp_path_factory: pytest.TempPathFactory) -> None:
+    """Make the build backends resolvable by the module's offline builds.
+
+    A fresh checkout starts with an empty ``.uv-cache``, so its offline builds
+    cannot resolve ``hatchling``, ``hatch-build-scripts`` or ``docutils`` and
+    every test in this module fails for a reason unrelated to the code under
+    test. Prove the cache satisfies them before the measured builds run, and
+    warm it with one online build only when it cannot. The measured builds stay
+    offline, so they still prove that building a distribution needs no network.
+    """
+    root = tmp_path_factory.mktemp("manpage-backends")
+    source = _copy_sources(root / "source")
+    environment = _environment(root)
+    build = ("build", "--python", sys.executable, "--wheel")
+    if _run_uv(build, source, environment).returncode == 0:
+        return
+    warmed = _run_uv(build, source, environment, offline=False)
+    assert warmed.returncode == 0, (
+        "the build backends must be cached before the offline builds run; "
+        f"warming them failed:\n{warmed.output}"
+    )
+    cached = _run_uv(build, source, environment)
+    assert cached.returncode == 0, (
+        f"the warmed cache must resolve the build backends offline:\n{cached.output}"
+    )
+
+
 @pytest.fixture(scope="module")
-def distributions(tmp_path_factory: pytest.TempPathFactory) -> DistributionBuild:
+def distributions(
+    tmp_path_factory: pytest.TempPathFactory,
+    build_backends: None,
+) -> DistributionBuild:
     """Build from checkout inputs and then independently from the sdist.
 
     Returns
@@ -364,7 +398,11 @@ def test_install_places_and_removes_environment_manpages(
 
 
 @pytest.mark.parametrize("failure", ["missing", "malformed"])
-def test_broken_manual_source_fails_the_build(tmp_path: Path, failure: str) -> None:
+def test_broken_manual_source_fails_the_build(
+    tmp_path: Path,
+    failure: str,
+    build_backends: None,
+) -> None:
     """Refuse missing or malformed sources instead of shipping stale pages."""
     source = _copy_sources(tmp_path / "source")
     manual = source / "docs/man/git-donkey.rst"

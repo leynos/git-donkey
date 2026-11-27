@@ -78,9 +78,10 @@ jobs:
           makeutil parse Makefile | python3 -c \
             'import json, sys; assert json.load(sys.stdin)["parse"]["status"] == "complete"'
 
-      # As in ci.yml: `uv sync` builds the project, which puts the build
-      # backend in uv's cache. The manpage packaging tests build offline
-      # and fail without it.
+      # As in ci.yml: install the project with the repository's pinned uv
+      # before measuring coverage. The manpage packaging tests warm their own
+      # build-backend cache when a checkout has not, so this step is not what
+      # makes them pass.
       - name: Install code
         run: make build
 

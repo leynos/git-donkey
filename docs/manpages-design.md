@@ -67,8 +67,11 @@ a build dependency.[^2] The preview command alone requires a manual-page viewer.
 
 ## Validation
 
-Run `make build` first to install the development environment and populate uv's
-build-dependency cache. Then run the focused tests or the normal test target:
+`make build` remains the normal way to install the development environment, but
+the packaging tests no longer depend on it to populate uv's build-dependency
+cache. A session fixture checks that the cache can resolve the build backends
+offline and warms it with one online build when it cannot, so a fresh checkout
+or a direct pytest run works. Run the focused tests or the normal test target:
 
 ```shell
 uv run pytest tests/unit/test_manpage_sources.py tests/integration/test_manpage_packaging.py
@@ -90,8 +93,10 @@ uninstallation removes them. It also checks that installation never creates the
 user-manpath directory. Placement does not depend on the runtime dependency
 graph, and that graph cannot be resolved offline: `loctocat` requires `halo`,
 whose only published wheel targets Python 2. The subprocesses run offline
-against the cache populated in `.uv-cache` by `make build`, not an outer
-`UV_CACHE_DIR` supplied by an action, and Python downloads are disabled.
+against the cache in `.uv-cache`, not an outer `UV_CACHE_DIR` supplied by an
+action, and Python downloads are disabled. The fixture's single online build is
+the only network use, and a checkout whose cache already resolves the backends
+makes none; every measured build passes `--offline`.
 
 [^1]: [Hatchling wheel shared data](https://hatch.pypa.io/latest/plugins/builder/wheel/).
 [^2]: [Docutils manpage writer](https://docutils.sourceforge.io/docs/user/manpage.html).

@@ -1,9 +1,10 @@
 """The publisher builds the project before it measures coverage.
 
-The manpage packaging tests build a wheel offline against the ``.uv-cache`` that
-only ``make build`` fills, so without that step every main run fails in coverage
-and never uploads, as run 36028370138 did. This is a repository fact, not a
-CV-005 rule, so it stays here when the shared rules move to ``cv005-contracts``.
+Installing the project with the repository's pinned uv ahead of coverage makes a
+packaging failure surface in that lane before measurement. The manpage packaging
+tests no longer rely on this step to warm uv's cache: their session fixture
+warms it when a checkout has not. This is a repository fact, not a CV-005 rule,
+so it stays here when the shared rules move to ``cv005-contracts``.
 """
 
 from __future__ import annotations

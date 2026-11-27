@@ -510,14 +510,16 @@ development dependency and as a continuous integration tool, so keep
 
 The `Install uv` step in `.github/workflows/ci.yml` and
 `.github/workflows/coverage-main.yml` pins uv too. `make build` fills
-`.uv-cache` with that uv, and the offline packaging tests in
-`tests/integration/test_manpage_packaging.py` read the cache with the uv that
-the `generate-coverage` shared action puts first on `PATH`. uv releases that
-use different cache layouts (for example `simple-v27` against `simple-v25`)
-cannot read each other's entries, so the offline build then finds no
-`hatchling`. Keep the pin equal to the `version` input of the `setup-uv` step
-nested inside the pinned `generate-coverage` action, and check that nested pin
-whenever the shared-actions commit changes.
+`.uv-cache` with that uv, and the packaging tests in
+`tests/integration/test_manpage_packaging.py` check that cache offline with the
+uv that the `generate-coverage` shared action puts first on `PATH`. That
+fixture warms the cache with one online build when it cannot resolve the
+backends, so a mismatch no longer fails the tests; it costs an avoidable
+download. uv releases that use different cache layouts (for example
+`simple-v27` against `simple-v25`) cannot read each other's entries. Keep the
+pin equal to the `version` input of the `setup-uv` step nested inside the pinned
+`generate-coverage` action, and check that nested pin whenever the
+shared-actions commit changes.
 
 The `typecheck` target adds `scripts` to the type checker's module search path,
 because that directory holds PEP 723 single-file helpers that import each other
@@ -831,9 +833,10 @@ uv run pytest tests/unit/test_manpage_sources.py \
   tests/integration/test_manpage_packaging.py
 ```
 
-The packaging tests drive `uv` offline, so `make build` must run first to
-populate the cache they reuse. `make test` depends on `make build` and runs
-both manual test files as well.
+The packaging tests drive `uv` offline. They reuse the cache `make build`
+populates, and a session fixture warms that cache with one online build when a
+fresh checkout has not. `make test` depends on `make build` and runs both
+manual test files as well.
 
 ## YAML lint
 
