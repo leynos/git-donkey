@@ -254,7 +254,7 @@ def _bundle_bytes(names: tuple[str, ...]) -> bytes:
 
 
 def _published_release(
-    tmp_path: pth.Path, *, complete: bool
+    tmp_path: pth.Path, *, complete: bool, source_digest: str = "a" * 40
 ) -> tuple[FakeRelease, dict[str, str]]:
     """Seed a published release and PyPI, optionally missing one asset."""
     fake = fake_release(tmp_path)
@@ -267,6 +267,9 @@ def _published_release(
         (publish / name).write_bytes(b"published")
         (fake.pypi / name).write_bytes(b"published")
         (fake.github / name).write_bytes(b"published")
+        fake.add_attestation(
+            fake.github / name, AttestationOverrides(source_digest=source_digest)
+        )
     (fake.github / _BUNDLE_ASSET).write_bytes(_bundle_bytes(names))
     if not complete:
         (fake.github / _CARRIED_ASSET).unlink()
@@ -292,7 +295,7 @@ def _run_redraft_check(
     return outputs(tmp_path / "github-output")
 
 
-def _redraft_fires(written: dict[str, str]) -> bool:
+def _redraft_fires(written: dict[str, str], *, ok: str = "true") -> bool:
     """Return whether the workflow's re-draft guard would run the edit.
 
     The same expression is pinned in the workflow contract test; this helper
@@ -303,7 +306,22 @@ def _redraft_fires(written: dict[str, str]) -> bool:
     bool
         Whether the guard would run the re-draft edit.
     """
-    return written.get("published") != "false" and written.get("complete") != "true"
+    return written.get("published") != "false" and (
+        written.get("complete") != "true" or ok != "true"
+    )
+
+
+def _run_published_provenance(
+    tmp_path: pth.Path, env: dict[str, str]
+) -> dict[str, str]:
+    """Run the published-release provenance step and return its outputs."""
+    completed = run_bash(
+        step_script("draft-release", "Verify published release provenance"),
+        tmp_path,
+        env,
+    )
+    assert completed.returncode == 0, completed.stderr
+    return outputs(tmp_path / "github-output")
 
 
 def test_an_incomplete_published_release_returns_to_draft(
@@ -341,7 +359,8 @@ def test_a_complete_published_release_is_not_redrafted(tmp_path: pth.Path) -> No
     fake, env = _published_release(tmp_path, complete=True)
 
     written = _run_redraft_check(tmp_path, fake, env)
-    if _redraft_fires(written):
+    provenance = _run_published_provenance(tmp_path, env)
+    if _redraft_fires(written, ok=provenance["ok"]):
         completed = run_bash(
             step_script(
                 "draft-release", "Return an incomplete published release to draft"
@@ -353,8 +372,27 @@ def test_a_complete_published_release_is_not_redrafted(tmp_path: pth.Path) -> No
 
     assert written["published"] == "true", "the release is published"
     assert written["complete"] == "true", "the release is complete"
+    assert provenance["ok"] == "true", "the release carries current provenance"
     assert not any(call[:2] == ["release", "edit"] for call in fake.calls("gh")), (
         "a complete release must not be edited"
+    )
+
+
+def test_a_moved_tag_published_release_lacks_current_provenance(
+    tmp_path: pth.Path,
+) -> None:
+    """A release attested for another commit is not complete for this tag."""
+    fake, env = _published_release(tmp_path, complete=True, source_digest="b" * 40)
+
+    written = _run_redraft_check(tmp_path, fake, env)
+    provenance = _run_published_provenance(tmp_path, env)
+
+    assert written["complete"] == "true", "digests and coverage still agree"
+    assert provenance["ok"] == "false", (
+        "provenance for another commit must not satisfy the release"
+    )
+    assert _redraft_fires(written, ok=provenance["ok"]), (
+        "the release must be returned to draft for repair"
     )
 
 

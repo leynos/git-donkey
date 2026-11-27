@@ -487,8 +487,9 @@ def test_an_incomplete_published_release_returns_to_draft() -> None:
     """A visible release that is not complete is hidden before repair."""
     names = [item.get("name") for item in _job("draft-release")["steps"]]
     check = names.index("Check whether an already published release is complete")
+    provenance = names.index("Verify published release provenance")
     edit = names.index("Return an incomplete published release to draft")
-    assert check < edit, "the completeness check must precede the edit"
+    assert check < provenance < edit, "the provenance check must precede the edit"
     script = step_script(
         "draft-release", "Check whether an already published release is complete"
     )
@@ -500,11 +501,25 @@ def test_an_incomplete_published_release_returns_to_draft() -> None:
         "--bundles release-bundles",
     ):
         assert fragment in script, f"the re-draft check must include {fragment!r}"
+    provenance_script = step_script(
+        "draft-release", "Verify published release provenance"
+    )
+    for fragment in (
+        "gh attestation verify",
+        '--source-ref "${GITHUB_REF}"',
+        '--source-digest "${GITHUB_SHA}"',
+        '--signer-workflow "${GH_REPO}/.github/workflows/release.yml"',
+        'echo "ok=${ok}" >> "${GITHUB_OUTPUT}"',
+    ):
+        assert fragment in provenance_script, (
+            f"the published provenance check must include {fragment!r}"
+        )
     edit_step = step("draft-release", "Return an incomplete published release to draft")
     assert edit_step["if"] == (
         "always() && steps.create.outcome == 'success' "
         "&& steps.redraft.outputs.published != 'false' "
-        "&& steps.redraft.outputs.complete != 'true'"
+        "&& (steps.redraft.outputs.complete != 'true' "
+        "|| steps.provenance.outputs.ok != 'true')"
     ), "the edit must fail closed for a published, incomplete release"
     assert "--draft=true" in step_script(
         "draft-release", "Return an incomplete published release to draft"

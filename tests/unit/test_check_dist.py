@@ -265,26 +265,31 @@ def test_main_reports_every_problem_as_an_annotation(
 
     captured = capsys.readouterr()
     assert status == 1, "a failing check must return non-zero"
-    assert "::error title=check-dist::expected exactly one source distribution" in (
-        captured.err
-    ), "the sdist failure must be annotated"
-    assert "::error title=check-dist::expected at least one wheel" in captured.err, (
-        "the wheel failure must be annotated"
-    )
+    assert not captured.out, "a failing check must not write to stdout"
+    assert captured.err == (
+        "::error title=check-dist::expected exactly one source distribution,"
+        " found 0\n"
+        "::error title=check-dist::expected at least one wheel, found none\n"
+    ), "both failures must be annotated in order"
 
 
-def test_main_reports_an_unreadable_manifest(
+def test_main_reports_a_manifest_it_cannot_use(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """A malformed manifest fails with an annotation, not a traceback."""
+    """An unusable manifest fails with an annotation, not a traceback."""
     root, dist = _build(tmp_path)
-    (root / "pyproject.toml").write_text("[project", encoding="utf-8")
+    (root / "pyproject.toml").write_text(
+        '[project]\nname = "git-donkey"\nversion = "0.1.0"\n',
+        encoding="utf-8",
+    )
 
     status = main(["--dist", str(dist), "--root", str(root)])
 
-    assert status == 1, "an unreadable manifest must fail the check"
-    assert "::error title=check-dist::pyproject.toml could not be read" in (
-        capsys.readouterr().err
+    captured = capsys.readouterr()
+    assert status == 1, "an unusable manifest must fail the check"
+    assert not captured.out, "an unusable manifest must not write to stdout"
+    assert captured.err == (
+        "::error title=check-dist::pyproject.toml could not be read: 'scripts'\n"
     ), "the failure must identify the manifest"
 
 
@@ -296,5 +301,7 @@ def test_main_accepts_a_complete_build(
 
     status = main(["--dist", str(dist), "--root", str(root)])
 
+    captured = capsys.readouterr()
     assert status == 0, "a complete build must return zero"
-    assert not capsys.readouterr().err, "a complete build must print nothing"
+    assert not captured.out, "a complete build must not write to stdout"
+    assert not captured.err, "a complete build must not write to stderr"

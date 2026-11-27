@@ -37,7 +37,7 @@ from scripts.release_assets import (
     verify,
     write_output,
 )
-from scripts.release_bundle import read_bundle_subjects, uncovered
+from scripts.release_bundle import combined_coverage
 from scripts.release_github_upload import (
     check_fetched,
     check_provenance,
@@ -138,7 +138,7 @@ def _release_complete(state: State, args: argparse.Namespace) -> None:
     problems = verify(state, _path(args, "output"))
     problems.extend(
         f"{name} is not covered by the attached bundle"
-        for name in uncovered(state.github, read_bundle_subjects(paths))
+        for name in combined_coverage(state.github, paths)
     )
     for problem in problems:
         print(f"::notice::{problem}")
@@ -149,7 +149,7 @@ def _bundle_coverage(state: State, args: argparse.Namespace) -> None:
     """Report whether the attached bundle covers every release distribution."""
     bundles = _path(args, "bundles")
     paths = sorted(bundles.iterdir()) if bundles.is_dir() else []
-    missing = uncovered(state.github, read_bundle_subjects(paths))
+    missing = combined_coverage(state.github, paths)
     for name in missing:
         print(f"::notice::{name} is not covered by the attached bundle")
     write_output("covered", value=not missing)

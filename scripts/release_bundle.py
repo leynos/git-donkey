@@ -18,7 +18,7 @@ import base64
 import json
 import typing as typ
 
-from scripts.release_assets import is_bundle
+from scripts.release_assets import ATTESTATIONS_SUFFIX, is_bundle
 
 if typ.TYPE_CHECKING:
     import collections.abc as cabc
@@ -147,3 +147,36 @@ def uncovered(
         for name, digest in sorted(assets.items())
         if not is_bundle(name) and (digest is None or (name, digest) not in subjects)
     ]
+
+
+def combined_coverage(
+    assets: cabc.Mapping[str, str | None],
+    paths: cabc.Iterable[pth.Path],
+) -> list[str]:
+    """Return the uncovered names for the best single combined bundle.
+
+    Coverage is not accumulated across bundles: one combined bundle must name
+    every distribution, because that is the bundle a consumer downloads. A
+    single-run ``.sigstore.json`` bundle covers only the run that produced it
+    and is not considered.
+
+    Parameters
+    ----------
+    assets : collections.abc.Mapping[str, str | None]
+        The release's assets and their SHA-256 hex digests.
+    paths : collections.abc.Iterable[pathlib.Path]
+        Candidate bundle files.
+
+    Returns
+    -------
+    list[str]
+        The uncovered distribution names for the best combined bundle, or for
+        every distribution when no combined bundle exists.
+    """
+    combined = [path for path in paths if path.name.endswith(ATTESTATIONS_SUFFIX)]
+    if not combined:
+        return uncovered(assets, set())
+    return min(
+        (uncovered(assets, read_bundle_subjects([path])) for path in combined),
+        key=len,
+    )

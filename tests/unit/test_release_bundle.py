@@ -13,7 +13,7 @@ import typing as typ
 
 import pytest
 
-from scripts.release_bundle import read_bundle_subjects, uncovered
+from scripts.release_bundle import combined_coverage, read_bundle_subjects, uncovered
 
 if typ.TYPE_CHECKING:
     from pathlib import Path
@@ -116,3 +116,36 @@ def test_a_missing_digest_is_uncovered() -> None:
     assert uncovered({_NAME: None}, {(_NAME, _DIGEST)}) == [_NAME], (
         "a missing digest must be reported as uncovered"
     )
+
+
+def test_one_bundle_must_cover_every_distribution(tmp_path: Path) -> None:
+    """Coverage is not accumulated across separate bundles."""
+    assets = {_NAME: _DIGEST, _SDIST: "b" * 64}
+    wheel = _write(tmp_path / "wheel.attestations.jsonl", _bundle(_NAME, _DIGEST))
+    sdist = _write(tmp_path / "sdist.attestations.jsonl", _bundle(_SDIST, "b" * 64))
+    both = _write(
+        tmp_path / "both.attestations.jsonl",
+        _bundle(_NAME, _DIGEST),
+        _bundle(_SDIST, "b" * 64),
+    )
+
+    assert combined_coverage(assets, [wheel, sdist]) != [], (
+        "two partial bundles must not combine into complete coverage"
+    )
+    assert combined_coverage(assets, [wheel, sdist, both]) == [], (
+        "one bundle naming every distribution must satisfy coverage"
+    )
+
+
+def test_a_single_run_bundle_does_not_count(tmp_path: Path) -> None:
+    """A ``.sigstore.json`` bundle cannot complete a release."""
+    bundle = _write(
+        tmp_path / "run.sigstore.json",
+        _bundle(_NAME, _DIGEST),
+        _bundle(_SDIST, "b" * 64),
+    )
+
+    assert combined_coverage({_NAME: _DIGEST, _SDIST: "b" * 64}, [bundle]) == sorted((
+        _NAME,
+        _SDIST,
+    )), "only the combined attestation bundle completes a release"

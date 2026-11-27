@@ -236,12 +236,38 @@ jobs:
             --bundles release-bundles
       # `always()` makes the edit fail closed: a check that fails before it can
       # report a verdict still hides the release rather than leaving it visible.
+      # A visible release must also carry provenance for this tag and commit;
+      # digests and bundle coverage alone cannot detect a moved tag.
+      - name: Verify published release provenance
+        id: provenance
+        if: steps.redraft.outputs.published == 'true'
+        run: |
+          set -euo pipefail
+          ok=true
+          while IFS= read -r name; do
+            [ -n "${name}" ] || continue
+            work="$(mktemp -d)"
+            gh release download "${GITHUB_REF_NAME}" --pattern "${name}" --dir "${work}"
+            if ! gh attestation verify "${work}/${name}" \
+              --repo "${GH_REPO}" \
+              --signer-workflow "${GH_REPO}/.github/workflows/release.yml" \
+              --source-ref "${GITHUB_REF}" \
+              --source-digest "${GITHUB_SHA}" \
+              --predicate-type https://slsa.dev/provenance/v1 \
+              --deny-self-hosted-runners \
+              --format json > "${work}/${name}.json"; then
+              ok=false
+              echo "::notice::${name} has no provenance for this tag and commit."
+            fi
+            rm -rf "${work}"
+          done <<< "$(jq -r '.assets[] | select((.name | endswith(".attestations.jsonl") or endswith(".sigstore.json")) | not) | .name' draft-assets.json)"
+          echo "ok=${ok}" >> "${GITHUB_OUTPUT}"
       - name: Return an incomplete published release to draft
         if: >-
           always()
           && steps.create.outcome == 'success'
           && steps.redraft.outputs.published != 'false'
-          && steps.redraft.outputs.complete != 'true'
+          && (steps.redraft.outputs.complete != 'true' || steps.provenance.outputs.ok != 'true')
         run: |
           set -euo pipefail
           gh release edit "${GITHUB_REF_NAME}" --draft=true
