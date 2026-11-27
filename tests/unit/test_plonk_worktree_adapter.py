@@ -21,7 +21,7 @@ from types import SimpleNamespace
 import pytest
 from git import Repo
 
-from git_donkey import plonk
+from git_donkey import plonk, plonk_records
 from tests import git_repo_helpers
 
 if typ.TYPE_CHECKING:
@@ -106,16 +106,18 @@ def _apply_dirt(worktree_path: Path, dirt: str) -> None:
     ("dirt", "expected_reason"),
     [
         pytest.param("clean", None, id="clean"),
-        pytest.param("modified", plonk._SkipReason.DIRTY, id="modified-tracked-file"),
-        pytest.param("staged", plonk._SkipReason.DIRTY, id="staged-change"),
-        pytest.param("untracked", plonk._SkipReason.DIRTY, id="untracked-file"),
+        pytest.param(
+            "modified", plonk_records._SkipReason.DIRTY, id="modified-tracked-file"
+        ),
+        pytest.param("staged", plonk_records._SkipReason.DIRTY, id="staged-change"),
+        pytest.param("untracked", plonk_records._SkipReason.DIRTY, id="untracked-file"),
         pytest.param("ignored", None, id="ignored-build-output"),
     ],
 )
 def test_cleanliness_preflight_matches_git_removal(
     tmp_path: Path,
     dirt: str,
-    expected_reason: plonk._SkipReason | None,
+    expected_reason: plonk_records._SkipReason | None,
     recording_recorder: RecordingRecorder,
 ) -> None:
     """The preflight should clear exactly the worktrees Git removes unprompted.
@@ -149,7 +151,7 @@ def test_skip_reason_reports_a_missing_worktree_directory(tmp_path: Path) -> Non
 
     reason = plonk._GitWorktreeAdapter(repo).skip_reason(worktree_path)
 
-    assert reason is plonk._SkipReason.UNAVAILABLE, (
+    assert reason is plonk_records._SkipReason.UNAVAILABLE, (
         "a worktree whose directory is gone is unavailable, not dirty"
     )
 
@@ -231,6 +233,101 @@ def test_delete_branch_removes_the_branch_and_times_the_deletion(
     assert recording_recorder.span_operations() == ["branch_deletion"], (
         "the deletion is timed, whether or not it succeeds"
     )
+
+
+def _repository_with_tracking(
+    tmp_path: Path,
+    upstream: str,
+) -> tuple[Repo, Path, str]:
+    """Create a repository whose local branch tracks ``upstream``.
+
+    Parameters
+    ----------
+    tmp_path : Path
+        Temporary directory that owns the repository and its remote.
+    upstream : str
+        State to leave the upstream in: ``unset``, ``present``, ``gone``, or
+        ``unknown``.
+
+    Returns
+    -------
+    tuple[Repo, Path, str]
+        The repository, its bare remote path, and the local branch name.
+
+    """
+    repo, remote = git_repo_helpers.repo_with_remote_default(
+        tmp_path / "local", tmp_path / "remote.git"
+    )
+    branch = _WORKTREE_BRANCH
+    repo.git.branch(branch)
+    if upstream == "unset":
+        return repo, Path(remote.git_dir), branch
+    if upstream == "unknown":
+        repo.git.config(f"branch.{branch}.remote", "origin")
+        repo.git.config(f"branch.{branch}.merge", f"refs/heads/{branch}")
+        remote_path = Path(remote.git_dir)
+        shutil.rmtree(remote_path)
+        return repo, remote_path, branch
+
+    repo.git.push("origin", f"{branch}:refs/heads/{branch}")
+    repo.git.fetch("origin")
+    repo.git.branch("--set-upstream-to", f"origin/{branch}", branch)
+    if upstream == "gone":
+        repo.git.push("origin", "--delete", branch)
+    return repo, Path(remote.git_dir), branch
+
+
+@pytest.mark.parametrize(
+    "upstream",
+    [
+        pytest.param("unset", id="no-upstream-configured"),
+        pytest.param("present", id="upstream-still-exists"),
+        pytest.param("gone", id="upstream-deleted"),
+        pytest.param("unknown", id="remote-unreachable"),
+    ],
+)
+def test_upstream_state_preserves_every_distinction(
+    tmp_path: Path,
+    upstream: plonk_records.UpstreamState,
+) -> None:
+    """The adapter should distinguish unset, present, gone, and unknown."""
+    repo, _remote_path, branch = _repository_with_tracking(tmp_path, upstream)
+    adapter = plonk._GitWorktreeAdapter(repo)
+
+    state = adapter.upstream_state(branch)
+
+    assert state == upstream, (
+        f"expected the adapter to report {upstream!r}, not {state!r}"
+    )
+
+
+def test_upstream_state_treats_a_partial_configuration_as_unset(
+    tmp_path: Path,
+) -> None:
+    """A branch with a remote but no merge ref was never fully pushed."""
+    repo = git_repo_helpers.seed_repo(tmp_path / "repo")
+    branch = _WORKTREE_BRANCH
+    repo.git.branch(branch)
+    repo.git.config(f"branch.{branch}.remote", "origin")
+
+    state = plonk._GitWorktreeAdapter(repo).upstream_state(branch)
+
+    assert state == "unset", (
+        "expected a half-configured upstream to be treated as never pushed"
+    )
+
+
+def test_upstream_state_rejects_a_non_head_merge_ref(tmp_path: Path) -> None:
+    """A merge ref outside ``refs/heads`` cannot be queried as a branch."""
+    repo = git_repo_helpers.seed_repo(tmp_path / "repo")
+    branch = _WORKTREE_BRANCH
+    repo.git.branch(branch)
+    repo.git.config(f"branch.{branch}.remote", "origin")
+    repo.git.config(f"branch.{branch}.merge", "refs/other/not-a-branch")
+
+    state = plonk._GitWorktreeAdapter(repo).upstream_state(branch)
+
+    assert state == "unknown", "expected a non-head merge ref to be reported as unknown"
 
 
 def test_delete_branch_reports_and_survives_gits_refusal(

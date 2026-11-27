@@ -20,8 +20,10 @@ import typing as typ
 from hypothesis import given
 from hypothesis import strategies as st
 
-from git_donkey import plonk
+from git_donkey import plonk, plonk_records
 from tests.unit.plonk_cleanup_helpers import (
+    AdapterBehaviour,
+    CleanupRunOptions,
     RecordingGitAdapter,
     candidate,
     marker_for,
@@ -30,8 +32,6 @@ from tests.unit.plonk_cleanup_helpers import (
 
 if typ.TYPE_CHECKING:
     from pathlib import Path
-
-    from git_donkey import plonk_records
 
 # The state each candidate is generated in. ``CLEAN`` and ``DELETION_FAILURE``
 # differ only in what Git does to the branch; ``INCOMPLETE`` is a worktree whose
@@ -45,8 +45,8 @@ _DELETION_FAILURE = "deletion-failure"
 
 # States the preflight refuses, and the reason it reports for each.
 _PREFLIGHT_SKIPS = {
-    _DIRTY: plonk._SkipReason.DIRTY,
-    _UNAVAILABLE: plonk._SkipReason.UNAVAILABLE,
+    _DIRTY: plonk_records._SkipReason.DIRTY,
+    _UNAVAILABLE: plonk_records._SkipReason.UNAVAILABLE,
 }
 
 _ALL_STATES = (
@@ -128,25 +128,27 @@ def _adapter(cases: typ.Iterable[_Case]) -> RecordingGitAdapter:
             for case in case_list
             if case.state is not _INCOMPLETE
         ],
-        skip_reasons={
-            case.candidate.worktree_path: _PREFLIGHT_SKIPS[case.state]
-            for case in case_list
-            if case.state in _PREFLIGHT_SKIPS
-        },
-        removal_failures=[
-            case.candidate.worktree_path
-            for case in case_list
-            if case.state is _REMOVAL_FAILURE
-        ],
-        deletion_failures=[
-            case.candidate.branch_name
-            for case in case_list
-            if case.state is _DELETION_FAILURE
-        ],
+        behaviour=AdapterBehaviour(
+            skip_reasons={
+                case.candidate.worktree_path: _PREFLIGHT_SKIPS[case.state]
+                for case in case_list
+                if case.state in _PREFLIGHT_SKIPS
+            },
+            removal_failures=frozenset(
+                case.candidate.worktree_path
+                for case in case_list
+                if case.state is _REMOVAL_FAILURE
+            ),
+            deletion_failures=frozenset(
+                case.candidate.branch_name
+                for case in case_list
+                if case.state is _DELETION_FAILURE
+            ),
+        ),
     )
 
 
-def _skip_reason_for(case: _Case, *, dry_run: bool) -> plonk._SkipReason | None:
+def _skip_reason_for(case: _Case, *, dry_run: bool) -> plonk_records._SkipReason | None:
     """Return the reason the sweep leaves ``case``'s worktree in place.
 
     Parameters
@@ -159,7 +161,7 @@ def _skip_reason_for(case: _Case, *, dry_run: bool) -> plonk._SkipReason | None:
 
     Returns
     -------
-    plonk._SkipReason | None
+    plonk_records._SkipReason | None
         The reason the preflight refused the worktree, the reason a refused
         removal reports, or ``None`` when the worktree is removed.
 
@@ -167,7 +169,7 @@ def _skip_reason_for(case: _Case, *, dry_run: bool) -> plonk._SkipReason | None:
     if case.state in _PREFLIGHT_SKIPS:
         return _PREFLIGHT_SKIPS[case.state]
     if case.state is _REMOVAL_FAILURE and not dry_run:
-        return plonk._SkipReason.REMOVAL_FAILED
+        return plonk_records._SkipReason.REMOVAL_FAILED
     return None
 
 
@@ -260,8 +262,10 @@ def _model(
 
     """
     removed_worktrees: list[Path] = []
+    removal_evidence: list[plonk_records._RemovalEvidence] = []
     removed_branches: list[str] = []
-    skipped_worktrees: list[plonk._SkippedWorktree] = []
+    skipped_worktrees: list[plonk_records._SkippedWorktree] = []
+    unverified_worktrees: list[plonk._UnverifiedWorktree] = []
     failed_branch_deletions: list[str] = []
     removed: list[Path] = []
     deleted: list[str] = []
@@ -269,15 +273,27 @@ def _model(
     for case in cases:
         candidate_ = case.candidate
         if case.state is _INCOMPLETE:
+            unverified_worktrees.append(
+                plonk._UnverifiedWorktree(
+                    candidate_.worktree_path,
+                    plonk_records._UnverifiedReason.NO_SIGNAL,
+                )
+            )
             continue
         skip_reason = _skip_reason_for(case, dry_run=dry_run)
         if skip_reason is not None:
             skipped_worktrees.append(
-                plonk._SkippedWorktree(candidate_.worktree_path, skip_reason)
+                plonk_records._SkippedWorktree(candidate_.worktree_path, skip_reason)
             )
             continue
 
         removed_worktrees.append(candidate_.worktree_path)
+        removal_evidence.append(
+            plonk_records._RemovalEvidence(
+                candidate_.worktree_path,
+                plonk_records._CompletionEvidence("marker", candidate_.marker or ""),
+            )
+        )
         if not dry_run:
             removed.append(candidate_.worktree_path)
         if _plans_branch_removal(case, mode=mode, dry_run=dry_run):
@@ -293,8 +309,10 @@ def _model(
             is_dry_run=dry_run,
             inspected_worktrees=len(cases),
             removed_worktrees=tuple(removed_worktrees),
+            removal_evidence=tuple(removal_evidence),
             removed_branches=tuple(removed_branches),
             skipped_worktrees=tuple(skipped_worktrees),
+            unverified_worktrees=tuple(unverified_worktrees),
             failed_branch_deletions=tuple(failed_branch_deletions),
         ),
         removed=removed,
@@ -318,7 +336,7 @@ def test_every_candidate_is_classified_independently(
         [case.candidate for case in cases],
         adapter,
         mode=mode,
-        dry_run=dry_run,
+        options=CleanupRunOptions(dry_run=dry_run),
     )
 
     assert result == expected.result, (

@@ -21,7 +21,11 @@ from git_donkey import donkey, plonk
 from tests.git_repo_helpers import bare_collection
 from tests.integration.conftest import _setup_repo
 from tests.integration.donkey_helpers import seed_repo
-from tests.integration.plonk_helpers import capture_run
+from tests.integration.plonk_helpers import (
+    capture_run,
+    github_cli_calls,
+    marker_removal_entry,
+)
 from tests.output_assertions import require_stream, stream
 
 if typ.TYPE_CHECKING:
@@ -61,7 +65,7 @@ def _expected_report_lines(
         return (
             header,
             "Removed worktrees:",
-            f"- {scenario.donkey_path}",
+            marker_removal_entry(scenario.donkey_path, _DONKEY_BRANCH),
             "Removed branches:",
             f"- {_DONKEY_BRANCH}",
         )
@@ -74,7 +78,7 @@ def _expected_report_lines(
     return (
         header,
         "Removed worktrees:",
-        f"- {scenario.donkey_path}",
+        marker_removal_entry(scenario.donkey_path, _DONKEY_BRANCH),
     )
 
 
@@ -114,6 +118,9 @@ def _record_run(
     scenario.stderr = result.stderr
     assert scenario.exit_code == 0, "expected the bare-collection sweep to succeed"
     require_stream(scenario.stderr, "", context="git plonk stderr")
+    assert not github_cli_calls(), (
+        "expected a local-remote collection not to invoke the GitHub CLI"
+    )
 
 
 def _require_report(scenario: BarePlonkScenario, *lines: str) -> None:

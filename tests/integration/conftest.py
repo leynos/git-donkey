@@ -12,6 +12,8 @@ definitions placed in a conftest module.
 from __future__ import annotations
 
 import dataclasses
+import json
+import os
 import typing as typ
 from pathlib import Path
 
@@ -49,6 +51,111 @@ class StubCommands:
 
     bin_dir: Path
     log_path: Path
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class GitHubCliStub:
+    """A recording, failing ``gh`` executable placed first on ``PATH``.
+
+    The stub records every invocation and exits non-zero unless a payload file
+    has been written for the scenario. That default makes an accidental GitHub
+    lookup in a local-remote scenario fail closed; a scenario that expects the
+    fallback writes a payload describing the merged pull request it wants.
+    """
+
+    bin_dir: Path
+    log_path: Path
+    payload_path: Path
+
+    def calls(self) -> list[str]:
+        """Return the argument lines recorded so far."""
+        if not self.log_path.is_file():
+            return []
+        return self.log_path.read_text(encoding="utf-8").splitlines()
+
+    def clear(self) -> None:
+        """Remove the invocation log and any payload."""
+        self.log_path.unlink(missing_ok=True)
+        self.payload_path.unlink(missing_ok=True)
+
+    def stub_merged_pull_request(
+        self,
+        *,
+        number: int,
+        head_branch: str,
+        base_branch: str,
+        owner: str,
+    ) -> None:
+        """Make the stub answer with one matching merged pull request."""
+        payload = [
+            {
+                "number": number,
+                "headRefName": head_branch,
+                "baseRefName": base_branch,
+                "headRepositoryOwner": {"login": owner},
+            }
+        ]
+        self.payload_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    def stub_failure(self) -> None:
+        """Make the stub exit non-zero without output."""
+        self.payload_path.unlink(missing_ok=True)
+
+
+_GH_STUB_TEMPLATE = """#!/usr/bin/env python3
+from __future__ import annotations
+import os
+import sys
+from pathlib import Path
+
+log_path = Path(os.environ["GH_STUB_LOG"])
+with log_path.open("a", encoding="utf-8") as handle:
+    handle.write(" ".join(sys.argv[1:]) + "\\n")
+payload_path = Path(os.environ["GH_STUB_PAYLOAD"])
+if not payload_path.is_file():
+    sys.exit(1)
+sys.stdout.write(payload_path.read_text(encoding="utf-8"))
+"""
+
+
+@pytest.fixture(autouse=True)
+def github_cli_stub(
+    request: pytest.FixtureRequest,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> GitHubCliStub | None:
+    """Install a recording, failing ``gh`` stub for every plonk BDD module.
+
+    Local-remote scenarios must never reach the fallback, so their helper
+    asserts the log stays empty. The GitHub feature opts in explicitly and
+    writes the payload its scenario expects.
+
+    Returns
+    -------
+    GitHubCliStub | None
+        The installed stub, or ``None`` for modules that do not run git-plonk.
+
+    """
+    module_name = request.module.__name__.rsplit(".", 1)[-1]
+    if not module_name.startswith("test_git_plonk"):
+        return None
+    bin_dir = tmp_path / "github-cli-bin"
+    bin_dir.mkdir()
+    stub_path = bin_dir / "gh"
+    stub_path.write_text(_GH_STUB_TEMPLATE)
+    stub_path.chmod(0o755)
+    stub = GitHubCliStub(
+        bin_dir=bin_dir,
+        log_path=tmp_path / "gh-calls.log",
+        payload_path=tmp_path / "gh-payload.json",
+    )
+    monkeypatch.setenv(
+        "PATH",
+        f"{bin_dir}{os.pathsep}{os.environ.get('PATH', '')}",
+    )
+    monkeypatch.setenv("GH_STUB_LOG", str(stub.log_path))
+    monkeypatch.setenv("GH_STUB_PAYLOAD", str(stub.payload_path))
+    return stub
 
 
 @pytest.fixture

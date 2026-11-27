@@ -227,10 +227,10 @@ def test_donkey_worktree_paths_keep_only_worktrees_under_the_root(
     )
 
 
-def test_donkey_worktree_candidates_filter_unrecognized_branches(
+def test_donkey_worktree_candidates_retain_every_branched_worktree(
     tmp_path: Path,
 ) -> None:
-    """Candidate selection should keep recognized branches inside the root."""
+    """Candidate selection should keep every in-root branch, recognized or not."""
     worktrees_root = tmp_path / _WORKTREES_ROOT_NAME
     stanzas = [
         _stanza(tmp_path, "main"),
@@ -245,13 +245,20 @@ def test_donkey_worktree_candidates_filter_unrecognized_branches(
     )
 
     assert [candidate.branch_name for candidate in candidates] == [
+        "feature/unstructured",
         "road-1-2-3a-4-task",
         "issue-123-fix",
-    ], "unrecognized branches and worktrees outside the root are not candidates"
+    ], "worktrees outside the root are excluded; unrecognized branches are kept"
     assert [candidate.marker for candidate in candidates] == [
+        None,
         "(road.1.2.3a.4)",
         "(#123)",
-    ], "each candidate carries the marker its branch encodes"
+    ], "each candidate carries the marker its branch encodes, if any"
+    assert [candidate.issue_number for candidate in candidates] == [
+        None,
+        None,
+        123,
+    ], "only an issue branch exposes an issue number for the history matchers"
 
 
 def test_anchor_stanza_is_never_a_cleanup_target(tmp_path: Path) -> None:
@@ -329,6 +336,7 @@ def test_completed_candidates_use_history_markers() -> None:
             branch_name="issue-123-fix",
             worktree_path=Path("/repo.worktrees/issue-123-fix"),
             marker="(#123)",
+            issue_number=123,
         ),
         plonk_records._PlonkCandidate(
             branch_name="road-1-2-3a-4-task",
@@ -339,6 +347,7 @@ def test_completed_candidates_use_history_markers() -> None:
             branch_name="issue-456-open",
             worktree_path=Path("/repo.worktrees/issue-456-open"),
             marker="(#456)",
+            issue_number=456,
         ),
     ]
 
@@ -347,10 +356,14 @@ def test_completed_candidates_use_history_markers() -> None:
         ["Merge pull request (#123)", "Roadmap complete (road.1.2.3a.4.)"],
     )
 
-    assert [candidate.branch_name for candidate in completed] == [
+    assert [candidate.branch_name for candidate, _ in completed] == [
         "issue-123-fix",
         "road-1-2-3a-4-task",
     ], "expected only candidates with matching history markers"
+    assert [evidence.signal for _, evidence in completed] == [
+        "marker",
+        "marker",
+    ], "expected the marker tier to supply the evidence"
 
 
 def test_completed_candidates_streams_history_until_markers_match() -> None:
@@ -360,11 +373,13 @@ def test_completed_candidates_streams_history_until_markers_match() -> None:
             branch_name="issue-123-fix",
             worktree_path=Path("/repo.worktrees/issue-123-fix"),
             marker="(#123)",
+            issue_number=123,
         ),
         plonk_records._PlonkCandidate(
             branch_name="issue-456-fix",
             worktree_path=Path("/repo.worktrees/issue-456-fix"),
             marker="(#456)",
+            issue_number=456,
         ),
     ]
 
@@ -382,7 +397,7 @@ def test_completed_candidates_streams_history_until_markers_match() -> None:
 
     completed = plonk_policy.completed_candidates(candidates, messages())
 
-    assert [candidate.branch_name for candidate in completed] == [
+    assert [candidate.branch_name for candidate, _ in completed] == [
         "issue-123-fix",
         "issue-456-fix",
     ], "expected streaming scan to stop after all markers match"
@@ -402,7 +417,7 @@ def test_fetched_trunk_ref_ignores_a_stale_remote_head_alias(
     repo.remote("origin").fetch()
     repo.git.symbolic_ref("refs/remotes/origin/HEAD", "refs/remotes/origin/legacy")
 
-    trunk_ref = plonk._fetch_canonical_trunk_ref(repo)
+    trunk_ref = plonk._resolve_trunk(repo)[2]
 
     assert (
         repo.git.symbolic_ref("refs/remotes/origin/HEAD")
@@ -439,7 +454,7 @@ def test_fetched_trunk_ref_follows_the_advertised_default_name(
         tmp_path / "local", tmp_path / "remote.git", default_branch="trunk"
     )
 
-    trunk_ref = plonk._fetch_canonical_trunk_ref(repo)
+    trunk_ref = plonk._resolve_trunk(repo)[2]
 
     assert repo.active_branch.name == "main", (
         "the fixture keeps the local branch discovery must ignore"

@@ -1,29 +1,65 @@
-"""Pure completion-marker policy for git-plonk.
+"""Pure completion policy for git-plonk.
 
 This module contains no GitPython, filesystem, or process mutation. It maps
-branch names to completion markers and checks commit messages for those markers
-so infrastructure code can decide which worktrees are safe to clean.
+branch names to the completion markers and issue numbers they imply, and scans
+commit messages for offline evidence that the work those names describe has
+landed on trunk. Infrastructure code uses the evidence to decide which
+worktrees are safe to clean.
+
+Three branch grammars are recognized, in this order:
+
+1. issue branches such as ``issue-123-short-title``;
+2. the df12-build roadmap grammar, ``roadmap-2-2-1`` and
+   ``roadmap-2-2-1-addendum``, whose dotted id is un-namespaced; and
+3. the legacy roadmap grammar, such as ``road-1-2-3a-4-short-title``, whose
+   mappings are preserved.
+
+An issue branch additionally enables the history signals GitHub writes into
+commit messages: closing keywords, the branch named by a classic merge commit,
+and the branch name appearing verbatim in a bounded context. A branch that
+follows none of the grammars carries no offline matcher at all; the GitHub
+merged-pull-request fallback in :mod:`git_donkey.plonk_github` answers for it.
 """
 
 from __future__ import annotations
 
+import dataclasses
 import re
 import typing as typ
 
+from git_donkey.plonk_records import _CompletionEvidence
+
 _ISSUE_BRANCH_PATTERN = re.compile(r"^issue-(\d+)-")
-_ROADMAP_BRANCH_PATTERN = re.compile(r"^(?:(\w+)-)?(\d+)-(\d+)-(\d+)(\w+)?-(?:(\d+)-)?")
+_DF12_ROADMAP_BRANCH_PATTERN = re.compile(r"^roadmap-(\d+(?:-\d+){1,3})(?:-addendum)?$")
+# The historical legacy grammar. The trailing separator is optional so a task
+# id may end the name, while the version triple itself stays mandatory.
+_LEGACY_ROADMAP_BRANCH_PATTERN = re.compile(
+    r"^(?:(\w+)-)?(\d+)-(\d+)-(\d+)(\w+)?(?:-(\d+))?(?:-|$)"
+)
+_CLOSING_KEYWORD_PATTERN = (
+    r"(?<![\w-])(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s*:?\s*"
+    r"#{issue_number}(?!\d)"
+)
 
 
 class CompletionCandidate(typ.Protocol):
     """Minimal candidate shape required by completion policy."""
 
-    # A read-only property states the contract precisely: the policy only ever
-    # reads ``marker``, so immutable candidates such as frozen dataclasses
-    # satisfy it. A plain ``marker: str`` declaration would require a writable
-    # attribute and exclude them.
+    # Read-only properties state the contract precisely: the policy only ever
+    # reads these values, so immutable candidates such as frozen dataclasses
+    # satisfy it. Plain attribute declarations would require writable
+    # attributes and exclude them.
     @property
-    def marker(self) -> str:
-        """Completion marker naming the work this candidate finishes."""
+    def branch_name(self) -> str:
+        """Local branch name the candidate checks out."""
+
+    @property
+    def marker(self) -> str | None:
+        """Completion marker implied by the branch name, if any."""
+
+    @property
+    def issue_number(self) -> int | None:
+        """Issue number the branch name names, if any."""
 
 
 def _marker_body(marker: str) -> str:
@@ -36,12 +72,67 @@ def _marker_pattern(marker: str) -> re.Pattern[str]:
     return re.compile(rf"\({re.escape(_marker_body(marker))}\.?\)")
 
 
+def _df12_roadmap_marker(branch_name: str) -> str | None:
+    """Return the dotted marker for a df12-build roadmap branch, if it matches."""
+    match = _DF12_ROADMAP_BRANCH_PATTERN.fullmatch(branch_name)
+    if match is None:
+        return None
+    return f"({match.group(1).replace('-', '.')})"
+
+
+def _legacy_roadmap_marker(branch_name: str) -> str | None:
+    """Return the marker for a legacy roadmap branch, if it matches."""
+    match = _LEGACY_ROADMAP_BRANCH_PATTERN.match(branch_name)
+    if match is None:
+        return None
+
+    namespace, major, minor, patch, suffix, task = match.groups()
+    patch_reference = f"{patch}{suffix or ''}"
+    parts = [major, minor, patch_reference]
+    if namespace:
+        parts.insert(0, namespace)
+    if task:
+        parts.append(task)
+    return f"({'.'.join(parts)})"
+
+
+def issue_number_for_branch(branch_name: str) -> int | None:
+    """Return the issue number ``branch_name`` names, if it is an issue branch.
+
+    Parameters
+    ----------
+    branch_name : str
+        Local branch name to classify.
+
+    Returns
+    -------
+    int | None
+        The issue number, or ``None`` when the branch follows another
+        convention or none at all. The number enables the issue-only history
+        matchers.
+
+    Examples
+    --------
+    >>> issue_number_for_branch("issue-62-polymer-corrections")
+    62
+    >>> issue_number_for_branch("roadmap-2-2-1") is None
+    True
+
+    """
+    match = _ISSUE_BRANCH_PATTERN.match(branch_name)
+    if match is None:
+        return None
+    return int(match.group(1))
+
+
 def completion_marker_for_branch(branch_name: str) -> str | None:
     """Return the completion marker implied by ``branch_name``, if recognized.
 
-    Issue branches map to a GitHub issue reference. Roadmap branches map to a
-    dotted reference assembled from the optional namespace, the version
-    triple with its optional patch suffix, and the optional task number.
+    Issue branches map to a GitHub issue reference. df12-build roadmap branches
+    map to their un-namespaced dotted id, with or without an ``-addendum``
+    suffix. Legacy roadmap branches map to a dotted reference assembled from the
+    optional namespace, the version triple with its optional patch suffix, and
+    the optional task number.
 
     Parameters
     ----------
@@ -52,33 +143,114 @@ def completion_marker_for_branch(branch_name: str) -> str | None:
     -------
     str | None
         The parenthesised completion marker, or ``None`` when ``branch_name``
-        follows neither the issue nor the roadmap convention.
+        follows none of the recognized conventions.
 
     Examples
     --------
     >>> completion_marker_for_branch("issue-123-fix-bug")
     '(#123)'
+    >>> completion_marker_for_branch("roadmap-2-2-1")
+    '(2.2.1)'
+    >>> completion_marker_for_branch("roadmap-2-2-1-addendum")
+    '(2.2.1)'
     >>> completion_marker_for_branch("road-1-2-3a-4-finished-task")
     '(road.1.2.3a.4)'
     >>> completion_marker_for_branch("feature/unstructured") is None
     True
     """
-    issue_match = _ISSUE_BRANCH_PATTERN.match(branch_name)
-    if issue_match:
-        return f"(#{issue_match.group(1)})"
+    issue_number = issue_number_for_branch(branch_name)
+    if issue_number is not None:
+        return f"(#{issue_number})"
 
-    roadmap_match = _ROADMAP_BRANCH_PATTERN.match(branch_name)
-    if roadmap_match is None:
+    # The df12 grammar must win over the legacy grammar for names such as
+    # ``roadmap-2-2-1``, which the legacy namespace rule would otherwise claim
+    # as ``(roadmap.2.2.1)``.
+    df12_marker = _df12_roadmap_marker(branch_name)
+    if df12_marker is not None:
+        return df12_marker
+    return _legacy_roadmap_marker(branch_name)
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class _OfflineMatchers:
+    """History matchers one candidate enables."""
+
+    candidate: CompletionCandidate
+    marker_pattern: re.Pattern[str] | None
+    closing_keyword: re.Pattern[str] | None
+    merge_commit: re.Pattern[str] | None
+    branch_name_pattern: re.Pattern[str] | None
+
+    @property
+    def has_matchers(self) -> bool:
+        """Whether any history matcher can resolve the candidate."""
+        return self.marker_pattern is not None or self.closing_keyword is not None
+
+    def evidence_in(self, message: str) -> _CompletionEvidence | None:
+        """Return the strongest evidence ``message`` supplies, if any."""
+        if self.marker_pattern is not None and self.marker_pattern.search(message):
+            return _CompletionEvidence("marker", self.candidate.marker or "")
+
+        if self.closing_keyword is None:
+            return None
+        keyword = self.closing_keyword.search(message)
+        if keyword is not None:
+            return _CompletionEvidence("closing_keyword", keyword.group(0))
+        if self.merge_commit is not None:
+            merge = self.merge_commit.search(message)
+            if merge is not None:
+                return _CompletionEvidence(
+                    "merge_commit",
+                    f"{merge.group('owner')}/{self.candidate.branch_name}",
+                )
+        if self.branch_name_pattern is not None and self.branch_name_pattern.search(
+            message
+        ):
+            return _CompletionEvidence("branch_name", self.candidate.branch_name)
         return None
 
-    namespace, major, minor, patch, suffix, task = roadmap_match.groups()
-    patch_reference = f"{patch}{suffix or ''}"
-    parts = [major, minor, patch_reference]
-    if namespace:
-        parts.insert(0, namespace)
-    if task:
-        parts.append(task)
-    return f"({'.'.join(parts)})"
+
+def _closing_keyword_pattern(issue_number: int) -> re.Pattern[str]:
+    """Return the closing-keyword matcher for ``issue_number``."""
+    return re.compile(
+        _CLOSING_KEYWORD_PATTERN.format(issue_number=issue_number),
+        re.IGNORECASE,
+    )
+
+
+def _merge_commit_pattern(branch_name: str) -> re.Pattern[str]:
+    """Return the matcher for a merge commit naming ``branch_name`` exactly."""
+    return re.compile(
+        rf"(?m)^Merge pull request #\d+ from (?P<owner>[^\s/]+)/"
+        rf"{re.escape(branch_name)}(?=\s|$)"
+    )
+
+
+def _branch_name_pattern(branch_name: str) -> re.Pattern[str]:
+    """Return the bounded verbatim-branch matcher for ``branch_name``."""
+    return re.compile(rf"(?<![\w./-]){re.escape(branch_name)}(?![\w./-])")
+
+
+def _offline_matchers(candidate: CompletionCandidate) -> _OfflineMatchers:
+    """Return the history matchers ``candidate`` enables."""
+    marker_pattern = (
+        _marker_pattern(candidate.marker) if candidate.marker is not None else None
+    )
+    if candidate.issue_number is None:
+        return _OfflineMatchers(
+            candidate=candidate,
+            marker_pattern=marker_pattern,
+            closing_keyword=None,
+            merge_commit=None,
+            branch_name_pattern=None,
+        )
+    return _OfflineMatchers(
+        candidate=candidate,
+        marker_pattern=marker_pattern,
+        closing_keyword=_closing_keyword_pattern(candidate.issue_number),
+        merge_commit=_merge_commit_pattern(candidate.branch_name),
+        branch_name_pattern=_branch_name_pattern(candidate.branch_name),
+    )
 
 
 def has_completion_marker(messages: typ.Iterable[str], marker: str) -> bool:
@@ -112,47 +284,87 @@ def has_completion_marker(messages: typ.Iterable[str], marker: str) -> bool:
     return any(marker_pattern.search(message) is not None for message in messages)
 
 
+def _resolve_messages(
+    matcher_list: typ.Sequence[_OfflineMatchers],
+    pending: set[int],
+    messages: typ.Iterable[str],
+) -> dict[int, _CompletionEvidence]:
+    """Scan ``messages`` until every pending candidate resolves.
+
+    ``pending`` is consumed in place, so the caller can tell which candidates
+    remain unresolved. The scan stops as soon as it is empty.
+
+    Returns
+    -------
+    dict[int, _CompletionEvidence]
+        Evidence keyed by the index of the candidate that produced it.
+
+    """
+    found: dict[int, _CompletionEvidence] = {}
+    for message in messages:
+        for index, matchers in enumerate(matcher_list):
+            if index not in pending:
+                continue
+            evidence = matchers.evidence_in(message)
+            if evidence is not None:
+                found[index] = evidence
+                pending.remove(index)
+        if not pending:
+            break
+    return found
+
+
 def completed_candidates[CandidateT: CompletionCandidate](
     candidates: typ.Iterable[CandidateT],
     messages: typ.Iterable[str],
-) -> list[CandidateT]:
-    """Return candidates whose completion markers appear in commit history.
+) -> list[tuple[CandidateT, _CompletionEvidence]]:
+    r"""Return candidates whose offline evidence appears in commit history.
 
-    Scanning stops as soon as every candidate marker has been seen, so a long
-    history is not read in full when the matches appear early.
+    Each candidate is checked against the matchers its own name enables:
+    its completion marker, and, for issue branches, the closing keywords,
+    exact merge-commit branch, and bounded verbatim branch name GitHub writes
+    into commit messages. Within one message the marker wins over the weaker
+    signals. The scan stops as soon as every candidate with an offline matcher
+    has resolved, so a long history is not read in full when the matches appear
+    early. Candidates without an offline matcher are left for the GitHub
+    fallback and never keep the scan running.
 
     Parameters
     ----------
     candidates : typ.Iterable[CandidateT]
-        Candidates to filter. Each must expose a ``marker`` attribute.
+        Candidates to classify. Each must expose ``branch_name``, ``marker``,
+        and ``issue_number``.
     messages : typ.Iterable[str]
         Commit messages to scan, consumed lazily.
 
     Returns
     -------
-    list[CandidateT]
-        The candidates whose markers appear in ``messages``, in the order the
-        candidates were supplied. Empty when ``candidates`` is empty.
+    list[tuple[CandidateT, _CompletionEvidence]]
+        The completed candidates paired with the evidence that completed them,
+        in the order the candidates were supplied. Empty when no candidate
+        resolves.
+
+    Examples
+    --------
+    >>> from pathlib import Path
+    >>> from git_donkey.plonk_records import _PlonkCandidate
+    >>> candidate = _PlonkCandidate(
+    ...     "issue-62-fix", Path("/worktrees/issue-62-fix"), "(#62)", 62
+    ... )
+    >>> completed = completed_candidates(
+    ...     [candidate], ["Fix work (#63)\n\nCloses #62"]
+    ... )
+    >>> [(one.branch_name, evidence.signal) for one, evidence in completed]
+    [('issue-62-fix', 'closing_keyword')]
+
     """
     candidate_list = list(candidates)
-    candidates_by_marker = {
-        _marker_body(candidate.marker): candidate for candidate in candidate_list
+    matcher_list = [_offline_matchers(candidate) for candidate in candidate_list]
+    pending = {
+        index for index, matchers in enumerate(matcher_list) if matchers.has_matchers
     }
-    if not candidates_by_marker:
+    if not pending:
         return []
 
-    marker_alternatives = "|".join(
-        re.escape(marker_body) for marker_body in candidates_by_marker
-    )
-    marker_pattern = re.compile(rf"\(({marker_alternatives})\.?\)")
-    matched_markers: set[str] = set()
-    for message in messages:
-        matched_markers.update(marker_pattern.findall(message))
-        if len(matched_markers) == len(candidates_by_marker):
-            break
-
-    return [
-        candidate
-        for candidate in candidate_list
-        if _marker_body(candidate.marker) in matched_markers
-    ]
+    found = _resolve_messages(matcher_list, pending, messages)
+    return [(candidate_list[index], found[index]) for index in sorted(found)]

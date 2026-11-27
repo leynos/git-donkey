@@ -4,15 +4,21 @@ The summary is the command's user-visible contract, so it is rendered apart
 from the workflow that produces the records: the functions here take a finished
 :class:`~git_donkey.plonk_records._PlonkResult` and return text, reading no Git
 state and touching no filesystem. Planned actions, completed removals, branch
-deletions Git refused, and skips each get their own section, and a run with
-nothing to report says so rather than printing empty headings.
+deletions Git refused, skips, and unverified worktrees each get their own
+section. A removal names the completion signal that justified it, so the user
+can audit the decision rather than trust the batch. A run with nothing to report
+says so rather than printing empty headings.
 """
 
 from __future__ import annotations
 
 import typing as typ
 
-from git_donkey.plonk_records import _PlonkMode, _PlonkResult
+from git_donkey.plonk_records import (
+    _CompletionEvidence,
+    _PlonkMode,
+    _PlonkResult,
+)
 
 
 def _empty_summary_message(result: _PlonkResult) -> str:
@@ -34,10 +40,61 @@ def _append_summary_section(
     lines.extend(f"- {entry}" for entry in section_entries)
 
 
+def _evidence_label(evidence: _CompletionEvidence) -> str:
+    """Return the report phrase naming one completion signal."""
+    match evidence.signal:
+        case "marker":
+            return f"completed by marker {evidence.detail}"
+        case "closing_keyword":
+            return f"completed by closing keyword '{evidence.detail}'"
+        case "merge_commit":
+            return f"completed by merge commit {evidence.detail}"
+        case "branch_name":
+            return "completed by branch name in a commit message"
+        case "github_merged_pr":
+            return f"completed by merged pull request {evidence.detail}"
+        case "upstream_gone":
+            return "completed by gone upstream branch"
+        case _:
+            msg = f"unknown completion signal {evidence.signal!r}"
+            raise AssertionError(msg)
+
+
+def _removal_entries(result: _PlonkResult) -> typ.Iterator[str]:
+    """Yield one report line per removed or planned worktree.
+
+    The evidence table is keyed by path, so a result built without evidence
+    (as the summary tests do for unrelated sections) still renders the plain
+    path rather than inventing a signal.
+
+    Yields
+    ------
+    str
+        The worktree path, annotated with the signal that completed it when
+        the result carries that evidence.
+
+    """
+    evidence_by_path = {
+        record.worktree_path: record.evidence for record in result.removal_evidence
+    }
+    for worktree_path in result.removed_worktrees:
+        evidence = evidence_by_path.get(worktree_path)
+        if evidence is None:
+            yield str(worktree_path)
+            continue
+        yield f"{worktree_path} ({_evidence_label(evidence)})"
+
+
 def _skipped_entries(result: _PlonkResult) -> typ.Iterator[str]:
     """Yield one report line per worktree git-plonk skipped."""
     for skipped in result.skipped_worktrees:
         yield f"{skipped.worktree_path} ({skipped.reason.value})"
+
+
+def _unverified_entries(result: _PlonkResult) -> typ.Iterator[str]:
+    """Yield one report line per worktree no completion tier resolved."""
+    for unverified in result.unverified_worktrees:
+        yield f"{unverified.worktree_path} ({unverified.reason.value})"
 
 
 def _failed_branch_entries(result: _PlonkResult) -> typ.Iterator[str]:
@@ -55,6 +112,7 @@ def _render_summary(result: _PlonkResult) -> str:
         result.removed_branches,
         result.cleaned_paths,
         result.skipped_worktrees,
+        result.unverified_worktrees,
         result.failed_branch_deletions,
     ))
     if not has_entries:
@@ -63,7 +121,7 @@ def _render_summary(result: _PlonkResult) -> str:
 
     if result.is_dry_run:
         _append_summary_section(
-            lines, "Planned worktree removals:", result.removed_worktrees
+            lines, "Planned worktree removals:", _removal_entries(result)
         )
         _append_summary_section(
             lines, "Planned branch deletions:", result.removed_branches
@@ -72,7 +130,7 @@ def _render_summary(result: _PlonkResult) -> str:
             lines, "Planned generated path removals:", result.cleaned_paths
         )
     else:
-        _append_summary_section(lines, "Removed worktrees:", result.removed_worktrees)
+        _append_summary_section(lines, "Removed worktrees:", _removal_entries(result))
         _append_summary_section(lines, "Removed branches:", result.removed_branches)
         _append_summary_section(lines, "Removed generated paths:", result.cleaned_paths)
 
@@ -81,7 +139,13 @@ def _render_summary(result: _PlonkResult) -> str:
     _append_summary_section(
         lines, "Failed branch deletions:", _failed_branch_entries(result)
     )
-    # Skips are decisions, not plans: dry-run reports the same set, because a
-    # preview that hid them would misrepresent the run it previews.
+    # Skips and unverified worktrees are decisions, not plans: dry-run reports
+    # the same sets, because a preview that hid them would misrepresent the run
+    # it previews.
     _append_summary_section(lines, "Skipped worktrees:", _skipped_entries(result))
+    _append_summary_section(
+        lines,
+        "Unverified worktrees:",
+        _unverified_entries(result),
+    )
     return "\n".join(lines)

@@ -30,6 +30,7 @@ from tests.integration.plonk_helpers import (
     commit_completion_marker,
     commit_message_on_branch,
     create_git_donkey_worktree,
+    marker_removal_entry,
     push_marker_from_clone,
     record_plonk_run,
     stop_advertising_default_branch,
@@ -303,7 +304,10 @@ def git_plonk_plans_to_remove_the_completed_worktree(scenario: PlonkScenario) ->
         stream(
             f"git-plonk: mode={scenario.mode}",
             "Planned worktree removals:",
-            f"- {scenario.worktree_path(scenario.completed_branch)}",
+            marker_removal_entry(
+                scenario.worktree_path(scenario.completed_branch),
+                scenario.completed_branch,
+            ),
         ),
         context="git plonk stdout",
     )

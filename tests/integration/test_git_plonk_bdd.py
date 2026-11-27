@@ -32,9 +32,11 @@ from tests.integration.plonk_helpers import (
     commit_ignore_rule,
     create_git_donkey_worktree,
     edit_tracked_file,
+    marker_removal_entry,
     record_plonk_run,
     skipped_entry,
     stage_tracked_change,
+    unverified_entry,
 )
 from tests.output_assertions import require_stream, stream
 
@@ -260,7 +262,10 @@ def git_plonk_reports_dirty_worktree_skipped(scenario: PlonkScenario) -> None:
         scenario,
         f"git-plonk: mode={scenario.mode}",
         "Removed worktrees:",
-        f"- {scenario.worktree_path(scenario.completed_branch)}",
+        marker_removal_entry(
+            scenario.worktree_path(scenario.completed_branch),
+            scenario.completed_branch,
+        ),
         "Skipped worktrees:",
         skipped_entry(
             scenario.worktree_path(scenario.dirty_branch),
@@ -384,7 +389,10 @@ def git_plonk_reports_planned_cleanup(scenario: PlonkScenario) -> None:
         scenario,
         f"git-plonk: mode={scenario.mode}",
         "Planned worktree removals:",
-        f"- {scenario.worktree_path(scenario.completed_branch)}",
+        marker_removal_entry(
+            scenario.worktree_path(scenario.completed_branch),
+            scenario.completed_branch,
+        ),
         "Planned branch deletions:",
         f"- {scenario.completed_branch}",
     )
@@ -392,13 +400,29 @@ def git_plonk_reports_planned_cleanup(scenario: PlonkScenario) -> None:
 
 @then("git plonk reports planned default worktree cleanup only")
 def git_plonk_reports_planned_default_cleanup(scenario: PlonkScenario) -> None:
-    """Assert default dry-run output excludes hard-mode branch deletion."""
-    _require_report(
-        scenario,
+    """Assert default dry-run plans the removal and names the active branch.
+
+    The active branch carries a marker that never landed on trunk. With a local
+    remote no GitHub fallback applies, so the preview must report it as
+    unverified rather than silently omitting it or planning its removal.
+    """
+    lines = [
         f"git-plonk: mode={scenario.mode}",
         "Planned worktree removals:",
-        f"- {scenario.worktree_path(scenario.completed_branch)}",
-    )
+        marker_removal_entry(
+            scenario.worktree_path(scenario.completed_branch),
+            scenario.completed_branch,
+        ),
+    ]
+    if scenario.active_branch is not None:
+        lines.extend((
+            "Unverified worktrees:",
+            unverified_entry(
+                scenario.worktree_path(scenario.active_branch),
+                "no completion signal found",
+            ),
+        ))
+    _require_report(scenario, *lines)
 
 
 @then("git plonk reports planned generated path cleanup")
