@@ -23,10 +23,7 @@ from tests.integration.plonk_helpers import (
     PlonkScenario,
     create_git_donkey_worktree,
     record_plonk_run,
-    removal_entry,
-    unverified_entry,
 )
-from tests.output_assertions import require_stream, stream
 
 if typ.TYPE_CHECKING:
     import collections.abc as cabc
@@ -136,50 +133,6 @@ def completed_branch_remains(scenario: PlonkScenario) -> None:
     """Assert default mode kept the local branch."""
     assert scenario.completed_branch in Repo(scenario.local_path).heads, (
         "expected default mode to keep the local branch"
-    )
-
-
-@then(parsers.parse('git plonk reports the removal as "{label}"'))
-def git_plonk_reports_the_removal_as(
-    scenario: PlonkScenario,
-    label: str,
-) -> None:
-    """Assert the removal carries the expected evidence label."""
-    require_stream(
-        scenario.stdout,
-        stream(
-            f"git-plonk: mode={scenario.mode}",
-            "Removed worktrees:",
-            removal_entry(
-                scenario.worktree_path(scenario.completed_branch),
-                label,
-            ),
-        ),
-        context="git plonk stdout",
-    )
-
-
-@then(
-    parsers.parse(
-        'git plonk reports the completed worktree as unverified with "{reason}"'
-    )
-)
-def git_plonk_reports_the_worktree_as_unverified(
-    scenario: PlonkScenario,
-    reason: str,
-) -> None:
-    """Assert the unverified report carries the expected fixed reason."""
-    require_stream(
-        scenario.stdout,
-        stream(
-            f"git-plonk: mode={scenario.mode}",
-            "Unverified worktrees:",
-            unverified_entry(
-                scenario.worktree_path(scenario.completed_branch),
-                reason,
-            ),
-        ),
-        context="git plonk stdout",
     )
 
 

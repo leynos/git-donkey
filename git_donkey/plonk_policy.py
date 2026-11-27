@@ -194,10 +194,17 @@ class _OfflineMatchers:
         """Return the strongest evidence ``message`` supplies, if any."""
         if self.marker_pattern is not None and self.marker_pattern.search(message):
             return _CompletionEvidence("marker", self.candidate.marker or "")
-
         if self.closing_keyword is None:
             return None
-        keyword = self.closing_keyword.search(message)
+        return self._issue_evidence(message, self.closing_keyword)
+
+    def _issue_evidence(
+        self,
+        message: str,
+        closing_keyword: re.Pattern[str],
+    ) -> _CompletionEvidence | None:
+        """Return the strongest issue-only evidence ``message`` supplies."""
+        keyword = closing_keyword.search(message)
         if keyword is not None:
             return _CompletionEvidence("closing_keyword", keyword.group(0))
         if self.merge_commit is not None:
@@ -240,6 +247,20 @@ def _is_quoted_pair(before: str, after: str) -> bool:
     return before == after and before in _PROSE_QUOTES
 
 
+def _is_quoted_token(message: str, index: int, branch_name: str) -> bool:
+    """Return whether the branch at ``index`` sits inside a prose quote pair."""
+    before = message[index - 1] if index else ""
+    after_index = index + len(branch_name)
+    after = message[after_index] if after_index < len(message) else ""
+    if not _is_quoted_pair(before, after):
+        return False
+    quote_width = len(before)
+    outer_before = message[index - quote_width - 1] if index > quote_width else ""
+    after_quote_index = index + len(branch_name) + quote_width
+    outer_after = message[after_quote_index] if after_quote_index < len(message) else ""
+    return _is_branch_boundary(outer_before) and _is_branch_boundary(outer_after)
+
+
 def _mentions_branch(message: str, branch_name: str) -> bool:
     """Return whether ``message`` names ``branch_name`` as a complete token."""
     start = 0
@@ -249,17 +270,8 @@ def _mentions_branch(message: str, branch_name: str) -> bool:
         after = message[after_index] if after_index < len(message) else ""
         if _is_branch_boundary(before) and _is_branch_boundary(after):
             return True
-        if _is_quoted_pair(before, after):
-            quote_width = len(before)
-            outer_before = (
-                message[index - quote_width - 1] if index > quote_width else ""
-            )
-            after_quote_index = index + len(branch_name) + quote_width
-            outer_after = (
-                message[after_quote_index] if after_quote_index < len(message) else ""
-            )
-            if _is_branch_boundary(outer_before) and _is_branch_boundary(outer_after):
-                return True
+        if _is_quoted_token(message, index, branch_name):
+            return True
         start = index + 1
     return False
 

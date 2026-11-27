@@ -113,6 +113,22 @@ def _log_plonk_candidates_selected(
     )
 
 
+def _branch_fields(candidate: _PlonkCandidate) -> dict[str, object]:
+    """Return the branch and marker fields shared by candidate logs."""
+    return {
+        "branch": candidate.branch_name,
+        "marker": candidate.marker,
+    }
+
+
+def _candidate_fields(candidate: _PlonkCandidate) -> dict[str, object]:
+    """Return the fields shared by candidate worktree logs."""
+    return {
+        **_branch_fields(candidate),
+        "worktree": candidate.worktree_path.as_posix(),
+    }
+
+
 def _log_planned_candidate(
     removable: _RemovableCandidate,
     mode: _PlonkMode,
@@ -129,11 +145,9 @@ def _log_planned_candidate(
             "mode": mode.value,
             "operation": "remove_worktree",
             "dry_run": dry_run,
-            "branch": candidate.branch_name,
-            "marker": candidate.marker,
             "signal": removable.evidence.signal,
             "detail": removable.evidence.detail,
-            "worktree": candidate.worktree_path.as_posix(),
+            **_candidate_fields(candidate),
         },
     )
 
@@ -154,9 +168,8 @@ def _log_planned_branch_deletion(
             "mode": mode.value,
             "operation": "delete_branch",
             "dry_run": dry_run,
-            "branch": candidate.branch_name,
-            "marker": candidate.marker,
             "signal": removable.evidence.signal,
+            **_branch_fields(candidate),
         },
     )
 
@@ -172,10 +185,8 @@ def _log_skipped_candidate(
         extra={
             "mode": mode.value,
             "operation": "skip_worktree",
-            "branch": candidate.branch_name,
-            "marker": candidate.marker,
-            "worktree": candidate.worktree_path.as_posix(),
             "reason": reason.value,
+            **_candidate_fields(candidate),
         },
     )
 
@@ -191,10 +202,8 @@ def _log_unverified_candidate(
         extra={
             "mode": mode.value,
             "operation": "completion_resolution",
-            "branch": candidate.branch_name,
-            "marker": candidate.marker,
-            "worktree": candidate.worktree_path.as_posix(),
             "reason": reason.value,
+            **_candidate_fields(candidate),
         },
     )
 

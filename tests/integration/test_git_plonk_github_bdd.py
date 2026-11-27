@@ -27,10 +27,7 @@ from tests.integration.plonk_helpers import (
     ReportMode,
     create_git_donkey_worktree,
     record_plonk_run,
-    removal_entry,
-    unverified_entry,
 )
-from tests.output_assertions import require_stream, stream
 
 if typ.TYPE_CHECKING:
     from pathlib import Path
@@ -87,15 +84,21 @@ def _require_stub(github_cli_stub: GitHubCliStub | None) -> GitHubCliStub:
     return github_cli_stub
 
 
-@given("the gh stub reports a merged pull request for that branch")
+@given(
+    parsers.parse(
+        "the gh stub reports a merged pull request targeting "
+        '"{base_branch}" for that branch'
+    )
+)
 def stub_reports_a_merged_pull_request(
     github_cli_stub: GitHubCliStub | None,
+    base_branch: str,
 ) -> None:
     """Configure the stub to answer with one matching merged pull request."""
     _require_stub(github_cli_stub).stub_merged_pull_request(
         number=_PULL_REQUEST_NUMBER,
         head_branch=_BRANCH,
-        base_branch="main",
+        base_branch=base_branch,
         owner="leynos",
     )
 
@@ -104,17 +107,6 @@ def stub_reports_a_merged_pull_request(
 def stub_fails(github_cli_stub: GitHubCliStub | None) -> None:
     """Configure the stub to exit non-zero without output."""
     _require_stub(github_cli_stub).stub_failure()
-
-
-@given("the gh stub reports a pull request targeting another base")
-def stub_reports_another_base(github_cli_stub: GitHubCliStub | None) -> None:
-    """Configure a merged answer that must be rejected for its base branch."""
-    _require_stub(github_cli_stub).stub_merged_pull_request(
-        number=_PULL_REQUEST_NUMBER,
-        head_branch=_BRANCH,
-        base_branch="release",
-        owner="leynos",
-    )
 
 
 @when("I run git plonk in default mode expecting a GitHub lookup")
@@ -152,50 +144,6 @@ def completed_branch_remains(scenario: PlonkScenario) -> None:
     """Assert default mode kept the local branch."""
     assert scenario.completed_branch in Repo(scenario.local_path).heads, (
         "expected default mode to keep the local branch"
-    )
-
-
-@then(parsers.parse('git plonk reports the removal as "{label}"'))
-def git_plonk_reports_the_removal_as(
-    scenario: PlonkScenario,
-    label: str,
-) -> None:
-    """Assert the removal carries the expected evidence label."""
-    require_stream(
-        scenario.stdout,
-        stream(
-            f"git-plonk: mode={scenario.mode}",
-            "Removed worktrees:",
-            removal_entry(
-                scenario.worktree_path(scenario.completed_branch),
-                label,
-            ),
-        ),
-        context="git plonk stdout",
-    )
-
-
-@then(
-    parsers.parse(
-        'git plonk reports the completed worktree as unverified with "{reason}"'
-    )
-)
-def git_plonk_reports_the_worktree_as_unverified(
-    scenario: PlonkScenario,
-    reason: str,
-) -> None:
-    """Assert the unverified report carries the expected fixed reason."""
-    require_stream(
-        scenario.stdout,
-        stream(
-            f"git-plonk: mode={scenario.mode}",
-            "Unverified worktrees:",
-            unverified_entry(
-                scenario.worktree_path(scenario.completed_branch),
-                reason,
-            ),
-        ),
-        context="git plonk stdout",
     )
 
 

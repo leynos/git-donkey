@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import logging
 import os
+import typing as typ
 from pathlib import Path
 
 from git import GitCommandError, Repo
@@ -244,6 +245,41 @@ def _run_soft(
     )
 
 
+def _prepare_candidates(
+    state: _SweepState,
+    candidates: typ.Sequence[_PlonkCandidate],
+    invoking_worktree: Path | None,
+) -> tuple[list[_PlonkCandidate], list[_PlonkCandidate], list[_PlonkCandidate]]:
+    """Resolve offline evidence and partition candidates for the fallback tiers.
+
+    Returns
+    -------
+    tuple[list[_PlonkCandidate], list[_PlonkCandidate], list[_PlonkCandidate]]
+        The offline-completed candidates, those of them outside the invoking
+        worktree, and every candidate the fallback tiers may consider.
+
+    """
+    state.resolutions.update(
+        _offline_evidence(candidates, state.adapter, state.context.trunk_ref)
+    )
+    offline_completed = [
+        candidate
+        for candidate in candidates
+        if candidate.branch_name in state.resolutions
+    ]
+    removable_offline = [
+        candidate
+        for candidate in offline_completed
+        if candidate.worktree_path != invoking_worktree
+    ]
+    active = [
+        candidate
+        for candidate in candidates
+        if candidate.worktree_path != invoking_worktree
+    ]
+    return offline_completed, removable_offline, active
+
+
 def _run_completed_cleanup(
     context: _PlonkContext,
     mode: _PlonkMode,
@@ -276,24 +312,11 @@ def _run_completed_cleanup(
     candidate_list: list[_PlonkCandidate] = _donkey_worktree_candidates(
         context.stanzas, context.worktrees_root, context.anchor_dir
     )
-    state.resolutions.update(
-        _offline_evidence(candidate_list, adapter, context.trunk_ref)
+    offline_completed, removable_offline, active_candidates = _prepare_candidates(
+        state,
+        candidate_list,
+        context.invoking_worktree,
     )
-    offline_completed = [
-        candidate
-        for candidate in candidate_list
-        if candidate.branch_name in state.resolutions
-    ]
-    removable_offline = [
-        candidate
-        for candidate in offline_completed
-        if candidate.worktree_path != context.invoking_worktree
-    ]
-    active_candidates = [
-        candidate
-        for candidate in candidate_list
-        if candidate.worktree_path != context.invoking_worktree
-    ]
     _log_plonk_candidates_selected(
         mode,
         candidate_list,
@@ -319,6 +342,33 @@ def _run_completed_cleanup(
         unverified_worktrees=tuple(unverified),
         failed_branch_deletions=tuple(tally.failed_branch_deletions),
     )
+
+
+def _validate_plonk_options(
+    *,
+    soft: bool,
+    hard: bool,
+    options: _PlonkRunOptions,
+) -> None:
+    """Exit when the requested cleanup modes cannot run together."""
+    if soft and hard:
+        helpers._die(
+            GIT_PLONK_PREFIX,
+            "--soft and --hard are mutually exclusive",
+            2,
+        )
+    if soft and options.no_github:
+        helpers._die(
+            GIT_PLONK_PREFIX,
+            "--soft and --no-github are mutually exclusive",
+            2,
+        )
+    if soft and options.upstream_gone:
+        helpers._die(
+            GIT_PLONK_PREFIX,
+            "--soft and --upstream-gone are mutually exclusive",
+            2,
+        )
 
 
 def run_git_plonk(
@@ -361,24 +411,7 @@ def run_git_plonk(
     to change.
 
     """
-    if soft and hard:
-        helpers._die(
-            GIT_PLONK_PREFIX,
-            "--soft and --hard are mutually exclusive",
-            2,
-        )
-    if soft and options.no_github:
-        helpers._die(
-            GIT_PLONK_PREFIX,
-            "--soft and --no-github are mutually exclusive",
-            2,
-        )
-    if soft and options.upstream_gone:
-        helpers._die(
-            GIT_PLONK_PREFIX,
-            "--soft and --upstream-gone are mutually exclusive",
-            2,
-        )
+    _validate_plonk_options(soft=soft, hard=hard, options=options)
 
     if soft:
         soft_context = _load_soft_plonk_context()

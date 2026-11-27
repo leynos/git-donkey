@@ -305,42 +305,10 @@ def marker_removal_entry(worktree_path: Path, branch_name: str) -> str:
     )
 
 
-def skipped_entry(worktree_path: Path, reason: str) -> str:
-    """Build the report line naming ``worktree_path`` as skipped.
-
-    Parameters
-    ----------
-    worktree_path : Path
-        Worktree the sweep left alone.
-    reason : str
-        Skip reason the report appends in parentheses.
-
-    Returns
-    -------
-    str
-        The report line, without its trailing newline.
-
-    """
-    return f"- {worktree_path} ({reason})"
-
-
-def unverified_entry(worktree_path: Path, reason: str) -> str:
-    """Build the report line naming ``worktree_path`` as unverified.
-
-    Parameters
-    ----------
-    worktree_path : Path
-        Worktree no completion tier resolved.
-    reason : str
-        Fixed unverified-reason text the report appends in parentheses.
-
-    Returns
-    -------
-    str
-        The report line, without its trailing newline.
-
-    """
-    return f"- {worktree_path} ({reason})"
+# A skipped or unverified worktree line has the same shape as a removal
+# line: the path followed by its parenthesised reason.
+skipped_entry = removal_entry
+unverified_entry = removal_entry
 
 
 def worktree_order(local_path: Path) -> list[Path]:

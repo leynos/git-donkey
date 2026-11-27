@@ -237,6 +237,99 @@ def _refuses_branch_deletion(
     )
 
 
+@dataclasses.dataclass(frozen=True, slots=True)
+class _CaseOutcome:
+    """What the reference model expects one candidate to contribute."""
+
+    skip_reason: plonk_records._SkipReason | None = None
+    unverified: bool = False
+    removed: bool = False
+    branch_removed: bool = False
+    branch_failed: bool = False
+
+
+def _classify_case(
+    case: _Case,
+    *,
+    mode: plonk._PlonkMode,
+    dry_run: bool,
+) -> _CaseOutcome:
+    """Return the model's outcome for one candidate."""
+    if case.state is _INCOMPLETE:
+        return _CaseOutcome(unverified=True)
+    skip_reason = _skip_reason_for(case, dry_run=dry_run)
+    if skip_reason is not None:
+        return _CaseOutcome(skip_reason=skip_reason)
+    return _CaseOutcome(
+        removed=True,
+        branch_removed=_plans_branch_removal(case, mode=mode, dry_run=dry_run),
+        branch_failed=_refuses_branch_deletion(case, mode=mode, dry_run=dry_run),
+    )
+
+
+@dataclasses.dataclass(slots=True)
+class _ModelTally:
+    """Accumulated expectations for one generated batch."""
+
+    removed_worktrees: list[Path] = dataclasses.field(default_factory=list)
+    removal_evidence: list[plonk_records._RemovalEvidence] = dataclasses.field(
+        default_factory=list
+    )
+    removed_branches: list[str] = dataclasses.field(default_factory=list)
+    skipped_worktrees: list[plonk_records._SkippedWorktree] = dataclasses.field(
+        default_factory=list
+    )
+    unverified_worktrees: list[plonk._UnverifiedWorktree] = dataclasses.field(
+        default_factory=list
+    )
+    failed_branch_deletions: list[str] = dataclasses.field(default_factory=list)
+    removed: list[Path] = dataclasses.field(default_factory=list)
+    deleted: list[str] = dataclasses.field(default_factory=list)
+
+
+def _record_outcome(
+    tally: _ModelTally,
+    case: _Case,
+    outcome: _CaseOutcome,
+    *,
+    dry_run: bool,
+) -> None:
+    """Record one classified candidate in the model's tally."""
+    candidate = case.candidate
+    if outcome.unverified:
+        tally.unverified_worktrees.append(
+            plonk._UnverifiedWorktree(
+                candidate.worktree_path,
+                plonk_records._UnverifiedReason.NO_SIGNAL,
+            )
+        )
+        return
+    if outcome.skip_reason is not None:
+        tally.skipped_worktrees.append(
+            plonk_records._SkippedWorktree(
+                candidate.worktree_path,
+                outcome.skip_reason,
+            )
+        )
+        return
+
+    tally.removed_worktrees.append(candidate.worktree_path)
+    tally.removal_evidence.append(
+        plonk_records._RemovalEvidence(
+            candidate.worktree_path,
+            plonk_records._CompletionEvidence("marker", candidate.marker or ""),
+        )
+    )
+    if not dry_run:
+        tally.removed.append(candidate.worktree_path)
+    if outcome.branch_removed:
+        tally.removed_branches.append(candidate.branch_name)
+        if not dry_run:
+            tally.deleted.append(candidate.branch_name)
+    elif outcome.branch_failed:
+        tally.failed_branch_deletions.append(candidate.branch_name)
+
+
 def _model(
     cases: typ.Sequence[_Case],
     *,
@@ -261,62 +354,29 @@ def _model(
         adapter double should record.
 
     """
-    removed_worktrees: list[Path] = []
-    removal_evidence: list[plonk_records._RemovalEvidence] = []
-    removed_branches: list[str] = []
-    skipped_worktrees: list[plonk_records._SkippedWorktree] = []
-    unverified_worktrees: list[plonk._UnverifiedWorktree] = []
-    failed_branch_deletions: list[str] = []
-    removed: list[Path] = []
-    deleted: list[str] = []
-
+    tally = _ModelTally()
     for case in cases:
-        candidate_ = case.candidate
-        if case.state is _INCOMPLETE:
-            unverified_worktrees.append(
-                plonk._UnverifiedWorktree(
-                    candidate_.worktree_path,
-                    plonk_records._UnverifiedReason.NO_SIGNAL,
-                )
-            )
-            continue
-        skip_reason = _skip_reason_for(case, dry_run=dry_run)
-        if skip_reason is not None:
-            skipped_worktrees.append(
-                plonk_records._SkippedWorktree(candidate_.worktree_path, skip_reason)
-            )
-            continue
-
-        removed_worktrees.append(candidate_.worktree_path)
-        removal_evidence.append(
-            plonk_records._RemovalEvidence(
-                candidate_.worktree_path,
-                plonk_records._CompletionEvidence("marker", candidate_.marker or ""),
-            )
+        _record_outcome(
+            tally,
+            case,
+            _classify_case(case, mode=mode, dry_run=dry_run),
+            dry_run=dry_run,
         )
-        if not dry_run:
-            removed.append(candidate_.worktree_path)
-        if _plans_branch_removal(case, mode=mode, dry_run=dry_run):
-            removed_branches.append(candidate_.branch_name)
-            if not dry_run:
-                deleted.append(candidate_.branch_name)
-        elif _refuses_branch_deletion(case, mode=mode, dry_run=dry_run):
-            failed_branch_deletions.append(candidate_.branch_name)
 
     return _Model(
         result=plonk._PlonkResult(
             mode=mode,
             is_dry_run=dry_run,
             inspected_worktrees=len(cases),
-            removed_worktrees=tuple(removed_worktrees),
-            removal_evidence=tuple(removal_evidence),
-            removed_branches=tuple(removed_branches),
-            skipped_worktrees=tuple(skipped_worktrees),
-            unverified_worktrees=tuple(unverified_worktrees),
-            failed_branch_deletions=tuple(failed_branch_deletions),
+            removed_worktrees=tuple(tally.removed_worktrees),
+            removal_evidence=tuple(tally.removal_evidence),
+            removed_branches=tuple(tally.removed_branches),
+            skipped_worktrees=tuple(tally.skipped_worktrees),
+            unverified_worktrees=tuple(tally.unverified_worktrees),
+            failed_branch_deletions=tuple(tally.failed_branch_deletions),
         ),
-        removed=removed,
-        deleted=deleted,
+        removed=tally.removed,
+        deleted=tally.deleted,
     )
 
 

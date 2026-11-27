@@ -31,8 +31,6 @@ from tests.integration.plonk_helpers import (
     create_git_donkey_worktree,
     marker_removal_entry,
     record_plonk_run,
-    removal_entry,
-    unverified_entry,
 )
 from tests.output_assertions import require_stream, stream
 
@@ -271,50 +269,6 @@ def git_plonk_reports_both_worktrees_as_removed(scenario: PlonkScenario) -> None
             f"git-plonk: mode={scenario.mode}",
             "Removed worktrees:",
             *(marker_removal_entry(path, path.name) for path in removed),
-        ),
-        context="git plonk stdout",
-    )
-
-
-@then(parsers.parse('git plonk reports the removal as "{label}"'))
-def git_plonk_reports_the_removal_as(
-    scenario: PlonkScenario,
-    label: str,
-) -> None:
-    """Assert the one removal carries the expected evidence label."""
-    require_stream(
-        scenario.stdout,
-        stream(
-            f"git-plonk: mode={scenario.mode}",
-            "Removed worktrees:",
-            removal_entry(
-                scenario.worktree_path(scenario.completed_branch),
-                label,
-            ),
-        ),
-        context="git plonk stdout",
-    )
-
-
-@then(
-    parsers.parse(
-        'git plonk reports the completed worktree as unverified with "{reason}"'
-    )
-)
-def git_plonk_reports_the_worktree_as_unverified(
-    scenario: PlonkScenario,
-    reason: str,
-) -> None:
-    """Assert the one unverified worktree carries the expected reason."""
-    require_stream(
-        scenario.stdout,
-        stream(
-            f"git-plonk: mode={scenario.mode}",
-            "Unverified worktrees:",
-            unverified_entry(
-                scenario.worktree_path(scenario.completed_branch),
-                reason,
-            ),
         ),
         context="git plonk stdout",
     )

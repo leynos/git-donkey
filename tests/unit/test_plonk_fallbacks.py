@@ -75,6 +75,24 @@ class LookupStub:
         return self.result
 
 
+def _run_single_lookup(
+    lookup_result: plonk_github._MergedPullRequest,
+) -> tuple[plonk_records._PlonkCandidate, plonk._PlonkResult]:
+    """Run one descriptive candidate through a fixed GitHub lookup result."""
+    worktree = _descriptive_candidate()
+    lookup = LookupStub(lookup_result)
+    result = run_cleanup(
+        [worktree],
+        RecordingGitAdapter([]),
+        mode=plonk._PlonkMode.DEFAULT,
+        options=CleanupRunOptions(
+            context=_github_context([worktree]),
+            github_lookup=lookup,
+        ),
+    )
+    return worktree, result
+
+
 class ChangingUpstreamAdapter(RecordingGitAdapter):
     """Adapter double whose upstream verdict changes after the first query."""
 
@@ -183,18 +201,7 @@ def test_github_lookup_runs_once_per_branch() -> None:
 
 def test_github_unknown_leaves_the_candidate_unverified() -> None:
     """A failed lookup should retain the worktree and say why."""
-    worktree = _descriptive_candidate()
-    lookup = LookupStub(plonk_github._MergedPullRequest("unknown"))
-
-    result = run_cleanup(
-        [worktree],
-        RecordingGitAdapter([]),
-        mode=plonk._PlonkMode.DEFAULT,
-        options=CleanupRunOptions(
-            context=_github_context([worktree]),
-            github_lookup=lookup,
-        ),
-    )
+    worktree, result = _run_single_lookup(plonk_github._MergedPullRequest("unknown"))
 
     assert not result.removed_worktrees, "a failed lookup must never justify a removal"
     assert result.unverified_worktrees == (
@@ -207,18 +214,7 @@ def test_github_unknown_leaves_the_candidate_unverified() -> None:
 
 def test_github_not_merged_leaves_the_candidate_unverified() -> None:
     """A definitive absence of a merged pull request is still not completion."""
-    worktree = _descriptive_candidate()
-    lookup = LookupStub(plonk_github._MergedPullRequest("not_merged"))
-
-    result = run_cleanup(
-        [worktree],
-        RecordingGitAdapter([]),
-        mode=plonk._PlonkMode.DEFAULT,
-        options=CleanupRunOptions(
-            context=_github_context([worktree]),
-            github_lookup=lookup,
-        ),
-    )
+    worktree, result = _run_single_lookup(plonk_github._MergedPullRequest("not_merged"))
 
     assert result.unverified_worktrees == (
         plonk._UnverifiedWorktree(
@@ -476,18 +472,7 @@ def test_github_resolution_records_a_bounded_signal(
     recording_recorder: RecordingRecorder,
 ) -> None:
     """The fallback should record its signal from the declared vocabulary."""
-    worktree = _descriptive_candidate()
-    lookup = LookupStub(plonk_github._MergedPullRequest("merged", 61))
-
-    run_cleanup(
-        [worktree],
-        RecordingGitAdapter([]),
-        mode=plonk._PlonkMode.DEFAULT,
-        options=CleanupRunOptions(
-            context=_github_context([worktree]),
-            github_lookup=lookup,
-        ),
-    )
+    _run_single_lookup(plonk_github._MergedPullRequest("merged", 61))
 
     resolutions = [
         observation
@@ -506,18 +491,7 @@ def test_unverified_candidate_records_a_bounded_reason(
     recording_recorder: RecordingRecorder,
 ) -> None:
     """An unresolved candidate should record why, from the declared vocabulary."""
-    worktree = _descriptive_candidate()
-    lookup = LookupStub(plonk_github._MergedPullRequest("unknown"))
-
-    run_cleanup(
-        [worktree],
-        RecordingGitAdapter([]),
-        mode=plonk._PlonkMode.DEFAULT,
-        options=CleanupRunOptions(
-            context=_github_context([worktree]),
-            github_lookup=lookup,
-        ),
-    )
+    _run_single_lookup(plonk_github._MergedPullRequest("unknown"))
 
     resolutions = [
         observation

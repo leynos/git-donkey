@@ -24,10 +24,13 @@ from pytest_bdd import parsers, then, when
 
 from git_donkey import templates
 from tests.git_repo_helpers import configure_repo
+from tests.integration.plonk_helpers import removal_entry, unverified_entry
 from tests.output_assertions import (
     GIT_ERROR_PLACEHOLDER,
     require_line,
+    require_stream,
     require_terminal,
+    stream,
 )
 
 if typ.TYPE_CHECKING:
@@ -36,6 +39,7 @@ if typ.TYPE_CHECKING:
     from vcr.cassette import Cassette
 
     from tests.integration.donkey_helpers import DonkeyScenario
+    from tests.integration.plonk_helpers import PlonkScenario
 
 # Recorded GitHub API exchanges replayed by ``github_api_cassette``. The
 # worktree commands under test talk to their remote over the Git protocol, which
@@ -323,3 +327,55 @@ def _require_stderr_message(scenario: DonkeyScenario, message: str) -> None:
         require_terminal(scenario.stderr, expected, context="git donkey stderr")
         return
     require_line(scenario.stderr, expected, context="git donkey stderr")
+
+
+def _require_plonk_entry(
+    scenario: PlonkScenario,
+    heading: str,
+    entry: str,
+) -> None:
+    """Assert the report is exactly the header, heading, and one entry."""
+    require_stream(
+        scenario.stdout,
+        stream(f"git-plonk: mode={scenario.mode}", heading, entry),
+        context="git plonk stdout",
+    )
+
+
+_PLONK_ENTRY_STEP = (
+    r"^git plonk reports the (?:"
+    r'removal as "(?P<removal>[^"]+)"'
+    r"|completed worktree as unverified with "
+    r'"(?P<unverified>[^"]+)"'
+    r")$"
+)
+
+
+@then(parsers.re(_PLONK_ENTRY_STEP))
+def git_plonk_reports_entry(
+    scenario: PlonkScenario,
+    removal: str | None = None,
+    unverified: str | None = None,
+) -> None:
+    """Assert the one removal or unverified entry the report names."""
+    if removal is not None:
+        _require_plonk_entry(
+            scenario,
+            "Removed worktrees:",
+            removal_entry(
+                scenario.worktree_path(scenario.completed_branch),
+                removal,
+            ),
+        )
+        return
+    if unverified is None:
+        msg = "expected a removal or unverified label"
+        raise AssertionError(msg)
+    _require_plonk_entry(
+        scenario,
+        "Unverified worktrees:",
+        unverified_entry(
+            scenario.worktree_path(scenario.completed_branch),
+            unverified,
+        ),
+    )
