@@ -307,6 +307,7 @@ def test_carried_assets_are_verified_before_they_reach_the_pypi_job() -> None:
         '--repo "${GH_REPO}"',
         '--signer-workflow "${GH_REPO}/.github/workflows/release.yml"',
         '--source-ref "${GITHUB_REF}"',
+        '--source-digest "${GITHUB_SHA}"',
         "--deny-self-hosted-runners",
         "--format json",
         'rm -f "${record}"',

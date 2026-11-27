@@ -102,6 +102,8 @@ def _expected_verifier_call() -> list[str]:
         "leynos/git-donkey/.github/workflows/release.yml",
         "--source-ref",
         f"refs/tags/{_TAG}",
+        "--source-digest",
+        "a" * 40,
         "--deny-self-hosted-runners",
         "--format",
         "json",

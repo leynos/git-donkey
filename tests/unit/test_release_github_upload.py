@@ -63,18 +63,19 @@ def _state(
     return State(publish, pypi, github)
 
 
-def test_stage_github_copies_a_local_build_pypi_lacks(tmp_path: Path) -> None:
-    """The release receives this run's attested bytes for a new name."""
+def test_stage_github_rejects_a_name_the_index_does_not_list(
+    tmp_path: Path,
+) -> None:
+    """PyPI's index must list every name before the release is staged.
+
+    Uploading this run's rebuild while the index omits the name could give
+    the release different bytes from the ones PyPI serves, so the step fails
+    and a rerun waits for the index instead.
+    """
     state = _state(tmp_path, on_pypi=False, on_github=False)
-    output = tmp_path / "upload"
 
-    fetch = stage_github(state, _bundles(tmp_path), output)
-
-    assert not fetch, "a name PyPI does not hold needs no download"
-    assert (output / _NAME).read_bytes() == b"local", (
-        "the local build must be staged for the release"
-    )
-    assert (output / _BUNDLE).is_file(), "a first bundle must accompany the upload"
+    with pytest.raises(ReleaseAssetError, match="does not list"):
+        stage_github(state, _bundles(tmp_path), tmp_path / "upload")
 
 
 def test_stage_github_fetches_pypi_bytes_for_a_missing_release_name(

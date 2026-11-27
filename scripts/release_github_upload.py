@@ -18,7 +18,6 @@ import typing as typ
 
 from scripts.release_assets import (
     BUNDLE_SUFFIX,
-    PypiFile,
     ReleaseAssetError,
     State,
     require_digest,
@@ -31,16 +30,40 @@ if typ.TYPE_CHECKING:
     from pathlib import Path
 
 
-def _copy_pypi_gap(
-    lacking: cabc.Iterable[str],
-    pypi: cabc.Mapping[str, PypiFile],
-    publish: Path,
-    output: Path,
-) -> None:
-    """Copy each lacking artefact that PyPI does not list into ``output``."""
-    for name in lacking:
-        if name not in pypi:
-            shutil.copyfile(publish / name, output / name)
+def _require_pypi_bytes(
+    state: State, lacking: cabc.Iterable[str]
+) -> list[tuple[str, str]]:
+    """Return the PyPI files to fetch, refusing names the index does not list.
+
+    Every artefact the release lacks must already be on PyPI: ``publish-pypi``
+    ran first, so a name the index omits means the index has not caught up or
+    the upload did not happen. Uploading this run's rebuild in that state could
+    give the release different bytes from the ones PyPI serves, so the step
+    fails and a rerun waits for the index instead.
+
+    Returns
+    -------
+    list[tuple[str, str]]
+        One ``(name, url)`` pair per file the workflow must fetch from PyPI.
+
+    Raises
+    ------
+    ReleaseAssetError
+        If a lacking name is absent from PyPI's index, or any download URL
+        does not use HTTPS.
+    """
+    unlisted = [name for name in lacking if name not in state.pypi]
+    if unlisted:
+        msg = (
+            "PyPI's index does not list these release artefacts yet: "
+            f"{', '.join(unlisted)}; rerun once PyPI lists them"
+        )
+        raise ReleaseAssetError(msg)
+    fetch = [(name, state.pypi[name].url) for name in lacking]
+    if any(not url.startswith("https://") for _, url in fetch):
+        msg = "every PyPI download must use HTTPS"
+        raise ReleaseAssetError(msg)
+    return fetch
 
 
 def _copy_unattached_bundles(
@@ -82,15 +105,12 @@ def stage_github(state: State, bundles: Path, output: Path) -> list[tuple[str, s
     Raises
     ------
     ReleaseAssetError
-        If any PyPI download URL does not use HTTPS.
+        If a lacking name is absent from PyPI's index, or any download URL
+        does not use HTTPS.
     """
     lacking = sorted(state.plan().github_uploads)
-    fetch = [(name, state.pypi[name].url) for name in lacking if name in state.pypi]
-    if any(not url.startswith("https://") for _, url in fetch):
-        msg = "every PyPI download must use HTTPS"
-        raise ReleaseAssetError(msg)
+    fetch = _require_pypi_bytes(state, lacking)
     output.mkdir(parents=True, exist_ok=True)
-    _copy_pypi_gap(lacking, state.pypi, state.publish, output)
     _copy_unattached_bundles(bundles, state.github, output, pending=bool(lacking))
     return fetch
 

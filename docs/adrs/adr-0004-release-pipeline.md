@@ -109,11 +109,19 @@ built and attested file. Each destination then receives only the names it still
 lacks. There is no `--clobber` anywhere in the workflow.
 
 A carried GitHub asset is used for PyPI only when GitHub reports its SHA-256
-digest and a verifier record binds that exact filename and digest. A differing
+digest and a verifier record binds that exact filename and digest, this
+repository, `release.yml`, the tag ref, and the triggering commit. A differing
 unverified asset stops staging before either destination changes. In the other
 direction, a PyPI file uploaded to the GitHub Release must first match PyPI's
-index digest and then match an attestation for this repository, `release.yml`,
-the tag ref, the triggering commit, and the SLSA v1 predicate.
+index digest and then match an attestation for the same identity and the SLSA
+v1 predicate. The commit binding means a moved tag cannot carry bytes built for
+a different commit into PyPI, while a rerun of the same tag at the same commit
+still accepts an interrupted attempt's assets.
+
+`publish-release` stages only names that PyPI's index lists. A name the index
+omits means the index has not caught up or the upload did not happen; the step
+fails and a rerun waits for the index rather than uploading this run's rebuild
+in place of bytes PyPI serves.
 
 ### No-overwrite verification and manual recovery
 
@@ -215,3 +223,11 @@ carry a version above 0.2.0.
 - PyPI's existing 0.2.0 files carry no provenance this repository attests, so
   they cannot be carried to the GitHub Release. The next release must use a
   higher version.
+- When a release is completed from bytes carried over from an earlier run, the
+  attached bundle is the completing run's bundle, which attests that run's
+  build. The attestation store remains the authoritative record for every
+  published file, and verifying a carried file against the attached bundle
+  fails closed rather than passing incorrectly. Extending the bundle to cover
+  carried bytes is tracked in [issue #203][bundle-coverage].
+
+[bundle-coverage]: https://github.com/leynos/git-donkey/issues/203

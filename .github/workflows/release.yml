@@ -226,6 +226,7 @@ jobs:
                 --repo "${GH_REPO}" \
                 --signer-workflow "${GH_REPO}/.github/workflows/release.yml" \
                 --source-ref "${GITHUB_REF}" \
+                --source-digest "${GITHUB_SHA}" \
                 --deny-self-hosted-runners \
                 --format json > "${record}"; then
                 verified=true

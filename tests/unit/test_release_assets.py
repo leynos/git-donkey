@@ -48,10 +48,10 @@ def _write(path: Path, data: bytes) -> Path:
 
 
 def _pypi_file(
-    path: Path, *, url: str = "https://files.example.test/g.whl"
+    content: str, *, url: str = "https://files.example.test/g.whl"
 ) -> PypiFile:
-    """Describe a PyPI file by the digest of ``path``."""
-    return PypiFile(sha256=sha256_hex(path.read_bytes()), url=url)
+    """Describe a PyPI file by the digest of its supplied content."""
+    return PypiFile(sha256=sha256_hex(content.encode()), url=url)
 
 
 def _state(
@@ -66,7 +66,7 @@ def _state(
     publish.mkdir()
     for name, content in (local or {_NAME: "local"}).items():
         _write(publish / name, content.encode())
-    pypi_files = {name: _pypi_file(publish / name) for name in (pypi or {})}
+    pypi_files = {name: _pypi_file(content) for name, content in (pypi or {}).items()}
     github_digests = {
         name: digest
         if digest is None
