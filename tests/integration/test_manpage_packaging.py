@@ -637,13 +637,16 @@ def test_backend_probe_preserves_a_non_cache_failure(tmp_path: Path) -> None:
     with pytest.raises(
         AssertionError,
         match="reason other than a missing cache entry",
-    ):
+    ) as caught:
         _warm_backend_cache(
             tmp_path / "cache",
             tmp_path / "work",
             {},
             tools=_CacheWarmUpTools(run_uv=_recording_uv(results, calls)),
         )
+    assert "No space left on device" in str(caught.value), (
+        "a non-cache probe failure must keep its original diagnostic"
+    )
     assert calls == [True], "only the offline probe may run for a build failure"
 
 
