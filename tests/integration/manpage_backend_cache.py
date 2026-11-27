@@ -127,8 +127,9 @@ def build_requirements() -> tuple[str, ...]:
 def build_backend_probe(root: Path) -> Path:
     """Write a minimal project that resolves only the build-system requirements.
 
-    Keeping the probe free of the manual-generation hook means a failed probe
-    reports a cache miss rather than a defect in the real build.
+    Keeping the probe free of the manual-generation hook isolates build-backend
+    resolution from the real build, so a failure points at the cache or the
+    build environment rather than at the manual sources.
 
     Returns
     -------

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import concurrent.futures
 import dataclasses
+import tempfile
 import threading
 import time
 import tomllib
@@ -182,6 +183,60 @@ def test_cache_miss_detection_requires_status_and_marker(
     )
 
 
+@settings(deadline=None)
+@given(
+    probe=st.sampled_from(["hit", "miss", "error"]),
+    warm=st.sampled_from(["ok", "fail"]),
+    reprobe=st.sampled_from(["ok", "fail"]),
+)
+def test_warm_up_outcome_sequences_follow_the_cache_policy(
+    probe: str,
+    warm: str,
+    reprobe: str,
+) -> None:
+    """Every probe, warm-up and re-probe outcome follows the cache policy."""
+    calls: list[bool] = []
+    results: list[CommandResult] = []
+    expected_calls: list[bool]
+    expected_error: str | None
+    match probe:
+        case "hit":
+            results = [CommandResult(0, "", "")]
+            expected_calls = [True]
+            expected_error = None
+        case "error":
+            results = [CommandResult(2, "", "No space left on device")]
+            expected_calls = [True]
+            expected_error = "reason other than a missing cache entry"
+        case _:
+            results = [CommandResult(2, "", CACHE_MISS_MARKERS[0])]
+            match warm:
+                case "fail":
+                    results.append(CommandResult(1, "", "network unreachable"))
+                    expected_calls = [True, False]
+                    expected_error = "warming them failed"
+                case _:
+                    results.append(CommandResult(0, "", ""))
+                    results.append(
+                        CommandResult(0, "", "")
+                        if reprobe == "ok"
+                        else CommandResult(1, "", "cache race")
+                    )
+                    expected_calls = [True, False, True]
+                    expected_error = (
+                        None if reprobe == "ok" else "warmed cache must resolve"
+                    )
+    tools = CacheWarmUpTools(run_uv=_recording_uv(results, calls))
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        if expected_error is None:
+            warm_backend_cache(root / "cache", root / "work", {}, tools=tools)
+        else:
+            with pytest.raises(BuildCacheError, match=expected_error):
+                warm_backend_cache(root / "cache", root / "work", {}, tools=tools)
+    assert calls == expected_calls, "the warm-up must follow the cache policy"
+
+
 @dataclasses.dataclass(slots=True)
 class _CacheModel:
     """Model a cold uv cache and the exclusive lock around its warm-up."""
@@ -196,7 +251,7 @@ class _CacheModel:
     online_without_miss: int = 0
     probes_while_held: int = 0
     lock_attempts: int = 0
-    miss_seen: bool = False
+    missed: dict[int, bool] = dataclasses.field(default_factory=dict)
     owner: int | None = None
     state: threading.Lock = dataclasses.field(default_factory=threading.Lock)
     first_probe: threading.Event = dataclasses.field(default_factory=threading.Event)
@@ -204,15 +259,16 @@ class _CacheModel:
 
     def _record_probe(self) -> tuple[bool, bool]:
         """Record one offline probe and return (first cold probe, missed)."""
+        ident = threading.get_ident()
         with self.state:
             self.calls.append(True)
             self.probes += 1
-            if self.owner not in {None, threading.get_ident()}:
+            if self.owner not in {None, ident}:
                 self.probes_while_held += 1
+            self.missed[ident] = not self.cached
             if self.cached:
                 return False, False
             self.offline_misses += 1
-            self.miss_seen = True
             first = not self.first_probe.is_set()
             self.first_probe.set()
             return first, True
@@ -239,9 +295,10 @@ class _CacheModel:
                 )
             time.sleep(self.delay)
             return CommandResult(2, "", _CACHE_MISS_MARKER)
+        ident = threading.get_ident()
         with self.state:
             self.calls.append(False)
-            if not self.miss_seen:
+            if not self.missed.get(ident, False):
                 self.online_without_miss += 1
             self.cached = True
             self.online += 1
@@ -299,19 +356,32 @@ def test_backend_probe_warms_once_for_concurrent_workers(tmp_path: Path) -> None
 
 @settings(deadline=None, max_examples=10)
 @given(
-    workers=st.integers(min_value=2, max_value=5),
+    start_delays_ms=st.lists(
+        st.integers(min_value=0, max_value=20),
+        min_size=2,
+        max_size=5,
+    ),
     delay_ms=st.integers(min_value=0, max_value=50),
 )
-def test_warm_up_lock_invariant_holds_for_any_worker_count(
+def test_warm_up_lock_invariant_holds_for_any_arrival_order(
     tmp_path_factory: pytest.TempPathFactory,
-    workers: int,
+    start_delays_ms: list[int],
     delay_ms: int,
 ) -> None:
-    """Any worker count warms once and probes only while it owns the lock."""
+    """Any worker count and arrival order warms once under the lock."""
+    workers = len(start_delays_ms)
     model = _CacheModel(workers=workers, delay=delay_ms / 1000)
     root = tmp_path_factory.mktemp("warm-up-property")
+    cache = root / "cache"
+    tools = CacheWarmUpTools(run_uv=model.run, file_lock=model.track_flock)
+
+    def warm(index: int) -> None:
+        """Start this worker after its generated delay."""
+        time.sleep(start_delays_ms[index] / 1000)
+        warm_backend_cache(cache, root / f"work-{index}", {}, tools=tools)
+
     with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
-        futures = _submit_warm_ups(pool, model, root, workers)
+        futures = [pool.submit(warm, index) for index in range(workers)]
         for future in futures:
             future.result(timeout=120)
     assert model.offline_misses == 1, "one cold probe must serve every worker"
