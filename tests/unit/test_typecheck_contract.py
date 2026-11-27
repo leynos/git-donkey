@@ -29,9 +29,10 @@ def test_make_typecheck_pins_ty_and_omits_script_search_path(
     assert "uv tool run ty@0.0.79 --version" in result.stdout, (
         f"typecheck must verify the pinned Ty release: {result.stdout}"
     )
-    assert "uv tool run ty@0.0.79 check" in result.stdout, (
-        f"typecheck must run the pinned Ty release: {result.stdout}"
+    assert "uv tool run ty@0.0.79 check --python .venv" in result.stdout, (
+        f"typecheck must run the pinned Ty release against the project venv: "
+        f"{result.stdout}"
     )
     assert "--extra-search-path" not in result.stdout, (
-        f"typecheck must not reference the deleted scripts module path: {result.stdout}"
+        f"typecheck must not reference a separate scripts module path: {result.stdout}"
     )

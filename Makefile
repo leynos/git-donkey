@@ -165,7 +165,9 @@ skylos-allow: ## Document one named Skylos exception (SYMBOL=name REASON=text)
 
 typecheck: build uv ## Run typechecking
 	$(TY) --version
-	$(TY) check
+	# Name the project environment so ty resolves the repository's own modules
+	# (`git_donkey` and `scripts`) rather than whichever interpreter it detects.
+	$(TY) check --python .venv
 
 markdownlint: spelling $(MDLINT) ## Lint Markdown files and enforce spelling
 	$(MDLINT) '**/*.md'
