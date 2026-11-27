@@ -250,6 +250,21 @@ def test_main_reports_every_problem_as_an_annotation(
     )
 
 
+def test_main_reports_an_unreadable_manifest(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A malformed manifest fails with an annotation, not a traceback."""
+    root, dist = _build(tmp_path)
+    (root / "pyproject.toml").write_text("[project", encoding="utf-8")
+
+    status = main(["--dist", str(dist), "--root", str(root)])
+
+    assert status == 1, "an unreadable manifest must fail the check"
+    assert "::error title=check-dist::pyproject.toml could not be read" in (
+        capsys.readouterr().err
+    ), "the failure must identify the manifest"
+
+
 def test_main_accepts_a_complete_build(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

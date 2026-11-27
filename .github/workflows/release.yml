@@ -229,10 +229,14 @@ jobs:
           mkdir -p github-state/files
           python3 -m scripts.release_assets_cli release-complete --publish dist/publish \
             --index pypi-index.json --assets draft-assets.json --output github-state/files
+      # `always()` makes the edit fail closed: a check that fails before it can
+      # report a verdict still hides the release rather than leaving it visible.
       - name: Return an incomplete published release to draft
         if: >-
-          steps.redraft.outputs.published == 'true'
-          && steps.redraft.outputs.complete == 'false'
+          always()
+          && steps.create.outcome == 'success'
+          && steps.redraft.outputs.published != 'false'
+          && steps.redraft.outputs.complete != 'true'
         run: |
           set -euo pipefail
           gh release edit "${GITHUB_REF_NAME}" --draft=true

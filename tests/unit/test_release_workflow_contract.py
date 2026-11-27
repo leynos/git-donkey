@@ -474,9 +474,10 @@ def test_an_incomplete_published_release_returns_to_draft() -> None:
         assert fragment in script, f"the re-draft check must include {fragment!r}"
     edit_step = step("draft-release", "Return an incomplete published release to draft")
     assert edit_step["if"] == (
-        "steps.redraft.outputs.published == 'true' "
-        "&& steps.redraft.outputs.complete == 'false'"
-    ), "the edit must run only for a published, incomplete release"
+        "always() && steps.create.outcome == 'success' "
+        "&& steps.redraft.outputs.published != 'false' "
+        "&& steps.redraft.outputs.complete != 'true'"
+    ), "the edit must fail closed for a published, incomplete release"
     assert "--draft=true" in step_script(
         "draft-release", "Return an incomplete published release to draft"
     ), "the release must be returned to draft"

@@ -193,10 +193,13 @@ class FakeRelease:
         The scratch directory holding every fake.
     reported_digests : dict[str, str]
         Per-asset digest overrides the release API reports.
+    asset_states : dict[str, str]
+        Per-asset upload-state overrides; every asset defaults to ``uploaded``.
     """
 
     root: pth.Path
     reported_digests: dict[str, str] = dc.field(default_factory=dict)
+    asset_states: dict[str, str] = dc.field(default_factory=dict)
 
     @property
     def github(self) -> pth.Path:
@@ -288,6 +291,7 @@ class FakeRelease:
             "PYTHONPATH": python_path,
             "FAKE_GITHUB_ASSETS": str(self.github),
             "FAKE_GITHUB_DIGEST_OVERRIDES": json.dumps(self.reported_digests),
+            "FAKE_GITHUB_ASSET_STATES": json.dumps(self.asset_states),
             "FAKE_GITHUB_RELEASE_STATE": str(self.state),
             "FAKE_PYPI_FILES": str(self.pypi),
             "FAKE_ATTESTATIONS": str(self.attestations),

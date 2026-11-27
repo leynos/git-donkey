@@ -207,12 +207,36 @@ def read_pypi_index(path: Path) -> dict[str, PypiFile]:
 
 
 def read_github_assets(path: Path) -> dict[str, str | None]:
-    """Map each asset in ``gh release view --json assets`` to its digest."""
+    """Map each uploaded asset in ``gh release view --json assets`` to its digest.
+
+    Returns
+    -------
+    dict[str, str | None]
+        Each uploaded asset's SHA-256 hex digest, or ``None`` when GitHub
+        reports no ``sha256:`` digest.
+
+    Raises
+    ------
+    ReleaseAssetError
+        If the listing holds an asset whose upload state is not ``uploaded``.
+        GitHub can leave a ``starter`` asset behind after a failed transfer;
+        treating it as present would let a later run skip the real upload, so
+        the named asset must be deleted before reconciliation continues.
+    """
     document = json.loads(path.read_text(encoding="utf-8"))
-    return {
-        asset["name"]: _digest_hex(asset.get("digest"))
-        for asset in document.get("assets", [])
-    }
+    assets = document.get("assets", [])
+    incomplete = sorted(
+        asset["name"]
+        for asset in assets
+        if asset.get("state", "uploaded") != "uploaded"
+    )
+    if incomplete:
+        msg = (
+            "GitHub Release holds incomplete upload(s): "
+            f"{', '.join(incomplete)}; delete the named asset(s) and rerun"
+        )
+        raise ReleaseAssetError(msg)
+    return {asset["name"]: _digest_hex(asset.get("digest")) for asset in assets}
 
 
 def _digest_hex(digest: object) -> str | None:

@@ -44,8 +44,16 @@ gh attestation verify git_donkey-1.2.3-py3-none-any.whl \
 
 The command verifies the file against the repository's attestation store. The
 release also carries a combined attestation bundle covering every published
-file, which can be passed to `gh attestation verify --bundle` for an offline
-check.
+file. For an offline check, download the trusted roots while still online,
+transfer them with the bundle, and pass both to the verifier:
+
+```shell
+gh attestation trusted-root > trusted_root.jsonl
+gh attestation verify git_donkey-1.2.3-py3-none-any.whl \
+  --repo leynos/git-donkey \
+  --bundle git-donkey-v1.2.3-run7-1.attestations.jsonl \
+  --custom-trusted-root trusted_root.jsonl
+```
 
 For an unreleased source checkout, run `uv tool install .` from the repository
 root instead. The wheel includes a section-one manual for every console script:

@@ -189,6 +189,30 @@ def test_read_github_assets_parses_only_sha256_digests(
     )
 
 
+@pytest.mark.parametrize(
+    ("state", "is_accepted"),
+    [("uploaded", True), (None, True), ("starter", False)],
+    ids=["uploaded", "state-absent", "starter"],
+)
+def test_read_github_assets_requires_completed_uploads(
+    tmp_path: Path, state: str | None, *, is_accepted: bool
+) -> None:
+    """A failed transfer left as ``starter`` must not count as held."""
+    assets = tmp_path / "assets.json"
+    asset: dict[str, object] = {"name": _NAME, "digest": "sha256:aa"}
+    if state is not None:
+        asset["state"] = state
+    assets.write_text(json.dumps({"assets": [asset]}), encoding="utf-8")
+
+    if is_accepted:
+        assert read_github_assets(assets) == {_NAME: "aa"}, (
+            "a completed upload must be read as held"
+        )
+    else:
+        with pytest.raises(ReleaseAssetError, match="incomplete upload"):
+            read_github_assets(assets)
+
+
 def test_unsafe_artefact_names_are_refused(tmp_path: Path) -> None:
     """A name that is unsafe as a path or TSV field stops the release."""
     publish = tmp_path / "publish"

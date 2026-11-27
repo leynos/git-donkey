@@ -86,8 +86,8 @@ reports whether the version is a pre-release and reuses that answer for the
 GitHub Release.
 
 [ADR-004](adrs/adr-0004-release-pipeline.md) records the reconciliation rules,
-the rerun behaviour, and the known limitation that a release completed from
-carried bytes carries the completing run's attestation bundle.
+the rerun behaviour, and how `publish-release` assembles the attached
+attestation bundle from the store so it covers carried bytes too.
 
 The job graph is:
 

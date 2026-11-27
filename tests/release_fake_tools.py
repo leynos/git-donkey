@@ -63,12 +63,17 @@ def _assets_json() -> str:
         "dict[str, str]",
         json.loads(os.environ.get("FAKE_GITHUB_DIGEST_OVERRIDES", "{}")),
     )
+    states = typ.cast(
+        "dict[str, str]",
+        json.loads(os.environ.get("FAKE_GITHUB_ASSET_STATES", "{}")),
+    )
     assets = [
         {
             "name": path.name,
             "digest": (
                 f"sha256:{overrides.get(path.name, sha256_hex(path.read_bytes()))}"
             ),
+            "state": states.get(path.name, "uploaded"),
         }
         for path in sorted(_directory("FAKE_GITHUB_ASSETS").iterdir())
     ]
@@ -144,15 +149,15 @@ def _attestations_for_digest(
     records_path: Path, digest: str
 ) -> list[dict[str, object]]:
     """Read attestation records and keep entries for the asset digest."""
-    document: object = json.loads(records_path.read_text(encoding="utf-8"))
-    if not isinstance(document, list):
-        return []
-    matching: list[dict[str, object]] = []
-    for value in document:
-        record = _record_for_digest(value, digest)
-        if record is not None:
-            matching.append(record)
-    return matching
+    match json.loads(records_path.read_text(encoding="utf-8")):
+        case list() as document:
+            return [
+                record
+                for value in document
+                if (record := _record_for_digest(value, digest)) is not None
+            ]
+        case _:
+            return []
 
 
 def _matches_attestation_policy(
@@ -318,18 +323,19 @@ def _gh_release_edit(args: list[str]) -> int:
 
 def _gh_release(args: list[str]) -> int:
     """Serve the supported release subcommands."""
-    command = args[1]
-    if command == "view":
-        return _gh_release_view(args)
-    if command == "create":
-        return _gh_release_create(args)
-    if command == "edit":
-        return _gh_release_edit(args)
-    if command == "upload":
-        return _gh_upload(args[3:])
-    if command == "download":
-        return _gh_download(args)
-    return _unsupported_gh_operation(args[:2])
+    match args[1]:
+        case "view":
+            return _gh_release_view(args)
+        case "create":
+            return _gh_release_create(args)
+        case "edit":
+            return _gh_release_edit(args)
+        case "upload":
+            return _gh_upload(args[3:])
+        case "download":
+            return _gh_download(args)
+        case _:
+            return _unsupported_gh_operation(args[:2])
 
 
 def _unsupported_gh_operation(args: list[str]) -> int:
