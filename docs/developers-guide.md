@@ -127,8 +127,9 @@ and edits nothing.
 A release stays a draft until both destinations hold identical digests. When
 the release already holds a differing asset, or PyPI holds bytes that no run
 attested for this tag and commit, the run fails and names the file. Delete the
-offending GitHub Release asset and rerun; PyPI's files cannot be deleted, so
-untraceable PyPI bytes require a new version.
+offending GitHub Release asset and rerun; a PyPI file cannot be replaced or
+re-uploaded under the same filename, so untraceable PyPI bytes require a new
+version.
 
 An already published release that no longer matches the canonical bytes is
 returned to draft before reconciliation, so it is never visible while a repair

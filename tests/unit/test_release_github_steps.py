@@ -10,6 +10,8 @@ when its draft or pre-release state differs.
 
 from __future__ import annotations
 
+import base64
+import hashlib
 import json
 import sys
 import typing as typ
@@ -237,6 +239,20 @@ def test_a_mismatched_prerelease_flag_is_corrected(tmp_path: pth.Path) -> None:
     )
 
 
+_BUNDLE_ASSET = "git-donkey-v1.2.3-run1-1.attestations.jsonl"
+
+
+def _bundle_bytes(names: tuple[str, ...]) -> bytes:
+    """Render a combined bundle naming ``names`` at the published digest."""
+    digest = hashlib.sha256(b"published").hexdigest()
+    lines = []
+    for name in names:
+        statement = {"subject": [{"name": name, "digest": {"sha256": digest}}]}
+        payload = base64.b64encode(json.dumps(statement).encode()).decode()
+        lines.append(json.dumps({"dsseEnvelope": {"payload": payload}}))
+    return ("\n".join(lines) + "\n").encode()
+
+
 def _published_release(
     tmp_path: pth.Path, *, complete: bool
 ) -> tuple[FakeRelease, dict[str, str]]:
@@ -251,7 +267,7 @@ def _published_release(
         (publish / name).write_bytes(b"published")
         (fake.pypi / name).write_bytes(b"published")
         (fake.github / name).write_bytes(b"published")
-    (fake.github / "git-donkey-v1.2.3-run1-1.attestations.jsonl").write_bytes(b"bundle")
+    (fake.github / _BUNDLE_ASSET).write_bytes(_bundle_bytes(names))
     if not complete:
         (fake.github / _CARRIED_ASSET).unlink()
     return fake, fake.env()
@@ -340,6 +356,24 @@ def test_a_complete_published_release_is_not_redrafted(tmp_path: pth.Path) -> No
     assert not any(call[:2] == ["release", "edit"] for call in fake.calls("gh")), (
         "a complete release must not be edited"
     )
+
+
+def test_a_release_whose_bundle_omits_a_distribution_is_incomplete(
+    tmp_path: pth.Path,
+) -> None:
+    """Matching digests are not complete when the bundle omits a file."""
+    fake, env = _published_release(tmp_path, complete=True)
+    (fake.github / _BUNDLE_ASSET).write_bytes(
+        _bundle_bytes(("git_donkey-1-py3-none-any.whl",))
+    )
+
+    written = _run_redraft_check(tmp_path, fake, env)
+
+    assert written["published"] == "true", "the release is published"
+    assert written["complete"] == "false", (
+        "a bundle that omits a distribution must not count as complete"
+    )
+    assert _redraft_fires(written), "the incomplete release must be re-drafted"
 
 
 def test_a_draft_release_is_not_checked_for_completeness(

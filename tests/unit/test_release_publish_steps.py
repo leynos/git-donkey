@@ -237,7 +237,7 @@ def test_the_index_dependent_commands_require_the_index(
     completed = run_bash(
         f"python3 -m scripts.release_assets_cli {command} "
         "--publish dist/publish --assets assets.json --output github-upload "
-        "--provenance pypi-provenance",
+        "--provenance pypi-provenance --bundles dist/attestations",
         tmp_path,
     )
 

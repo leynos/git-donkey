@@ -494,8 +494,10 @@ def test_an_incomplete_published_release_returns_to_draft() -> None:
     )
     for fragment in (
         "--json isDraft,assets",
+        "gh release download",
         "release-complete",
         "--index pypi-index.json",
+        "--bundles release-bundles",
     ):
         assert fragment in script, f"the re-draft check must include {fragment!r}"
     edit_step = step("draft-release", "Return an incomplete published release to draft")

@@ -226,9 +226,14 @@ jobs:
           fi
           echo "published=true" >> "${GITHUB_OUTPUT}"
           jq '{assets: .assets}' draft-state.json > draft-assets.json
-          mkdir -p github-state/files
+          mkdir -p github-state/files release-bundles
+          if jq -e '.assets[] | select(.name | endswith(".attestations.jsonl") or endswith(".sigstore.json"))' draft-assets.json > /dev/null; then
+            gh release download "${GITHUB_REF_NAME}" --pattern '*.attestations.jsonl' --dir release-bundles || true
+            gh release download "${GITHUB_REF_NAME}" --pattern '*.sigstore.json' --dir release-bundles || true
+          fi
           python3 -m scripts.release_assets_cli release-complete --publish dist/publish \
-            --index pypi-index.json --assets draft-assets.json --output github-state/files
+            --index pypi-index.json --assets draft-assets.json --output github-state/files \
+            --bundles release-bundles
       # `always()` makes the edit fail closed: a check that fails before it can
       # report a verdict still hides the release rather than leaving it visible.
       - name: Return an incomplete published release to draft

@@ -133,7 +133,13 @@ def _verify(state: State, args: argparse.Namespace) -> None:
 def _release_complete(state: State, args: argparse.Namespace) -> None:
     """Report whether a published release already holds every canonical byte."""
     _path(args, "index")
+    bundles = _path(args, "bundles")
+    paths = sorted(bundles.iterdir()) if bundles.is_dir() else []
     problems = verify(state, _path(args, "output"))
+    problems.extend(
+        f"{name} is not covered by the attached bundle"
+        for name in uncovered(state.github, read_bundle_subjects(paths))
+    )
     for problem in problems:
         print(f"::notice::{problem}")
     write_output("complete", value=not problems)

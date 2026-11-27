@@ -95,10 +95,15 @@ def _subjects_from_line(line: str) -> set[tuple[str, str]]:
 def _subjects_from_file(path: pth.Path) -> set[tuple[str, str]]:
     """Return the subjects in one bundle file, or an empty set."""
     try:
-        lines = path.read_text(encoding="utf-8").splitlines()
+        content = path.read_text(encoding="utf-8")
     except (OSError, UnicodeError):
         return set()
-    return set().union(*(_subjects_from_line(line) for line in lines))
+    try:
+        return _subjects_from_bundle(json.loads(content))
+    except json.JSONDecodeError:
+        return set().union(
+            *(_subjects_from_line(line) for line in content.splitlines())
+        )
 
 
 def read_bundle_subjects(paths: cabc.Iterable[pth.Path]) -> set[tuple[str, str]]:

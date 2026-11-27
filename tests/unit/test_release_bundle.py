@@ -45,6 +45,21 @@ def test_a_sigstore_bundle_names_its_subject(tmp_path: Path) -> None:
     )
 
 
+def test_a_pretty_printed_single_bundle_names_its_subject(tmp_path: Path) -> None:
+    """A single indented JSON bundle is parsed before the JSON-lines fallback."""
+    statement = {"subject": [{"name": _NAME, "digest": {"sha256": _DIGEST}}]}
+    payload = base64.b64encode(json.dumps(statement).encode()).decode()
+    bundle = tmp_path / "bundle.json"
+    bundle.write_text(
+        json.dumps({"dsseEnvelope": {"payload": payload}}, indent=2),
+        encoding="utf-8",
+    )
+
+    assert read_bundle_subjects([bundle]) == {(_NAME, _DIGEST)}, (
+        "an indented single bundle must be read as one document"
+    )
+
+
 def test_a_verification_result_names_its_subject(tmp_path: Path) -> None:
     """The verifier's JSON shape is also understood, case-insensitively."""
     record = {

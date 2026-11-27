@@ -118,17 +118,16 @@ def _publish_release(fake: FakeRelease, *, verify: bool = True) -> pth.Path:
     written = outputs(cwd / "output")
     if written["files"] == "true":
         _step("publish-release", _UPLOAD_STEP, cwd, env)
-    if written["pending"] == "true" or written["covered"] == "false":
-        _step(
-            "publish-release",
-            _ASSEMBLY_STEP,
-            cwd,
-            {
-                **env,
-                "PENDING": written["pending"],
-                "COVERED": written["covered"],
-            },
-        )
+    _step(
+        "publish-release",
+        _ASSEMBLY_STEP,
+        cwd,
+        {
+            **env,
+            "PENDING": written["pending"],
+            "COVERED": written["covered"],
+        },
+    )
     if verify:
         _step(
             "publish-release", "Check both destinations hold the same bytes", cwd, env

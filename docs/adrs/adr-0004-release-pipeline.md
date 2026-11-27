@@ -138,10 +138,10 @@ that no run attested for this tag and commit, or a release asset with no
 attestation fails the job and leaves the release a draft.
 
 Recovery for a disagreeing GitHub asset is deliberately manual: an
-administrator deletes the offending asset from the GitHub Release, because
-PyPI's published files can never be deleted, and a later run reconciles the
-remaining names. Bytes already on PyPI cannot be replaced, so if PyPI holds
-bytes no run attested, a new version must be published.
+administrator deletes the offending asset from the GitHub Release, and a later
+run reconciles the remaining names. A PyPI file cannot be replaced or
+re-uploaded under the same filename, so if PyPI holds bytes no run attested, a
+new version must be published.
 
 ### Rerun adaptations
 
