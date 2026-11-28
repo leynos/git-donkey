@@ -19,6 +19,7 @@ import typing as typ
 
 import pytest
 
+from tests.output_assertions import require_line
 from tests.release_workflow import (
     FakeRelease,
     fake_release,
@@ -257,9 +258,11 @@ def test_artefacts_already_on_pypi_are_skipped_by_name(
 
     assert completed.returncode == 0, completed.stderr
     assert _remaining(tmp_path) == remaining, "published names must be dropped"
-    assert (
-        "::notice::Skipping git_donkey-1.tar.gz: already on PyPI\n" in completed.stdout
-    ), "a published name must be reported as a complete skipped line"
+    require_line(
+        completed.stdout,
+        "::notice::Skipping git_donkey-1.tar.gz: already on PyPI",
+        context="stage-pypi stdout",
+    )
     assert written == {"attempts": "1", "status": "200", "remaining": has_remaining}, (
         "the step must report the index result and whether anything remains"
     )
