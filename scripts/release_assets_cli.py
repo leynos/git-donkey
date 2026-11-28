@@ -169,6 +169,11 @@ def _destinations_complete(state: State, args: argparse.Namespace) -> None:
     _path(args, "index")
     pypi = {name: file.sha256 for name, file in state.pypi.items()}
     problems = mismatches(local_names(state.publish), pypi, state.github)
+    if not has_bundle(state.github):
+        # A single-run bundle cannot substitute for the combined one, and its
+        # absence is certain from the listing alone: confirm the gap before a
+        # download failure can leave the release visible.
+        problems.append("the GitHub Release holds no combined attestation bundle")
     problems.extend(
         f"{name} is an incomplete upload"
         for name in incomplete_github_assets(args.assets)

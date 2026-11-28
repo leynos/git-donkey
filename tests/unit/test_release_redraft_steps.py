@@ -427,6 +427,27 @@ def test_a_failed_bundle_download_does_not_redraft(tmp_path: pth.Path) -> None:
     )
 
 
+def test_a_missing_combined_bundle_redrafts_despite_a_download_failure(
+    tmp_path: pth.Path,
+) -> None:
+    """The absent combined bundle is confirmed before any download."""
+    fake, env = _published_release(tmp_path, complete=True)
+    (fake.github / _BUNDLE_ASSET).unlink()
+    (fake.github / "git-donkey-v1.2.3-run1-1.sigstore.json").write_bytes(b"bundle")
+
+    fetch, report, written = _run_redraft_steps(
+        tmp_path, {**env, "FAKE_DOWNLOAD_FAIL": "*.sigstore.json"}
+    )
+
+    assert fetch.returncode == 0, fetch.stderr
+    assert report is not None, "the completeness step must run"
+    assert report.returncode == 0, (
+        "the missing combined bundle is confirmed by metadata alone"
+    )
+    assert written["complete"] == "false", "the release is confirmed incomplete"
+    assert _redraft_fires(written), "the release must be returned to draft"
+
+
 def test_an_empty_published_release_is_incomplete(tmp_path: pth.Path) -> None:
     """A published release with no assets or bundle is incomplete."""
     fake = fake_release(tmp_path)
