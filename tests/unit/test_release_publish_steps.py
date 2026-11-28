@@ -117,8 +117,18 @@ def _git(cwd: pth.Path, *arguments: str) -> str:
     return completed.stdout.strip()
 
 
+def _create_tag(cwd: pth.Path, *, annotated: bool, force: bool = False) -> None:
+    """Create or move ``v1.0.0`` as a lightweight or annotated tag."""
+    arguments = ("-f",) if force else ()
+    if annotated:
+        _git(cwd, "tag", *arguments, "-a", "v1.0.0", "-m", "release")
+    else:
+        _git(cwd, "tag", *arguments, "v1.0.0")
+
+
+@pytest.mark.parametrize("annotated", [False, True], ids=["lightweight", "annotated"])
 def test_the_tag_check_accepts_the_live_commit_and_rejects_a_moved_tag(
-    tmp_path: pth.Path,
+    tmp_path: pth.Path, *, annotated: bool
 ) -> None:
     """A run is bound to the commit the tag currently names."""
     remote = tmp_path / "remote.git"
@@ -132,14 +142,14 @@ def test_the_tag_check_accepts_the_live_commit_and_rejects_a_moved_tag(
     _git(clone, "add", "file.txt")
     _git(clone, "commit", "-m", "first")
     first = _git(clone, "rev-parse", "HEAD")
-    _git(clone, "tag", "v1.0.0")
+    _create_tag(clone, annotated=annotated)
     _git(clone, "remote", "add", "origin", str(remote))
     _git(clone, "push", "origin", "HEAD:main", "--tags")
 
     (clone / "file.txt").write_text("two", encoding="utf-8")
     _git(clone, "commit", "-am", "second")
     second = _git(clone, "rev-parse", "HEAD")
-    _git(clone, "tag", "-f", "v1.0.0")
+    _create_tag(clone, annotated=annotated, force=True)
     _git(clone, "push", "--force", "origin", "HEAD:main", "v1.0.0")
 
     script = step_script(
@@ -293,6 +303,7 @@ def test_stage_pypi_requires_the_provenance_directory(tmp_path: pth.Path) -> Non
 @pytest.mark.parametrize(
     "command",
     [
+        "stage-pypi",
         "stage-github",
         "check-fetched",
         "check-provenance",
@@ -316,6 +327,8 @@ def test_the_index_dependent_commands_require_the_index(
             "assets.json",
             "--output",
             "github-upload",
+            "--github-files",
+            "github-files",
             "--provenance",
             "pypi-provenance",
             "--bundles",

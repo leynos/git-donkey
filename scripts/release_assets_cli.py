@@ -105,14 +105,12 @@ def _carryover(state: State, args: argparse.Namespace) -> None:
 
 def _stage_pypi(state: State, args: argparse.Namespace) -> None:
     """Stage PyPI's upload set and report whether anything remains."""
-    write_output(
-        "remaining",
-        value=stage_pypi(
-            state,
-            _path(args, "github_files"),
-            _path(args, "provenance"),
-        ),
-    )
+    github_files = _path(args, "github_files")
+    provenance = _path(args, "provenance")
+    # Without the index PyPI looks empty, so a name it already publishes would
+    # be staged for a second upload instead of skipped.
+    _path(args, "index")
+    write_output("remaining", value=stage_pypi(state, github_files, provenance))
 
 
 def _stage_github(state: State, args: argparse.Namespace) -> None:

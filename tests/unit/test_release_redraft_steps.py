@@ -311,11 +311,11 @@ def test_a_starter_asset_with_a_digest_mismatch_still_redrafts(
     tmp_path: pth.Path,
 ) -> None:
     """An incomplete upload is a confirmed gap, not an unavailable check."""
-    fake, env = _published_release(tmp_path, complete=True)
+    fake, _ = _published_release(tmp_path, complete=True)
     fake.asset_states[_CARRIED_ASSET] = "starter"
     (fake.github / "git_donkey-1-py3-none-any.whl").write_bytes(b"clobbered")
 
-    fetch, report, written = _run_redraft_steps(tmp_path, env)
+    fetch, report, written = _run_redraft_steps(tmp_path, fake.env())
 
     assert fetch.returncode == 0, fetch.stderr
     assert report is not None, "the completeness step must run"
@@ -328,11 +328,11 @@ def test_a_starter_asset_with_a_digest_mismatch_still_redrafts(
 
 def test_an_additional_starter_asset_still_redrafts(tmp_path: pth.Path) -> None:
     """Any incomplete upload marks the release incomplete, even an extra one."""
-    fake, env = _published_release(tmp_path, complete=True)
+    fake, _ = _published_release(tmp_path, complete=True)
     (fake.github / "extra-asset.whl").write_bytes(b"extra")
     fake.asset_states["extra-asset.whl"] = "starter"
 
-    fetch, report, written = _run_redraft_steps(tmp_path, env)
+    fetch, report, written = _run_redraft_steps(tmp_path, fake.env())
 
     assert fetch.returncode == 0, fetch.stderr
     assert report is not None, "the completeness step must run"

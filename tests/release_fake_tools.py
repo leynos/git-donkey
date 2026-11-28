@@ -236,8 +236,10 @@ def _gh_attestation_download(args: list[str]) -> int:
     digest = sha256_hex(asset.read_bytes())
     records = _attestations_for_digest(Path(os.environ["FAKE_ATTESTATIONS"]), digest)
     if not records:
-        print(f"No attestations found for sha256 {digest}", file=sys.stderr)
-        return 1
+        # gh reports a missing record on stdout and still exits successfully,
+        # leaving no bundle behind for the caller to assemble.
+        print(f"No attestations found for {asset}")
+        return 0
     subject = os.environ.get("FAKE_ATTEST_DOWNLOAD_SUBJECT") or None
     target = Path(f"sha256-{digest}.jsonl")
     target.write_text(
