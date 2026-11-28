@@ -1,4 +1,16 @@
-"""Exercise manpage generation, wheel installation, and sdist rebuilding."""
+"""Exercise manpage generation, wheel installation, and sdist rebuilding.
+
+Build both distributions from checkout inputs and from the source archive with
+offline ``uv build`` calls, then install and uninstall the wheel to check page
+placement. A session fixture prepares uv's build-backend cache: it probes a
+minimal project that declares the repository's exact ``[build-system]``
+requirements, performs one online build only for a recognised cache miss, and
+keeps every other failure's diagnostic. A file lock serialises that warm-up
+across pytest-xdist workers. The measured builds stay offline, so they prove a
+distribution build needs no network. ``make test`` runs this module after its
+``make build`` prerequisite, the cache lives in ``.uv-cache``, and
+``docs/manpages-design.md`` records the design.
+"""
 
 from __future__ import annotations
 
@@ -7,7 +19,6 @@ import csv
 import dataclasses
 import hashlib
 import io
-import os
 import shutil
 import sys
 import tarfile
@@ -19,7 +30,13 @@ from email.parser import BytesParser
 from pathlib import Path, PurePosixPath
 
 import pytest
-from plumbum import local
+
+from tests.integration.manpage_backend_cache import (
+    CommandResult,
+    environment,
+    run_measured_build,
+    warm_backend_cache,
+)
 
 if typ.TYPE_CHECKING:
     from email.message import Message
@@ -74,66 +91,9 @@ def _copy_sources(destination: Path) -> Path:
     return destination
 
 
-def _environment(root: Path) -> dict[str, str]:
-    """Isolate user-facing paths and reuse the build cache populated by make build."""
-    # Makefile UV_ENV overrides the setup-uv action's outer cache setting.
-    cache = _ROOT / ".uv-cache"
-    return os.environ | {
-        "UV_CACHE_DIR": str(cache),
-        "UV_PYTHON_DOWNLOADS": "never",
-        "UV_LINK_MODE": "copy",
-        "XDG_DATA_HOME": str(root / "xdg-data"),
-        "XDG_CONFIG_HOME": str(root / "xdg-config"),
-        "DOCUTILSCONFIG": "",
-    }
-
-
 def _venv_python(environment: Path) -> Path:
     """Return the interpreter inside an isolated installation environment."""
     return environment / "bin/python"
-
-
-@dataclasses.dataclass(frozen=True, slots=True)
-class CommandResult:
-    """Capture an external command's exit status and output.
-
-    Attributes
-    ----------
-    returncode : int
-        Exit status reported by the process.
-    stdout : str
-        Captured standard output.
-    stderr : str
-        Captured standard error.
-
-    """
-
-    returncode: int
-    stdout: str
-    stderr: str
-
-    @property
-    def output(self) -> str:
-        """Combined output, so diagnostics survive a failed assertion."""
-        return self.stdout + self.stderr
-
-
-def _run_uv(
-    arguments: tuple[str, ...],
-    cwd: Path,
-    environment: dict[str, str],
-) -> CommandResult:
-    """Run the required uv executable without shell parsing or network access."""
-    executable = shutil.which("uv")
-    assert executable is not None, "uv is required for packaging integration tests"
-    returncode, stdout, stderr = local[executable].run(
-        ("--offline", *arguments),
-        retcode=None,
-        cwd=cwd,
-        env=environment,
-        timeout=120,
-    )
-    return CommandResult(returncode, stdout, stderr)
 
 
 def _assert_success(result: CommandResult) -> None:
@@ -165,8 +125,30 @@ def _package_metadata(wheel: Path) -> Message:
         )
 
 
+@pytest.fixture(scope="session")
+def build_backends(tmp_path_factory: pytest.TempPathFactory) -> None:
+    """Make the build backends resolvable by the module's offline builds.
+
+    A fresh checkout starts with an empty ``.uv-cache``, so its offline builds
+    cannot resolve ``hatchling``, ``hatch-build-scripts`` or ``docutils`` and
+    every test in this module fails for a reason unrelated to the code under
+    test. Prove the cache satisfies them before the measured builds run, and
+    warm it with one online build only when it cannot. The measured builds stay
+    offline, so they still prove that building a distribution needs no network.
+    """
+    root = tmp_path_factory.mktemp("manpage-backends")
+    warm_backend_cache(
+        root,
+        environment(root, _ROOT / ".uv-cache"),
+        _ROOT / "pyproject.toml",
+    )
+
+
 @pytest.fixture(scope="module")
-def distributions(tmp_path_factory: pytest.TempPathFactory) -> DistributionBuild:
+def distributions(
+    tmp_path_factory: pytest.TempPathFactory,
+    build_backends: None,
+) -> DistributionBuild:
     """Build from checkout inputs and then independently from the sdist.
 
     Returns
@@ -177,21 +159,21 @@ def distributions(tmp_path_factory: pytest.TempPathFactory) -> DistributionBuild
     """
     root = tmp_path_factory.mktemp("manpage-packaging")
     source = _copy_sources(root / "source")
-    environment = _environment(root)
+    build_environment = environment(root, _ROOT / ".uv-cache")
     # Stale outputs must never hide a broken or omitted generation command.
     for command in _commands():
         (source / f"docs/man/{command}.1").write_text("stale manual", encoding="utf-8")
     _assert_success(
-        _run_uv(
+        run_measured_build(
             ("build", "--python", sys.executable, "--sdist", "--wheel"),
             source,
-            environment,
+            build_environment,
         )
     )
     (wheel,) = (source / "dist").glob("*.whl")
     (sdist,) = (source / "dist").glob("*.tar.gz")
     _assert_success(
-        _run_uv(
+        run_measured_build(
             (
                 "build",
                 "--python",
@@ -202,11 +184,11 @@ def distributions(tmp_path_factory: pytest.TempPathFactory) -> DistributionBuild
                 str(root / "rebuilt"),
             ),
             root,
-            environment,
+            build_environment,
         )
     )
     (rebuilt_wheel,) = (root / "rebuilt").glob("*.whl")
-    return DistributionBuild(root, wheel, sdist, rebuilt_wheel, environment)
+    return DistributionBuild(root, wheel, sdist, rebuilt_wheel, build_environment)
 
 
 def test_wheel_contains_complete_recorded_manpages(
@@ -319,7 +301,7 @@ def test_install_places_and_removes_environment_manpages(
     """Install without promoting files into the user manpath."""
     environment = distributions.root / "environment"
     _assert_success(
-        _run_uv(
+        run_measured_build(
             ("venv", "--python", sys.executable, str(environment)),
             distributions.root,
             distributions.environment,
@@ -330,7 +312,7 @@ def test_install_places_and_removes_environment_manpages(
     # graph cannot be resolved offline: loctocat requires halo, whose only
     # published wheel targets Python 2.
     _assert_success(
-        _run_uv(
+        run_measured_build(
             (
                 "pip",
                 "install",
@@ -351,7 +333,7 @@ def test_install_places_and_removes_environment_manpages(
         "installing must not populate the user manpath"
     )
     _assert_success(
-        _run_uv(
+        run_measured_build(
             ("pip", "uninstall", "--python", str(interpreter), "git-donkey"),
             distributions.root,
             distributions.environment,
@@ -364,7 +346,11 @@ def test_install_places_and_removes_environment_manpages(
 
 
 @pytest.mark.parametrize("failure", ["missing", "malformed"])
-def test_broken_manual_source_fails_the_build(tmp_path: Path, failure: str) -> None:
+def test_broken_manual_source_fails_the_build(
+    tmp_path: Path,
+    failure: str,
+    build_backends: None,
+) -> None:
     """Refuse missing or malformed sources instead of shipping stale pages."""
     source = _copy_sources(tmp_path / "source")
     manual = source / "docs/man/git-donkey.rst"
@@ -374,10 +360,10 @@ def test_broken_manual_source_fails_the_build(tmp_path: Path, failure: str) -> N
     else:
         with manual.open("a", encoding="utf-8") as stream:
             stream.write("\n.. nonexistent-manpage-directive::\n")
-    result = _run_uv(
+    result = run_measured_build(
         ("build", "--python", sys.executable, "--wheel"),
         source,
-        _environment(tmp_path),
+        environment(tmp_path, _ROOT / ".uv-cache"),
     )
     assert result.returncode != 0, f"a {failure} source must fail the build"
     assert "git-donkey.rst" in result.output, "build must name the offending source"
