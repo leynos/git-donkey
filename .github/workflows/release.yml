@@ -731,6 +731,12 @@ jobs:
             fi
             rm -rf "${work}"
           done <<< "$(jq -r '.assets[].name | select((. | endswith(".attestations.jsonl") or endswith(".sigstore.json")) | not)' release-assets.json)"
+      # The index fetched before staging can be minutes old once the uploads
+      # and verifications finish. A file PyPI no longer serves must fail this
+      # run rather than pass against a saved entry.
+      - name: Refresh the PyPI index before the final check
+        id: refreshed-index
+        run: *fetch-index
       - name: Check both destinations hold the same bytes
         id: verify
         run: |

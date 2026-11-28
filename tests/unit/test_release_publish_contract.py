@@ -173,6 +173,26 @@ def test_the_assembly_verifies_the_bundle_it_uploads() -> None:
     ), "the bundle must cover the bytes already uploaded to the release"
 
 
+def test_the_final_check_reads_a_refreshed_index() -> None:
+    """The destination check must not trust an index fetched before uploads."""
+    names = [item.get("name") for item in _job("publish-release")["steps"]]
+    refresh = names.index("Refresh the PyPI index before the final check")
+    verify = names.index("Check both destinations hold the same bytes")
+    provenance = names.index(_PROVENANCE_STEP)
+    assert provenance < refresh < verify, (
+        "the index must be refreshed after the uploads and before the check"
+    )
+    refreshed = step_script(
+        "publish-release", "Refresh the PyPI index before the final check"
+    )
+    assert refreshed == step_script("publish-release", "Fetch the PyPI index"), (
+        "both lookups must run the same bounded fetch"
+    )
+    assert "pypi-index.json" in step_script(
+        "publish-release", "Check both destinations hold the same bytes"
+    ), "the check must read the file the refresh writes"
+
+
 def test_a_complete_rerun_verifies_the_release_read_only() -> None:
     """A complete rerun skips the assembly and downloads no attestations."""
     verify = step("publish-release", "Verify release distributions")

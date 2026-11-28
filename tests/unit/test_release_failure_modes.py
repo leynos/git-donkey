@@ -212,6 +212,31 @@ def test_a_starter_asset_refuses_reconciliation(tmp_path: pth.Path) -> None:
     )
 
 
+def test_a_file_removed_from_pypi_fails_the_final_check(fake: FakeRelease) -> None:
+    """The final check reads a freshly fetched index, not the staging snapshot."""
+    _draft_and_publish_pypi(fake)
+    cwd = _publish_release(fake, verify=False)
+    (fake.pypi / _PYPI_ONLY).unlink()
+    env = fake.env(GITHUB_OUTPUT=str(cwd / "output"))
+    refreshed = run_bash(
+        step_script("publish-release", "Refresh the PyPI index before the final check"),
+        cwd,
+        env,
+    )
+    assert refreshed.returncode == 0, refreshed.stderr
+
+    completed = run_bash(
+        step_script("publish-release", "Check both destinations hold the same bytes"),
+        cwd,
+        env,
+    )
+
+    assert completed.returncode != 0, "a removed PyPI file must stop publication"
+    assert f"{_PYPI_ONLY} is missing from PyPI" in completed.stderr, (
+        "the failure must name the file PyPI no longer serves"
+    )
+
+
 def test_the_check_fails_when_the_destinations_disagree(fake: FakeRelease) -> None:
     """Differing bytes under one name stop the release before it is visible."""
     (fake.github / _BOTH).write_bytes(b"clobbered by an earlier workflow")

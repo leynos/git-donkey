@@ -110,9 +110,9 @@ The job graph is:
    attestation store that covers every published distribution. The assembled
    bundle is verified against each distribution before it is attached. On a
    complete rerun the assembly is skipped and the release's provenance is
-   verified read-only, without downloading attestations. It then verifies that
-   both destinations hold the same digests and that the bundle is attached, and
-   makes the release visible.
+   verified read-only, without downloading attestations. It then re-fetches the
+   PyPI index, verifies that both destinations hold the same digests and that
+   the bundle is attached, and makes the release visible.
 
 `make build-release` runs the same `uv build` locally, so a contributor can
 inspect both distributions. Only the workflow publishes; never upload a

@@ -116,6 +116,12 @@ def _publish_release(
         _step("publish-release", "Verify release distributions", cwd, env)
     if verify:
         _step(
+            "publish-release",
+            "Refresh the PyPI index before the final check",
+            cwd,
+            env,
+        )
+        _step(
             "publish-release", "Check both destinations hold the same bytes", cwd, env
         )
         _step("publish-release", "Publish the GitHub Release", cwd, env)
