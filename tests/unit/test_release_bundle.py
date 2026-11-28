@@ -120,7 +120,17 @@ def test_an_unreadable_bundle_contributes_nothing(tmp_path: Path) -> None:
     )
 
 
-def test_uncovered_reports_missing_and_mismatched_names() -> None:
+@pytest.mark.parametrize(
+    "subjects",
+    [
+        {(_NAME, _DIGEST)},
+        {(_NAME, _DIGEST), (_SDIST, "c" * 64)},
+    ],
+    ids=["sdist-absent-from-bundle", "sdist-named-with-another-digest"],
+)
+def test_uncovered_reports_missing_and_mismatched_names(
+    subjects: set[tuple[str, str]],
+) -> None:
     """Only a matching name and digest counts as covered."""
     assets = {
         _NAME: _DIGEST,
@@ -128,8 +138,8 @@ def test_uncovered_reports_missing_and_mismatched_names() -> None:
         "git-donkey-v1.0.0-run1-1.attestations.jsonl": None,
     }
 
-    assert uncovered(assets, {(_NAME, _DIGEST)}) == [_SDIST], (
-        "a distribution with a different digest must be reported"
+    assert uncovered(assets, subjects) == [_SDIST], (
+        "a distribution with a missing or different digest must be reported"
     )
 
 

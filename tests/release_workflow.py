@@ -23,17 +23,19 @@ import typing as typ
 
 import yaml
 
+from tests.release_asset_provenance import (
+    DEFAULT_REPOSITORY,
+    DEFAULT_SIGNER_WORKFLOW,
+    DEFAULT_SOURCE_DIGEST,
+    DEFAULT_SOURCE_REF,
+    DEFAULT_TAG,
+    SLSA_PREDICATE,
+)
+
 WORKFLOW = "release.yml"
 ROOT = pth.Path(__file__).resolve().parents[1]
 WORKFLOW_DIR = ROOT / ".github" / "workflows"
 _FAKE_TOOLS = pth.Path(__file__).with_name("release_fake_tools.py")
-_DEFAULT_TAG = "v1.2.3"
-_DEFAULT_REPOSITORY = "leynos/git-donkey"
-_DEFAULT_SIGNER_WORKFLOW = f"{_DEFAULT_REPOSITORY}/.github/workflows/release.yml"
-#: The commit the fake tag names. ``publish-release`` pins this value with
-#: ``--source-digest``, so only bytes attested for this commit qualify.
-_DEFAULT_SHA = "a" * 40
-_DEFAULT_PREDICATE = "https://slsa.dev/provenance/v1"
 
 
 def _require(*, condition: bool, message: str) -> None:
@@ -173,11 +175,13 @@ class AttestationOverrides:
 
     subject_name: str | None = None
     sha256: str | None = None
-    repository: str = _DEFAULT_REPOSITORY
-    signer_workflow: str = _DEFAULT_SIGNER_WORKFLOW
-    source_ref: str = f"refs/tags/{_DEFAULT_TAG}"
-    source_digest: str = _DEFAULT_SHA
-    predicate_type: str = _DEFAULT_PREDICATE
+    repository: str = DEFAULT_REPOSITORY
+    signer_workflow: str = DEFAULT_SIGNER_WORKFLOW
+    source_ref: str = DEFAULT_SOURCE_REF
+    # The commit the fake tag names. ``publish-release`` pins this value with
+    # ``--source-digest``, so only bytes attested for this commit qualify.
+    source_digest: str = DEFAULT_SOURCE_DIGEST
+    predicate_type: str = SLSA_PREDICATE
     self_hosted: bool = False
 
 
@@ -304,16 +308,16 @@ class FakeRelease:
             "FAKE_GH_VERSION": "2.102.0",
             "FAKE_CALLS": str(self.root / "calls.jsonl"),
             "GITHUB_OUTPUT": str(self.root / "github-output"),
-            "GITHUB_REF_NAME": _DEFAULT_TAG,
-            "GITHUB_REF": f"refs/tags/{_DEFAULT_TAG}",
-            "GITHUB_SHA": _DEFAULT_SHA,
-            "GITHUB_REPOSITORY": _DEFAULT_REPOSITORY,
+            "GITHUB_REF_NAME": DEFAULT_TAG,
+            "GITHUB_REF": f"refs/tags/{DEFAULT_TAG}",
+            "GITHUB_SHA": DEFAULT_SOURCE_DIGEST,
+            "GITHUB_REPOSITORY": DEFAULT_REPOSITORY,
             "GITHUB_RUN_ID": "7",
             "GITHUB_RUN_ATTEMPT": "1",
             "IS_PRERELEASE": "false",
             "PENDING": "false",
             "COVERED": "false",
-            "GH_REPO": _DEFAULT_REPOSITORY,
+            "GH_REPO": DEFAULT_REPOSITORY,
             **extra,
         }
 

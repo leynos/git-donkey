@@ -37,13 +37,27 @@ from fnmatch import fnmatch
 from pathlib import Path
 
 from scripts.release_bundle import read_bundle_subjects
-from tests.release_asset_provenance import bundle_line, sha256_hex
+from tests.release_asset_provenance import (
+    SLSA_PREDICATE,
+    bundle_line,
+    bundle_records,
+    sha256_hex,
+)
 
 #: Where the fake PyPI index says each file can be downloaded from.
 FILES_URL = "https://files.example.test/packages/"
 _INDEX_URL = "https://pypi.org/simple/git-donkey/"
 _MIN_RELEASE_ARGUMENTS = 2
 _MIN_ATTESTATION_ARGUMENTS = 3
+#: The identity fields a fake attestation record shares with a bundle line.
+_IDENTITY_FIELDS = (
+    "repository",
+    "signer_workflow",
+    "source_ref",
+    "source_digest",
+    "predicate_type",
+    "self_hosted",
+)
 
 
 def _directory(variable: str) -> Path:
@@ -176,31 +190,37 @@ def _matches_attestation_policy(
 
     The repository, signer workflow and source ref are always compared, so a
     verifier call that omits one cannot match a record that carries it. The
-    source digest and predicate type are compared only when the verifier asks
-    for them: ``draft-release`` relies on the omission of ``--source-digest``
-    to keep an interrupted attempt for the same tag eligible.
+    predicate type defaults to the SLSA v1 predicate, as the CLI's flag does.
+    The source digest is compared only when the verifier asks for it.
 
     Returns
     -------
     bool
         Whether the record satisfies every constraint the call supplied.
     """
-    if record.get("repository") != _option(args, "--repo"):
-        return False
-    if record.get("signer_workflow") != _option(args, "--signer-workflow"):
-        return False
-    if record.get("source_ref") != _option(args, "--source-ref"):
-        return False
-    for option, field in (
-        ("--source-digest", "source_digest"),
-        ("--predicate-type", "predicate_type"),
+    if any(
+        record.get(field) != _option(args, option)
+        for option, field in (
+            ("--repo", "repository"),
+            ("--signer-workflow", "signer_workflow"),
+            ("--source-ref", "source_ref"),
+        )
     ):
-        requested = _option(args, option)
-        if requested is not None and record.get(field) != requested:
-            return False
+        return False
+    if not _matches_predicate(record, args):
+        return False
+    requested_digest = _option(args, "--source-digest")
+    if requested_digest is not None and record.get("source_digest") != requested_digest:
+        return False
     return (
         "--deny-self-hosted-runners" not in args or record.get("self_hosted") is False
     )
+
+
+def _matches_predicate(record: dict[str, object], args: list[str]) -> bool:
+    """Return whether the record's predicate type satisfies the call."""
+    predicate = _option(args, "--predicate-type") or SLSA_PREDICATE
+    return record.get("predicate_type") == predicate
 
 
 def _attestations_for_policy(
@@ -245,7 +265,9 @@ def _gh_attestation_download(args: list[str]) -> int:
     target.write_text(
         "\n".join(
             bundle_line(
-                subject or str(record.get("subject_name")), str(record["sha256"])
+                subject or str(record.get("subject_name")),
+                str(record["sha256"]),
+                identity=_record_identity(record),
             )
             for record in records
         )
@@ -255,23 +277,89 @@ def _gh_attestation_download(args: list[str]) -> int:
     return 0
 
 
-def _bundle_failure(args: list[str], asset: Path, digest: str) -> int | None:
-    """Return a failure status when the requested bundle does not verify."""
-    bundle = _option(args, "--bundle")
-    if bundle is None:
-        return None
+def _record_identity(record: dict[str, object]) -> dict[str, object]:
+    """Return the identity fields one fake attestation record carries."""
+    return {field: record.get(field) for field in _IDENTITY_FIELDS}
+
+
+def _bundle_failure(
+    args: list[str], bundle: Path, asset: Path, digest: str
+) -> int | None:
+    """Return a failure status when the selected bundle does not verify.
+
+    In ``--bundle`` mode the real CLI derives the identity from the bundle it
+    is given rather than from the attestation store, so the fake does too.
+
+    Returns
+    -------
+    int | None
+        ``None`` when the bundle covers and approves the asset, otherwise the
+        process status the verifier would exit with.
+    """
+    forced = _forced_bundle_failure(bundle)
+    if forced is not None:
+        return forced
+    if (asset.name, digest) not in read_bundle_subjects([bundle]):
+        print(f"No matching bundle subject for {asset.name}", file=sys.stderr)
+        return 1
+    if not _bundle_approves(args, bundle, asset.name, digest):
+        print(
+            f"No approved attestation for {asset.name} in the bundle",
+            file=sys.stderr,
+        )
+        return 1
+    return None
+
+
+def _forced_bundle_failure(bundle: Path) -> int | None:
+    """Return a scripted failure for the selected bundle, if one applies."""
     failure = os.environ.get("FAKE_BUNDLE_FAIL", "")
     if failure:
         print(failure, file=sys.stderr)
         return 1
     fail_name = os.environ.get("FAKE_BUNDLE_FAIL_NAME", "")
-    if fail_name and Path(bundle).name == fail_name:
+    if fail_name and bundle.name == fail_name:
         print(f"controlled bundle failure for {fail_name}", file=sys.stderr)
         return 1
-    if (asset.name, digest) not in read_bundle_subjects([Path(bundle)]):
-        print(f"No matching bundle subject for {asset.name}", file=sys.stderr)
-        return 1
     return None
+
+
+def _bundle_approves(args: list[str], bundle: Path, name: str, digest: str) -> bool:
+    """Return whether the bundle carries an approved identity for the asset."""
+    identities = [
+        identity
+        for subjects, identity in bundle_records(bundle)
+        if identity is not None and (name, digest) in subjects
+    ]
+    return any(_matches_attestation_policy(identity, args) for identity in identities)
+
+
+def _verify_against_bundle(args: list[str], asset: Path, digest: str) -> int:
+    """Verify one asset against the bundle the call supplied."""
+    bundle = Path(typ.cast("str", _option(args, "--bundle")))
+    failure = _bundle_failure(args, bundle, asset, digest)
+    if failure is not None:
+        return failure
+    print(_verification_output([{"subject_name": asset.name, "sha256": digest}]))
+    return 0
+
+
+def _verify_against_store(args: list[str], asset: Path, digest: str) -> int:
+    """Verify one asset against the fake repository attestation store."""
+    del asset
+    records_path = Path(os.environ["FAKE_ATTESTATIONS"])
+    digest_matches = _attestations_for_digest(records_path, digest)
+    if not digest_matches:
+        print(f"No attestations found for sha256 {digest}", file=sys.stderr)
+        return 1
+
+    verified = _attestations_for_policy(digest_matches, args)
+    if not verified:
+        print("No attestations satisfy the verification policy", file=sys.stderr)
+        return 1
+
+    print(_verification_output(verified))
+    return 0
 
 
 def _gh_attestation_verify(args: list[str]) -> int:
@@ -290,22 +378,9 @@ def _gh_attestation_verify(args: list[str]) -> int:
 
     asset = Path(args[2])
     digest = sha256_hex(asset.read_bytes())
-    bundle_failure = _bundle_failure(args, asset, digest)
-    if bundle_failure is not None:
-        return bundle_failure
-    records_path = Path(os.environ["FAKE_ATTESTATIONS"])
-    digest_matches = _attestations_for_digest(records_path, digest)
-    if not digest_matches:
-        print(f"No attestations found for sha256 {digest}", file=sys.stderr)
-        return 1
-
-    verified = _attestations_for_policy(digest_matches, args)
-    if not verified:
-        print("No attestations satisfy the verification policy", file=sys.stderr)
-        return 1
-
-    print(_verification_output(verified))
-    return 0
+    if _option(args, "--bundle") is not None:
+        return _verify_against_bundle(args, asset, digest)
+    return _verify_against_store(args, asset, digest)
 
 
 def _gh_release_view(args: list[str]) -> int:

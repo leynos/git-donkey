@@ -272,6 +272,10 @@ def _carried_asset(fake: FakeRelease) -> tuple[pth.Path, dict[str, str]]:
             {},
         ),
         (AttestationOverrides(source_ref="refs/tags/v9.9.9"), {}),
+        (
+            AttestationOverrides(predicate_type="https://example.test/other/v1"),
+            {},
+        ),
         (AttestationOverrides(self_hosted=True), {}),
         (AttestationOverrides(sha256="0" * 64), {}),
         (
@@ -284,6 +288,7 @@ def _carried_asset(fake: FakeRelease) -> tuple[pth.Path, dict[str, str]]:
         "wrong-repository",
         "wrong-workflow",
         "wrong-tag",
+        "another-predicate-type",
         "self-hosted-runner",
         "another-digest",
         "verifier-failure",

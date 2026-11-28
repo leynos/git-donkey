@@ -8,14 +8,13 @@ inconclusive.
 
 from __future__ import annotations
 
-import base64
 import hashlib
-import json
 import sys
 import typing as typ
 
 import pytest
 
+from tests.release_asset_provenance import approved_identity, bundle_line
 from tests.release_workflow import (
     AttestationOverrides,
     FakeRelease,
@@ -45,14 +44,11 @@ pytestmark = [
 _BUNDLE_ASSET = "git-donkey-v1.2.3-run1-1.attestations.jsonl"
 
 
-def _bundle_bytes(names: tuple[str, ...]) -> bytes:
-    """Render a combined bundle naming ``names`` at the published digest."""
+def _bundle_bytes(names: tuple[str, ...], *, source_digest: str = "a" * 40) -> bytes:
+    """Render a combined bundle naming ``names`` for one build identity."""
     digest = hashlib.sha256(b"published").hexdigest()
-    lines = []
-    for name in names:
-        statement = {"subject": [{"name": name, "digest": {"sha256": digest}}]}
-        payload = base64.b64encode(json.dumps(statement).encode()).decode()
-        lines.append(json.dumps({"dsseEnvelope": {"payload": payload}}))
+    identity = approved_identity(source_digest=source_digest)
+    lines = [bundle_line(name, digest, identity=identity) for name in names]
     return ("\n".join(lines) + "\n").encode()
 
 
@@ -73,7 +69,9 @@ def _published_release(
         fake.add_attestation(
             fake.github / name, AttestationOverrides(source_digest=source_digest)
         )
-    (fake.github / _BUNDLE_ASSET).write_bytes(_bundle_bytes(names))
+    (fake.github / _BUNDLE_ASSET).write_bytes(
+        _bundle_bytes(names, source_digest=source_digest)
+    )
     if not complete:
         (fake.github / _CARRIED_ASSET).unlink()
     return fake, fake.env()
@@ -211,6 +209,32 @@ def test_a_moved_tag_published_release_lacks_current_provenance(
     provenance = _run_published_provenance(tmp_path, env)
     assert provenance.returncode != 0, (
         "provenance for another commit must not satisfy the release"
+    )
+
+
+def test_a_bundle_from_another_commit_does_not_prove_completeness(
+    tmp_path: pth.Path,
+) -> None:
+    """The selected bundle's identity decides, not a matching store record."""
+    fake, env = _published_release(tmp_path, complete=True)
+    names = ("git_donkey-1-py3-none-any.whl", _CARRIED_ASSET)
+    (fake.github / _BUNDLE_ASSET).write_bytes(
+        _bundle_bytes(names, source_digest="b" * 40)
+    )
+
+    fetch, report, written = _run_redraft_steps(tmp_path, env)
+
+    assert fetch.returncode == 0, fetch.stderr
+    assert report is not None, "the completeness step must run"
+    assert report.returncode != 0, (
+        "a bundle built for another commit must not verify for this run"
+    )
+    assert "No covering bundle verified" in report.stderr, (
+        "the failure must report that no bundle covered the release"
+    )
+    assert written["published"] == "true", "the release is published"
+    assert not _redraft_fires(written), (
+        "an unverifiable bundle must not redraft the release"
     )
 
 
