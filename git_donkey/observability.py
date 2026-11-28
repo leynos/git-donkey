@@ -25,9 +25,10 @@ becomes an ``extra`` field::
     )
 
 The timed operations are remote default discovery, default-branch fetch, pull
-execution, worktree creation, comparison fetch, comparison, and the cleanup
-boundaries: worktree preflight, worktree removal, and branch deletion. A span
-reports the operation name and its duration only; outcomes are reported by
+execution, worktree creation, comparison fetch, comparison, the cleanup
+boundaries (worktree preflight, worktree removal, and branch deletion), and the
+completion fallback boundaries (the GitHub query and the upstream query). A
+span reports the operation name and its duration only; outcomes are reported by
 :meth:`Recorder.record`.
 
 Completion resolution has its own operation. When a fallback tier completes or
@@ -61,6 +62,8 @@ type Operation = typ.Literal[
     "worktree_removal",
     "branch_deletion",
     "completion_resolution",
+    "github_lookup",
+    "upstream_lookup",
 ]
 """Fixed operation names a workflow step can report."""
 

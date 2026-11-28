@@ -28,6 +28,8 @@ import shutil
 import subprocess  # ruff: ignore[suspicious-subprocess-import]  # runs read-only gh
 import typing as typ
 
+from git_donkey import observability
+
 _DEFAULT_TIMEOUT_SECONDS = 10.0
 _GH_PROMPT_DISABLED_ENV = "GH_PROMPT_DISABLED"
 _GH_HOST_ENV = "GH_HOST"
@@ -331,6 +333,22 @@ def merged_pull_request(
         The lookup outcome.
 
     """
+    with observability.get_recorder().span("github_lookup"):
+        result = _perform_lookup(query, run)
+    observability.get_recorder().record(
+        observability.Observation(
+            operation="github_lookup",
+            outcome="failure" if result.state == "unknown" else "success",
+        )
+    )
+    return result
+
+
+def _perform_lookup(
+    query: _PullRequestQuery,
+    run: _GhRunner,
+) -> _MergedPullRequest:
+    """Run one ``gh`` query and interpret its response."""
     arguments = _gh_arguments(query)
     try:
         completed = run(arguments)

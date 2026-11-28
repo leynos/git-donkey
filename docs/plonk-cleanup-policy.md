@@ -56,6 +56,11 @@ so a skipped worktree keeps its branch. There is no `--force`-style option in
 0.2.0: discarding uncommitted work remains a deliberate, separate action, such
 as `git worktree remove --force` followed by `git branch -D`.
 
+The branch deletion is a force-delete. A merged pull request matched by name
+does not prove that every local commit on the branch was merged, so commits
+made after the completion evidence lose their branch reference. Inspect each
+branch tip before running hard mode.
+
 In hard mode, a local branch that Git refuses to delete does not stop the
 sweep. The worktree still counts as removed, and the branch is listed under its
 own `Failed branch deletions:` heading between the removal sections and the
@@ -137,8 +142,10 @@ deletion.
 `--upstream-gone` treats a branch whose configured upstream no longer exists as
 completed. The check reads `branch.<name>.remote` and `branch.<name>.merge` and
 runs `git ls-remote --exit-code --heads <remote> refs/heads/<branch>`. A zero
-exit means the upstream is present, exit status 2 means gone, and any other
-outcome is unknown. A branch with no configured upstream is `unset`.
+exit means the upstream is present only when the output names the exact
+configured ref; a longer ref that merely shares the tail is gone. Exit status 2
+means gone, and any other outcome is unknown. A branch with no configured
+upstream is `unset`.
 
 Only `gone` is completion evidence. `unset`, `present`, and `unknown` leave the
 candidate unverified, and the summary preserves the distinction. The tier is
@@ -156,7 +163,8 @@ A candidate no tier resolves is reported with one fixed reason:
   no stronger reason applies.
 - `GitHub completion lookup failed`: the fallback was attempted and could not
   produce a trustworthy answer. This reason outranks an upstream result.
-- `no upstream branch configured`: the branch was never pushed.
+- `no upstream branch configured`: the branch configures no upstream. It may
+  still have been pushed without one.
 - `upstream branch still exists`: the configured upstream still exists.
 - `upstream state unknown`: the remote could not be queried.
 

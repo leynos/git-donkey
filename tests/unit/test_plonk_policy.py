@@ -17,6 +17,8 @@ import typing as typ
 from pathlib import Path
 
 import pytest
+from hypothesis import assume, given
+from hypothesis import strategies as st
 
 from git_donkey import plonk_policy, plonk_records
 
@@ -216,6 +218,24 @@ def test_issue_closing_keywords_complete_an_issue_branch(message: str) -> None:
     assert "#62" in evidence.detail, (
         "expected the evidence to quote the matched closing keyword"
     )
+
+
+def test_closing_keyword_matches_across_long_whitespace() -> None:
+    """The closing keyword may be separated by a long whitespace run."""
+    message = "Fix" + " " * 50_000 + "#62"
+
+    completed = plonk_policy.completed_candidates([_issue_candidate()], [message])
+
+    assert len(completed) == 1, "expected the exact issue number to still match"
+
+
+def test_closing_keyword_whitespace_does_not_backtrack_quadratically() -> None:
+    """A non-matching issue after long whitespace must scan linearly."""
+    message = "Fix" + " " * 50_000 + "#63"
+
+    completed = plonk_policy.completed_candidates([_issue_candidate()], [message])
+
+    assert not completed, "expected the different issue number to remain unmatched"
 
 
 @pytest.mark.parametrize(
@@ -435,3 +455,116 @@ def test_completion_marker_has_a_history_matcher_still() -> None:
     assert plonk_policy.has_completion_marker(["Done (2.2.1.)"], marker), (
         "expected the dotted marker form to match history"
     )
+
+
+_NUMERIC_COMPONENT = st.integers(min_value=0, max_value=999).map(str)
+_NAMESPACE = st.none() | st.text(
+    alphabet="abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_",
+    min_size=1,
+    max_size=6,
+)
+_SUFFIX = st.none() | st.text(
+    alphabet="abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
+    min_size=1,
+    max_size=3,
+)
+
+
+@given(
+    components=st.lists(_NUMERIC_COMPONENT, min_size=2, max_size=4),
+    addendum=st.booleans(),
+)
+def test_df12_marker_round_trip(
+    components: list[str],
+    *,
+    addendum: bool,
+) -> None:
+    """Every recognized df12 shape should round-trip to its dotted marker."""
+    branch_name = "roadmap-" + "-".join(components)
+    if addendum:
+        branch_name += "-addendum"
+
+    marker = plonk_policy.completion_marker_for_branch(branch_name)
+
+    assert marker == f"({'.'.join(components)})", (
+        "expected the df12 marker to preserve every numeric component"
+    )
+
+
+@given(
+    components=st.one_of(
+        st.lists(_NUMERIC_COMPONENT, min_size=1, max_size=1),
+        st.lists(_NUMERIC_COMPONENT, min_size=5, max_size=6),
+    )
+)
+def test_df12_recognizer_rejects_other_depths(components: list[str]) -> None:
+    """The df12 grammar accepts only two to four numeric components."""
+    branch_name = "roadmap-" + "-".join(components)
+
+    assert plonk_policy._df12_roadmap_marker(branch_name) is None, (
+        "expected a depth outside two to four components to be rejected"
+    )
+
+
+type _LegacyCase = tuple[str | None, int, int, int, str | None, int | None]
+_LEGACY_CASE = st.tuples(
+    _NAMESPACE,
+    st.integers(min_value=0, max_value=999),
+    st.integers(min_value=0, max_value=999),
+    st.integers(min_value=0, max_value=999),
+    _SUFFIX,
+    st.none() | st.integers(min_value=0, max_value=999),
+)
+
+
+@given(case=_LEGACY_CASE)
+def test_legacy_marker_round_trip(case: _LegacyCase) -> None:
+    """Every legacy shape should round-trip to its dotted marker."""
+    namespace, major, minor, patch, suffix, task = case
+    parts: list[str] = []
+    if namespace is not None:
+        parts.append(namespace)
+    parts.extend((str(major), str(minor), f"{patch}{suffix or ''}"))
+    if task is not None:
+        parts.append(str(task))
+    branch_name = "-".join(parts) + "-description"
+
+    marker = plonk_policy.completion_marker_for_branch(branch_name)
+
+    assert marker == f"({'.'.join(parts)})", (
+        "expected the legacy marker to preserve namespace, suffix, and task"
+    )
+
+
+@given(number=st.integers(min_value=1, max_value=10**9))
+def test_issue_marker_round_trip(number: int) -> None:
+    """An issue branch should expose its number and match its exact marker."""
+    branch_name = f"issue-{number}-short-title"
+    marker = f"(#{number})"
+
+    assert plonk_policy.issue_number_for_branch(branch_name) == number, (
+        "expected the issue number to be recovered from the branch name"
+    )
+    assert plonk_policy.completion_marker_for_branch(branch_name) == marker, (
+        "expected the issue marker to name the issue number"
+    )
+    assert plonk_policy.has_completion_marker([f"Done {marker}"], marker), (
+        "expected the exact marker to match history"
+    )
+
+
+@given(
+    first=st.integers(min_value=1, max_value=10**9),
+    second=st.integers(min_value=1, max_value=10**9),
+)
+def test_marker_matching_rejects_a_different_number(
+    first: int,
+    second: int,
+) -> None:
+    """A marker should not match a different issue number."""
+    assume(first != second)
+
+    assert not plonk_policy.has_completion_marker(
+        [f"Done (#{second})"],
+        f"(#{first})",
+    ), "expected a different issue marker not to match"

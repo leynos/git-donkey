@@ -88,6 +88,22 @@ class _GitWorktreeAdapter:
         self,
         arguments: typ.Sequence[str],
     ) -> subprocess.CompletedProcess[str] | None:
+        """Run a bounded ``ls-remote``, timing it and recording the outcome."""
+        with observability.get_recorder().span("upstream_lookup"):
+            completed = self._run_ls_remote_process(arguments)
+        observability.get_recorder().record(
+            observability.Observation(
+                operation="upstream_lookup",
+                outcome="failure" if completed is None else "success",
+                error_kind="os_error" if completed is None else None,
+            )
+        )
+        return completed
+
+    def _run_ls_remote_process(
+        self,
+        arguments: typ.Sequence[str],
+    ) -> subprocess.CompletedProcess[str] | None:
         """Run ``git ls-remote`` with a deadline, or return ``None`` if it cannot.
 
         GitPython offers no timeout, so a remote that accepts a connection and
@@ -243,7 +259,7 @@ class _GitWorktreeAdapter:
                         return _SkipReason.DIRTY
             except (InvalidGitRepositoryError, NoSuchPathError):
                 return _SkipReason.UNAVAILABLE
-            except (GitCommandError, UnicodeError):
+            except (GitCommandError, UnicodeError, OSError):
                 # An unreadable index, worktree state, or path name must not
                 # abort the batch; report it as a skip and continue.
                 return _SkipReason.UNREADABLE

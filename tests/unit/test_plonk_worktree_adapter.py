@@ -303,6 +303,26 @@ def test_preflight_ignores_inherited_repository_location(
     )
 
 
+def test_preflight_reports_an_unreadable_git_file_as_a_skip(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An unreadable worktree ``.git`` file must not abort the batch."""
+    repo, worktree_path = _worktree_with_dirt(tmp_path, "clean")
+
+    def fail_repo(path: Path) -> Repo:
+        """Simulate a permission error while opening the worktree."""
+        raise PermissionError(path)
+
+    monkeypatch.setattr(plonk_adapters, "Repo", fail_repo)
+
+    reason = plonk._GitWorktreeAdapter(repo).skip_reason(worktree_path)
+
+    assert reason is plonk_records._SkipReason.UNREADABLE, (
+        "expected an unreadable .git file to be reported as a skip"
+    )
+
+
 @pytest.mark.parametrize(
     "error",
     [
@@ -340,6 +360,7 @@ def test_preflight_reports_an_unreadable_state_as_a_skip(
 def test_upstream_state_maps_a_timeout_to_unknown(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    recording_recorder: RecordingRecorder,
 ) -> None:
     """A stalled upstream should become unknown rather than block the sweep."""
     repo, _remote_path, branch = _repository_with_tracking(tmp_path, "present")
@@ -359,6 +380,21 @@ def test_upstream_state_maps_a_timeout_to_unknown(
 
     assert state == "unknown", (
         "expected a timed-out upstream query to be reported as unknown"
+    )
+    assert recording_recorder.span_operations() == ["upstream_lookup"], (
+        "expected the ls-remote process boundary to be timed"
+    )
+    assert [
+        (observation.operation, observation.outcome)
+        for observation in recording_recorder.observations
+    ] == [("upstream_lookup", "failure")], (
+        "expected the timeout to record one bounded failure"
+    )
+    assert recording_recorder.error_kinds("upstream_lookup") == ["os_error"], (
+        "expected the timeout to name the OS error class"
+    )
+    assert recording_recorder.unbounded_values() == set(), (
+        "every recorded value comes from a declared vocabulary"
     )
 
 

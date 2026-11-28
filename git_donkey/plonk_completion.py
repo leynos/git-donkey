@@ -222,38 +222,58 @@ def _fallback_evidence(
     return None, reason
 
 
-def _resolve_fallbacks(
+@dataclasses.dataclass(frozen=True, slots=True)
+class _FallbackResolution:
+    """The fallback tiers' answer for one candidate."""
+
+    candidate: _PlonkCandidate
+    evidence: _CompletionEvidence | None = None
+    reason: _UnverifiedReason | None = None
+
+
+def _query_fallbacks(
     state: _SweepState,
     candidates: typ.Iterable[_PlonkCandidate],
-) -> list[_UnverifiedWorktree]:
-    """Resolve active candidates with the GitHub and upstream tiers.
+) -> list[_FallbackResolution]:
+    """Query the fallback tiers for every unresolved candidate.
 
-    Candidates are visited in sweep order. The GitHub lookup runs first and at
-    most once per branch; the opt-in upstream check runs only for branches it
-    left unresolved. Every unresolved candidate is reported as unverified and
-    never removed.
+    This is the query phase: it performs the read-only lookups and caches one
+    verdict per branch, but it does not log or record per-candidate outcomes.
 
     Returns
     -------
-    list[_UnverifiedWorktree]
-        The candidates no tier resolved, in sweep order.
+    list[_FallbackResolution]
+        One answer per unresolved candidate, in sweep order.
 
     """
     github = _github_resolution(state)
-    unverified: list[_UnverifiedWorktree] = []
+    resolutions: list[_FallbackResolution] = []
     for candidate in candidates:
         if candidate.branch_name in state.resolutions:
             continue
         evidence, reason = _fallback_evidence(state, candidate, github)
-        if evidence is not None:
-            state.resolutions[candidate.branch_name] = evidence
+        resolutions.append(_FallbackResolution(candidate, evidence, reason))
+    return resolutions
+
+
+def _apply_fallbacks(
+    state: _SweepState,
+    resolutions: typ.Iterable[_FallbackResolution],
+) -> list[_UnverifiedWorktree]:
+    """Record fallback outcomes and collect the unverified worktrees."""
+    unverified: list[_UnverifiedWorktree] = []
+    for resolution in resolutions:
+        candidate = resolution.candidate
+        if resolution.evidence is not None:
+            state.resolutions[candidate.branch_name] = resolution.evidence
             _record_signal_step(
                 "completion_resolution",
                 "success",
                 state.mode,
-                evidence,
+                resolution.evidence,
             )
             continue
+        reason = resolution.reason or _UnverifiedReason.NO_SIGNAL
         unverified.append(_UnverifiedWorktree(candidate.worktree_path, reason))
         _log_candidate_left(
             candidate,
@@ -266,3 +286,23 @@ def _resolve_fallbacks(
         )
         _record_unverified(state.mode, reason)
     return unverified
+
+
+def _resolve_fallbacks(
+    state: _SweepState,
+    candidates: typ.Iterable[_PlonkCandidate],
+) -> list[_UnverifiedWorktree]:
+    """Resolve active candidates with the GitHub and upstream tiers.
+
+    Candidates are visited in sweep order. The GitHub lookup runs first and at
+    most once per branch; the opt-in upstream check runs only for branches it
+    left unresolved. Every unresolved candidate is reported as unverified and
+    never removed. Query and reporting are separate steps.
+
+    Returns
+    -------
+    list[_UnverifiedWorktree]
+        The candidates no tier resolved, in sweep order.
+
+    """
+    return _apply_fallbacks(state, _query_fallbacks(state, candidates))

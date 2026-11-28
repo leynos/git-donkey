@@ -415,66 +415,82 @@ variables, credential files, or OAuth prompts.
 
 ## git-plonk module boundaries
 
-`git-plonk` is split across pure policy and selection, shared records, summary
-rendering, CLI parsing, and infrastructure mutation:
+`git-plonk` is split across pure policy and selection, shared records, the
+completion tiers, infrastructure adapters, cleanup execution, workflow
+reporting, summary rendering, and CLI parsing:
 
 - `git_donkey.cli` exposes the `git-plonk` console script and maps `--soft`,
-  `--hard`, and `--dry-run` to `git_donkey.plonk.run_git_plonk()`.
-- `git_donkey.plonk_policy` owns branch-name and commit-message policy. It maps
-  issue branches such as `issue-123-title` to `(#123)`, maps roadmap branches
-  such as `road-1-2-3a-4-title` to `(road.1.2.3a.4)`, and selects candidates
-  whose markers appear in history. It must stay free of GitPython, filesystem,
-  and process mutation.
-- `git_donkey.plonk_records` owns the records and vocabulary the workflow
-  speaks: the cleanup modes, the skip reasons, the candidate and result records
-  (`_PlonkCandidate`, `_SkippedWorktree`, `_PlonkResult`, `_PlonkContext`,
-  `_SoftPlonkContext`), and the maps that translate modes and skip reasons into
-  the bounded observability labels. It holds values only: no Git access and no
-  filesystem access.
+  `--hard`, `--dry-run`, `--no-github`, and `--upstream-gone` to
+  `git_donkey.plonk.run_git_plonk()` through `_PlonkRunOptions`.
+- `git_donkey.plonk_policy` owns offline branch-name and commit-message policy.
+  It recognizes issue branches (`(#123)`), df12-build roadmap branches
+  (`(2.2.1)`), and legacy roadmap branches (`(road.1.2.3a.4)`), and scans
+  history for markers, issue closing keywords, exact merge-commit branches, and
+  bounded verbatim branch names. It returns completion evidence and stays free
+  of GitPython, filesystem, and process mutation.
+- `git_donkey.plonk_records` owns the values and vocabulary: modes, completion
+  signals, upstream states, skip and unverified reasons, candidates, evidence,
+  results, and contexts. It holds values only: no Git access and no filesystem
+  access.
 - `git_donkey.plonk_selection` turns parsed `git worktree list --porcelain`
-  stanzas into the git-donkey worktrees `git plonk` may clean, and into
-  completed candidates. It is pure: it reads stanza values and path objects,
-  never Git state or the filesystem, and it contains the only
-  branch-name-to-candidate selection rule.
-- `git_donkey.plonk_summary` holds the summary rendering: `_render_summary()`
-  and its section helpers take a finished `_PlonkResult` and return text,
-  reading no Git state and touching no filesystem. `_render_summary()` is what
-  `run_git_plonk()` prints.
-- `git_donkey.plonk` keeps orchestration (`run_git_plonk()`), the GitPython
-  adapter, worktree removal and branch deletion, and dry-run planning.
+  stanzas into every branched candidate strictly under the worktree root,
+  carrying the marker and issue number the branch name implies. It is pure: it
+  reads stanza values and path objects, never Git state or the filesystem.
+- `git_donkey.plonk_completion` owns the fallback tiers. It resolves the offline
+  evidence, queries the GitHub merged-pull-request lookup and the opt-in
+  upstream check in order, caches one verdict per branch, and reports
+  unresolved candidates as unverified. Query and reporting are separate steps.
+- `git_donkey.plonk_github` owns raw GitHub remote URL parsing and the read-only
+  `gh pr list` lookup. It validates the head branch, base branch, and head
+  owner, pins the host, closes stdin, and maps every failure to unknown.
+- `git_donkey.plonk_adapters` owns the Git and filesystem boundaries: history,
+  the upstream query, the cleanliness preflight, unforced worktree removal,
+  branch deletion, and generated-directory cleanup.
+- `git_donkey.plonk_cleanup` performs the removals for completed candidates and
+  tallies what was removed, skipped, or failed.
+- `git_donkey.plonk_workflow` owns the invocation options, structured logs, and
+  bounded observations shared by the workflow.
+- `git_donkey.plonk_summary` renders the finished result. `_render_summary()` is
+  what `run_git_plonk()` prints.
+- `git_donkey.plonk` keeps orchestration: repository state, candidate
+  preparation, tier composition, soft cleanup, and `run_git_plonk()`.
 - `git_donkey.remote_default` owns the principal-remote and default-branch
   discovery both commands use, so completion history and base selection cannot
   diverge.
 
 `git_donkey.plonk_policy.completed_candidates` is generic over its candidate
-type: it accepts any iterable whose items expose a read-only `marker` property
-returning `str`, returns the matching candidates unchanged, and never mutates
-the candidates it receives. `git_donkey.plonk` therefore passes its worktree
-candidates directly.
+type: it accepts any iterable whose items expose read-only `branch_name`,
+`marker`, and `issue_number` properties, and returns `(candidate, evidence)`
+pairs in input order. It never mutates the candidates it receives.
+`git_donkey.plonk` therefore passes its worktree candidates directly.
 
 The plonk workflow deliberately reads completion history from the canonical
 trunk ref resolved by `remote_default`. This allows `git plonk` to be invoked
 from a linked topic worktree while still using the trunk history that contains
 issue or roadmap merge markers.
 
-Default and hard modes only consider linked worktrees under
-`../{repo}.worktrees` and only remove worktrees whose branch-derived completion
-marker is present in canonical trunk history. Before removing one, they ask
-`_GitWorktreeAdapter.skip_reason()` whether Git would discard it unprompted:
-worktrees with modified, staged, or untracked files, and worktrees whose
-directory is gone, are skipped and reported as `_SkippedWorktree` entries while
-the sweep continues. Removal never passes `--force`. Hard mode deletes local
-branches after a successful unforced removal, so a skipped worktree keeps its
-branch; it does not delete remote branches. Soft mode uses the same git-donkey
-worktree discovery but only removes conventional generated directories such as
-`target`, `node_modules`, `.venv`, and cache directories.
+Default and hard modes consider every linked worktree under
+`../{repo}.worktrees` and resolve completion in three tiers: offline history
+evidence first, the GitHub merged-pull-request fallback second when the
+principal remote is GitHub and `gh` is installed, and the opt-in gone-upstream
+check third. A candidate no tier resolves is reported under
+`Unverified worktrees:` and kept. Before removing a completed worktree, the
+sweep asks `_GitWorktreeAdapter.skip_reason()` whether Git would discard it
+unprompted: worktrees with modified, staged, or untracked files, worktrees
+whose directory is gone, and worktrees whose state cannot be read are skipped
+and reported as `_SkippedWorktree` entries while the sweep continues. Removal
+never passes `--force`. Hard mode deletes local branches after a successful
+unforced removal, so a skipped worktree keeps its branch; it does not delete
+remote branches. Soft mode uses the same git-donkey worktree discovery but only
+removes conventional generated directories such as `target`, `node_modules`,
+`.venv`, and cache directories.
 
 A local branch Git refuses to delete is reported rather than fatal. The
 worktree counts as removed, the branch is neither reported as removed nor
 reported as skipped, and the failure gets its own `Failed branch deletions:`
 summary section. The sweep continues with later candidates, and
 `run_git_plonk()` returns exit status 1 for a run whose branch deletion failed;
-a run that only skipped worktrees still returns 0.
+a run that only skipped or left worktrees unverified still returns 0.
 
 The decision table, the skip vocabulary, and the reasoning behind reporting
 skips rather than forcing removal are recorded in the

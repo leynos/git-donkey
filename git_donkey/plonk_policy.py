@@ -37,7 +37,7 @@ _LEGACY_ROADMAP_BRANCH_PATTERN = re.compile(
     r"^(?:(\w+)-)?(\d+)-(\d+)-(\d+)(\w+)?(?:-(\d+))?(?:-|$)"
 )
 _CLOSING_KEYWORD_PATTERN = (
-    r"(?<![\w-])(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s*:?\s*"
+    r"(?<![\w-])(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s*(?::\s*)?"
     r"#{issue_number}(?!\d)"
 )
 # A branch name is a complete token only when the characters around it cannot

@@ -473,12 +473,12 @@ The trunk is the default branch the principal remote advertises, discovered with
 `git donkey` selects an implicit base. A stale `<remote>/HEAD` alias is never
 consulted, and there is no fallback to local `main`.
 
-Cleanup never discards work. A completed worktree holding modified, staged, or
-untracked files is skipped and reported, and the sweep continues with the
-remaining worktrees, so one dirty candidate cannot strand its clean siblings.
-Files ignored by `.gitignore` are the exception, because Git's own removal rule
-ignores them too. There is no option that forces removal, so a skipped worktree
-stays on disk with its branch intact.
+Cleanup never discards uncommitted worktree files. A completed worktree holding
+modified, staged, or untracked files is skipped and reported, and the sweep
+continues with the remaining worktrees, so one dirty candidate cannot strand
+its clean siblings. Files ignored by `.gitignore` are the exception, because
+Git's own removal rule ignores them too. There is no option that forces
+removal, so a skipped worktree stays on disk with its branch intact.
 
 In hard mode, if Git refuses to delete a local branch, the command reports it
 under a `Failed branch deletions:` heading and continues with the remaining
@@ -506,6 +506,12 @@ Hard mode uses the same completion tiers and the same cleanliness preflight as
 default mode. The branch is deleted only after its worktree is removed, so a
 skipped worktree keeps its branch. It deletes local branches only; it never
 forces a removal and never deletes remote branches.
+
+Hard mode force-deletes each matching branch with `git branch -D`. A merged
+pull request matched by name does not prove that every local commit on the
+branch was merged, and a commit made after the merge loses its branch reference
+when the branch goes. Inspect each branch tip with `git log` before running
+`git plonk --hard`.
 
 Dry-run mode prints the actions `git plonk` would take and exits without
 removing generated paths, worktrees, or branches. Skips and unverified
