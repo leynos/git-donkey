@@ -65,7 +65,9 @@ no longer exists as completed. It reads ``branch.<name>.remote`` and
 deleted branch completes a candidate: an upstream that still exists, was never
 configured, or cannot be queried leaves it unverified. The signal is opt-in
 because a deleted branch cannot distinguish a merged change from an abandoned
-one.
+one. The check reads shared repository configuration; when
+``extensions.worktreeConfig`` is enabled it reports unknown rather than guess
+at a per-worktree override.
 
 A candidate no tier resolves is listed under ``Unverified worktrees:`` with a
 fixed reason and is never removed. Unverified worktrees, like skips, leave the

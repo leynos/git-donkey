@@ -112,6 +112,33 @@ def test_upstream_state_rejects_an_empty_first_merge_value(tmp_path: Path) -> No
     )
 
 
+def test_upstream_state_rejects_a_merge_value_with_a_line_break(
+    tmp_path: Path,
+) -> None:
+    """A newline inside one configured value must not truncate into a valid ref."""
+    repo, _remote_path, branch = _repository_with_tracking(tmp_path, "present")
+    repo.git.config(
+        f"branch.{branch}.merge",
+        f"refs/heads/missing\nrefs/heads/{branch}",
+    )
+
+    state = plonk._GitWorktreeAdapter(repo).upstream_state(branch)
+
+    assert state == "unknown", "expected the whole malformed merge value to be rejected"
+
+
+def test_upstream_state_fails_closed_with_per_worktree_config(tmp_path: Path) -> None:
+    """Per-worktree overrides make the shared-config answer untrustworthy."""
+    repo, _remote_path, branch = _repository_with_tracking(tmp_path, "present")
+    repo.git.config("extensions.worktreeConfig", "true")
+
+    state = plonk._GitWorktreeAdapter(repo).upstream_state(branch)
+
+    assert state == "unknown", (
+        "expected per-worktree configuration to leave the upstream unresolved"
+    )
+
+
 @pytest.mark.parametrize(
     "merge_ref",
     [
@@ -183,9 +210,18 @@ def test_upstream_state_maps_a_timeout_to_unknown(
     """A stalled upstream should become unknown rather than block the sweep."""
     repo, _remote_path, branch = _repository_with_tracking(tmp_path, "present")
 
-    def fail_run(*args: object, **kwargs: object) -> None:
-        """Simulate a Git subprocess that exceeds the deadline."""
-        raise subprocess.TimeoutExpired(["git", "ls-remote"], 10)
+    def fail_run(
+        arguments: typ.Sequence[str],
+        **kwargs: object,
+    ) -> None:
+        """Simulate the upstream query exceeding its deadline."""
+        assert list(arguments)[1] == "ls-remote", (
+            "expected the timeout to come from the upstream query itself"
+        )
+        assert kwargs.get("timeout") is not None, (
+            "expected the query to be bounded by a deadline"
+        )
+        raise subprocess.TimeoutExpired(arguments, 10)
 
     monkeypatch.setattr(
         plonk_adapters.shutil,

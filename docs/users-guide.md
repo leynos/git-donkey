@@ -466,8 +466,10 @@ configured, or cannot be queried leaves it unverified. The signal is opt-in
 because a deleted branch cannot distinguish a merged change from an abandoned
 one. A remote configured to hide refs with `uploadpack.hideRefs` can make an
 existing upstream look deleted, so the check cannot prove absence in that case.
-Neither `--no-github` nor `--upstream-gone` is valid with `--soft`, which does
-not judge completion.
+The check reads shared repository configuration; with
+`extensions.worktreeConfig` enabled it reports unknown rather than guess at a
+per-worktree override. Neither `--no-github` nor `--upstream-gone` is valid with
+`--soft`, which does not judge completion.
 
 ### Trunk and cleanup rules
 

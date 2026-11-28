@@ -18,6 +18,7 @@ from __future__ import annotations
 import contextlib
 import logging
 import os
+import re
 import shutil
 import subprocess  # ruff: ignore[suspicious-subprocess-import]  # bounded ls-remote
 import typing as typ
@@ -110,7 +111,13 @@ def _matches_recorded_identity(
     branch_matches = expected_branch is None or (
         not head.is_detached and head.ref.name == expected_branch
     )
-    commit_matches = expected_commit is None or head.commit.hexsha == expected_commit
+    if expected_commit is None:
+        return branch_matches
+    try:
+        commit_matches = head.commit.hexsha == expected_commit
+    except ValueError:
+        # An unborn HEAD has no commit, so it cannot match a recorded one.
+        return False
     return branch_matches and commit_matches
 
 
@@ -309,15 +316,25 @@ class _GitWorktreeAdapter:
             configures none.
 
         """
+        if self._worktree_config_enabled():
+            # With per-worktree configuration, the effective upstream can
+            # differ per worktree. This adapter reads the shared configuration,
+            # so it cannot answer honestly and leaves the candidate unverified.
+            return "unknown"
         try:
             # `--get` returns the effective (last) remote; Git reads the first
             # merge value for @{upstream}, so that entry decides the answer.
             remote = self.repo.git.config("--get", f"branch.{branch_name}.remote")
-            merges = self.repo.git.config(
-                "--get-all", f"branch.{branch_name}.merge"
-            ).split("\n")
+            # `-z` keeps embedded newlines inside one value; splitting on LF
+            # would truncate a malformed value into a plausible ref.
+            raw_merges = self.repo.git.config(
+                "-z", "--get-all", f"branch.{branch_name}.merge"
+            )
         except GitCommandError as exc:
             return "unset" if exc.status == _CONFIG_KEY_UNSET_STATUS else "unknown"
+        merges = raw_merges.split("\0")
+        if raw_merges.endswith("\0"):
+            merges.pop()
         merge_ref = merges[0] if merges else ""
         if not remote:
             return "unset"
@@ -331,6 +348,14 @@ class _GitWorktreeAdapter:
             # branch look present, or vice versa, so fail closed.
             return "unknown"
         return self._ls_remote_state(remote, merge_ref)
+
+    def _worktree_config_enabled(self) -> bool:
+        """Return whether Git's per-worktree configuration extension is on."""
+        try:
+            value = self.repo.git.config("--get", "extensions.worktreeConfig")
+        except GitCommandError:
+            return False
+        return value.strip().casefold() in {"true", "yes", "on", "1"}
 
     @staticmethod
     def skip_reason(
@@ -439,19 +464,22 @@ class _GitWorktreeAdapter:
             return False
         return True
 
-    def _branch_checked_out_elsewhere(self, branch_name: str) -> bool:
-        """Return whether a registered worktree still has the branch checked out.
+    def _branch_in_use(self, branch_name: str) -> bool:
+        """Return whether another worktree may still be using the branch.
 
-        ``git branch -D`` refuses this case itself, but a conditional
-        ``update-ref -d`` does not, so the guard is repeated for that path. A
-        listing failure is treated as "still in use": the branch is worth
-        keeping when its usage cannot be proven absent.
+        ``git branch -D`` refuses to delete a branch that a worktree has
+        checked out, and also protects a branch being rebased or bisected
+        there. A conditional ``update-ref -d`` performs none of those checks,
+        so they are repeated here. A detached worktree does not name the
+        branch it may be rebasing or bisecting, so it counts as "in use". A
+        listing failure is treated the same way: the branch is kept when its
+        usage cannot be proven absent.
 
         Returns
         -------
         bool
-            ``True`` when a registered worktree still has the branch checked
-            out, or when that cannot be determined.
+            ``True`` when a worktree still has the branch checked out, has a
+            detached HEAD, or when that cannot be determined.
 
         """
         try:
@@ -459,7 +487,43 @@ class _GitWorktreeAdapter:
         except GitCommandError:
             return True
         expected = f"branch refs/heads/{branch_name}"
-        return any(line == expected for line in listing.splitlines())
+        for stanza in listing.split("\n\n"):
+            lines = stanza.splitlines()
+            if expected in lines:
+                return True
+            has_detached_head = any(line.startswith("HEAD ") for line in lines) and (
+                not any(line.startswith("branch ") for line in lines)
+            )
+            if has_detached_head:
+                return True
+        return False
+
+    def _remove_branch_config(self, branch_name: str) -> None:
+        """Remove a deleted branch's configuration, ignoring a missing section.
+
+        The ref is already gone, so a failure here is reported but does not
+        turn the deletion into a failure. A branch that never had configuration
+        is the normal case and produces no output.
+        """
+        prefix = f"branch.{re.escape(branch_name)}."
+        try:
+            self.repo.git.config("--get-regexp", f"^{prefix}")
+        except GitCommandError:
+            return
+        try:
+            self.repo.git.config("--remove-section", f"branch.{branch_name}")
+        except GitCommandError as exc:
+            _LOGGER.warning(
+                "Deleted branch but could not remove its configuration",
+                extra={
+                    "operation": "delete_branch",
+                    "branch": branch_name,
+                },
+            )
+            helpers._eprint(
+                f"{GIT_PLONK_PREFIX}: deleted branch '{branch_name}' "
+                f"but could not remove its tracking configuration: {exc}"
+            )
 
     def delete_branch(
         self,
@@ -503,10 +567,10 @@ class _GitWorktreeAdapter:
                 if expected_commit is None:
                     self.repo.git.branch("-D", branch_name)
                 else:
-                    if self._branch_checked_out_elsewhere(branch_name):
+                    if self._branch_in_use(branch_name):
                         helpers._eprint(
                             f"{GIT_PLONK_PREFIX}: branch '{branch_name}' is still "
-                            "checked out in another worktree; leaving it in place"
+                            "in use by another worktree; leaving it in place"
                         )
                         return False
                     self.repo.git.update_ref(
@@ -514,10 +578,7 @@ class _GitWorktreeAdapter:
                         f"refs/heads/{branch_name}",
                         expected_commit,
                     )
-                    with contextlib.suppress(GitCommandError):
-                        self.repo.git.config(
-                            "--remove-section", f"branch.{branch_name}"
-                        )
+                    self._remove_branch_config(branch_name)
         except GitCommandError as exc:
             _LOGGER.exception(
                 "Failed to delete git-plonk branch",

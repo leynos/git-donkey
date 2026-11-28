@@ -260,6 +260,48 @@ def test_conditional_deletion_keeps_a_branch_in_use_elsewhere(
     )
 
 
+def test_conditional_deletion_keeps_a_branch_used_by_a_detached_worktree(
+    tmp_path: Path,
+) -> None:
+    """A detached worktree may be rebasing or bisecting, so the branch stays."""
+    repo, worktree_path = _worktree_with_dirt(tmp_path, "clean")
+    recorded_commit = repo.commit(_WORKTREE_BRANCH).hexsha
+    assert plonk._GitWorktreeAdapter(repo).remove_worktree(worktree_path) is True, (
+        "the completed worktree is removed before the branch is considered"
+    )
+    detached_path = tmp_path / "repo.worktrees" / "detached"
+    repo.git.worktree(
+        "add", "-q", "--detach", detached_path.as_posix(), recorded_commit
+    )
+
+    deleted = plonk._GitWorktreeAdapter(repo).delete_branch(
+        _WORKTREE_BRANCH, expected_commit=recorded_commit
+    )
+
+    assert deleted is False, "expected a detached worktree to keep the branch in place"
+    assert _WORKTREE_BRANCH in repo.heads, "the branch must survive the refusal"
+
+
+def test_preflight_reports_an_unborn_branch_as_changed(tmp_path: Path) -> None:
+    """An unborn HEAD has no commit, so it cannot match a recorded one."""
+    repo, _worktree_path = _worktree_with_dirt(tmp_path, "clean")
+    recorded_commit = repo.commit(_WORKTREE_BRANCH).hexsha
+    unborn_path = tmp_path / "repo.worktrees" / "unborn"
+    repo.git.worktree(
+        "add", "-q", "--orphan", "-b", "unborn-branch", unborn_path.as_posix()
+    )
+
+    reason = plonk._GitWorktreeAdapter(repo).skip_reason(
+        unborn_path,
+        expected_branch="unborn-branch",
+        expected_commit=recorded_commit,
+    )
+
+    assert reason is plonk_records._SkipReason.CHANGED, (
+        "expected an unborn branch to be reported as changed, not to raise"
+    )
+
+
 def test_conditional_deletion_removes_the_stale_tracking_config(
     tmp_path: Path,
 ) -> None:

@@ -314,6 +314,20 @@ def test_merge_commit_requires_the_exact_branch_segment(message: str) -> None:
     )
 
 
+def test_merge_subject_with_trailing_text_does_not_complete() -> None:
+    """The branch name must end the subject; a later clause is not a merge."""
+    message = plonk_records._HistoryMessage(
+        f"Merge pull request #63 from leynos/{_ISSUE_BRANCH} was reverted",
+        is_merge_commit=True,
+    )
+
+    completed = plonk_policy.completed_candidates([_issue_candidate()], [message])
+
+    assert not completed, (
+        "expected a merge subject that continues after the branch to be ignored"
+    )
+
+
 def test_merge_syntax_in_a_non_merge_commit_does_not_complete() -> None:
     """A copied merge subject in a one-parent commit is not merge evidence."""
     message = plonk_records._HistoryMessage(

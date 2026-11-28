@@ -10,6 +10,7 @@ Git and environment boundaries are covered in
 
 from __future__ import annotations
 
+import dataclasses
 import typing as typ
 from pathlib import Path
 
@@ -275,9 +276,11 @@ def test_missing_gh_is_noticed_once_and_fails_closed(
     )
 
     stderr = capsys.readouterr().err
-    assert stderr.count("gh is not installed") == 1, (
-        "expected one notice for the whole run"
+    notice = (
+        f"{plonk_records.GIT_PLONK_PREFIX}: gh is not installed; merged "
+        "pull-request lookups are unavailable"
     )
+    assert stderr.count(notice) == 1, "expected one complete notice for the whole run"
     assert {one.worktree_path for one in result.unverified_worktrees} == {
         first.worktree_path,
         second.worktree_path,
@@ -342,7 +345,7 @@ def test_invoking_worktree_is_excluded_before_the_github_lookup() -> None:
 
 def test_history_resolution_precedes_the_github_lookup() -> None:
     """Offline evidence should settle a candidate before any network tier."""
-    completed = candidate("issue-123-fix", 123)
+    completed = dataclasses.replace(candidate("issue-123-fix", 123), commit_id="a" * 40)
     lookup = LookupStub(plonk_github._MergedPullRequest("merged", 61))
 
     result = run_cleanup(

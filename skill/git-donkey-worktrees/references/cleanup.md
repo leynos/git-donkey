@@ -154,10 +154,12 @@ anything.
 upstream no longer exists as completed. The check reads `branch.<name>.remote`
 and `branch.<name>.merge` and runs `git ls-remote --exit-code --heads`. Only
 `gone` completes a candidate; `unset`, `present`, and `unknown` leave it
-unverified. The signal is weak because a deleted branch cannot distinguish a
-merged change from an abandoned one, and a remote that hides refs with
-`uploadpack.hideRefs` can make an existing branch look deleted. Use it only
-when the operator accepts those risks.
+unverified. The check reads shared configuration, so it reports `unknown` when
+`extensions.worktreeConfig` is enabled and per-worktree overrides are possible.
+The signal is weak because a deleted branch cannot distinguish a merged change
+from an abandoned one, and a remote that hides refs with `uploadpack.hideRefs`
+can make an existing branch look deleted. Use it only when the operator accepts
+those risks.
 
 A candidate no tier resolves is reported under `Unverified worktrees:` with one
 of the fixed reasons `no completion signal found`,

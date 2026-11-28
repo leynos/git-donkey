@@ -144,9 +144,11 @@ succeeds only while the branch still points at the commit the sweep recorded
 and no other worktree still checks it out. A commit made to the branch during
 the sweep therefore keeps both the branch and its later commit, and is reported
 as a failed deletion. A branch another worktree still uses is kept for the same
-reason. The conditional deletion also removes the branch's tracking
-configuration, so a later branch of the same name does not inherit a stale
-upstream. Inspect each branch tip before running hard mode.
+reason, and so is a branch while any other worktree has a detached HEAD,
+because a rebase or bisect there can still own the branch without naming it in
+the worktree listing. The conditional deletion also removes the branch's
+tracking configuration, so a later branch of the same name does not inherit a
+stale upstream. Inspect each branch tip before running hard mode.
 
 ### Opt-in upstream-gone check
 
@@ -163,7 +165,11 @@ candidate unverified, and the summary preserves the distinction. The tier is
 opt-in because a deleted branch cannot distinguish a merged change from an
 abandoned one; it is a heuristic, not proof. A remote that hides refs with
 `uploadpack.hideRefs` does not advertise an existing branch, so exit status 2
-cannot prove absence there either. The flag is not valid with `--soft`.
+cannot prove absence there either. The tier reads the shared repository
+configuration. When `extensions.worktreeConfig` is enabled, a linked worktree
+can override its branch's remote and merge settings, so the check cannot see
+the effective upstream and reports `unknown` rather than guessing. The flag is
+not valid with `--soft`.
 
 ### Unverified reasons
 
@@ -213,6 +219,12 @@ vocabulary:
 
 A worktree with a populated submodule is treated like a removal failure: the
 preflight does not classify it as dirty, and the unforced removal refuses it.
+
+A dry run plans what the sweep intends; the real run still performs Git's own
+final checks. A populated submodule, or a branch another worktree outside the
+sweep root still checks out, can therefore refuse a removal or branch deletion
+that the preview listed. The preview does not model those refusals, and the
+real run reports them as skips or failed deletions.
 
 Skips keep the run's exit code at 0. A skip is a reported decision, not a
 failure of the command. A branch Git refuses to delete is reported as a failed

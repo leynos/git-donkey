@@ -52,9 +52,6 @@ _CLOSING_KEYWORD_PATTERN = (
 # boundaries: Git permits them inside a ref, so U+00A0 could continue the ref.
 _FORBIDDEN_REF_CHARS = frozenset("~^:?*[\\")
 _BOUNDARY_WHITESPACE = frozenset(string.whitespace)
-# ASCII whitespace as a regex character class, for the merge-subject lookahead.
-# A merge subject ends after the source branch, so nothing else is a boundary.
-_BOUNDARY_CLASS = re.escape(string.whitespace)
 _PROSE_QUOTES = frozenset("`\"'")
 
 
@@ -275,7 +272,7 @@ def _merge_commit_pattern(branch_name: str) -> re.Pattern[str]:
     """
     return re.compile(
         rf"\AMerge pull request #\d+ from (?P<owner>[^\s/]+)/"
-        rf"{re.escape(branch_name)}(?=[{_BOUNDARY_CLASS}]|$)"
+        rf"{re.escape(branch_name)}[ \t\v\f]*(?=\r?\n|\Z)"
     )
 
 
