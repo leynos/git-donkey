@@ -192,6 +192,30 @@ def test_an_empty_member_map_is_not_replaced_by_the_default(
     assert check_dist(dist, root), "an empty archive must not gain the defaults"
 
 
+def test_a_required_file_outside_the_sdist_root_fails(tmp_path: Path) -> None:
+    """A nested copy cannot stand in for the build-root file."""
+    members = _sdist_members()
+    members[f"{_REPOSITORY}/examples/pyproject.toml"] = members.pop(
+        f"{_REPOSITORY}/pyproject.toml"
+    )
+    root, dist = _build(tmp_path, _Build(sdist_members=members))
+
+    assert check_dist(dist, root) == [f"{_SDIST} is missing pyproject.toml"], (
+        "a misplaced required file must still count as missing"
+    )
+
+
+def test_an_sdist_with_a_top_level_file_fails(tmp_path: Path) -> None:
+    """An sdist must have one top-level directory and no loose root files."""
+    members = _sdist_members()
+    members["pyproject.toml"] = b""
+    root, dist = _build(tmp_path, _Build(sdist_members=members))
+
+    assert check_dist(dist, root) == [
+        f"{_SDIST} does not have a single top-level directory"
+    ], "a loose root file must be reported"
+
+
 def test_a_sdist_carrying_generated_pages_fails(tmp_path: Path) -> None:
     """Generated roff pages must never be reused as build inputs."""
     members = _sdist_members()

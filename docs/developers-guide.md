@@ -135,6 +135,11 @@ offending GitHub Release asset and rerun; a PyPI file cannot be replaced or
 re-uploaded under the same filename, so untraceable PyPI bytes require a new
 version.
 
+An upload that failed part-way can leave an asset in GitHub's `starter` state.
+A rerun does not remove it, and reconciliation refuses the listing until it is
+gone, even when the distribution digests agree. Delete the named asset and
+rerun.
+
 An already published release that a positive check finds incomplete is returned
 to draft before reconciliation, so it is never visible while a repair fails. An
 inconclusive check, such as an unavailable index, a failed download, or a
@@ -176,6 +181,10 @@ These settings are manual and must exist before the first automated release:
 - **Required check:** make the `build-dist` continuous-integration job a
   required status check for pull requests, so a build without a complete sdist
   cannot merge.
+- **Tag ruleset:** add a repository ruleset that blocks updates and deletions
+  of `v*.*.*` tags. The workflow checks each job's live tag commit, but only an
+  immutable tag stops a move in the interval between that check and the PyPI
+  upload, which PyPI cannot undo.
 - **Version:** the PyPI project already holds 0.2.0, uploaded outside this
   workflow, and those files carry no provenance this repository attests. The
   first automated release must therefore be above 0.2.0; a `v0.2.0` tag leaves

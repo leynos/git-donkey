@@ -196,6 +196,48 @@ def _mismatch(
     return None
 
 
+def destination_disagreements(
+    local: cabc.Iterable[str],
+    pypi_digests: cabc.Mapping[str, str],
+    github_digests: cabc.Mapping[str, str | None],
+) -> list[str]:
+    """Describe each name both destinations already hold with different bytes.
+
+    A missing name is not a disagreement: it is what staging uploads. A name
+    both destinations hold differently is irreversible once PyPI accepts a
+    related upload, so staging must stop before it happens.
+
+    Parameters
+    ----------
+    local : collections.abc.Iterable[str]
+        The artefact names this run will publish.
+    pypi_digests : collections.abc.Mapping[str, str]
+        PyPI's SHA-256 hex digest for each name it holds.
+    github_digests : collections.abc.Mapping[str, str | None]
+        The GitHub Release's SHA-256 hex digest per asset, ``None`` when
+        GitHub reports none.
+
+    Returns
+    -------
+    list[str]
+        One message per name the destinations hold differently; empty when
+        every shared name agrees.
+
+    Examples
+    --------
+    >>> destination_disagreements(["g.whl"], {"g.whl": "ab"}, {"g.whl": "cd"})
+    ['g.whl differs: PyPI sha256 ab, GitHub sha256 cd']
+    """
+    return [
+        f"{name} differs: PyPI sha256 {pypi_digests[name]}, "
+        f"GitHub sha256 {github_digests[name]}"
+        for name in sorted(set(local))
+        if name in pypi_digests
+        and github_digests.get(name) is not None
+        and pypi_digests[name] != github_digests[name]
+    ]
+
+
 @dc.dataclass(frozen=True, slots=True)
 class PypiFile:
     """One file the PyPI index lists."""
@@ -408,6 +450,15 @@ def _apply_pypi_choice(
             shutil.copyfile(asset, artefact)
 
 
+def _require_destinations_agree(state: State) -> None:
+    """Stop before an upload can make a disagreement irreversible."""
+    pypi = {name: file.sha256 for name, file in state.pypi.items()}
+    problems = destination_disagreements(local_names(state.publish), pypi, state.github)
+    if problems:
+        msg = "; ".join(problems)
+        raise ReleaseAssetError(msg)
+
+
 def stage_pypi(state: State, github_files: Path, provenance: Path) -> bool:
     """Leave in ``publish`` exactly the canonical bytes PyPI lacks.
 
@@ -425,6 +476,7 @@ def stage_pypi(state: State, github_files: Path, provenance: Path) -> bool:
     bool
         Whether any artefact remains to upload.
     """
+    _require_destinations_agree(state)
     decided = state.plan()
     carried: dict[str, Path] = {}
     for name, source in sorted(decided.canonical.items()):
@@ -494,8 +546,14 @@ def verify(state: State, staged: Path) -> list[str]:
         One message per missing or differing name; empty when both
         destinations agree and the release carries a provenance bundle.
     """
+    local = local_names(state.publish)
     pypi = {name: file.sha256 for name, file in state.pypi.items()}
-    problems = mismatches(local_names(state.publish), pypi, state.github)
+    problems = mismatches(local, pypi, state.github)
+    problems.extend(
+        f"{name} is on the GitHub Release but not part of this run's build"
+        for name in sorted(set(state.github) - set(local))
+        if not is_bundle(name)
+    )
     problems.extend(
         f"{path.name} is missing from the GitHub Release"
         for path in sorted(staged.iterdir())

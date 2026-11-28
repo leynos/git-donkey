@@ -193,6 +193,23 @@ def test_the_final_check_reads_a_refreshed_index() -> None:
     ), "the check must read the file the refresh writes"
 
 
+def test_both_coverage_checks_apply_the_same_identity_policy() -> None:
+    """A policy change must reach both covering-bundle verifications."""
+    draft = step_script(
+        "draft-release", "Check whether an already published release is complete"
+    )
+    publish = step_script("publish-release", "Check the attached bundle coverage")
+    for flag in (
+        '--repo "${GITHUB_REPOSITORY}"',
+        '--signer-workflow "${GITHUB_REPOSITORY}/.github/workflows/release.yml"',
+        '--source-ref "${GITHUB_REF}"',
+        '--source-digest "${GITHUB_SHA}"',
+        "--deny-self-hosted-runners",
+    ):
+        assert draft.count(flag) == 1, f"the re-draft check must pass {flag!r}"
+        assert publish.count(flag) == 1, f"the publish check must pass {flag!r}"
+
+
 def test_the_final_check_pins_the_bundle_it_verified() -> None:
     """Only the bundle this run approved may stand in at publication."""
     found = step("publish-release", "Check both destinations hold the same bytes")
@@ -321,9 +338,12 @@ def test_an_incomplete_published_release_returns_to_draft() -> None:
         ]
         == "redraft"
     ), "the guard reads the completeness output"
-    assert step("draft-release", "Verify published release provenance")["id"] == (
-        "provenance"
-    ), "the guard reads the provenance output"
+    provenance = step("draft-release", "Verify published release provenance")
+    assert provenance["id"] == "provenance", "the guard reads the provenance output"
+    assert provenance["if"] == (
+        "steps.redraft.outputs.published == 'true' "
+        "&& steps.redraft.outputs.complete == 'true'"
+    ), "an incomplete release must be repaired without a provenance gate"
     edit_step = step("draft-release", "Return an incomplete published release to draft")
     assert edit_step["if"] == (
         "always() && steps.create.outcome == 'success' "

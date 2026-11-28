@@ -39,8 +39,9 @@ downloaded and verified.
 - A re-pushed tag must be safe to run again without manual cleanup, except
   when the destinations already disagree, which must fail loudly.
 - The job holding the PyPI Trusted Publishing credential must resolve no
-  third-party code, must not receive a `GH_TOKEN`, must persist no checkout
-  credentials, and must hold no GitHub write permission.
+  project dependency, must run only actions pinned by commit SHA, must not
+  receive a `GH_TOKEN`, must persist no checkout credentials, and must hold no
+  GitHub write permission.
 - Each job's permissions must be the minimum it needs.
 - A missing or incomplete source distribution must fail a pull request rather
   than a tag.
@@ -57,9 +58,13 @@ downloaded and verified.
    only the ones that actually disagree.
 3. **Reconcile per filename, with a fixed precedence and no overwrites**
    (chosen). Each filename's canonical bytes are decided once, from whichever
-   destination already holds it; each destination receives only the names it
-   lacks; and the workflow fails only when the destinations already disagree on
-   a name, which needs a human to remove the offending asset.
+   destination already holds it, and each destination receives only the names
+   it lacks. Reconciliation fails in two distinct cases: the destinations
+   already hold different bytes under one name, which needs a human to remove
+   the offending GitHub asset, or PyPI holds bytes that no run attested for
+   this tag and commit, which needs a new version because PyPI cannot replace
+   the file. Deleting a GitHub asset does not make an unattested PyPI file
+   eligible.
 
 ## Decision outcome
 
@@ -119,6 +124,13 @@ index digest and then match an attestation for the same identity and the SLSA
 v1 predicate. The commit binding means a moved tag cannot carry bytes built for
 a different commit into PyPI, while a rerun of the same tag at the same commit
 still accepts an interrupted attempt's assets.
+
+Every job that uploads re-checks the tag's live commit, but a check cannot
+close the interval between itself and the upload. The repository must therefore
+carry a tag ruleset that blocks updates and deletions of `v*.*.*` tags. The
+check stops a run started from an already moved ref; the ruleset stops the move
+itself, including the window in `publish-pypi` before PyPI accepts a filename
+that cannot be replaced.
 
 `publish-release` stages only names that PyPI's index lists. A name the index
 omits means the index has not caught up or the upload did not happen; the step
@@ -212,7 +224,18 @@ that stays in `draft-release` and `publish-release`. The checkout action still
 receives the workflow's read-only token, but `persist-credentials: false` keeps
 it out of the checkout on disk, and no step passes a `GH_TOKEN`.
 `publish-pypi`'s release scripts use only the Python standard library, so no
-third-party package is resolved while the OIDC credential is live.
+project dependency is resolved while the OIDC credential is live.
+
+One deliberate exception remains: the upload itself runs
+`pypa/gh-action-pypi-publish`, pinned to a commit SHA, because Trusted
+Publishing needs an OIDC exchange that mints a short-lived PyPI token, and the
+action additionally signs a PEP 740 attestation for every file, which
+`uv publish` does not. The action builds its uploader into a container action
+from that pinned commit, so the job's own Python environment resolves no
+project dependency while the credential is live; the action's image and its
+pinned requirements are the exception. The alternative — a handwritten OIDC
+exchange and upload in the standard library — would put credential handling in
+this repository, so the pinned, widely used action is the smaller risk.
 
 ### Queued concurrency
 
@@ -247,10 +270,12 @@ build backend does not produce.
 `scripts/release_github_upload.py`, `scripts/release_bundle.py`, and
 `scripts/release_provenance.py` use only the Python standard library. They run
 under the runner's preinstalled `python3`, not through `uv run`, because
-`publish-pypi` holds the PyPI OIDC credential and must not resolve any
-third-party package while it is live. This is a deliberate, documented
-exception to [scripting standards](../scripting-standards.md). Every network
-call stays in the workflow's own `curl` and `gh` steps.
+`publish-pypi` holds the PyPI OIDC credential and must not resolve any project
+dependency while it is live. The only third-party code in that job is the
+SHA-pinned upload action itself, as recorded under least privilege. This is a
+deliberate, documented exception to
+[scripting standards](../scripting-standards.md). Every network call stays in
+the workflow's own `curl` and `gh` steps.
 
 ### The 0.2.0 restriction
 
@@ -278,6 +303,10 @@ carry a version above 0.2.0.
   checked-in-step tests execute the workflow's own scripts against scratch
   directories and fake `gh` and `curl` state, and the contract tests pin the
   job scopes, environment, concurrency, ordering, and action pins.
+- The `draft-release` and `publish-release` jobs each run the covering-bundle
+  selection and verification loop. The duplication keeps each job's verdict
+  handling local, and a contract test pins the identity flags in both call
+  sites so a policy change cannot update one and leave the other behind.
 - The PyPI simple index is the source of truth for what PyPI already holds. An
   index outage that returns a non-404, non-2xx status fails the phase rather
   than guessing, so a PyPI-side incident can block a release until it resolves.

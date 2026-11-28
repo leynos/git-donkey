@@ -23,6 +23,7 @@ from scripts.release_assets import (
     Source,
     State,
     carryover,
+    destination_disagreements,
     expected_bundle_problems,
     has_bundle,
     incomplete_github_assets,
@@ -275,6 +276,39 @@ def test_carryover_is_the_shared_name_set(tmp_path: Path) -> None:
     )
 
 
+def test_destination_disagreements_reports_only_shared_differing_names() -> None:
+    """A missing name is staged, but a shared differing name stops staging."""
+    problems = destination_disagreements(
+        [_NAME, _SDIST, "other.whl"],
+        {_NAME: "aa", _SDIST: "bb"},
+        {_NAME: "aa", _SDIST: "cc", "other.whl": None},
+    )
+
+    assert problems == [f"{_SDIST} differs: PyPI sha256 bb, GitHub sha256 cc"], (
+        "only a name both destinations hold differently is a disagreement"
+    )
+
+
+def test_stage_pypi_stops_when_a_published_name_differs_on_github(
+    tmp_path: Path,
+) -> None:
+    """An upload must not begin while the destinations already disagree."""
+    state = _state(
+        tmp_path,
+        local={_NAME: "local", _SDIST: "sdist"},
+        pypi={_SDIST: "published"},
+        github={_SDIST: "0" * 64},
+    )
+
+    with pytest.raises(ReleaseAssetError, match=f"{_SDIST} differs"):
+        stage_pypi(state, tmp_path / "github-files", tmp_path / "provenance")
+
+    assert (state.publish / _NAME).exists(), (
+        "refusing before staging must preserve this run's artefacts"
+    )
+    assert (state.publish / _SDIST).exists(), "no published name may be dropped"
+
+
 def test_stage_pypi_drops_names_pypi_already_holds(tmp_path: Path) -> None:
     """A published filename is never uploaded a second time."""
     state = _state(tmp_path, pypi={_NAME: "published"})
@@ -454,6 +488,28 @@ def test_expected_bundle_problems_pin_the_verified_bundle(
     assert expected_bundle_problems(github, "bundle", digest) == expected, (
         "the verified bundle's name and digest must still match the release"
     )
+
+
+def test_verify_rejects_a_release_distribution_outside_the_build(
+    tmp_path: Path,
+) -> None:
+    """A distribution this run did not build cannot go unexamined."""
+    state = _state(
+        tmp_path,
+        local={_NAME: "local"},
+        pypi={_NAME: "published"},
+        github={_NAME: "self", "extra.whl": "ff"},
+    )
+    state.github[_NAME] = state.pypi[_NAME].sha256
+    staged = tmp_path / "upload"
+    staged.mkdir()
+
+    problems = verify(state, staged)
+
+    assert (
+        "extra.whl is on the GitHub Release but not part of this run's build"
+        in problems
+    ), "an unexpected release distribution must fail the check"
 
 
 def test_verify_requires_a_staged_bundle_to_be_attached(tmp_path: Path) -> None:

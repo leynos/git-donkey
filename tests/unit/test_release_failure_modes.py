@@ -285,11 +285,37 @@ def test_the_final_check_rejects_another_bundle(
     assert message in completed.stderr, "the failure must name the bundle"
 
 
-def test_the_check_fails_when_the_destinations_disagree(fake: FakeRelease) -> None:
-    """Differing bytes under one name stop the release before it is visible."""
+def test_staging_stops_before_an_irreversible_upload(fake: FakeRelease) -> None:
+    """A destination disagreement is found before PyPI accepts any upload."""
     (fake.github / _BOTH).write_bytes(b"clobbered by an earlier workflow")
     fake.attest_approved(fake.github / _BOTH)
+    draft, env = _job_directory(fake, "draft-release")
+    _step("draft-release", "Snapshot the release assets", draft, env)
+    _step("draft-release", "Verify carried asset provenance", draft, env)
+    pypi, env = _job_directory(fake, "publish-pypi")
+    shutil.copytree(draft / "github-state", pypi / "github-state")
+    _step("publish-pypi", "Fetch the PyPI index", pypi, env)
+
+    completed = run_bash(
+        step_script("publish-pypi", "Skip artefacts already on PyPI"),
+        pypi,
+        env,
+    )
+
+    assert completed.returncode != 0, "a digest mismatch must stop staging"
+    assert f"{_BOTH} differs" in completed.stderr, (
+        "the failure must name the differing artefact"
+    )
+    assert not outputs(pypi / "output").get("remaining"), (
+        "a refused staging must not enable an upload"
+    )
+
+
+def test_the_check_fails_when_the_destinations_disagree(fake: FakeRelease) -> None:
+    """Differing bytes under one name stop the release before it is visible."""
     _draft_and_publish_pypi(fake)
+    (fake.github / _BOTH).write_bytes(b"clobbered after staging")
+    fake.attest_approved(fake.github / _BOTH)
     cwd = _publish_release(fake, verify=False)
 
     completed = run_bash(
@@ -302,7 +328,7 @@ def test_the_check_fails_when_the_destinations_disagree(fake: FakeRelease) -> No
     assert f"{_BOTH} differs" in completed.stderr, (
         "the failure must name the differing artefact"
     )
-    assert (fake.github / _BOTH).read_bytes() == b"clobbered by an earlier workflow", (
+    assert (fake.github / _BOTH).read_bytes() == b"clobbered after staging", (
         "the existing asset must not be overwritten"
     )
 

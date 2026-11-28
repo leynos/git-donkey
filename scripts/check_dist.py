@@ -66,24 +66,33 @@ def _archives(directory: Path, suffix: str) -> list[Path]:
     return sorted(path for path in directory.iterdir() if path.name.endswith(suffix))
 
 
+def _sdist_root(members: list[str]) -> str | None:
+    """Return the sdist's single top-level directory, if it has exactly one."""
+    if any("/" not in member for member in members):
+        return None
+    roots = {member.split("/", 1)[0] for member in members}
+    return next(iter(roots)) if len(roots) == 1 else None
+
+
 def _sdist_problems(sdist: Path, commands: tuple[str, ...]) -> list[str]:
     """Describe the manual sources one source distribution lacks or adds."""
     with tarfile.open(sdist) as archive:
         members = archive.getnames()
+    root = _sdist_root(members)
+    if root is None:
+        return [f"{sdist.name} does not have a single top-level directory"]
     required = (
-        f"{_MAN_SOURCE_DIR}/docutils.conf",
-        *(f"{_MAN_SOURCE_DIR}/{command}.rst" for command in commands),
-        "pyproject.toml",
+        f"{root}/{_MAN_SOURCE_DIR}/docutils.conf",
+        *(f"{root}/{_MAN_SOURCE_DIR}/{command}.rst" for command in commands),
+        f"{root}/pyproject.toml",
     )
-    problems = [
-        f"{sdist.name} is missing {name}"
-        for name in required
-        if not any(member.endswith(f"/{name}") for member in members)
-    ]
+    present = set(members)
+    missing = [name for name in required if name not in present]
+    problems = [f"{sdist.name} is missing {name[len(root) + 1 :]}" for name in missing]
     generated = sorted(
         member
         for member in members
-        if f"/{_MAN_SOURCE_DIR}/" in member and member.endswith(".1")
+        if member.startswith(f"{root}/{_MAN_SOURCE_DIR}/") and member.endswith(".1")
     )
     problems.extend(
         f"{sdist.name} carries generated manual page {member}" for member in generated

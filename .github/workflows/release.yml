@@ -327,11 +327,16 @@ jobs:
             fi
           fi
       # An inconclusive check must not change a published release: the edit
-      # runs only for a confirmed incomplete verdict. A visible release must
-      # also carry provenance for this tag and commit.
+      # runs only for a confirmed incomplete verdict. A release this run found
+      # incomplete is returned to draft and repaired; publish-release verifies
+      # its provenance before it becomes visible again, so failing here would
+      # block the repair this run just enabled. A complete release must still
+      # carry provenance for this tag and commit.
       - name: Verify published release provenance
         id: provenance
-        if: steps.redraft.outputs.published == 'true'
+        if: >-
+          steps.redraft.outputs.published == 'true'
+          && steps.redraft.outputs.complete == 'true'
         run: |
           set -euo pipefail
           while IFS= read -r name; do
@@ -428,6 +433,7 @@ jobs:
         with:
           name: release-github-state
           path: github-state
+          overwrite: true
           if-no-files-found: error
 
   publish-pypi:
