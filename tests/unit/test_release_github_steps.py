@@ -421,6 +421,41 @@ def test_a_release_whose_bundle_omits_a_distribution_is_incomplete(
     assert _redraft_fires(written), "the incomplete release must be re-drafted"
 
 
+def test_a_transient_bundle_verification_failure_is_retried(
+    tmp_path: pth.Path,
+) -> None:
+    """A temporary verifier failure is retried, not treated as invalid."""
+    fake, env = _published_release(tmp_path, complete=True)
+
+    written = _run_redraft_check(tmp_path, fake, {**env, "FAKE_ATTEST_FAIL_COUNT": "1"})
+
+    assert written["complete"] == "true", (
+        "a retried bundle verification must still count"
+    )
+    assert (fake.github / _BUNDLE_ASSET).exists(), "a valid bundle must not be deleted"
+
+
+def test_a_persistently_unverifiable_bundle_is_preserved(
+    tmp_path: pth.Path,
+) -> None:
+    """An inconclusive verifier failure never deletes a release asset."""
+    fake, env = _published_release(tmp_path, complete=True)
+
+    written = _run_redraft_check(
+        tmp_path, fake, {**env, "FAKE_ATTEST_FAIL": "persistent failure"}
+    )
+
+    assert written["complete"] == "false", (
+        "an unverifiable bundle must not count as complete"
+    )
+    assert (fake.github / _BUNDLE_ASSET).exists(), (
+        "the workflow must preserve an asset whose verdict is unknown"
+    )
+    assert not any(
+        call[:2] == ["release", "delete-asset"] for call in fake.calls("gh")
+    ), "the workflow must not delete release assets"
+
+
 def test_a_draft_release_is_not_checked_for_completeness(
     tmp_path: pth.Path,
 ) -> None:

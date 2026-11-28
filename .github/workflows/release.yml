@@ -247,22 +247,32 @@ jobs:
             gh release download "${GITHUB_REF_NAME}" --pattern '*.sigstore.json' --dir release-bundles || true
           fi
           # A bundle must verify for every released distribution before its
-          # subjects count; a corrupted bundle is removed and rebuilt.
+          # subjects count. Retry a transient failure; never delete an asset whose
+          # verdict is unknown, and rebuild an unverifiable bundle.
           while IFS= read -r name; do
             [ -n "${name}" ] || continue
             for bundle in release-bundles/*.attestations.jsonl; do
               [ -e "${bundle}" ] || continue
               work="$(mktemp -d)"
               gh release download "${GITHUB_REF_NAME}" --pattern "${name}" --dir "${work}"
-              if ! gh attestation verify "${work}/${name}" \
-                --bundle "${bundle}" \
-                --repo "${GITHUB_REPOSITORY}" \
-                --signer-workflow "${GITHUB_REPOSITORY}/.github/workflows/release.yml" \
-                --source-ref "${GITHUB_REF}" \
-                --source-digest "${GITHUB_SHA}" \
-                --deny-self-hosted-runners > /dev/null; then
-                echo "::notice::Removing unverifiable bundle $(basename "${bundle}")."
-                gh release delete-asset "${GITHUB_REF_NAME}" "$(basename "${bundle}")" --yes || true
+              verified=false
+              for attempt in 1 2 3; do
+                if gh attestation verify "${work}/${name}" \
+                  --bundle "${bundle}" \
+                  --repo "${GITHUB_REPOSITORY}" \
+                  --signer-workflow "${GITHUB_REPOSITORY}/.github/workflows/release.yml" \
+                  --source-ref "${GITHUB_REF}" \
+                  --source-digest "${GITHUB_SHA}" \
+                  --deny-self-hosted-runners > /dev/null; then
+                  verified=true
+                  break
+                fi
+                if [ "${attempt}" -lt 3 ]; then
+                  sleep "$((attempt * 2))"
+                fi
+              done
+              if [ "${verified}" != true ]; then
+                echo "::notice::Bundle $(basename "${bundle}") could not be verified; it will not count."
                 rm -f "${bundle}"
               fi
               rm -rf "${work}"
@@ -469,22 +479,32 @@ jobs:
             gh release download "${GITHUB_REF_NAME}" --pattern '*.sigstore.json' --dir release-bundles || true
           fi
           # A bundle must verify for every released distribution before its
-          # subjects count; a corrupted bundle is removed and rebuilt.
+          # subjects count. Retry a transient failure; never delete an asset whose
+          # verdict is unknown, and rebuild an unverifiable bundle.
           while IFS= read -r name; do
             [ -n "${name}" ] || continue
             for bundle in release-bundles/*.attestations.jsonl; do
               [ -e "${bundle}" ] || continue
               work="$(mktemp -d)"
               gh release download "${GITHUB_REF_NAME}" --pattern "${name}" --dir "${work}"
-              if ! gh attestation verify "${work}/${name}" \
-                --bundle "${bundle}" \
-                --repo "${GITHUB_REPOSITORY}" \
-                --signer-workflow "${GITHUB_REPOSITORY}/.github/workflows/release.yml" \
-                --source-ref "${GITHUB_REF}" \
-                --source-digest "${GITHUB_SHA}" \
-                --deny-self-hosted-runners > /dev/null; then
-                echo "::notice::Removing unverifiable bundle $(basename "${bundle}")."
-                gh release delete-asset "${GITHUB_REF_NAME}" "$(basename "${bundle}")" --yes || true
+              verified=false
+              for attempt in 1 2 3; do
+                if gh attestation verify "${work}/${name}" \
+                  --bundle "${bundle}" \
+                  --repo "${GITHUB_REPOSITORY}" \
+                  --signer-workflow "${GITHUB_REPOSITORY}/.github/workflows/release.yml" \
+                  --source-ref "${GITHUB_REF}" \
+                  --source-digest "${GITHUB_SHA}" \
+                  --deny-self-hosted-runners > /dev/null; then
+                  verified=true
+                  break
+                fi
+                if [ "${attempt}" -lt 3 ]; then
+                  sleep "$((attempt * 2))"
+                fi
+              done
+              if [ "${verified}" != true ]; then
+                echo "::notice::Bundle $(basename "${bundle}") could not be verified; it will not count."
                 rm -f "${bundle}"
               fi
               rm -rf "${work}"
@@ -562,9 +582,9 @@ jobs:
       # published re-run skips this step and keeps its existing bundle.
       - name: Assemble the release attestations
         id: attestations
-        env:
-          PENDING: ${{ steps.stage.outputs.pending }}
-          COVERED: ${{ steps.coverage.outputs.covered }}
+        if: >-
+          steps.stage.outputs.pending == 'true'
+          || steps.coverage.outputs.covered == 'false'
         run: |
           set -euo pipefail
           gh release view "${GITHUB_REF_NAME}" --json assets > release-assets.json
@@ -595,11 +615,55 @@ jobs:
             cat "${work}"/*.jsonl >> assembled-attestations/bundles.jsonl
             rm -rf "${work}"
           done
-          if [ "${PENDING}" = true ] || [ "${COVERED}" = false ]; then
-            bundle="git-donkey-${GITHUB_REF_NAME}-run${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.attestations.jsonl"
-            cp assembled-attestations/bundles.jsonl "${bundle}"
-            gh release upload "${GITHUB_REF_NAME}" "${bundle}"
-          fi
+          # Verify every distribution against the assembled bundle itself;
+          # the store check above does not prove what the download selected.
+          failed=0
+          while IFS= read -r name; do
+            [ -n "${name}" ] || continue
+            work="$(mktemp -d)"
+            gh release download "${GITHUB_REF_NAME}" --pattern "${name}" --dir "${work}"
+            if ! gh attestation verify "${work}/${name}" \
+              --bundle assembled-attestations/bundles.jsonl \
+              --repo "${GITHUB_REPOSITORY}" \
+              --signer-workflow "${GITHUB_REPOSITORY}/.github/workflows/release.yml" \
+              --source-ref "${GITHUB_REF}" \
+              --source-digest "${GITHUB_SHA}" \
+              --deny-self-hosted-runners > /dev/null; then
+              echo "::error title=release-attestations::${name} is not covered by the assembled bundle." >&2
+              failed=1
+            fi
+            rm -rf "${work}"
+          done <<< "$(jq -r '.assets[].name | select((. | endswith(".attestations.jsonl") or endswith(".sigstore.json")) | not)' release-assets.json)"
+          [ "${failed}" -eq 0 ] || exit 1
+          bundle="git-donkey-${GITHUB_REF_NAME}-run${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.attestations.jsonl"
+          cp assembled-attestations/bundles.jsonl "${bundle}"
+          gh release upload "${GITHUB_REF_NAME}" "${bundle}"
+      # A complete re-run skips the assembly, so verify the existing release's
+      # provenance read-only rather than downloading attestations again.
+      - name: Verify release distributions
+        id: release-provenance
+        if: >-
+          steps.stage.outputs.pending != 'true'
+          && steps.coverage.outputs.covered == 'true'
+        run: |
+          set -euo pipefail
+          gh release view "${GITHUB_REF_NAME}" --json assets > release-assets.json
+          while IFS= read -r name; do
+            [ -n "${name}" ] || continue
+            work="$(mktemp -d)"
+            gh release download "${GITHUB_REF_NAME}" --pattern "${name}" --dir "${work}"
+            if ! gh attestation verify "${work}/${name}" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --signer-workflow "${GITHUB_REPOSITORY}/.github/workflows/release.yml" \
+              --source-ref "${GITHUB_REF}" \
+              --source-digest "${GITHUB_SHA}" \
+              --predicate-type https://slsa.dev/provenance/v1 \
+              --deny-self-hosted-runners > /dev/null; then
+              echo "::error title=release-provenance::${name} lacks approved provenance." >&2
+              exit 1
+            fi
+            rm -rf "${work}"
+          done <<< "$(jq -r '.assets[].name | select((. | endswith(".attestations.jsonl") or endswith(".sigstore.json")) | not)' release-assets.json)"
       - name: Check both destinations hold the same bytes
         id: verify
         run: |

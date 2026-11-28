@@ -124,16 +124,10 @@ def _publish_release(fake: FakeRelease, *, verify: bool = True) -> pth.Path:
     written = outputs(cwd / "output")
     if written["files"] == "true":
         _step("publish-release", _UPLOAD_STEP, cwd, env)
-    _step(
-        "publish-release",
-        _ASSEMBLY_STEP,
-        cwd,
-        {
-            **env,
-            "PENDING": written["pending"],
-            "COVERED": written["covered"],
-        },
-    )
+    if written["pending"] == "true" or written["covered"] == "false":
+        _step("publish-release", _ASSEMBLY_STEP, cwd, env)
+    else:
+        _step("publish-release", "Verify release distributions", cwd, env)
     if verify:
         _step(
             "publish-release", "Check both destinations hold the same bytes", cwd, env
@@ -328,6 +322,9 @@ def test_a_rerun_after_success_uploads_nothing(fake: FakeRelease) -> None:
     assert written["files"] == "false", "the release must need no distributions"
     assert written["pending"] == "false", "the release must need no bundle"
     assert written["covered"] == "true", "the attached bundle must cover every file"
+    assert not any(
+        call[:2] == ["attestation", "download"] for call in fake.calls("gh")
+    ), "a complete re-run must not download attestations"
     assert not any(call[:2] == ["release", "upload"] for call in fake.calls("gh")), (
         "a fully published re-run must not upload"
     )
@@ -374,14 +371,41 @@ def test_an_unverifiable_attached_bundle_is_replaced(tmp_path: pth.Path) -> None
 
     written = outputs(cwd / "output")
     assert written["covered"] == "false", "the invalid bundle must not count"
-    assert not (fake.github / _EXISTING_BUNDLE).exists(), (
-        "the workflow must remove the unverifiable bundle"
+    assert (fake.github / _EXISTING_BUNDLE).exists(), (
+        "an unverifiable asset must not be deleted"
     )
     assert (fake.github / _PYPI_ONLY).read_bytes() == (
         f"published {_PYPI_ONLY}".encode()
     ), "PyPI's bytes must reach the release"
     assert (fake.github / _ASSEMBLED_BUNDLE).exists(), (
         "the workflow must upload a valid replacement bundle"
+    )
+
+
+def test_an_assembled_bundle_missing_a_subject_stops_publication(
+    tmp_path: pth.Path,
+) -> None:
+    """The assembled bundle itself must name every distribution."""
+    fake = _seeded(tmp_path)
+    _draft_and_publish_pypi(fake)
+    cwd, env = _job_directory(fake, "publish-release")
+    for name in _PRE_PROVENANCE:
+        _step("publish-release", name, cwd, env)
+
+    completed = run_bash(
+        step_script("publish-release", _ASSEMBLY_STEP),
+        cwd,
+        {**env, "FAKE_ATTEST_DOWNLOAD_SUBJECT": "wrong.whl"},
+    )
+
+    assert completed.returncode != 0, (
+        "an assembled bundle without the released subjects must stop publication"
+    )
+    assert "not covered by the assembled bundle" in completed.stderr, (
+        "the failure must name the missing coverage"
+    )
+    assert not any(call[:2] == ["release", "upload"] for call in fake.calls("gh")), (
+        "nothing may be uploaded after a failed bundle verification"
     )
 
 

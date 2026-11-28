@@ -234,10 +234,13 @@ def _gh_attestation_download(args: list[str]) -> int:
     if not records:
         print(f"No attestations found for sha256 {digest}", file=sys.stderr)
         return 1
+    subject = os.environ.get("FAKE_ATTEST_DOWNLOAD_SUBJECT") or None
     target = Path(f"sha256-{digest}.jsonl")
     target.write_text(
         "\n".join(
-            bundle_line(str(record.get("subject_name")), str(record["sha256"]))
+            bundle_line(
+                subject or str(record.get("subject_name")), str(record["sha256"])
+            )
             for record in records
         )
         + "\n",

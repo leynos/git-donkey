@@ -297,6 +297,7 @@ class FakeRelease:
             "FAKE_ATTESTATIONS": str(self.attestations),
             "FAKE_ATTEST_FAIL": "",
             "FAKE_ATTEST_FAIL_COUNT": "0",
+            "FAKE_ATTEST_DOWNLOAD_SUBJECT": "",
             "FAKE_GH_VERSION": "2.102.0",
             "FAKE_CALLS": str(self.root / "calls.jsonl"),
             "GITHUB_OUTPUT": str(self.root / "github-output"),

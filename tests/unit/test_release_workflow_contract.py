@@ -403,32 +403,35 @@ def test_pypi_bytes_are_verified_before_the_release_upload() -> None:
     ), "the gate must finish verifying every file before it exits"
 
 
-def test_the_attached_bundle_covers_the_published_bytes() -> None:
-    """The bundle is verified and assembled from the store after upload."""
+def test_the_attached_bundle_is_verified_before_coverage() -> None:
+    """An attached bundle counts only after it verifies for every file."""
     coverage = step("publish-release", "Check the attached bundle coverage")
     assert coverage["id"] == "coverage", "the coverage result feeds the assembly"
-    coverage_script = step_script(
-        "publish-release", "Check the attached bundle coverage"
-    )
+    script = step_script("publish-release", "Check the attached bundle coverage")
     for fragment in (
         "gh release download",
         "--bundle",
         '--source-digest "${GITHUB_SHA}"',
-        "gh release delete-asset",
+        "for attempt in 1 2 3",
         "bundle-coverage",
         "--bundles release-bundles",
     ):
-        assert fragment in coverage_script, (
-            f"the coverage check must include {fragment!r}"
-        )
+        assert fragment in script, f"the coverage check must include {fragment!r}"
+    names = [item.get("name") for item in _job("publish-release")["steps"]]
+    assert (
+        names.index("List the release assets")
+        < names.index("Check the attached bundle coverage")
+        < names.index("Stage the assets the release lacks")
+    ), "coverage must be known before staging decides whether to rebuild"
+
+
+def test_the_assembly_verifies_the_bundle_it_uploads() -> None:
+    """The assembled bundle must name every distribution before upload."""
     assembly = step("publish-release", _ASSEMBLY_STEP)
-    assert "if" not in assembly, (
-        "the assembly must verify existing distributions on every run"
-    )
-    assert assembly["env"] == {
-        "PENDING": "${{ steps.stage.outputs.pending }}",
-        "COVERED": "${{ steps.coverage.outputs.covered }}",
-    }, "the assembly must know whether the bundle needs rebuilding"
+    assert assembly["if"] == (
+        "steps.stage.outputs.pending == 'true' "
+        "|| steps.coverage.outputs.covered == 'false'"
+    ), "the assembly must run only when the release needs a new bundle"
     script = step_script("publish-release", _ASSEMBLY_STEP)
     for fragment in (
         "gh attestation verify",
@@ -438,7 +441,8 @@ def test_the_attached_bundle_covers_the_published_bytes() -> None:
         "--predicate-type https://slsa.dev/provenance/v1",
         'gh release download "${GITHUB_REF_NAME}"',
         ".attestations.jsonl",
-        'if [ "${PENDING}" = true ] || [ "${COVERED}" = false ]; then',
+        "--bundle assembled-attestations/bundles.jsonl",
+        "::error title=release-attestations::",
         'gh release upload "${GITHUB_REF_NAME}" "${bundle}"',
     ):
         assert fragment in script, f"the bundle assembly must include {fragment!r}"
@@ -451,15 +455,37 @@ def test_the_attached_bundle_covers_the_published_bytes() -> None:
     )
     names = [item.get("name") for item in _job("publish-release")["steps"]]
     assert (
-        names.index("List the release assets")
-        < names.index("Check the attached bundle coverage")
-        < names.index("Stage the assets the release lacks")
-    ), "coverage must be known before staging decides whether to rebuild"
-    assert (
         names.index("Upload the assets the release lacks")
         < names.index(_ASSEMBLY_STEP)
         < names.index("Check both destinations hold the same bytes")
     ), "the bundle must cover the bytes already uploaded to the release"
+
+
+def test_a_complete_rerun_verifies_the_release_read_only() -> None:
+    """A complete rerun skips the assembly and downloads no attestations."""
+    verify = step("publish-release", "Verify release distributions")
+    assert verify["if"] == (
+        "steps.stage.outputs.pending != 'true' "
+        "&& steps.coverage.outputs.covered == 'true'"
+    ), "a complete re-run must verify the existing release read-only"
+    script = step_script("publish-release", "Verify release distributions")
+    for fragment in (
+        "gh attestation verify",
+        '--source-digest "${GITHUB_SHA}"',
+        "::error title=release-provenance::",
+    ):
+        assert fragment in script, (
+            f"the read-only verification must include {fragment!r}"
+        )
+    assert "attestation download" not in script, (
+        "a complete re-run must not download attestations"
+    )
+    names = [item.get("name") for item in _job("publish-release")["steps"]]
+    assert (
+        names.index(_ASSEMBLY_STEP)
+        < names.index("Verify release distributions")
+        < names.index("Check both destinations hold the same bytes")
+    ), "read-only verification must follow the assembly decision"
 
 
 def test_an_incomplete_published_release_returns_to_draft() -> None:
@@ -476,7 +502,7 @@ def test_an_incomplete_published_release_returns_to_draft() -> None:
         "--json isDraft,assets",
         "gh release download",
         "--bundle",
-        "gh release delete-asset",
+        "for attempt in 1 2 3",
         "release-complete",
         "--index pypi-index.json",
         "--bundles release-bundles",

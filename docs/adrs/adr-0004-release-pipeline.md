@@ -155,18 +155,22 @@ reconciliation PyPI already requires:
 - `stage-github` refuses a name that PyPI's index does not list, so every
   missing release asset is the byte sequence PyPI serves rather than this run's
   rebuild.
-- After the distributions are uploaded, `publish-release` verifies every
-  distribution the release holds, including one carried from an earlier run,
-  against this repository, `release.yml`, the tag, and the triggering commit.
-  It then assembles a run-unique
+- When the release needs a distribution or its attached bundle does not cover
+  every distribution, `publish-release` verifies every distribution the release
+  holds, including one carried from an earlier run, against this repository,
+  `release.yml`, the tag, and the triggering commit. It assembles a run-unique
   `git-donkey-<tag>-run<run_id>-<attempt>.attestations.jsonl` bundle from the
-  attestation store for every distribution, and replaces the attached bundle
-  whenever it does not cover every distribution. The `attest` job's bundle
+  attestation store, verifies every distribution against that assembled bundle
+  before uploading it, and only then attaches it. The `attest` job's bundle
   remains in the run artefact and the attestation store.
+- Every attached bundle is verified with `gh attestation verify --bundle`
+  against each released distribution before its subjects can count. A transient
+  verifier failure is retried; a bundle that still cannot be verified is not
+  counted and is never deleted, and the assembly uploads a valid replacement.
 - A rerun that finds every name published and a covering bundle attached
-  stages and uploads nothing, and `publish-release` edits nothing because the
-  release is already visible with the right pre-release flag; it still verifies
-  the release's provenance read-only.
+  stages and uploads nothing, does not download attestations, and edits nothing
+  because the release is already visible with the right pre-release flag. It
+  still verifies every distribution's provenance read-only.
 
 ### Least privilege and the `pypi` environment
 
@@ -249,10 +253,3 @@ carry a version above 0.2.0.
   provenance gates establish that for carried bytes, and `attest` establishes
   it for this run's build, so a missing record fails the release rather than
   producing a partial bundle.
-- The coverage check matches a bundle's `(filename, sha256)` subjects; it does
-  not verify the attached bundle's signatures. A replaced or corrupted release
-  asset with matching subjects could satisfy completion. Verifying bundle
-  signatures before accepting coverage is tracked in
-  [issue #206][bundle-signatures].
-
-[bundle-signatures]: https://github.com/leynos/git-donkey/issues/206
