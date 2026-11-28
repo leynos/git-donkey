@@ -326,6 +326,23 @@ def test_a_starter_asset_with_a_digest_mismatch_still_redrafts(
     assert _redraft_fires(written), "the incomplete release must be redrafted"
 
 
+def test_an_additional_starter_asset_still_redrafts(tmp_path: pth.Path) -> None:
+    """Any incomplete upload marks the release incomplete, even an extra one."""
+    fake, env = _published_release(tmp_path, complete=True)
+    (fake.github / "extra-asset.whl").write_bytes(b"extra")
+    fake.asset_states["extra-asset.whl"] = "starter"
+
+    fetch, report, written = _run_redraft_steps(tmp_path, env)
+
+    assert fetch.returncode == 0, fetch.stderr
+    assert report is not None, "the completeness step must run"
+    assert report.returncode == 0, (
+        "an additional starter asset must still reach the redraft decision"
+    )
+    assert written["complete"] == "false", "the release is confirmed incomplete"
+    assert _redraft_fires(written), "the incomplete release must be redrafted"
+
+
 def test_a_bundle_that_fails_verification_does_not_redraft(
     tmp_path: pth.Path,
 ) -> None:

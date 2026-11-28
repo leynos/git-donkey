@@ -160,6 +160,10 @@ def _destinations_complete(state: State, args: argparse.Namespace) -> None:
     _path(args, "index")
     pypi = {name: file.sha256 for name, file in state.pypi.items()}
     problems = mismatches(local_names(state.publish), pypi, state.github)
+    problems.extend(
+        f"{name} is an incomplete upload"
+        for name in incomplete_github_assets(args.assets)
+    )
     for problem in problems:
         print(f"::notice::{problem}")
     write_output("complete", value=not problems)
