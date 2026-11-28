@@ -277,16 +277,17 @@ def test_carryover_is_the_shared_name_set(tmp_path: Path) -> None:
 
 
 def test_destination_disagreements_reports_only_shared_differing_names() -> None:
-    """A missing name is staged, but a shared differing name stops staging."""
+    """A missing name is staged, but a shared unknown name stops staging."""
     problems = destination_disagreements(
-        [_NAME, _SDIST, "other.whl"],
-        {_NAME: "aa", _SDIST: "bb"},
-        {_NAME: "aa", _SDIST: "cc", "other.whl": None},
+        [_NAME, _SDIST, "other.whl", "unknown.whl"],
+        {_NAME: "aa", _SDIST: "bb", "unknown.whl": "cc"},
+        {_NAME: "aa", _SDIST: "cc", "other.whl": None, "unknown.whl": None},
     )
 
-    assert problems == [f"{_SDIST} differs: PyPI sha256 bb, GitHub sha256 cc"], (
-        "only a name both destinations hold differently is a disagreement"
-    )
+    assert problems == [
+        f"{_SDIST} differs: PyPI sha256 bb, GitHub sha256 cc",
+        "unknown.whl has no SHA-256 digest on the GitHub Release",
+    ], "a differing or unresolvable shared name must be reported"
 
 
 def test_stage_pypi_stops_when_a_published_name_differs_on_github(
@@ -307,6 +308,25 @@ def test_stage_pypi_stops_when_a_published_name_differs_on_github(
         "refusing before staging must preserve this run's artefacts"
     )
     assert (state.publish / _SDIST).exists(), "no published name may be dropped"
+
+
+def test_stage_pypi_stops_when_a_shared_name_has_no_github_digest(
+    tmp_path: Path,
+) -> None:
+    """An unknown GitHub digest cannot be reconciled before an upload."""
+    state = _state(
+        tmp_path,
+        local={_NAME: "local"},
+        pypi={_NAME: "published"},
+        github={_NAME: None},
+    )
+
+    with pytest.raises(ReleaseAssetError, match="has no SHA-256 digest"):
+        stage_pypi(state, tmp_path / "github-files", tmp_path / "provenance")
+
+    assert (state.publish / _NAME).exists(), (
+        "refusing before staging must preserve this run's artefacts"
+    )
 
 
 def test_stage_pypi_drops_names_pypi_already_holds(tmp_path: Path) -> None:

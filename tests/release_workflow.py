@@ -126,6 +126,10 @@ def run_bash(
     passes ``BASH_ENV`` in ``env`` still gets it: explicit intent is respected,
     ambient leakage is not.
 
+    GitHub Actions runs a default-shell step as ``bash -e``, so the helper does
+    too and a failed command cannot be masked by a later success. Steps that
+    need ``pipefail`` set it in their own script, as the checked-in steps do.
+
     Returns
     -------
     subprocess.CompletedProcess[str]
@@ -139,7 +143,7 @@ def run_bash(
     environment.pop("BASH_ENV", None)
     environment.update(env or {})
     return subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] - checked-in workflow code.
-        [typ.cast("str", bash), "-c", script],
+        [typ.cast("str", bash), "-e", "-c", script],
         capture_output=True,
         check=False,
         cwd=cwd,

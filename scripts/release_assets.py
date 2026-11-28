@@ -220,22 +220,27 @@ def destination_disagreements(
     Returns
     -------
     list[str]
-        One message per name the destinations hold differently; empty when
-        every shared name agrees.
+        One message per name the destinations hold differently or whose
+        GitHub digest is unknown; empty when every shared name agrees.
 
     Examples
     --------
     >>> destination_disagreements(["g.whl"], {"g.whl": "ab"}, {"g.whl": "cd"})
     ['g.whl differs: PyPI sha256 ab, GitHub sha256 cd']
     """
-    return [
-        f"{name} differs: PyPI sha256 {pypi_digests[name]}, "
-        f"GitHub sha256 {github_digests[name]}"
-        for name in sorted(set(local))
-        if name in pypi_digests
-        and github_digests.get(name) is not None
-        and pypi_digests[name] != github_digests[name]
-    ]
+    problems: list[str] = []
+    for name in sorted(set(local)):
+        if name not in pypi_digests or name not in github_digests:
+            continue
+        github = github_digests[name]
+        if github is None:
+            problems.append(f"{name} has no SHA-256 digest on the GitHub Release")
+        elif pypi_digests[name] != github:
+            problems.append(
+                f"{name} differs: PyPI sha256 {pypi_digests[name]}, "
+                f"GitHub sha256 {github}"
+            )
+    return problems
 
 
 @dc.dataclass(frozen=True, slots=True)

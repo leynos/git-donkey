@@ -67,19 +67,34 @@ def _archives(directory: Path, suffix: str) -> list[Path]:
     return sorted(path for path in directory.iterdir() if path.name.endswith(suffix))
 
 
-def _sdist_root(members: list[str]) -> str | None:
+def _sdist_files(sdist: Path) -> list[str]:
+    """Return the sdist's non-directory member names.
+
+    An explicit entry for the top-level directory reaches :mod:`tarfile`
+    without its trailing slash, so directory entries are excluded rather than
+    mistaken for loose top-level files.
+
+    Returns
+    -------
+    list[str]
+        The archive's member names that are not directory entries.
+    """
+    with tarfile.open(sdist) as archive:
+        return [member.name for member in archive.getmembers() if not member.isdir()]
+
+
+def _sdist_root(files: list[str]) -> str | None:
     """Return the sdist's single top-level directory, if it has exactly one."""
-    if any("/" not in member for member in members):
+    if any("/" not in name for name in files):
         return None
-    roots = {member.split("/", 1)[0] for member in members}
+    roots = {name.split("/", 1)[0] for name in files}
     return next(iter(roots)) if len(roots) == 1 else None
 
 
 def _sdist_problems(sdist: Path, commands: tuple[str, ...]) -> list[str]:
     """Describe the manual sources one source distribution lacks or adds."""
-    with tarfile.open(sdist) as archive:
-        members = archive.getnames()
-    root = _sdist_root(members)
+    files = _sdist_files(sdist)
+    root = _sdist_root(files)
     if root is None:
         return [f"{sdist.name} does not have a single top-level directory"]
     required = (
@@ -87,16 +102,16 @@ def _sdist_problems(sdist: Path, commands: tuple[str, ...]) -> list[str]:
         *(f"{root}/{_MAN_SOURCE_DIR}/{command}.rst" for command in commands),
         f"{root}/pyproject.toml",
     )
-    present = set(members)
+    present = set(files)
     missing = [name for name in required if name not in present]
     problems = [f"{sdist.name} is missing {name[len(root) + 1 :]}" for name in missing]
     generated = sorted(
-        member
-        for member in members
-        if member.startswith(f"{root}/{_MAN_SOURCE_DIR}/") and member.endswith(".1")
+        name
+        for name in files
+        if name.startswith(f"{root}/{_MAN_SOURCE_DIR}/") and name.endswith(".1")
     )
     problems.extend(
-        f"{sdist.name} carries generated manual page {member}" for member in generated
+        f"{sdist.name} carries generated manual page {name}" for name in generated
     )
     return problems
 

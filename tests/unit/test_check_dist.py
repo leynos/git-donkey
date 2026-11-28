@@ -192,6 +192,25 @@ def test_an_empty_member_map_is_not_replaced_by_the_default(
     assert check_dist(dist, root), "an empty archive must not gain the defaults"
 
 
+def test_an_explicit_top_level_directory_entry_is_accepted(tmp_path: Path) -> None:
+    """The root directory entry is written without its trailing slash."""
+    root, dist = _build(tmp_path)
+    members = _sdist_members()
+    with tarfile.open(dist / _SDIST, "w:gz") as archive:
+        info = tarfile.TarInfo(_REPOSITORY)
+        info.type = tarfile.DIRTYPE
+        info.mode = 0o755
+        archive.addfile(info)
+        for name, data in members.items():
+            file_info = tarfile.TarInfo(name)
+            file_info.size = len(data)
+            archive.addfile(file_info, io.BytesIO(data))
+
+    assert not check_dist(dist, root), (
+        "an explicit root directory entry must not look like a loose file"
+    )
+
+
 def test_a_required_file_outside_the_sdist_root_fails(tmp_path: Path) -> None:
     """A nested copy cannot stand in for the build-root file."""
     members = _sdist_members()
