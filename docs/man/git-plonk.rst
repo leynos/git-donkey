@@ -43,20 +43,24 @@ works.
 
 An issue branch additionally accepts the signals GitHub writes into commit
 messages: a closing keyword such as ``Closes #123``, with ``Fixes`` and
-``Resolves`` and their inflections, an optional colon, and no owner or
-repository prefix; a classic merge commit
-``Merge pull request #45 from owner/issue-123-short-title`` whose branch
-segment matches exactly, whatever its pull-request number; and the branch name
-appearing verbatim in a bounded context.
+``Resolves`` and their inflections, a required separator (whitespace, or a
+colon with optional surrounding whitespace), and no owner or repository
+prefix; a classic merge commit
+``Merge pull request #45 from owner/issue-123-short-title`` in the subject of a
+real merge commit, whose branch segment matches exactly, whatever its
+pull-request number; and the branch name appearing verbatim in a bounded
+context.
 
 When no offline signal resolves a branch, the GitHub merged-pull-request
 fallback asks whether a merged pull request exists for it. The fallback is
 enabled by default when the principal remote is GitHub and ``gh`` is
 installed. The query is read-only, and a result is accepted only when its head
-branch, base branch (the advertised trunk), and head owner match the request.
-A failed, timed-out, malformed, or mismatched response counts as unknown,
-never merged. A missing ``gh`` is reported once as a notice and disables the
-fallback. Pass **--no-github** to disable it explicitly.
+branch, base branch (the advertised trunk), head owner, and head commit match
+the request. The commit check keeps a reused branch name from completing new
+work on the strength of an earlier merge. A failed, timed-out, malformed, or
+mismatched response counts as unknown, never merged. A missing ``gh`` is
+reported once as a notice and disables the fallback. Pass **--no-github** to
+disable it explicitly.
 
 The opt-in **--upstream-gone** tier treats a branch whose configured upstream
 no longer exists as completed. It reads ``branch.<name>.remote`` and
@@ -81,6 +85,8 @@ and reported, and the sweep continues with the remaining worktrees, so one
 dirty candidate cannot leave clean siblings behind.
 Files ignored by ``.gitignore`` do not protect a worktree, matching the rule
 ``git worktree remove`` itself applies.
+A worktree with a locked registration is skipped as ``worktree is locked``,
+including in a dry run, because Git refuses to remove it.
 Nothing in this command forces a removal, so a skipped worktree stays on disk
 with its branch intact.
 The summary annotates each removal with the signal that justified it, lists

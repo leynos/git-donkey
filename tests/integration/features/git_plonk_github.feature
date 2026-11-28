@@ -17,6 +17,14 @@ Feature: Resolve completion from merged GitHub pull requests
     And the completed branch remains
     And git plonk reports the completed worktree as unverified with "GitHub completion lookup failed"
 
+  Scenario: A merge of an earlier commit on a reused branch does not complete it
+    Given a repository with a descriptive git donkey worktree on a GitHub remote
+    And the gh stub reports a merged pull request at a different head commit
+    When I run git plonk in default mode expecting a GitHub lookup
+    Then the completed worktree remains
+    And the completed branch remains
+    And git plonk reports the completed worktree as unverified with "GitHub completion lookup failed"
+
   Scenario: A pull request targeting another base does not complete the branch
     Given a repository with a descriptive git donkey worktree on a GitHub remote
     And the gh stub reports a merged pull request targeting "release" for that branch

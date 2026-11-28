@@ -21,7 +21,11 @@ from git import Repo
 from pytest_bdd import given, parsers, scenarios, then, when
 
 from git_donkey import plonk
-from tests.integration.conftest import GitHubCliStub, _setup_repo
+from tests.integration.conftest import (
+    GitHubCliStub,
+    StubbedPullRequest,
+    _setup_repo,
+)
 from tests.integration.plonk_helpers import (
     PlonkScenario,
     ReportMode,
@@ -91,15 +95,36 @@ def _require_stub(github_cli_stub: GitHubCliStub | None) -> GitHubCliStub:
     )
 )
 def stub_reports_a_merged_pull_request(
+    scenario: PlonkScenario,
     github_cli_stub: GitHubCliStub | None,
     base_branch: str,
 ) -> None:
     """Configure the stub to answer with one matching merged pull request."""
+    head_sha = Repo(scenario.local_path).commit(scenario.completed_branch).hexsha
     _require_stub(github_cli_stub).stub_merged_pull_request(
-        number=_PULL_REQUEST_NUMBER,
-        head_branch=_BRANCH,
-        base_branch=base_branch,
-        owner="leynos",
+        StubbedPullRequest(
+            number=_PULL_REQUEST_NUMBER,
+            head_branch=_BRANCH,
+            base_branch=base_branch,
+            owner="leynos",
+            head_sha=head_sha,
+        )
+    )
+
+
+@given("the gh stub reports a merged pull request at a different head commit")
+def stub_reports_a_merged_pull_request_at_a_different_commit(
+    github_cli_stub: GitHubCliStub | None,
+) -> None:
+    """Answer with a merge whose recorded head commit is not the local tip."""
+    _require_stub(github_cli_stub).stub_merged_pull_request(
+        StubbedPullRequest(
+            number=_PULL_REQUEST_NUMBER,
+            head_branch=_BRANCH,
+            base_branch="main",
+            owner="leynos",
+            head_sha="0" * 40,
+        )
     )
 
 

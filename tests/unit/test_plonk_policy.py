@@ -201,6 +201,7 @@ def test_completed_candidates_return_input_order_not_match_order() -> None:
         pytest.param("Close #62", id="close"),
         pytest.param("Fix #62", id="fix"),
         pytest.param("Resolve #62", id="resolve"),
+        pytest.param("Fixes:\t#62", id="colon-then-tab"),
         pytest.param("Squash merge\n\nFixes #62.", id="body-sentence"),
     ],
 )
@@ -248,6 +249,8 @@ def test_closing_keyword_whitespace_does_not_backtrack_quadratically() -> None:
         pytest.param("hotfix #62", id="suffix-inside-a-word"),
         pytest.param("Closes leynos/other#62", id="owner-prefixed-reference"),
         pytest.param("Closes issue#62", id="word-before-reference"),
+        pytest.param("Document the literal fix#62 token", id="no-separator"),
+        pytest.param("Fixes#62", id="no-separator-after-fixes"),
     ],
 )
 def test_unrelated_references_do_not_complete_an_issue_branch(message: str) -> None:
@@ -265,7 +268,10 @@ def test_unrelated_references_do_not_complete_an_issue_branch(message: str) -> N
 def test_exact_merge_commit_completes_an_issue_branch() -> None:
     """A classic merge commit naming the branch itself should complete it."""
     candidate = _issue_candidate()
-    message = f"Merge pull request #63 from leynos/{_ISSUE_BRANCH}"
+    message = plonk_records._HistoryMessage(
+        f"Merge pull request #63 from leynos/{_ISSUE_BRANCH}",
+        is_merge_commit=True,
+    )
 
     completed = plonk_policy.completed_candidates([candidate], [message])
 
@@ -299,11 +305,39 @@ def test_exact_merge_commit_completes_an_issue_branch() -> None:
 )
 def test_merge_commit_requires_the_exact_branch_segment(message: str) -> None:
     """A merge commit should only complete the branch it names exactly."""
-    completed = plonk_policy.completed_candidates([_issue_candidate()], [message])
+    history = plonk_records._HistoryMessage(message, is_merge_commit=True)
+
+    completed = plonk_policy.completed_candidates([_issue_candidate()], [history])
 
     assert not completed, (
         "expected a differently named merge-commit branch to be ignored"
     )
+
+
+def test_merge_syntax_in_a_non_merge_commit_does_not_complete() -> None:
+    """A copied merge subject in a one-parent commit is not merge evidence."""
+    message = plonk_records._HistoryMessage(
+        f"Merge pull request #63 from leynos/{_ISSUE_BRANCH}",
+        is_merge_commit=False,
+    )
+
+    completed = plonk_policy.completed_candidates([_issue_candidate()], [message])
+
+    assert not completed, (
+        "expected a one-parent commit to supply no merge-commit evidence"
+    )
+
+
+def test_merge_syntax_in_a_merge_body_does_not_complete() -> None:
+    """An example in a merge commit's body is not the merge subject."""
+    message = plonk_records._HistoryMessage(
+        f"Document merge syntax\n\nMerge pull request #63 from leynos/{_ISSUE_BRANCH}",
+        is_merge_commit=True,
+    )
+
+    completed = plonk_policy.completed_candidates([_issue_candidate()], [message])
+
+    assert not completed, "expected merge evidence to come only from the commit subject"
 
 
 def test_verbatim_issue_branch_in_a_commit_message_completes_it() -> None:

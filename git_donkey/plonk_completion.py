@@ -150,12 +150,18 @@ def _github_evidence(
     lookup: plonk_github.MergedPullRequestLookup,
 ) -> tuple[_CompletionEvidence | None, _UnverifiedReason]:
     """Return the GitHub fallback's verdict for one candidate."""
+    if candidate.commit_id is None:
+        # Without the local head commit the fallback cannot tell this work
+        # apart from an earlier merge of a reused branch name, so it fails
+        # closed instead of guessing.
+        return None, _UnverifiedReason.GITHUB_UNKNOWN
     result = lookup(
         plonk_github._PullRequestQuery(
             owner=repository.owner,
             repository=repository.name,
             head_branch=candidate.branch_name,
             base_branch=state.context.branch,
+            head_sha=candidate.commit_id,
         )
     )
     if result.state == "merged":

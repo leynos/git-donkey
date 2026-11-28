@@ -193,6 +193,19 @@ def marker_for(candidate: plonk_records._PlonkCandidate) -> str:
     return f"Merge pull request {candidate.marker}"
 
 
+def _stanza_for(candidate: plonk_records._PlonkCandidate) -> dict[str, object]:
+    """Return the parsed worktree stanza ``candidate`` came from."""
+    stanza: dict[str, object] = {
+        "branch": f"refs/heads/{candidate.branch_name}",
+        "worktree": candidate.worktree_path,
+    }
+    if candidate.commit_id is not None:
+        stanza["HEAD"] = candidate.commit_id
+    if candidate.is_locked:
+        stanza["locked"] = True
+    return stanza
+
+
 def cleanup_context(
     candidates: typ.Iterable[plonk_records._PlonkCandidate],
     *,
@@ -219,13 +232,7 @@ def cleanup_context(
     """
     return plonk_records._PlonkContext(
         repo_home=typ.cast("Repo", SimpleNamespace()),
-        stanzas=[
-            {
-                "branch": f"refs/heads/{one.branch_name}",
-                "worktree": one.worktree_path,
-            }
-            for one in candidates
-        ],
+        stanzas=[_stanza_for(one) for one in candidates],
         worktrees_root=Path("/repo.worktrees"),
         anchor_dir=Path("/repo"),
         trunk_ref=TRUNK_REF,

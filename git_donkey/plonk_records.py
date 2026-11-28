@@ -77,6 +77,7 @@ class _SkipReason(enum.StrEnum):
     DIRTY = "uncommitted changes"
     UNAVAILABLE = "worktree directory is missing"
     UNREADABLE = "worktree state could not be read"
+    LOCKED = "worktree is locked"
     REMOVAL_FAILED = "worktree removal failed"
 
 
@@ -87,6 +88,7 @@ _SKIP_REASON_LABELS: dict[_SkipReason, observability.SkipReasonLabel] = {
     _SkipReason.DIRTY: "dirty",
     _SkipReason.UNAVAILABLE: "unavailable",
     _SkipReason.UNREADABLE: "unreadable",
+    _SkipReason.LOCKED: "locked",
     _SkipReason.REMOVAL_FAILED: "removal_failed",
 }
 _MODE_LABELS: dict[_PlonkMode, observability.CleanupModeLabel] = {
@@ -133,6 +135,25 @@ class _CompletionEvidence:
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
+class _HistoryMessage:
+    """One commit message and the facts the history matchers need.
+
+    Attributes
+    ----------
+    text : str
+        Full commit message.
+    is_merge_commit : bool
+        Whether the commit has more than one parent. Only an actual merge
+        commit can supply classic merge-commit evidence, so a one-parent commit
+        whose subject copies the merge syntax cannot complete a branch.
+
+    """
+
+    text: str
+    is_merge_commit: bool = False
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
 class _PlonkCandidate:
     """A branched linked worktree the sweep may consider.
 
@@ -148,6 +169,15 @@ class _PlonkCandidate:
     issue_number : int | None
         Issue number the branch name names, when it follows the issue
         convention. It enables the issue-only history matchers.
+    commit_id : str | None
+        Commit the worktree has checked out, when Git reported one. The GitHub
+        fallback compares it with the merged pull request's head commit, so a
+        reused branch name cannot complete new work on the strength of an old
+        merge.
+    is_locked : bool
+        Whether the worktree registration is locked. Git refuses to remove a
+        locked worktree, so a preview must report the same skip a real run
+        reports.
 
     """
 
@@ -155,6 +185,8 @@ class _PlonkCandidate:
     worktree_path: Path
     marker: str | None = None
     issue_number: int | None = None
+    commit_id: str | None = None
+    is_locked: bool = False
 
 
 @dataclasses.dataclass(frozen=True, slots=True)

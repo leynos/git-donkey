@@ -15,6 +15,7 @@ generated batches in ``test_plonk_cleanup_properties.py`` live in
 
 from __future__ import annotations
 
+import dataclasses
 import typing as typ
 from pathlib import Path
 
@@ -119,6 +120,29 @@ def test_dry_run_reports_skips_without_mutating() -> None:
     ), "the missing worktree is reported as skipped"
     assert not adapter.removed, "a dry run removes no worktree"
     assert not adapter.deleted, "a dry run deletes no branch"
+
+
+@pytest.mark.parametrize("dry_run", [True, False], ids=["dry-run", "real-run"])
+def test_locked_candidate_is_skipped_in_both_modes(*, dry_run: bool) -> None:
+    """A locked worktree is a skip, not a removal the real run cannot perform."""
+    locked = dataclasses.replace(candidate("issue-123-locked", 123), is_locked=True)
+    adapter = RecordingGitAdapter([marker_for(locked)])
+
+    result = run_cleanup(
+        [locked],
+        adapter,
+        mode=plonk._PlonkMode.HARD,
+        options=CleanupRunOptions(dry_run=dry_run),
+    )
+
+    assert result.skipped_worktrees == (
+        plonk_records._SkippedWorktree(
+            locked.worktree_path, plonk_records._SkipReason.LOCKED
+        ),
+    ), "expected the locked registration to be reported as the skip reason"
+    assert not result.removed_worktrees, "a locked worktree is never removed"
+    assert not result.removed_branches, "its branch is never planned for deletion"
+    assert not adapter.removed, "the adapter is never asked to remove it"
 
 
 def test_failed_removal_is_skipped_and_the_batch_continues() -> None:

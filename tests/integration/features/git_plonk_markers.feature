@@ -33,15 +33,23 @@ Feature: Decide which git donkey worktrees a completion marker completes
 
   Scenario: A classic merge commit naming the branch completes a worktree
     Given a repository with a git donkey worktree on branch "issue-64-polymer-corrections"
-    And a trunk commit message "Merge pull request #65 from leynos/issue-64-polymer-corrections"
+    And a trunk merge commit with message "Merge pull request #65 from leynos/issue-64-polymer-corrections"
     When I run git plonk in default mode
     Then the completed worktree is removed
     And the completed branch remains
     And git plonk reports the removal as "completed by merge commit leynos/issue-64-polymer-corrections"
 
+  Scenario: A copied merge subject in an ordinary commit does not complete a worktree
+    Given a repository with a git donkey worktree on branch "issue-64-polymer-corrections"
+    And a trunk commit message "Merge pull request #65 from leynos/issue-64-polymer-corrections"
+    When I run git plonk in default mode
+    Then the completed worktree remains
+    And the completed branch remains
+    And git plonk reports the completed worktree as unverified with "no completion signal found"
+
   Scenario: A merge commit naming a longer branch does not complete a worktree
     Given a repository with a git donkey worktree on branch "issue-67-polymer-corrections"
-    And a trunk commit message "Merge pull request #68 from leynos/issue-67-polymer-corrections-extra"
+    And a trunk merge commit with message "Merge pull request #68 from leynos/issue-67-polymer-corrections-extra"
     When I run git plonk in default mode
     Then the completed worktree remains
     And the completed branch remains

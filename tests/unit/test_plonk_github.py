@@ -25,11 +25,13 @@ _HEAD_BRANCH = "fix-markdown-gates"
 _BASE_BRANCH = "main"
 _OWNER = "leynos"
 _REPOSITORY = "git-donkey"
+_HEAD_SHA = "1" * 40
 _QUERY = plonk_github._PullRequestQuery(
     owner=_OWNER,
     repository=_REPOSITORY,
     head_branch=_HEAD_BRANCH,
     base_branch=_BASE_BRANCH,
+    head_sha=_HEAD_SHA,
 )
 _EXPECTED_ARGUMENTS = [
     "gh",
@@ -44,7 +46,7 @@ _EXPECTED_ARGUMENTS = [
     "--state",
     "merged",
     "--json",
-    "number,headRefName,baseRefName,headRepositoryOwner",
+    "number,headRefName,baseRefName,headRepositoryOwner,headRefOid",
     "--limit",
     str(plonk_github._GH_RESULT_LIMIT),
 ]
@@ -175,6 +177,7 @@ def _record(**overrides: object) -> dict[str, object]:
         "headRefName": _HEAD_BRANCH,
         "baseRefName": _BASE_BRANCH,
         "headRepositoryOwner": {"login": _OWNER},
+        "headRefOid": _HEAD_SHA,
     }
     record.update(overrides)
     return record
@@ -214,6 +217,25 @@ def test_owner_comparison_is_case_insensitive() -> None:
 
     assert result.state == "merged", (
         "expected the canonical owner casing to match the configured URL"
+    )
+
+
+def test_head_commit_comparison_is_case_insensitive() -> None:
+    """A hex commit identifier is case-insensitive."""
+    result = _lookup([_record(headRefOid=_HEAD_SHA.upper())])
+
+    assert result.state == "merged", (
+        "expected the same commit in different hex casing to match"
+    )
+
+
+def test_reused_branch_name_with_new_work_is_not_merged() -> None:
+    """An old merge must not complete a branch name reused for new work."""
+    result = _lookup([_record(headRefOid="2" * 40)])
+
+    assert result.state == "unknown", (
+        "expected a merge whose head commit differs from the local tip to fail "
+        "closed rather than complete new work"
     )
 
 
@@ -281,6 +303,8 @@ def test_empty_result_is_not_merged() -> None:
         pytest.param(_record(baseRefName="release"), id="different-base"),
         pytest.param(_record(headRepositoryOwner={"login": "other"}), id="other-owner"),
         pytest.param(_record(headRepositoryOwner=None), id="missing-owner"),
+        pytest.param(_record(headRefOid="2" * 40), id="different-head-commit"),
+        pytest.param(_record(headRefOid=None), id="missing-head-commit"),
         pytest.param(_record(number="61"), id="string-number"),
         pytest.param(_record(number=True), id="boolean-number"),
         pytest.param(_record(number=None), id="missing-number"),

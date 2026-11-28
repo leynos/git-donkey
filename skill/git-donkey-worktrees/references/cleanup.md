@@ -60,11 +60,12 @@ The check protects only what Git itself would refuse to discard:
   the branch, so those commits survive on it; hard mode does not.
 - A registered worktree whose directory is missing is skipped with the reason
   `worktree directory is missing`. A status query that cannot read Git state is
-  skipped as `worktree state could not be read`, and the sweep continues. Any
-  other refusal during removal is reported as `worktree removal failed`, and
-  the worktree stays registered. A locked worktree or one with a populated
-  submodule takes this path: the preflight does not call it dirty, and the
-  unforced removal refuses it.
+  skipped as `worktree state could not be read`, and the sweep continues. A
+  locked registration is skipped as `worktree is locked`, in a dry run as well,
+  because Git refuses to remove it. Any other refusal during removal is
+  reported as `worktree removal failed`, and the worktree stays registered. A
+  worktree with a populated submodule takes this path: the preflight does not
+  call it dirty, and the unforced removal refuses it.
 
 Hard mode deletes a branch only after its worktree was removed, using
 `git branch -D`. That deletion performs no merged or ancestry check, so a
@@ -128,16 +129,17 @@ to `(#123)`; the matcher also accepts `(#123.)`. A df12-build roadmap branch
 such as `roadmap-2-2-1` or `roadmap-2-2-1-addendum` maps to `(2.2.1)`, with two
 to four numeric components. A legacy roadmap branch such as
 `road-1-2-3a-4-short-title` maps to `(road.1.2.3a.4)`, and a task id may end
-the name. An issue branch also accepts a closing keyword such as `Closes #123`,
-a classic merge commit naming the exact branch, and the branch name appearing
-verbatim in a bounded context. Unrecognized branches such as `feature/plain`
-have no offline matcher. Do not rename a branch just to make cleanup recognize
-it.
+the name. An issue branch also accepts a closing keyword such as `Closes #123`
+(with a required separator), the exact branch named in the subject of a real
+merge commit, and the branch name appearing verbatim in a bounded context.
+Unrecognized branches such as `feature/plain` have no offline matcher. Do not
+rename a branch just to make cleanup recognize it.
 
 **GitHub fallback.** For a branch no offline signal resolves, plonk asks
 whether a merged pull request exists for that head branch when the principal
 remote is GitHub and `gh` is installed. It accepts only a result whose head
-branch, base branch (the advertised trunk), and head owner match. A failed,
+branch, base branch (the advertised trunk), head owner, and head commit match,
+so a reused branch name is not completed by an earlier merge. A failed,
 timed-out, malformed, or mismatched response is unknown, never merged. `gh`
 being absent is reported once and disables the tier. `--no-github` disables it
 explicitly. The fallback is read-only and never merges, closes, or edits

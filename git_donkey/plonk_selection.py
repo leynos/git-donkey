@@ -39,6 +39,17 @@ def _worktree_path_from_stanza(stanza: dict[str, object]) -> Path | None:
     return Path(str(worktree)).expanduser().resolve()
 
 
+def _commit_id_from_stanza(stanza: dict[str, object]) -> str | None:
+    """Return the checked-out commit ``HEAD`` names in a worktree stanza."""
+    commit_id = stanza.get("HEAD")
+    return str(commit_id) if commit_id is not None else None
+
+
+def _is_locked_stanza(stanza: dict[str, object]) -> bool:
+    """Return whether a worktree stanza reports a locked registration."""
+    return "locked" in stanza
+
+
 def _is_git_donkey_worktree(worktree_path: Path, worktrees_root: Path) -> bool:
     """Return whether ``worktree_path`` is under the git-donkey worktree root."""
     return worktree_path != worktrees_root and worktree_path.is_relative_to(
@@ -120,6 +131,8 @@ def _donkey_worktree_candidates(
                 worktree_path=worktree_path,
                 marker=plonk_policy.completion_marker_for_branch(branch_name),
                 issue_number=plonk_policy.issue_number_for_branch(branch_name),
+                commit_id=_commit_id_from_stanza(stanza),
+                is_locked=_is_locked_stanza(stanza),
             )
         )
     return candidates

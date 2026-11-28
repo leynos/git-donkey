@@ -15,10 +15,11 @@ Three branch grammars are recognized, in this order:
    mappings are preserved.
 
 An issue branch additionally enables the history signals GitHub writes into
-commit messages: closing keywords, the branch named by a classic merge commit,
-and the branch name appearing verbatim in a bounded context. A branch that
-follows none of the grammars carries no offline matcher at all; the GitHub
-merged-pull-request fallback in :mod:`git_donkey.plonk_github` answers for it.
+commit messages: closing keywords, the branch named in the subject of an actual
+merge commit, and the branch name appearing verbatim in a bounded context. A
+branch that follows none of the grammars carries no offline matcher at all; the
+GitHub merged-pull-request fallback in :mod:`git_donkey.plonk_github` answers
+for it.
 """
 
 from __future__ import annotations
@@ -27,7 +28,7 @@ import dataclasses
 import re
 import typing as typ
 
-from git_donkey.plonk_records import _CompletionEvidence
+from git_donkey.plonk_records import _CompletionEvidence, _HistoryMessage
 
 _ISSUE_BRANCH_PATTERN = re.compile(r"^issue-(\d+)-")
 _DF12_ROADMAP_BRANCH_PATTERN = re.compile(r"^roadmap-(\d+(?:-\d+){1,3})(?:-addendum)?$")
@@ -36,8 +37,12 @@ _DF12_ROADMAP_BRANCH_PATTERN = re.compile(r"^roadmap-(\d+(?:-\d+){1,3})(?:-adden
 _LEGACY_ROADMAP_BRANCH_PATTERN = re.compile(
     r"^(?:(\w+)-)?(\d+)-(\d+)-(\d+)(\w+)?(?:-(\d+))?(?:-|$)"
 )
+# GitHub's issue linker requires a separator between the keyword and the
+# reference: whitespace, or a colon with optional surrounding whitespace.
+# Without one, prose such as ``fix#62`` would read as a closing directive and
+# could authorise a hard-mode deletion.
 _CLOSING_KEYWORD_PATTERN = (
-    r"(?<![\w-])(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s*(?::\s*)?"
+    r"(?<![\w-])(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)(?:\s*:\s*|\s+)"
     r"#{issue_number}(?!\d)"
 )
 # A branch name is a complete token only when the characters around it cannot
@@ -190,9 +195,9 @@ class _OfflineMatchers:
         """Whether any history matcher can resolve the candidate."""
         return self.marker_pattern is not None or self.closing_keyword is not None
 
-    def evidence_in(self, message: str) -> _CompletionEvidence | None:
+    def evidence_in(self, message: _HistoryMessage) -> _CompletionEvidence | None:
         """Return the strongest evidence ``message`` supplies, if any."""
-        if self.marker_pattern is not None and self.marker_pattern.search(message):
+        if self.marker_pattern is not None and self.marker_pattern.search(message.text):
             return _CompletionEvidence("marker", self.candidate.marker or "")
         if self.closing_keyword is None:
             return None
@@ -200,21 +205,21 @@ class _OfflineMatchers:
 
     def _issue_evidence(
         self,
-        message: str,
+        message: _HistoryMessage,
         closing_keyword: re.Pattern[str],
     ) -> _CompletionEvidence | None:
         """Return the strongest issue-only evidence ``message`` supplies."""
-        keyword = closing_keyword.search(message)
+        keyword = closing_keyword.search(message.text)
         if keyword is not None:
             return _CompletionEvidence("closing_keyword", keyword.group(0))
-        if self.merge_commit is not None:
-            merge = self.merge_commit.search(message)
+        if self.merge_commit is not None and message.is_merge_commit:
+            merge = self.merge_commit.search(message.text)
             if merge is not None:
                 return _CompletionEvidence(
                     "merge_commit",
                     f"{merge.group('owner')}/{self.candidate.branch_name}",
                 )
-        if _mentions_branch(message, self.candidate.branch_name):
+        if _mentions_branch(message.text, self.candidate.branch_name):
             return _CompletionEvidence("branch_name", self.candidate.branch_name)
         return None
 
@@ -228,9 +233,20 @@ def _closing_keyword_pattern(issue_number: int) -> re.Pattern[str]:
 
 
 def _merge_commit_pattern(branch_name: str) -> re.Pattern[str]:
-    """Return the matcher for a merge commit naming ``branch_name`` exactly."""
+    """Return the matcher for a merge subject naming ``branch_name`` exactly.
+
+    GitHub writes the classic merge syntax into the subject line. Anchoring at
+    the start of the message keeps a copied example in a commit body from
+    matching; the caller separately requires an actual merge commit.
+
+    Returns
+    -------
+    re.Pattern[str]
+        The subject-anchored matcher for ``branch_name``.
+
+    """
     return re.compile(
-        rf"(?m)^Merge pull request #\d+ from (?P<owner>[^\s/]+)/"
+        rf"\AMerge pull request #\d+ from (?P<owner>[^\s/]+)/"
         rf"{re.escape(branch_name)}(?=\s|$)"
     )
 
@@ -327,10 +343,28 @@ def has_completion_marker(messages: typ.Iterable[str], marker: str) -> bool:
     return any(marker_pattern.search(message) is not None for message in messages)
 
 
+def _as_history_message(entry: str | _HistoryMessage) -> _HistoryMessage:
+    """Return ``entry`` as a history record.
+
+    A bare string is a commit whose parent count the caller did not supply, so
+    it cannot support merge-commit evidence. Callers that can read Git pass
+    :class:`~git_donkey.plonk_records._HistoryMessage` directly.
+
+    Returns
+    -------
+    _HistoryMessage
+        The entry as a history record, with merge status preserved.
+
+    """
+    if isinstance(entry, _HistoryMessage):
+        return entry
+    return _HistoryMessage(entry)
+
+
 def _resolve_messages(
     matcher_list: typ.Sequence[_OfflineMatchers],
     pending: set[int],
-    messages: typ.Iterable[str],
+    messages: typ.Iterable[str | _HistoryMessage],
 ) -> dict[int, _CompletionEvidence]:
     """Scan ``messages`` until every pending candidate resolves.
 
@@ -344,7 +378,8 @@ def _resolve_messages(
 
     """
     found: dict[int, _CompletionEvidence] = {}
-    for message in messages:
+    for entry in messages:
+        message = _as_history_message(entry)
         for index in tuple(pending):
             evidence = matcher_list[index].evidence_in(message)
             if evidence is not None:
@@ -357,26 +392,29 @@ def _resolve_messages(
 
 def completed_candidates[CandidateT: CompletionCandidate](
     candidates: typ.Iterable[CandidateT],
-    messages: typ.Iterable[str],
+    messages: typ.Iterable[str | _HistoryMessage],
 ) -> list[tuple[CandidateT, _CompletionEvidence]]:
     r"""Return candidates whose offline evidence appears in commit history.
 
     Each candidate is checked against the matchers its own name enables:
     its completion marker, and, for issue branches, the closing keywords,
     exact merge-commit branch, and bounded verbatim branch name GitHub writes
-    into commit messages. Within one message the marker wins over the weaker
-    signals. The scan stops as soon as every candidate with an offline matcher
-    has resolved, so a long history is not read in full when the matches appear
-    early. Candidates without an offline matcher are left for the GitHub
-    fallback and never keep the scan running.
+    into commit messages. Merge-commit evidence additionally requires the
+    commit to have more than one parent, so a copied merge subject in an
+    ordinary commit cannot complete a branch. Within one message the marker
+    wins over the weaker signals. The scan stops as soon as every candidate
+    with an offline matcher has resolved, so a long history is not read in full
+    when the matches appear early. Candidates without an offline matcher are
+    left for the GitHub fallback and never keep the scan running.
 
     Parameters
     ----------
     candidates : typ.Iterable[CandidateT]
         Candidates to classify. Each must expose ``branch_name``, ``marker``,
         and ``issue_number``.
-    messages : typ.Iterable[str]
-        Commit messages to scan, consumed lazily.
+    messages : typ.Iterable[str | _HistoryMessage]
+        Commit history to scan, consumed lazily. A bare string counts as a
+        non-merge commit, so it can never supply merge-commit evidence.
 
     Returns
     -------

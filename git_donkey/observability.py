@@ -104,7 +104,7 @@ type CleanupModeLabel = typ.Literal["default", "soft", "hard"]
 """Fixed labels for the git-plonk mode a cleanup step ran in."""
 
 type SkipReasonLabel = typ.Literal[
-    "dirty", "unavailable", "unreadable", "removal_failed"
+    "dirty", "unavailable", "unreadable", "locked", "removal_failed"
 ]
 """Fixed labels for why a cleanup step left a worktree in place."""
 

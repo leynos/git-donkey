@@ -58,6 +58,33 @@ class StubCommands:
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
+class StubbedPullRequest:
+    """The merged pull request a scenario's ``gh`` stub reports.
+
+    Attributes
+    ----------
+    number : int
+        Pull-request number the stub reports.
+    head_branch : str
+        Head branch the pull request must have.
+    base_branch : str
+        Base branch the pull request targets.
+    owner : str
+        Login of the head repository's owner.
+    head_sha : str
+        Commit the pull request's head branch had, which must equal the local
+        branch tip for the fallback to accept it.
+
+    """
+
+    number: int
+    head_branch: str
+    base_branch: str
+    owner: str
+    head_sha: str
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
 class GitHubCliStub:
     """A recording, failing ``gh`` executable placed first on ``PATH``.
 
@@ -82,21 +109,15 @@ class GitHubCliStub:
         self.log_path.unlink(missing_ok=True)
         self.payload_path.unlink(missing_ok=True)
 
-    def stub_merged_pull_request(
-        self,
-        *,
-        number: int,
-        head_branch: str,
-        base_branch: str,
-        owner: str,
-    ) -> None:
+    def stub_merged_pull_request(self, pull_request: StubbedPullRequest) -> None:
         """Make the stub answer with one matching merged pull request."""
         payload = [
             {
-                "number": number,
-                "headRefName": head_branch,
-                "baseRefName": base_branch,
-                "headRepositoryOwner": {"login": owner},
+                "number": pull_request.number,
+                "headRefName": pull_request.head_branch,
+                "baseRefName": pull_request.base_branch,
+                "headRepositoryOwner": {"login": pull_request.owner},
+                "headRefOid": pull_request.head_sha,
             }
         ]
         self.payload_path.write_text(json.dumps(payload), encoding="utf-8")

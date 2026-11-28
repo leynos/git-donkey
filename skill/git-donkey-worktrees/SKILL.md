@@ -78,7 +78,8 @@ Follow existing issue or roadmap naming conventions when the task has a real
 identifier. Do not invent an issue number to enable cleanup. Ordinary feature
 names are valid, but completion for them may depend on the GitHub fallback,
 which requires a GitHub principal remote, an installed and authenticated `gh`,
-and a merged pull request whose head and base branches and head owner match.
+and a merged pull request whose head branch, base branch, head owner, and head
+commit match.
 
 Validate a task-specific branch name, then let donkey select the remote default:
 

@@ -261,6 +261,34 @@ def test_donkey_worktree_candidates_retain_every_branched_worktree(
     ], "only an issue branch exposes an issue number for the history matchers"
 
 
+def test_candidates_carry_the_checked_out_commit_and_lock_state(
+    tmp_path: Path,
+) -> None:
+    """Selection should preserve the details the later tiers rely on."""
+    worktrees_root = tmp_path / _WORKTREES_ROOT_NAME
+    commit_id = "a" * 40
+    stanzas: list[dict[str, object]] = [
+        {
+            "worktree": (worktrees_root / "issue-123-fix").as_posix(),
+            "HEAD": commit_id,
+            "branch": "refs/heads/issue-123-fix",
+            "locked": True,
+        },
+        _stanza(worktrees_root / "issue-456-fix", "issue-456-fix"),
+    ]
+
+    candidates = plonk_selection._donkey_worktree_candidates(
+        stanzas, worktrees_root, tmp_path
+    )
+
+    assert [candidate.commit_id for candidate in candidates] == [commit_id, None], (
+        "each candidate carries the checked-out commit, when Git reported one"
+    )
+    assert [candidate.is_locked for candidate in candidates] == [True, False], (
+        "each candidate carries the registration's lock state"
+    )
+
+
 def test_anchor_stanza_is_never_a_cleanup_target(tmp_path: Path) -> None:
     """The main checkout stays out of scope even when a root contains it."""
     worktrees_root = tmp_path / "root"

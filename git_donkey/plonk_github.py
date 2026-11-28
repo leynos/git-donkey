@@ -33,7 +33,7 @@ from git_donkey import observability
 _DEFAULT_TIMEOUT_SECONDS = 10.0
 _GH_PROMPT_DISABLED_ENV = "GH_PROMPT_DISABLED"
 _GH_HOST_ENV = "GH_HOST"
-_GH_FIELDS = "number,headRefName,baseRefName,headRepositoryOwner"
+_GH_FIELDS = "number,headRefName,baseRefName,headRepositoryOwner,headRefOid"
 _GH_MISSING_STATUS = 127
 # A bounded page lets the local identity filter see past same-named fork
 # branches without unbounded pagination. 100 is the REST API's maximum page.
@@ -102,6 +102,10 @@ class _PullRequestQuery:
         Head branch the pull request must have.
     base_branch : str
         Base branch the pull request must target.
+    head_sha : str
+        Commit the local branch had checked out. The merged pull request must
+        record the same head commit, so a reused branch name does not complete
+        new work on the strength of an earlier merge.
 
     """
 
@@ -109,6 +113,7 @@ class _PullRequestQuery:
     repository: str
     head_branch: str
     base_branch: str
+    head_sha: str
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -277,12 +282,15 @@ def _matching_pull_request_number(
             "headRefName": str() as head,
             "baseRefName": str() as base,
             "headRepositoryOwner": {"login": str() as login},
+            "headRefOid": str() as head_sha,
         }:
             if isinstance(number, bool) or number <= 0:
                 return None
             if head != query.head_branch or base != query.base_branch:
                 return None
             if login.casefold() != query.owner.casefold():
+                return None
+            if head_sha.casefold() != query.head_sha.casefold():
                 return None
             return number
     return None
@@ -316,9 +324,11 @@ def merged_pull_request(
 
     The query is read-only. Every failure mode maps to ``unknown``: a non-zero
     exit, a timeout or other process error, malformed JSON, or a response whose
-    head branch, base branch, or head owner does not match the request. Only a
-    response that matches all three is accepted as ``merged``. An empty result
-    is ``not_merged``, which is a definitive answer but not completion evidence.
+    head branch, base branch, head owner, or head commit does not match the
+    request. Only a response that matches all four is accepted as ``merged``.
+    The head commit must match because a user may reuse a merged branch name
+    for new work; the old merge must not complete it. An empty result is
+    ``not_merged``, which is a definitive answer but not completion evidence.
 
     Parameters
     ----------

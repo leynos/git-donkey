@@ -303,52 +303,64 @@ def test_preflight_ignores_inherited_repository_location(
     )
 
 
-def test_preflight_reports_an_unreadable_git_file_as_a_skip(
-    tmp_path: Path,
+type _UnreadableFailure = typ.Literal[
+    "directory", "git-file", "git-command-error", "encoding-error"
+]
+
+
+def _make_preflight_unreadable(
     monkeypatch: pytest.MonkeyPatch,
+    failure: _UnreadableFailure,
 ) -> None:
-    """An unreadable worktree ``.git`` file must not abort the batch."""
-    repo, worktree_path = _worktree_with_dirt(tmp_path, "clean")
+    """Make one stage of the preflight raise an unreadable-state failure."""
+    match failure:
+        case "directory":
 
-    def fail_repo(path: Path) -> Repo:
-        """Simulate a permission error while opening the worktree."""
-        raise PermissionError(path)
+            def fail_is_dir(self: Path) -> bool:
+                """Simulate a path the process is not allowed to stat."""
+                raise PermissionError(self)
 
-    monkeypatch.setattr(plonk_adapters, "Repo", fail_repo)
+            monkeypatch.setattr(Path, "is_dir", fail_is_dir)
 
-    reason = plonk._GitWorktreeAdapter(repo).skip_reason(worktree_path)
+        case "git-file":
 
-    assert reason is plonk_records._SkipReason.UNREADABLE, (
-        "expected an unreadable .git file to be reported as a skip"
-    )
+            def fail_repo(path: Path) -> Repo:
+                """Simulate a permission error while opening the worktree."""
+                raise PermissionError(path)
+
+            monkeypatch.setattr(plonk_adapters, "Repo", fail_repo)
+
+        case "git-command-error" | "encoding-error":
+            error: Exception = (
+                GitCommandError(["git", "status"], 128)
+                if failure == "git-command-error"
+                else UnicodeEncodeError("ascii", "é", 0, 1, "ordinal not in range")
+            )
+
+            def fail_is_dirty(self: Repo, **kwargs: object) -> bool:
+                """Simulate a failure while reading the candidate's status."""
+                raise error
+
+            monkeypatch.setattr(Repo, "is_dirty", fail_is_dirty)
 
 
 @pytest.mark.parametrize(
-    "error",
+    "failure",
     [
-        pytest.param(
-            GitCommandError(["git", "status"], 128),
-            id="git-command-error",
-        ),
-        pytest.param(
-            UnicodeEncodeError("ascii", "é", 0, 1, "ordinal not in range"),
-            id="encoding-error",
-        ),
+        pytest.param("directory", id="unreadable-directory"),
+        pytest.param("git-file", id="unreadable-git-file"),
+        pytest.param("git-command-error", id="unreadable-status"),
+        pytest.param("encoding-error", id="encoding-error"),
     ],
 )
-def test_preflight_reports_an_unreadable_state_as_a_skip(
+def test_preflight_reports_unreadable_state_as_a_skip(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-    error: Exception,
+    failure: _UnreadableFailure,
 ) -> None:
-    """A failed dirty check must not abort the cleanup batch."""
+    """Any unreadable worktree state is a skip, never a batch abort."""
     repo, worktree_path = _worktree_with_dirt(tmp_path, "clean")
-
-    def fail_is_dirty(self: Repo, **kwargs: object) -> bool:
-        """Simulate a failure while reading the candidate's status."""
-        raise error
-
-    monkeypatch.setattr(Repo, "is_dirty", fail_is_dirty)
+    _make_preflight_unreadable(monkeypatch, failure)
 
     reason = plonk._GitWorktreeAdapter(repo).skip_reason(worktree_path)
 
@@ -395,6 +407,66 @@ def test_upstream_state_maps_a_timeout_to_unknown(
     )
     assert recording_recorder.unbounded_values() == set(), (
         "every recorded value comes from a declared vocabulary"
+    )
+
+
+def test_upstream_state_records_a_failed_query_as_a_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    recording_recorder: RecordingRecorder,
+) -> None:
+    """A non-zero exit other than "no match" is a failed query, not a success."""
+    repo, _remote_path, branch = _repository_with_tracking(tmp_path, "present")
+
+    def fail_run(
+        arguments: typ.Sequence[str],
+        **kwargs: object,
+    ) -> subprocess.CompletedProcess[str]:
+        """Report the generic Git failure status for the query."""
+        return subprocess.CompletedProcess(arguments, 128, "", "fatal: unreachable")
+
+    monkeypatch.setattr(
+        plonk_adapters.shutil,
+        "which",
+        lambda name: "/usr/bin/git",
+    )
+    monkeypatch.setattr(plonk_adapters.subprocess, "run", fail_run)
+
+    state = plonk._GitWorktreeAdapter(repo).upstream_state(branch)
+
+    assert state == "unknown", "expected a failed query to be reported as unknown"
+    assert [
+        (observation.operation, observation.outcome)
+        for observation in recording_recorder.observations
+    ] == [("upstream_lookup", "failure")], (
+        "expected the failed query to record one bounded failure"
+    )
+    assert recording_recorder.error_kinds("upstream_lookup") == ["git_command_error"], (
+        "expected the failed query to name the Git error class"
+    )
+
+
+def test_history_messages_carry_the_merge_status(tmp_path: Path) -> None:
+    """Only a real merge commit may supply classic merge evidence."""
+    repo = git_repo_helpers.seed_repo(tmp_path / "repo")
+    working_tree = Path(repo.working_tree_dir or ".")
+    repo.git.checkout("-b", "feature")
+    (working_tree / "feature.txt").write_text("feature")
+    repo.index.add(["feature.txt"])
+    repo.index.commit("Feature work")
+    repo.git.checkout("main")
+    repo.git.merge("feature", "--no-ff", "-m", "Merge feature")
+
+    history = list(plonk_adapters._GitWorktreeAdapter(repo).history_messages("HEAD"))
+    merge_status = {
+        entry.text.splitlines()[0]: entry.is_merge_commit for entry in history
+    }
+
+    assert merge_status["Merge feature"] is True, (
+        "expected the two-parent commit to be reported as a merge"
+    )
+    assert merge_status["Feature work"] is False, (
+        "expected the one-parent commit to be reported as an ordinary commit"
     )
 
 

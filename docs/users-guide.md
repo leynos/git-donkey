@@ -436,10 +436,12 @@ the worktree is clean. Three branch-name shapes are recognized offline:
 
 An issue branch also accepts the signals GitHub writes into commit messages: a
 closing keyword such as `Closes #123`, with `Fixes` and `Resolves` and their
-inflections, an optional colon, and no owner or repository prefix; a classic
-merge commit such as `Merge pull request #45 from owner/issue-123-short-title`
-whose branch segment matches exactly, whatever its pull-request number; and the
-branch name appearing verbatim in a bounded context.
+inflections, a required separator (whitespace, or a colon with optional
+surrounding whitespace), and no owner or repository prefix; a classic merge
+commit such as `Merge pull request #45 from owner/issue-123-short-title` in the
+subject of a real merge commit, whose branch segment matches exactly, whatever
+its pull-request number; and the branch name appearing verbatim in a bounded
+context.
 
 ### GitHub fallback
 
@@ -447,10 +449,11 @@ When no offline signal resolves a branch, `git plonk` asks GitHub whether a
 merged pull request exists for it. The fallback is enabled by default when the
 principal remote is GitHub and `gh` is installed. The query is read-only, and a
 result is accepted only when its head branch, base branch (the advertised
-trunk), and head owner match the request. A failed, timed-out, malformed, or
-mismatched response counts as unknown, never merged. Pass `--no-github` to
-disable the fallback. A missing `gh` is reported once as a notice and also
-disables it.
+trunk), head owner, and head commit match the request. The commit check keeps a
+reused branch name from completing new work on the strength of an earlier
+merge. A failed, timed-out, malformed, or mismatched response counts as
+unknown, never merged. Pass `--no-github` to disable the fallback. A missing
+`gh` is reported once as a notice and also disables it.
 
 ### Upstream-gone check
 
@@ -477,8 +480,10 @@ Cleanup never discards uncommitted worktree files. A completed worktree holding
 modified, staged, or untracked files is skipped and reported, and the sweep
 continues with the remaining worktrees, so one dirty candidate cannot strand
 its clean siblings. Files ignored by `.gitignore` are the exception, because
-Git's own removal rule ignores them too. There is no option that forces
-removal, so a skipped worktree stays on disk with its branch intact.
+Git's own removal rule ignores them too. A worktree with a locked registration
+is skipped as `worktree is locked`, including in a dry run, because Git refuses
+to remove it. There is no option that forces removal, so a skipped worktree
+stays on disk with its branch intact.
 
 In hard mode, if Git refuses to delete a local branch, the command reports it
 under a `Failed branch deletions:` heading and continues with the remaining

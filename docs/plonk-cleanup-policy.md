@@ -102,11 +102,15 @@ Three branch-name shapes are recognized without any network access:
 
 An issue branch additionally enables three history matchers. A closing keyword
 matches `close`, `fix`, or `resolve` and their inflections, case-insensitively,
-with an optional colon, an exact `#N` not followed by a digit, and no
-owner/repository prefix. A classic merge commit matches
-`Merge pull request #M from <owner>/<exact-branch>`, so the pull-request number
-is irrelevant. The branch name itself matches only in a bounded context, never
-as a substring of a longer token.
+with a required separator (whitespace, or a colon with optional surrounding
+whitespace), an exact `#N` not followed by a digit, and no owner/repository
+prefix. Without the separator, prose such as `fix#62` would not count. A
+classic merge commit matches
+`Merge pull request #M from <owner>/<exact-branch>` in the commit subject, so
+the pull-request number is irrelevant. The commit must have more than one
+parent: a one-parent commit whose subject or body copies the merge syntax is
+not merge evidence. The branch name itself matches only in a bounded context,
+never as a substring of a longer token.
 
 Within one commit message, the completion marker wins over the weaker issue
 signals. The history scan stops as soon as every candidate with an offline
@@ -125,17 +129,18 @@ GitHub repository.
 The fallback is enabled by default only when the principal remote is GitHub and
 `gh` is installed. The query is scoped to the head branch and the advertised
 base branch, and a result is accepted only when its head branch, base branch,
-and head owner all match. A failed, timed-out, malformed, or mismatched
-response is `unknown`, never `merged`, and an empty result is a definitive "no
-merged pull request" rather than a failure. A missing `gh` is reported once per
-run as a notice, and the sweep fails closed. `--no-github` disables the tier
-explicitly; it is not valid with `--soft`, which does not judge completion.
+head owner, and head commit all match. The head commit must equal the commit
+the local worktree has checked out, because a branch name can be reused for new
+work after its earlier pull request merged; the old merge must not complete the
+new branch. A failed, timed-out, malformed, or mismatched response is
+`unknown`, never `merged`, and an empty result is a definitive "no merged pull
+request" rather than a failure. A missing `gh` is reported once per run as a
+notice, and the sweep fails closed. `--no-github` disables the tier explicitly;
+it is not valid with `--soft`, which does not judge completion.
 
-As with the history-marker tier, the fallback does not require the local branch
-tip to equal the merged head. A commit made locally after the merge does not
-invalidate the evidence: default mode keeps the branch, so the commit survives,
-and hard mode deletes it only when the operator explicitly asks for branch
-deletion.
+Hard mode still force-deletes the branch, so a squash merge leaves the branch
+commits reachable only through that branch. Inspect each branch tip before
+running hard mode.
 
 ### Opt-in upstream-gone check
 
@@ -183,16 +188,18 @@ vocabulary:
 
 - `uncommitted changes`: the worktree exists and Git refuses to remove it.
 - `worktree directory is missing`: the recorded path is not a worktree.
-- `worktree state could not be read`: the preflight could not query Git, so
-  the worktree is left alone and the sweep continues.
+- `worktree state could not be read`: the preflight could not query Git, or
+  the process was not allowed to read the path, so the worktree is left alone
+  and the sweep continues.
+- `worktree is locked`: the registration is locked, which Git records in
+  `git worktree list --porcelain`. The planning phase reads that state, so a
+  dry run previews the same skip a real run reports instead of promising a
+  removal Git would refuse.
 - `worktree removal failed`: Git refused for another reason; the refusal is
   also reported on stderr and logged.
 
-A locked worktree is not detected by the preflight, because the lock is a
-registration property rather than a working-tree state. The unforced removal
-refuses it, and it is reported as `worktree removal failed`. A worktree with a
-populated submodule is treated the same way: the preflight does not classify it
-as dirty, and the unforced removal refuses it.
+A worktree with a populated submodule is treated like a removal failure: the
+preflight does not classify it as dirty, and the unforced removal refuses it.
 
 Skips keep the run's exit code at 0. A skip is a reported decision, not a
 failure of the command. A branch Git refuses to delete is reported as a failed

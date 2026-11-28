@@ -454,6 +454,35 @@ def stage_tracked_change(
     Repo(readme.parent).index.add([readme.as_posix()])
 
 
+def merge_commit_on_trunk(local_path: Path, subject: str) -> None:
+    """Create a real two-parent merge on ``main`` and push it to ``origin``.
+
+    The scenario needs an actual merge commit, not a one-parent commit whose
+    subject merely looks like one, because merge evidence requires two parents.
+
+    Parameters
+    ----------
+    local_path : Path
+        Working repository to merge in and push from.
+    subject : str
+        Subject line of the merge commit, such as the classic GitHub merge
+        syntax naming a branch.
+
+    """
+    repo = Repo(local_path)
+    repo.git.checkout("main")
+    repo.git.checkout("-b", "merge-source", "main")
+    sequence = sum(1 for _ in repo.iter_commits("main"))
+    source_path = local_path / f"merge-source-{sequence}.txt"
+    source_path.write_text(subject)
+    repo.index.add([source_path.as_posix()])
+    repo.index.commit("Side work for merge")
+    repo.git.checkout("main")
+    repo.git.merge("merge-source", "--no-ff", "-m", subject)
+    repo.git.branch("-D", "merge-source")
+    repo.remote("origin").push("main")
+
+
 def commit_message_on_branch(
     local_path: Path,
     branch_name: str,

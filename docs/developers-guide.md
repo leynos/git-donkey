@@ -425,17 +425,19 @@ reporting, summary rendering, and CLI parsing:
 - `git_donkey.plonk_policy` owns offline branch-name and commit-message policy.
   It recognizes issue branches (`(#123)`), df12-build roadmap branches
   (`(2.2.1)`), and legacy roadmap branches (`(road.1.2.3a.4)`), and scans
-  history for markers, issue closing keywords, exact merge-commit branches, and
-  bounded verbatim branch names. It returns completion evidence and stays free
-  of GitPython, filesystem, and process mutation.
+  history for markers, issue closing keywords, the exact branch named in a
+  merge commit's subject, and bounded verbatim branch names. Merge evidence
+  requires a commit with more than one parent. It returns completion evidence
+  and stays free of GitPython, filesystem, and process mutation.
 - `git_donkey.plonk_records` owns the values and vocabulary: modes, completion
-  signals, upstream states, skip and unverified reasons, candidates, evidence,
-  results, and contexts. It holds values only: no Git access and no filesystem
-  access.
+  signals, upstream states, skip and unverified reasons, history messages,
+  candidates, evidence, results, and contexts. It holds values only: no Git
+  access and no filesystem access.
 - `git_donkey.plonk_selection` turns parsed `git worktree list --porcelain`
   stanzas into every branched candidate strictly under the worktree root,
-  carrying the marker and issue number the branch name implies. It is pure: it
-  reads stanza values and path objects, never Git state or the filesystem.
+  carrying the marker, issue number, checked-out commit, and lock state the
+  branch and registration imply. It is pure: it reads stanza values and path
+  objects, never Git state or the filesystem.
 - `git_donkey.plonk_completion` owns the fallback tiers. It resolves the offline
   evidence, queries the GitHub merged-pull-request lookup and the opt-in
   upstream check in order, caches one verdict per branch, and reports
@@ -460,20 +462,24 @@ reporting, summary rendering, and CLI parsing:
 
 `git_donkey.plonk_policy.completed_candidates` is generic over its candidate
 type: it accepts any iterable whose items expose read-only `branch_name`,
-`marker`, and `issue_number` properties, and returns `(candidate, evidence)`
-pairs in input order. It never mutates the candidates it receives.
-`git_donkey.plonk` therefore passes its worktree candidates directly.
+`marker`, and `issue_number` properties, plus an iterable of history entries
+(`str`, or `_HistoryMessage` carrying the commit's parent information), and
+returns `(candidate, evidence)` pairs in input order. It never mutates the
+candidates it receives. `git_donkey.plonk` therefore passes its worktree
+candidates directly, and `_GitWorktreeAdapter.history_messages()` supplies the
+merge status the merge-commit matcher requires.
 
 The plonk workflow deliberately reads completion history from the canonical
 trunk ref resolved by `remote_default`. This allows `git plonk` to be invoked
 from a linked topic worktree while still using the trunk history that contains
 issue or roadmap merge markers.
 
-Default and hard modes consider every linked worktree under
-`../{repo}.worktrees` and resolve completion in three tiers: offline history
-evidence first, the GitHub merged-pull-request fallback second when the
-principal remote is GitHub and `gh` is installed, and the opt-in gone-upstream
-check third. A candidate no tier resolves is reported under
+Default and hard modes consider every linked worktree under the worktrees root
+`git_donkey.layout` resolves — the sibling `../{repo}.worktrees` by default, or
+the directory `donkey.worktreesRoot` names — and resolve completion in three
+tiers: offline history evidence first, the GitHub merged-pull-request fallback
+second when the principal remote is GitHub and `gh` is installed, and the
+opt-in gone-upstream check third. A candidate no tier resolves is reported under
 `Unverified worktrees:` and kept. Before removing a completed worktree, the
 sweep asks `_GitWorktreeAdapter.skip_reason()` whether Git would discard it
 unprompted: worktrees with modified, staged, or untracked files, worktrees

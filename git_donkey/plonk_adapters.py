@@ -25,7 +25,12 @@ import typing as typ
 from git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
 
 from git_donkey import helpers, observability
-from git_donkey.plonk_records import GIT_PLONK_PREFIX, UpstreamState, _SkipReason
+from git_donkey.plonk_records import (
+    GIT_PLONK_PREFIX,
+    UpstreamState,
+    _HistoryMessage,
+    _SkipReason,
+)
 
 if typ.TYPE_CHECKING:
     from pathlib import Path
@@ -34,6 +39,8 @@ _LOGGER = logging.getLogger(__name__)
 # `git ls-remote --exit-code` reports "no matching refs" with this status, and
 # `git config --get-all` reports an unset key with this one.
 _LS_REMOTE_NO_MATCH_STATUS = 2
+# A query that answered the advertisement, whether or not a ref matched.
+_LS_REMOTE_QUERY_STATUSES = frozenset({0, _LS_REMOTE_NO_MATCH_STATUS})
 _CONFIG_KEY_UNSET_STATUS = 1
 _LS_REMOTE_TIMEOUT_SECONDS = 10.0
 _GIT_TERMINAL_PROMPT_ENV = "GIT_TERMINAL_PROMPT"
@@ -88,14 +95,35 @@ class _GitWorktreeAdapter:
         self,
         arguments: typ.Sequence[str],
     ) -> subprocess.CompletedProcess[str] | None:
-        """Run a bounded ``ls-remote``, timing it and recording the outcome."""
+        """Run a bounded ``ls-remote``, timing it and recording the outcome.
+
+        Statuses 0 and 2 are successful advertisement queries: one found the
+        ref, the other reports that no ref matched. Any other non-zero status
+        is a failed query, so it is recorded as a failure rather than being
+        reported as a successful answer.
+
+        Returns
+        -------
+        subprocess.CompletedProcess[str] | None
+            The completed query, or ``None`` when it could not run.
+
+        """
         with observability.get_recorder().span("upstream_lookup"):
             completed = self._run_ls_remote_process(arguments)
+        error_kind: observability.ErrorKind | None = None
+        if completed is None:
+            outcome: observability.Outcome = "failure"
+            error_kind = "os_error"
+        elif completed.returncode in _LS_REMOTE_QUERY_STATUSES:
+            outcome = "success"
+        else:
+            outcome = "failure"
+            error_kind = "git_command_error"
         observability.get_recorder().record(
             observability.Observation(
                 operation="upstream_lookup",
-                outcome="failure" if completed is None else "success",
-                error_kind="os_error" if completed is None else None,
+                outcome=outcome,
+                error_kind=error_kind,
             )
         )
         return completed
@@ -163,14 +191,26 @@ class _GitWorktreeAdapter:
             else "gone"
         )
 
-    def history_messages(self, ref: str) -> typ.Iterator[str]:
-        """Return commit messages from ``ref`` history."""
+    def history_messages(self, ref: str) -> typ.Iterator[_HistoryMessage]:
+        """Return commit messages from ``ref`` history with their merge status.
+
+        The parent count travels with the message because classic merge
+        evidence is only valid for a real merge commit; a one-parent commit
+        whose body copies the merge syntax must not complete a branch.
+
+        Yields
+        ------
+        _HistoryMessage
+            One entry per commit, newest first, with its merge status.
+        """
         for commit in self.repo.iter_commits(ref):
-            match commit.message:
-                case bytes() as message:
-                    yield message.decode(errors="replace")
-                case message:
-                    yield message
+            message = commit.message
+            text = (
+                message.decode(errors="replace")
+                if isinstance(message, bytes)
+                else message
+            )
+            yield _HistoryMessage(text, is_merge_commit=len(commit.parents) > 1)
 
     def upstream_state(self, branch_name: str) -> UpstreamState:
         """Return whether ``branch_name``'s configured upstream exists.
@@ -251,9 +291,12 @@ class _GitWorktreeAdapter:
             observability.get_recorder().span("worktree_preflight"),
             _clean_git_environment(),
         ):
-            if not worktree_path.is_dir():
-                return _SkipReason.UNAVAILABLE
             try:
+                # A stat that the process is not allowed to make raises
+                # PermissionError; the sweep must report it as unreadable
+                # rather than abandon the remaining candidates.
+                if not worktree_path.is_dir():
+                    return _SkipReason.UNAVAILABLE
                 with Repo(worktree_path) as worktree_repo:
                     if worktree_repo.is_dirty(untracked_files=True):
                         return _SkipReason.DIRTY

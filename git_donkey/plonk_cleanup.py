@@ -108,7 +108,14 @@ def _clean_completed_candidate(
     candidate = removable.candidate
     adapter: _GitWorktreeAdapter = state.adapter
     mode = state.mode
-    reason = adapter.skip_reason(candidate.worktree_path)
+    # Git refuses to remove a locked registration, so reporting the skip while
+    # planning keeps a preview honest instead of promising a removal that the
+    # real run cannot perform.
+    reason = (
+        _SkipReason.LOCKED
+        if candidate.is_locked
+        else adapter.skip_reason(candidate.worktree_path)
+    )
     if reason is not None:
         _log_candidate_left(candidate, mode, _candidate_skip_event(reason))
         _record_step(

@@ -30,6 +30,7 @@ from tests.integration.plonk_helpers import (
     commit_message_on_branch,
     create_git_donkey_worktree,
     marker_removal_entry,
+    merge_commit_on_trunk,
     record_plonk_run,
 )
 from tests.output_assertions import require_stream, stream
@@ -106,6 +107,12 @@ def repository_trunk_commit_message(
         "main",
         message.replace("\\n", "\n"),
     )
+
+
+@given(parsers.parse('a trunk merge commit with message "{message}"'))
+def trunk_merge_commit(scenario: PlonkScenario, message: str) -> None:
+    """Create a real two-parent merge commit carrying ``message``."""
+    merge_commit_on_trunk(scenario.local_path, message)
 
 
 @given(

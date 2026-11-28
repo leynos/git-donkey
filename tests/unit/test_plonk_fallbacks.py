@@ -32,16 +32,20 @@ if typ.TYPE_CHECKING:
 
 _GITHUB_REMOTE_URL = "git@github.com:leynos/demo.git"
 _DESCRIPTIVE_BRANCH = "fix-markdown-gates"
+_COMMIT_ID = "1" * 40
 
 
 def _descriptive_candidate(
     branch_name: str = _DESCRIPTIVE_BRANCH,
     worktree_path: Path | None = None,
+    *,
+    commit_id: str | None = _COMMIT_ID,
 ) -> plonk_records._PlonkCandidate:
     """Return a candidate whose branch name enables no offline matcher."""
     return plonk_records._PlonkCandidate(
         branch_name=branch_name,
         worktree_path=worktree_path or Path(f"/repo.worktrees/{branch_name}"),
+        commit_id=commit_id,
     )
 
 
@@ -173,8 +177,9 @@ def test_github_fallback_removes_a_descriptive_branch() -> None:
             "demo",
             _DESCRIPTIVE_BRANCH,
             "main",
+            _COMMIT_ID,
         )
-    ], "expected the lookup to use the raw remote owner and the advertised base"
+    ], "expected the lookup to use the branch tip and the advertised base"
 
 
 def test_github_lookup_runs_once_per_branch() -> None:
@@ -210,6 +215,35 @@ def test_github_unknown_leaves_the_candidate_unverified() -> None:
             plonk_records._UnverifiedReason.GITHUB_UNKNOWN,
         ),
     ), "expected the failed lookup to be reported as unverified"
+
+
+def test_github_without_a_local_commit_fails_closed() -> None:
+    """A candidate with no recorded commit cannot use a name-only merge."""
+    worktree = _descriptive_candidate(commit_id=None)
+    lookup = LookupStub(plonk_github._MergedPullRequest("merged", 61))
+
+    result = run_cleanup(
+        [worktree],
+        RecordingGitAdapter([]),
+        mode=plonk._PlonkMode.DEFAULT,
+        options=CleanupRunOptions(
+            context=_github_context([worktree]),
+            github_lookup=lookup,
+        ),
+    )
+
+    assert not result.removed_worktrees, (
+        "expected a candidate without a commit to remain in place"
+    )
+    assert result.unverified_worktrees == (
+        plonk_records._UnverifiedWorktree(
+            worktree.worktree_path,
+            plonk_records._UnverifiedReason.GITHUB_UNKNOWN,
+        ),
+    ), "expected the unverifiable lookup to be reported as unknown"
+    assert not lookup.queries, (
+        "expected the sweep not to spend a lookup it cannot verify"
+    )
 
 
 def test_github_not_merged_leaves_the_candidate_unverified() -> None:
