@@ -3,8 +3,10 @@
 # Generated with:
 #   uv pip compile --generate-hashes --python 3.13 <requirements>
 # where <requirements> names the `[build-system] requires` in pyproject.toml.
-# Regenerate and commit this file whenever those requires change; the build
-# runs `uv build --build-constraints build-constraints.txt --require-hashes`.
+# Regenerate and commit this file whenever those requires change. The release
+# build installs this file with `uv pip install --require-hashes` and runs
+# `uv build --no-build-isolation`, so these entries are the whole build
+# environment.
 docutils==0.23 \
     --hash=sha256:25d013af9bf23bc1c7b2b093dff4208166c53a94786c9e447808335ef1185fea \
     --hash=sha256:746f5060322511280a1e50eb76846ed6bf2342984b2ac04dc42caa1a8d78799e
