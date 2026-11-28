@@ -58,12 +58,13 @@ man -l docs/man/git-donkey.1
 Build a source distribution and a wheel using the normal release workflow:
 
 ```shell
-uv build
+make build-release
 ```
 
-The existing `make build-release` target also invokes the configured backend.
-Docutils generates roff directly; neither Pandoc nor a system roff formatter is
-a build dependency.[^2] The preview command alone requires a manual-page viewer.
+The `make build-release` target installs the same hash-pinned build environment
+as the release workflow's build action and builds without isolation. Docutils
+generates roff directly; neither Pandoc nor a system roff formatter is a build
+dependency.[^2] The preview command alone requires a manual-page viewer.
 
 ## Validation
 
@@ -78,6 +79,11 @@ make test
 Source-contract tests compare manual names, build commands, and installed paths
 with the console-script inventory. They also check manual sections, important
 options, and CLI parameter coverage without importing workflow modules.
+
+The release build also runs `scripts/check_dist.py`, which requires exactly one
+sdist and at least one wheel, the manual sources and Docutils configuration in
+the sdist, and one generated page per console script in each wheel. A pull
+request that builds without those inputs fails before a tag exists.
 
 Packaging integration tests build both distributions, inspect wheel data paths
 and `RECORD` hashes, and rebuild a wheel independently from the source archive.

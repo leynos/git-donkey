@@ -1,33 +1,78 @@
-name: Build Pure Python Wheel
-description: Builds a pure Python wheel using UV and uploads it as an artifact.
+---
+name: Build Pure Python Wheel and Sdist
+description: >-
+  Builds the source distribution and, from it, the pure Python wheel using uv,
+  checks both distributions, and uploads them as one artefact.
 inputs:
   python-version:
     description: Python version to set up
     required: true
   out-dir:
-    description: Directory to place built wheel
+    description: Directory to place the built sdist and wheel
     required: false
     default: dist
   artifact-name:
-    description: Name of the uploaded artifact
+    description: Name of the uploaded artefact
     required: true
 runs:
   using: composite
   steps:
-    - uses: actions/checkout@v7
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       with:
         fetch-depth: 0
+        persist-credentials: false
     - name: Set up Python
-      uses: actions/setup-python@v7
+      uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
       with:
         python-version: ${{ inputs.python-version }}
     - name: Install uv
-      uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d
-    - name: Build wheel
+      uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d  # v10.4.0
+      with:
+        enable-cache: false
+    # The build runs third-party code from `[build-system] requires` before
+    # anything is attested, so its environment is installed from hashes and
+    # the build runs without isolation; an unlisted dependency cannot resolve.
+    - name: Prepare the hash-pinned build environment
       shell: bash
-      run: uv build --wheel --out-dir ${{ inputs.out-dir }}
-    - name: Upload wheel artifact
-      uses: actions/upload-artifact@v7
+      env:
+        PYTHON_VERSION: ${{ inputs.python-version }}
+        BUILD_VENV: ${{ runner.temp }}/build-venv
+      run: |
+        set -euo pipefail
+        uv venv --python "${PYTHON_VERSION}" "${BUILD_VENV}"
+        uv pip install --python "${BUILD_VENV}/bin/python" --require-hashes \
+          -r build-constraints.txt
+    # Without --sdist or --wheel, uv builds the sdist first and then the wheel
+    # from that sdist, so every run also proves the sdist is buildable.
+    - name: Build sdist and wheel
+      shell: bash
+      env:
+        OUT_DIR: ${{ inputs.out-dir }}
+        BUILD_PYTHON: ${{ runner.temp }}/build-venv/bin/python
+      run: |
+        set -euo pipefail
+        uv build --out-dir "${OUT_DIR}" --no-build-isolation \
+          --python "${BUILD_PYTHON}"
+    # The release publishes this build, so a missing or incomplete sdist fails
+    # here rather than at tag time.
+    - name: Check the distribution contents
+      shell: bash
+      env:
+        OUT_DIR: ${{ inputs.out-dir }}
+      run: |
+        set -euo pipefail
+        python3 scripts/check_dist.py --dist "${OUT_DIR}"
+    - name: Upload sdist and wheel artefact
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
       with:
         name: ${{ inputs.artifact-name }}
-        path: ${{ inputs.out-dir }}/*.whl
+        path: |
+          ${{ inputs.out-dir }}/*.whl
+          ${{ inputs.out-dir }}/*.tar.gz
+        # A re-run of the same build replaces its previous attempt's artefact
+        # instead of failing on the duplicate name.
+        overwrite: true
+        # An out-dir whose name starts with a dot is hidden from the upload
+        # glob, and an empty match must fail rather than publish no build.
+        include-hidden-files: true
+        if-no-files-found: error

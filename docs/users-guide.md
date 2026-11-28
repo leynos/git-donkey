@@ -29,6 +29,36 @@ environment:
 uv tool install git-donkey
 ```
 
+Released versions are published to PyPI and, with identical bytes, to the tag's
+GitHub Release. To verify a downloaded wheel, use GitHub CLI 2.102.0 or newer.
+This example uses the stable `v1.2.3` tag. A pre-release tag may produce a
+differently spelled wheel filename, so verify the file the download actually
+produced:
+
+```shell
+gh release download v1.2.3 --repo leynos/git-donkey --pattern 'git_donkey-*'
+gh release download v1.2.3 --repo leynos/git-donkey --pattern '*.attestations.jsonl'
+gh attestation verify git_donkey-1.2.3-py3-none-any.whl \
+  --repo leynos/git-donkey \
+  --signer-workflow leynos/git-donkey/.github/workflows/release.yml
+```
+
+The command verifies the file against the repository's attestation store. The
+release also carries a combined attestation bundle covering every published
+file. For an offline check, download the trusted roots while still online,
+transfer them with the bundle, and pass both to the verifier:
+
+```shell
+gh attestation trusted-root > trusted_root.jsonl
+for bundle in git-donkey-v1.2.3-*.attestations.jsonl; do
+  gh attestation verify git_donkey-1.2.3-py3-none-any.whl \
+    --repo leynos/git-donkey \
+    --signer-workflow leynos/git-donkey/.github/workflows/release.yml \
+    --bundle "${bundle}" \
+    --custom-trusted-root trusted_root.jsonl && break
+done
+```
+
 For an unreleased source checkout, run `uv tool install .` from the repository
 root instead. The wheel includes a section-one manual for every console script:
 `git-donkey(1)`, `git-track(1)`, `git-fafo(1)`, `git-plonk(1)`,

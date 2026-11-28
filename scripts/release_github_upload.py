@@ -1,0 +1,152 @@
+"""Stage and verify the files the GitHub Release upload will receive.
+
+``publish-release`` stages every artefact the release lacks, checks that each
+file fetched from PyPI matches PyPI's index digest, and then requires approved
+build provenance for those exact bytes. Only then does the workflow upload
+them, so PyPI's index cannot by itself authorize bytes the release publishes.
+
+The CLI imports this module in the release job, so it stays
+standard-library-only; workflow ``curl``/``gh`` steps own network access.
+``scripts/release_assets.py`` owns the canonical-source decisions; this module
+owns how their GitHub upload set is assembled and checked.
+"""
+
+from __future__ import annotations
+
+import typing as typ
+
+from scripts.release_assets import (
+    ReleaseAssetError,
+    State,
+    require_digest,
+    sha256_of,
+)
+from scripts.release_provenance import ProvenanceRecordError, require_matching_record
+
+if typ.TYPE_CHECKING:
+    import collections.abc as cabc
+    from pathlib import Path
+
+
+def _require_pypi_bytes(
+    state: State, lacking: cabc.Iterable[str]
+) -> list[tuple[str, str]]:
+    """Return the PyPI files to fetch, refusing names the index does not list.
+
+    Every artefact the release lacks must already be on PyPI: ``publish-pypi``
+    ran first, so a name the index omits means the index has not caught up or
+    the upload did not happen. Uploading this run's rebuild in that state could
+    give the release different bytes from the ones PyPI serves, so the step
+    fails and a rerun waits for the index instead.
+
+    Returns
+    -------
+    list[tuple[str, str]]
+        One ``(name, url)`` pair per file the workflow must fetch from PyPI.
+
+    Raises
+    ------
+    ReleaseAssetError
+        If a lacking name is absent from PyPI's index, or any download URL
+        does not use HTTPS.
+    """
+    unlisted = [name for name in lacking if name not in state.pypi]
+    if unlisted:
+        msg = (
+            "PyPI's index does not list these release artefacts yet: "
+            f"{', '.join(unlisted)}; rerun once PyPI lists them"
+        )
+        raise ReleaseAssetError(msg)
+    fetch = [(name, state.pypi[name].url) for name in lacking]
+    if any(not url.startswith("https://") for _, url in fetch):
+        msg = "every PyPI download must use HTTPS"
+        raise ReleaseAssetError(msg)
+    return fetch
+
+
+def stage_github(state: State, output: Path) -> list[tuple[str, str]]:
+    """Stage what the GitHub Release lacks; return the PyPI files to fetch.
+
+    Parameters
+    ----------
+    state : State
+        The staged artefacts and both destinations' holdings.
+    output : pathlib.Path
+        The GitHub upload directory, created when absent.
+
+    Returns
+    -------
+    list[tuple[str, str]]
+        One ``(name, url)`` pair per file the workflow must fetch from PyPI.
+
+    Raises
+    ------
+    ReleaseAssetError
+        If a lacking name is absent from PyPI's index, or any download URL
+        does not use HTTPS.
+    """
+    lacking = sorted(state.plan().github_uploads)
+    fetch = _require_pypi_bytes(state, lacking)
+    output.mkdir(parents=True, exist_ok=True)
+    return fetch
+
+
+def check_fetched(state: State, output: Path) -> None:
+    """Raise ``ReleaseAssetError`` unless every fetched file matches PyPI.
+
+    Parameters
+    ----------
+    state : State
+        The staged artefacts and both destinations' holdings.
+    output : pathlib.Path
+        The GitHub upload directory holding the fetched files.
+    """
+    for name in sorted(state.plan().github_uploads & set(state.pypi)):
+        require_digest(output / name, state.pypi[name].sha256)
+
+
+def _provenance_failure(name: str, staged: Path, evidence: Path) -> str | None:
+    """Describe why one fetched file lacks approved build provenance."""
+    try:
+        require_matching_record(evidence / f"{name}.json", name, sha256_of(staged))
+    except OSError:
+        return "cannot read the fetched bytes"
+    except ProvenanceRecordError as error:
+        return str(error)
+    return None
+
+
+def check_provenance(state: State, output: Path, evidence: Path) -> None:
+    """Raise unless every fetched PyPI file has approved build provenance.
+
+    PyPI's index digest establishes only that a download arrived intact; it
+    says nothing about who built the bytes. Those bytes are uploaded to the
+    GitHub Release, whose assets are meant to be traceable to this
+    repository's release workflow, so each one must also match an approved
+    attestation. The digest is computed from the staged bytes rather than
+    taken from the index, so an index record that agrees with malicious bytes
+    cannot authorize them.
+
+    Parameters
+    ----------
+    state : State
+        The staged artefacts and both destinations' holdings.
+    output : pathlib.Path
+        The GitHub upload directory holding every file fetched from PyPI.
+    evidence : pathlib.Path
+        One ``<name>.json`` verifier result per fetched file.
+
+    Raises
+    ------
+    ReleaseAssetError
+        When any fetched file has no approved provenance for its staged
+        bytes; the message names every failing file.
+    """
+    problems = [
+        f"{name} has no approved build provenance ({reason})"
+        for name in sorted(state.plan().github_uploads & set(state.pypi))
+        if (reason := _provenance_failure(name, output / name, evidence))
+    ]
+    if problems:
+        msg = "; ".join(problems)
+        raise ReleaseAssetError(msg)

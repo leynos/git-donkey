@@ -37,13 +37,13 @@ TYPOS_CONFIG_BUILDER = $(UV_ENV) uv tool run --python 3.14 --from \
         typos-config-builder
 # The docstring gate scans these targets recursively, subject to interrogate's
 # default exclusions; a test checks that every tracked Python file lies under one.
-INTERROGATE_TARGETS ?= git_donkey tests conftest.py
+INTERROGATE_TARGETS ?= git_donkey tests scripts conftest.py
 # Level 2 prints a MISSED row per undocumented definition, which the
 # `interrogate` target fails on: the rounded percentage alone can pass a lone gap.
 INTERROGATE_FLAGS ?= -vv --fail-under 100
 INTERROGATE ?= $(UV_ENV) uv run interrogate
 # Pylint targets shared by both passes.
-PYLINT_TARGETS ?= git_donkey tests
+PYLINT_TARGETS ?= git_donkey tests scripts
 # Spend a tenth of the available cores on Pylint, leaving room for the other
 # agents and builds sharing this machine. The floor of two keeps the pass
 # parallel on small CI runners, whose core count never reaches the tenth.
@@ -80,8 +80,13 @@ all: build check-fmt lint typecheck test spelling
 build: uv .venv ## Build virtual-env and install deps
 	$(UV_ENV) uv sync --group dev
 
-build-release: ## Build artefacts (sdist & wheel)
-	python -m build --sdist --wheel
+build-release: uv ## Build artefacts (sdist & wheel)
+	rm -rf .uv-cache/build-venv
+	$(UV_ENV) uv venv --python 3.13 .uv-cache/build-venv
+	$(UV_ENV) uv pip install --python .uv-cache/build-venv/bin/python \
+	  --require-hashes -r build-constraints.txt
+	$(UV_ENV) uv build --no-build-isolation \
+	  --python .uv-cache/build-venv/bin/python
 
 clean: ## Remove build artifacts
 	rm -rf build dist *.egg-info \
@@ -165,7 +170,9 @@ skylos-allow: ## Document one named Skylos exception (SYMBOL=name REASON=text)
 
 typecheck: build uv ## Run typechecking
 	$(TY) --version
-	$(TY) check
+	# Name the project environment so ty resolves the repository's own modules
+	# (`git_donkey` and `scripts`) rather than whichever interpreter it detects.
+	$(TY) check --python .venv
 
 markdownlint: spelling $(MDLINT) ## Lint Markdown files and enforce spelling
 	$(MDLINT) '**/*.md'

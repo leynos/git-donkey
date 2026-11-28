@@ -76,6 +76,138 @@ generators and the uploader together is still a reviewed change.
 `tests/unit/test_publisher_builds_first.py` keeps the one repository fact the
 shared rules do not know: the publisher runs `make build` before it measures.
 
+## Publishing a release
+
+`release.yml` runs on a pushed `v<version>` tag. The tag's version, with one
+leading `v` removed, must equal the `version` in `[project]` in
+`pyproject.toml` as an exact string: `v0.2.0-beta1` matches `0.2.0-beta1`, and
+any other spelling fails before anything is attested or published. The workflow
+reports whether the version is a pre-release and reuses that answer for the
+GitHub Release.
+
+[ADR-004](adrs/adr-0004-release-pipeline.md) records the reconciliation rules,
+the rerun behaviour, and how `publish-release` assembles the attached
+attestation bundle from the store so it covers carried bytes too.
+
+The job graph is:
+
+1. `check-version` compares the tag with the manifest and checks that the
+   runner's GitHub CLI is 2.102.0 or newer.
+2. `build` runs the same `.github/actions/pure-python-wheel` action as the
+   `build-dist` pull-request job. The action installs its build environment
+   from the hash-pinned `build-constraints.txt` with `--require-hashes` and runs
+   `uv build --no-build-isolation`, so the backend and its dependencies are
+   fixed before anything is attested and an unlisted dependency cannot resolve.
+   It produces the sdist and then the wheel from it, and
+   `scripts/check_dist.py` requires exactly one sdist and at least one wheel
+   with the complete manual-page inventory.
+3. `attest` collects every wheel and the one sdist, records build provenance,
+   and hands them and a run-unique Sigstore bundle to later jobs.
+4. `draft-release` creates or reuses the tag's draft release, returns an
+   already published release to draft when it is no longer complete, and
+   verifies any assets a previous run left behind.
+5. `publish-pypi` runs in the `pypi` environment and uploads only the names
+   PyPI lacks through Trusted Publishing.
+6. `publish-release` gives the GitHub Release the names it lacks, takes PyPI's
+   bytes for any name PyPI already holds, and, when the release needs a new
+   bundle, verifies every distribution's provenance and assembles one from the
+   attestation store that covers every published distribution. The assembled
+   bundle is verified against each distribution before it is attached. On a
+   complete rerun the assembly is skipped and the release's provenance is
+   verified read-only through `gh attestation verify`, which reads the GitHub
+   attestation store; such a rerun fails if that API is unavailable. It then
+   re-fetches the PyPI index, verifies that both destinations hold the same
+   digests, that the exact bundle it verified is still attached, and that the
+   bundle covers the current digest of every distribution, and makes the
+   release visible.
+
+`make build-release` prepares the same hash-pinned environment and builds
+without isolation locally, so a contributor can inspect both distributions.
+Only the workflow publishes; never upload a hand-built artefact to PyPI or to a
+release.
+
+`build-constraints.txt` is generated with `uv pip compile --generate-hashes`
+from the `[build-system] requires` in `pyproject.toml`. Regenerate and commit
+it whenever those requirements change.
+
+### Safe re-runs
+
+A re-pushed tag queues behind a running release instead of cancelling it.
+Re-running the workflow for the same tag is safe: each filename's bytes are
+taken from PyPI first, then from the GitHub Release, then from the new build,
+and each destination receives only the names it lacks. When every name is
+already published with matching digests, the release holds a verified combined
+bundle covering every distribution, and its pre-release flag already matches
+the tag, the run stages, uploads, and edits nothing.
+
+A release stays a draft until both destinations hold identical digests. When
+the release already holds a differing asset, or PyPI holds bytes that no run
+attested for this tag and commit, the run fails and names the file. Delete the
+offending GitHub Release asset and rerun; a PyPI file cannot be replaced or
+re-uploaded under the same filename, so untraceable PyPI bytes require a new
+version.
+
+An upload that failed part-way can leave an asset in GitHub's `starter` state.
+A rerun does not remove it, and reconciliation refuses the listing until it is
+gone, even when the distribution digests agree. Delete the named asset and
+rerun.
+
+An already published release that a positive check finds incomplete is returned
+to draft before reconciliation, so it is never visible while a repair fails. An
+inconclusive check, such as an unavailable index, a failed download, or a
+verifier that cannot reach a verdict after retries, fails the run without
+editing the release or deleting an asset. A complete published release is left
+visible and is not edited.
+
+The release helpers in `scripts/` are checked by `interrogate` and both Pylint
+passes along with the package and tests. They use only the standard library so
+that no third-party package is resolved while the PyPI credential is live.
+
+### Verifying published artefacts
+
+Download the release's files and verify their provenance. Verification needs
+GitHub CLI 2.102.0 or newer.
+
+```shell
+set -e
+gh release download v1.2.3 --repo leynos/git-donkey --pattern 'git_donkey-*'
+for file in git_donkey-*.whl git_donkey-*.tar.gz; do
+  gh attestation verify "${file}" \
+    --repo leynos/git-donkey \
+    --signer-workflow leynos/git-donkey/.github/workflows/release.yml
+done
+```
+
+The loop verifies the sdist as well as the wheel, and `set -e` stops it, and
+fails the script, on the first failed download or verification. To reproduce
+the workflow's tag-and-commit pin, add `--source-ref refs/tags/v1.2.3` and
+`--source-digest <commit>`, where `<commit>` is the commit the tag names.
+
+### Release settings
+
+These settings are manual and must exist before the first automated release:
+
+- **GitHub environment:** create an environment named `pypi` and restrict its
+  deployment branches and tags to `v*.*.*`. `publish-pypi` runs in it.
+- **PyPI Trusted Publisher:** on the existing `git-donkey` project, add a
+  Trusted Publisher with owner `leynos`, repository `git-donkey`, workflow
+  `release.yml`, and environment `pypi`. No PyPI API token is stored in GitHub.
+- **Required check:** make the `build-dist` continuous-integration job a
+  required status check for pull requests, so a build without a complete sdist
+  cannot merge.
+- **Tag ruleset:** add a repository ruleset that blocks updates and deletions
+  of `v*.*.*` tags. The workflow checks each job's live tag commit, but only an
+  immutable tag stops a move in the interval between that check and the PyPI
+  upload, which PyPI cannot undo.
+- **Version:** the PyPI project already holds 0.2.0, uploaded outside this
+  workflow, and those files carry no provenance this repository attests. The
+  first automated release must therefore be above 0.2.0; a `v0.2.0` tag leaves
+  the GitHub Release a draft.
+- **Provenance policy:** the release carries a PyPI file over only when an
+  attestation binds its exact digest to this repository, `release.yml`, the
+  tag, and the triggering commit. A digest-matching but unattested file is not
+  carried; publish a new version instead of relaxing the gate.
+
 ## git-donkey workflow
 
 `git_donkey.donkey.run_git_donkey()` is the workflow function behind the
@@ -519,10 +651,10 @@ cannot read each other's entries, so the offline build then finds no
 nested inside the pinned `generate-coverage` action, and check that nested pin
 whenever the shared-actions commit changes.
 
-The `typecheck` target adds `scripts` to the type checker's module search path,
-because that directory holds PEP 723 single-file helpers that import each other
-by module name. Keep the path scoped to the target rather than changing
-application import paths.
+The `typecheck` target runs `ty check --python .venv`, naming the project
+environment so ty resolves the repository's own `git_donkey` and `scripts`
+modules. It adds no separate search path: a module that ty cannot resolve in
+the project environment is a real resolution problem, not a missing option.
 
 ## Lint workflow
 
@@ -545,8 +677,8 @@ Taking each in turn:
 - **Ruff** expands to `uv tool run ruff@$(RUFF_VERSION) check`, and is
   configured by `[tool.ruff]` in `pyproject.toml`.
 - **interrogate** runs through the `interrogate` target: `--fail-under 100`
-  over `INTERROGATE_TARGETS` (the package, `tests` and `conftest.py`), and a
-  failure if the report holds a `MISSED` row.
+  over `INTERROGATE_TARGETS` (the package, `scripts`, `tests`, and
+  `conftest.py`), and a failure if the report holds a `MISSED` row.
 - **pyscn** runs complexity and dead-code analysis. It is a `PATH` tool that
   continuous integration installs with `uv tool install pyscn`; it is not a
   development dependency.
@@ -562,10 +694,11 @@ Taking each in turn:
   configuration and exception policy.
 
 The two Pylint passes share `PYLINT_TARGETS`, which defaults to
-`git_donkey tests`, so both always analyse the same files. It is declared with
-`?=` and can be overridden on the command line. `PYLINT_JOBS` is a tenth of the
-machine's cores with a floor of two, keeping the pass parallel on small
-continuous integration runners while leaving headroom on large shared machines.
+`git_donkey tests scripts`, so both always analyse the same files. It is
+declared with `?=` and can be overridden on the command line. `PYLINT_JOBS` is
+a tenth of the machine's cores with a floor of two, keeping the pass parallel
+on small continuous integration runners while leaving headroom on large shared
+machines.
 
 Running `make lint` requires `uv`, `pyscn`, `yamllint` and `actionlint` on
 `PATH`; the Makefile's `TOOLS` list and `ensure_tool` check fail early with a
@@ -652,6 +785,13 @@ analyse identical syntax.
 The root `conftest.py` provides GitHub API stubs shared by unit and integration
 tests. Integration-specific Git repository helpers live in
 `tests/integration/conftest.py`.
+
+`tests/release_workflow.py` reads a workflow's `run` bodies and executes them
+under Bash in a scratch directory, so the release tests assert what the
+checked-in steps do rather than restating them. `tests/release_fake_tools.py`
+stands in for `gh` and `curl`, holding the release's assets, PyPI's files, and
+the attestation store in directories. The release step tests require Linux and
+Bash.
 
 `tests/git_repo_helpers.py` provides shared builders that create real
 repositories: `configure_repo()`, `seed_repo()`, and
@@ -817,11 +957,11 @@ uv build --wheel
 man -l docs/man/git-donkey.1
 ```
 
-Build both distributions to check the source boundary; the `build-release`
-target invokes the same build backend:
+Build both distributions to check the source boundary with the same hash-pinned
+environment as the release workflow's build action:
 
 ```shell
-uv build
+make build-release
 ```
 
 Run the focused manual tests:

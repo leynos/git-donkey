@@ -3,9 +3,12 @@
 This index summarizes the maintained project documentation.
 
 - [Developer guide](developers-guide.md) records local tooling, module
-  boundaries, test conventions, and the Python lint workflow.
+  boundaries, test conventions, the Python lint workflow, and the release
+  procedure.
 - [ADR-003: Python lint architecture][adr-003] records the Skylos dead-code
   tier and its exception policy.
+- [ADR-004: Release pipeline][adr-004] records the attested, reconciled
+  publication of the sdist and wheel to PyPI and the GitHub Release.
 - [Documentation style guide](documentation-style-guide.md) defines project
   documentation conventions.
 - [Git FAFO adoption](git-fafo-adoption.md) explains existing-repository
@@ -26,3 +29,4 @@ This index summarizes the maintained project documentation.
   cleanup changes and the new comparison commands.
 
 [adr-003]: adrs/adr-0003-python-lint-architecture.md
+[adr-004]: adrs/adr-0004-release-pipeline.md
