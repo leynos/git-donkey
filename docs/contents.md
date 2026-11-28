@@ -2,9 +2,10 @@
 
 This index summarizes the maintained project documentation.
 
-- [Developer guide](developers-guide.md) records local tooling, module
-  boundaries, test conventions, the Python lint workflow, and the release
-  procedure.
+- [Developer guide](developers-guide.md) records local tooling, test
+  conventions, the Python lint workflow, and the release procedure.
+- [Repository layout](repository-layout.md) is the canonical map of the
+  repository's paths and each module's responsibilities.
 - [ADR-003: Python lint architecture][adr-003] records the Skylos dead-code
   tier and its exception policy.
 - [ADR-004: Release pipeline][adr-004] records the attested, reconciled
