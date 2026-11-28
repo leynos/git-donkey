@@ -51,6 +51,9 @@ type CompletionSignal = typ.Literal[
 type UpstreamState = typ.Literal["unset", "present", "gone", "unknown"]
 """Fixed vocabulary for a branch's configured upstream."""
 
+type _LookupState = typ.Literal["merged", "not_merged", "unknown"]
+"""Fixed vocabulary for a merged-pull-request lookup."""
+
 
 class _UnverifiedReason(enum.StrEnum):
     """Why a candidate could not be shown to be complete.
@@ -153,6 +156,132 @@ class _HistoryMessage:
 
     text: str
     is_merge_commit: bool = False
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class _GitHubRepository:
+    """GitHub repository named by a configured remote URL.
+
+    Attributes
+    ----------
+    owner : str
+        Account or organization that owns the repository.
+    name : str
+        Repository name, without a trailing ``.git``.
+
+    """
+
+    owner: str
+    name: str
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class _PullRequestQuery:
+    """One read-only merged-pull-request query.
+
+    Attributes
+    ----------
+    owner : str
+        Owner of the repository to query.
+    repository : str
+        Repository name to query.
+    head_branch : str
+        Head branch the pull request must have.
+    base_branch : str
+        Base branch the pull request must target.
+    head_sha : str
+        Commit the local branch had checked out. The merged pull request must
+        record the same head commit, so a reused branch name does not complete
+        new work on the strength of an earlier merge.
+
+    """
+
+    owner: str
+    repository: str
+    head_branch: str
+    base_branch: str
+    head_sha: str
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class _PullRequestRecord:
+    """One neutral pull-request row parsed from a lookup response.
+
+    Attributes
+    ----------
+    number : int
+        Pull-request number, always positive.
+    head_branch : str
+        Head branch the pull request has.
+    base_branch : str
+        Base branch the pull request targets.
+    owner : str
+        Login of the head repository's owner.
+    head_sha : str
+        Commit the pull request's head branch had.
+
+    """
+
+    number: int
+    head_branch: str
+    base_branch: str
+    owner: str
+    head_sha: str
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class _MergedPullRequest:
+    """Outcome of one merged-pull-request lookup.
+
+    Attributes
+    ----------
+    state : _LookupState
+        ``merged`` only when a matching pull request was found; ``unknown``
+        whenever the answer could not be established.
+    number : int | None
+        Pull-request number, present only when ``state`` is ``merged``.
+
+    """
+
+    state: _LookupState
+    number: int | None = None
+
+
+class MergedPullRequestLookup(typ.Protocol):
+    """Injectable read-only merged-pull-request lookup."""
+
+    def __call__(self, query: _PullRequestQuery, /) -> _MergedPullRequest:
+        """Return whether ``query`` names a merged pull request."""
+
+
+class _GitPort(typ.Protocol):
+    """Git operations git-plonk's completion and cleanup units depend on."""
+
+    def history_messages(self, ref: str) -> typ.Iterator[_HistoryMessage]:
+        """Return commit history from ``ref``, newest first."""
+
+    def upstream_state(self, branch_name: str) -> UpstreamState:
+        """Return the state of ``branch_name``'s configured upstream."""
+
+    def skip_reason(
+        self,
+        worktree_path: Path,
+        *,
+        expected_branch: str | None = None,
+        expected_commit: str | None = None,
+    ) -> _SkipReason | None:
+        """Return why the worktree cannot be discarded, if it cannot."""
+
+    def remove_worktree(self, worktree_path: Path) -> bool:
+        """Remove ``worktree_path``, reporting whether Git removed it."""
+
+    def delete_branch(
+        self,
+        branch_name: str,
+        *,
+        expected_commit: str | None = None,
+    ) -> bool:
+        """Delete ``branch_name``, reporting whether Git deleted it."""
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -277,10 +406,10 @@ class _PlonkContext:
         Name of the principal remote.
     branch : str
         Default branch the principal remote advertises.
-    remote_url : str
-        Raw URL configured for ``remote``, read without applying ``insteadOf``.
-        The GitHub fallback is derived from it; an empty value disables one
-        that would otherwise be available.
+    github_repository : _GitHubRepository | None
+        GitHub repository the raw principal-remote URL names, or ``None`` when
+        the URL is not GitHub. Computed once by the composition layer so the
+        completion units need not parse transport syntax.
 
     """
 
@@ -292,7 +421,7 @@ class _PlonkContext:
     invoking_worktree: Path | None
     remote: str
     branch: str
-    remote_url: str
+    github_repository: _GitHubRepository | None
 
 
 @dataclasses.dataclass(frozen=True, slots=True)

@@ -398,6 +398,23 @@ name = "set_recorder"
 full_name = "git_donkey.observability.set_recorder"
 reason = "Called by embedders and the test suite to install a recorder"
 
+# The worktree adapter composes the remote probe and calls it through the
+# instance it injected, which the static call graph cannot follow.
+[[tool.skylos.dead_code.entrypoints]]
+name = "_RemoteRefProbe.branch_state"
+full_name = "git_donkey.plonk_remote._RemoteRefProbe.branch_state"
+reason = "Reached through the probe instance the worktree adapter composes"
+
+[[tool.skylos.dead_code.entrypoints]]
+name = "_RemoteRefProbe._ls_remote"
+full_name = "git_donkey.plonk_remote._RemoteRefProbe._ls_remote"
+reason = "Called by branch_state inside the composed probe"
+
+[[tool.skylos.dead_code.entrypoints]]
+name = "mentions_exact_ref"
+full_name = "git_donkey.plonk_remote.mentions_exact_ref"
+reason = "Called by branch_state inside the composed probe"
+
 [tool.skylos.gate]
 strict = true
 

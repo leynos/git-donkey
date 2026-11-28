@@ -15,17 +15,17 @@ safe to discard; those are policy questions answered elsewhere.
 
 from __future__ import annotations
 
-import contextlib
+import dataclasses
 import logging
 import os
 import re
 import shutil
-import subprocess  # ruff: ignore[suspicious-subprocess-import]  # bounded ls-remote
+import subprocess  # ruff: ignore[suspicious-subprocess-import]  # bounded status
 import typing as typ
 
-from git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
+from git import GitCommandError, Repo
 
-from git_donkey import helpers, observability
+from git_donkey import helpers, observability, plonk_remote
 from git_donkey.plonk_records import (
     GIT_PLONK_PREFIX,
     UpstreamState,
@@ -37,21 +37,17 @@ if typ.TYPE_CHECKING:
     from pathlib import Path
 
 _LOGGER = logging.getLogger(__name__)
-# `git ls-remote --exit-code` reports "no matching refs" with this status, and
-# `git config --get-all` reports an unset key with this one.
-_LS_REMOTE_NO_MATCH_STATUS = 2
-# A query that answered the advertisement, whether or not a ref matched.
-_LS_REMOTE_QUERY_STATUSES = frozenset({0, _LS_REMOTE_NO_MATCH_STATUS})
+# `git config --get-all` reports an unset key with this status.
 _CONFIG_KEY_UNSET_STATUS = 1
-_LS_REMOTE_TIMEOUT_SECONDS = 10.0
+_LOCAL_GIT_TIMEOUT_SECONDS = 10.0
 _GIT_TERMINAL_PROMPT_ENV = "GIT_TERMINAL_PROMPT"
-# Characters Git forbids in ref names, plus the ones `ls-remote` treats as a
-# pattern. A merge ref containing any of them cannot be queried literally.
-_INVALID_REF_CHARS = frozenset(" ~^:?*[\\")
-# Multi-character sequences Git also forbids in a ref name.
-_FORBIDDEN_REF_SEQUENCES = ("..", "//", "@{")
-_FIRST_PRINTABLE_CODE_POINT = 0x20
-_DELETE_CODE_POINT = 0x7F
+# One query returns the branch, its commit, and every uncommitted path.
+_WORKTREE_STATUS_ARGUMENTS = (
+    "status",
+    "--porcelain=v2",
+    "--branch",
+    "--untracked-files=normal",
+)
 # GitPython reads these from the process environment when it constructs a
 # repository. A hook that exports them for the invoking worktree would make the
 # preflight inspect that worktree instead of the candidate.
@@ -78,196 +74,154 @@ _SOFT_TARGET_NAMES = (
 )
 
 
-@contextlib.contextmanager
-def _clean_git_environment() -> typ.Iterator[None]:
-    """Temporarily remove repository-location variables from the environment."""
-    saved = {
-        key: os.environ.pop(key)
-        for key in _REPOSITORY_LOCATION_ENV
-        if key in os.environ
+class _LocalGitRunner(typ.Protocol):
+    """Callable that runs one local Git query against a worktree."""
+
+    def __call__(
+        self, arguments: typ.Sequence[str], cwd: Path, /
+    ) -> subprocess.CompletedProcess[str]:
+        """Run ``arguments`` in ``cwd`` and return the completed process."""
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class _WorktreeState:
+    """The part of a worktree's status the preflight needs.
+
+    Attributes
+    ----------
+    is_dirty : bool
+        Whether the worktree has modified, staged, or untracked files.
+    branch : str | None
+        Checked-out branch, or ``None`` when HEAD is detached.
+    commit : str | None
+        Checked-out commit, or ``None`` when HEAD is unborn.
+
+    """
+
+    is_dirty: bool
+    branch: str | None
+    commit: str | None
+
+
+def _run_local_git(
+    arguments: typ.Sequence[str],
+    cwd: Path,
+) -> subprocess.CompletedProcess[str]:
+    """Run a bounded local Git query with a clean, non-interactive environment.
+
+    Repository-location variables from the calling hook are removed from this
+    process's copy of the environment only, so the query cannot be redirected
+    to another repository without the process state being mutated.
+
+    Returns
+    -------
+    subprocess.CompletedProcess[str]
+        The completed process.
+
+    Raises
+    ------
+    FileNotFoundError
+        When no ``git`` executable can be found.
+    OSError
+        When the process cannot start.
+    subprocess.SubprocessError
+        When the query exceeds its deadline.
+
+    """
+    executable = shutil.which("git")
+    if executable is None:
+        msg = "git is not installed"
+        raise FileNotFoundError(msg)
+    environment = {
+        key: value
+        for key, value in os.environ.items()
+        if key not in _REPOSITORY_LOCATION_ENV
     }
-    try:
-        yield
-    finally:
-        os.environ.update(saved)
+    environment[_GIT_TERMINAL_PROMPT_ENV] = "0"
+    return subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true]
+        [executable, *arguments],
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+        timeout=_LOCAL_GIT_TIMEOUT_SECONDS,
+        check=False,
+        stdin=subprocess.DEVNULL,
+        env=environment,
+    )
 
 
-def _matches_recorded_identity(
-    worktree_repo: Repo,
+def _status_failure(completed: subprocess.CompletedProcess[str]) -> _SkipReason:
+    """Classify a failed status query as an unavailable or unreadable worktree."""
+    if "not a git repository" in completed.stderr:
+        return _SkipReason.UNAVAILABLE
+    return _SkipReason.UNREADABLE
+
+
+def _identity_value(line: str, prefix: str, unset: str) -> str | None:
+    """Return the value after ``prefix``, or ``None`` when it is ``unset``."""
+    value = line.removeprefix(prefix)
+    return None if value == unset else value
+
+
+def _branch_identity(
+    lines: typ.Iterable[str],
+) -> tuple[str | None, str | None]:
+    """Return the checked-out branch and commit from porcelain header lines."""
+    branch: str | None = None
+    commit: str | None = None
+    for line in lines:
+        if line.startswith("# branch.oid "):
+            commit = _identity_value(line, "# branch.oid ", "(initial)")
+        elif line.startswith("# branch.head "):
+            branch = _identity_value(line, "# branch.head ", "(detached)")
+    return branch, commit
+
+
+def _parse_worktree_status(
+    completed: subprocess.CompletedProcess[str],
+) -> _WorktreeState | _SkipReason:
+    """Interpret ``git status --porcelain=v2 --branch`` output."""
+    if completed.returncode != 0:
+        return _status_failure(completed)
+    lines = completed.stdout.splitlines()
+    branch, commit = _branch_identity(lines)
+    is_dirty = any(not line.startswith("#") for line in lines)
+    return _WorktreeState(is_dirty=is_dirty, branch=branch, commit=commit)
+
+
+def _matches_worktree_state(
+    state: _WorktreeState,
     *,
     expected_branch: str | None,
     expected_commit: str | None,
 ) -> bool:
-    """Return whether ``worktree_repo`` still matches the recorded identity.
-
-    Returns
-    -------
-    bool
-        ``True`` when the checked-out branch and commit, where supplied, still
-        equal the recorded values.
-
-    """
-    head = worktree_repo.head
-    branch_matches = expected_branch is None or (
-        not head.is_detached and head.ref.name == expected_branch
-    )
-    if expected_commit is None:
-        return branch_matches
-    try:
-        commit_matches = head.commit.hexsha == expected_commit
-    except ValueError:
-        # An unborn HEAD has no commit, so it cannot match a recorded one.
-        return False
+    """Return whether ``state`` still matches the recorded identity."""
+    branch_matches = expected_branch is None or state.branch == expected_branch
+    commit_matches = expected_commit is None or state.commit == expected_commit
     return branch_matches and commit_matches
 
 
 class _GitWorktreeAdapter:
     """GitPython-backed adapter for history, inspection, and mutation."""
 
-    def __init__(self, repo: Repo) -> None:
-        """Keep the repository every query and mutation runs against."""
+    def __init__(
+        self,
+        repo: Repo,
+        *,
+        remote_probe: plonk_remote._RemoteRefProbe | None = None,
+        local_git: _LocalGitRunner = _run_local_git,
+    ) -> None:
+        """Keep the repository and the runners every query uses."""
         self.repo = repo
-
-    def _ls_remote(
-        self,
-        arguments: typ.Sequence[str],
-    ) -> subprocess.CompletedProcess[str] | None:
-        """Run a bounded ``ls-remote``, timing it and recording the outcome.
-
-        Statuses 0 and 2 are successful advertisement queries: one found the
-        ref, the other reports that no ref matched. Any other non-zero status
-        is a failed query, so it is recorded as a failure rather than being
-        reported as a successful answer.
-
-        Returns
-        -------
-        subprocess.CompletedProcess[str] | None
-            The completed query, or ``None`` when it could not run.
-
-        """
-        with observability.get_recorder().span("upstream_lookup"):
-            completed = self._run_ls_remote_process(arguments)
-        error_kind: observability.ErrorKind | None = None
-        if completed is None:
-            outcome: observability.Outcome = "failure"
-            error_kind = "os_error"
-        elif completed.returncode in _LS_REMOTE_QUERY_STATUSES:
-            outcome = "success"
-        else:
-            outcome = "failure"
-            error_kind = "git_command_error"
-        observability.get_recorder().record(
-            observability.Observation(
-                operation="upstream_lookup",
-                outcome=outcome,
-                error_kind=error_kind,
-            )
+        working_directory = (
+            getattr(repo, "working_tree_dir", None)
+            or getattr(repo, "git_dir", None)
+            or "."
         )
-        return completed
-
-    def _run_ls_remote_process(
-        self,
-        arguments: typ.Sequence[str],
-    ) -> subprocess.CompletedProcess[str] | None:
-        """Run ``git ls-remote`` with a deadline, or return ``None`` if it cannot.
-
-        GitPython offers no timeout, so a remote that accepts a connection and
-        then stalls could block the sweep indefinitely. This helper runs the
-        same Git command directly, closes standard input, disables terminal
-        prompts, and maps a timeout, decoding failure, or execution error to
-        ``None`` so the caller can report ``unknown`` rather than hang.
-
-        Returns
-        -------
-        subprocess.CompletedProcess[str] | None
-            The completed process, or ``None`` when the deadline or an execution
-            error prevented an answer.
-
-        """
-        executable = shutil.which("git")
-        if executable is None:
-            return None
-        environment = os.environ.copy()
-        environment[_GIT_TERMINAL_PROMPT_ENV] = "0"
-        try:
-            return subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true]
-                [executable, "ls-remote", *arguments],
-                cwd=self.repo.working_tree_dir or self.repo.git_dir,
-                capture_output=True,
-                text=True,
-                timeout=_LS_REMOTE_TIMEOUT_SECONDS,
-                check=False,
-                stdin=subprocess.DEVNULL,
-                env=environment,
-            )
-        except (OSError, subprocess.SubprocessError, UnicodeDecodeError):
-            return None
-
-    @staticmethod
-    def _has_control_character(ref: str) -> bool:
-        """Return whether ``ref`` contains an ASCII control character."""
-        return any(
-            ord(character) < _FIRST_PRINTABLE_CODE_POINT
-            or ord(character) == _DELETE_CODE_POINT
-            for character in ref
+        self.remote_probe = remote_probe or plonk_remote._RemoteRefProbe(
+            str(working_directory)
         )
-
-    @staticmethod
-    def _has_git_ref_structure_error(ref: str) -> bool:
-        """Return whether ``ref`` uses structure Git forbids in ref names."""
-        if not ref.startswith("refs/heads/") or ref.endswith(("/", ".")):
-            return True
-        if any(pattern in ref for pattern in _FORBIDDEN_REF_SEQUENCES):
-            return True
-        # Git rejects a component that starts with a dot or ends in ``.lock``.
-        return any(
-            component.startswith(".") or component.endswith(".lock")
-            for component in ref.split("/")
-        )
-
-    @classmethod
-    def _is_exact_branch_ref(cls, ref: str) -> bool:
-        """Return whether ``ref`` is a full branch ref that names one ref exactly.
-
-        ``git ls-remote`` matches its argument as a pattern, so a wildcard would
-        answer for a different ref than the one the branch configured. This
-        check accepts only complete ``refs/heads/`` names that contain no
-        pattern metacharacter, control character, or structure Git forbids.
-
-        Returns
-        -------
-        bool
-            ``True`` only for a literal, complete branch ref.
-
-        """
-        if cls._has_git_ref_structure_error(ref) or cls._has_control_character(ref):
-            return False
-        return not any(character in _INVALID_REF_CHARS for character in ref)
-
-    @staticmethod
-    def _mentions_exact_ref(output: str, ref: str) -> bool:
-        """Return whether ``git ls-remote`` output names ``ref`` exactly."""
-        return any(line.rpartition("\t")[2] == ref for line in output.split("\n"))
-
-    def _ls_remote_state(self, remote: str, merge_ref: str) -> UpstreamState:
-        """Return the upstream state a bounded ``ls-remote`` reports."""
-        completed = self._ls_remote(
-            ("--exit-code", "--heads", remote, merge_ref),
-        )
-        if completed is None:
-            return "unknown"
-        if completed.returncode == _LS_REMOTE_NO_MATCH_STATUS:
-            return "gone"
-        if completed.returncode != 0:
-            return "unknown"
-        # `ls-remote` patterns match the tail of a ref, so a longer branch such
-        # as `other/refs/heads/<name>` can make the command exit 0 without the
-        # configured ref existing. Require the exact ref before saying present.
-        return (
-            "present"
-            if self._mentions_exact_ref(completed.stdout, merge_ref)
-            else "gone"
-        )
+        self.local_git = local_git
 
     def history_messages(self, ref: str) -> typ.Iterator[_HistoryMessage]:
         """Return commit messages from ``ref`` history with their merge status.
@@ -342,23 +296,37 @@ class _GitWorktreeAdapter:
             # Git does not fall through to a later merge value when the first
             # one is empty, so this branch has no resolvable upstream.
             return "unknown"
-        if not self._is_exact_branch_ref(merge_ref):
+        if not plonk_remote.is_exact_branch_ref(merge_ref):
             # `ls-remote` treats its argument as a pattern. A wildcard or an
             # invalid ref could match a ref it does not name and make a deleted
             # branch look present, or vice versa, so fail closed.
             return "unknown"
-        return self._ls_remote_state(remote, merge_ref)
+        return self.remote_probe.branch_state(remote, merge_ref)
 
     def _worktree_config_enabled(self) -> bool:
-        """Return whether Git's per-worktree configuration extension is on."""
-        try:
-            value = self.repo.git.config("--get", "extensions.worktreeConfig")
-        except GitCommandError:
-            return False
-        return value.strip().casefold() in {"true", "yes", "on", "1"}
+        """Return whether Git's per-worktree configuration extension is on.
 
-    @staticmethod
+        ``--bool`` interprets the setting the way Git does: a valueless entry
+        is true, an explicit false is false, and an unset key exits 1. A value
+        Git cannot interpret makes the check fail closed, because the
+        extension's state is then unknown and a per-worktree override could
+        still be in effect.
+
+        Returns
+        -------
+        bool
+            ``True`` when per-worktree configuration may be in effect or the
+            setting cannot be interpreted.
+
+        """
+        try:
+            value = self.repo.git.config("--bool", "--get", "extensions.worktreeConfig")
+        except GitCommandError as exc:
+            return exc.status != _CONFIG_KEY_UNSET_STATUS
+        return value.strip() == "true"
+
     def skip_reason(
+        self,
         worktree_path: Path,
         *,
         expected_branch: str | None = None,
@@ -398,31 +366,27 @@ class _GitWorktreeAdapter:
             remove it unprompted.
 
         """
-        with (
-            observability.get_recorder().span("worktree_preflight"),
-            _clean_git_environment(),
-        ):
+        with observability.get_recorder().span("worktree_preflight"):
             try:
                 # A stat that the process is not allowed to make raises
                 # PermissionError; the sweep must report it as unreadable
                 # rather than abandon the remaining candidates.
                 if not worktree_path.is_dir():
                     return _SkipReason.UNAVAILABLE
-                with Repo(worktree_path) as worktree_repo:
-                    if worktree_repo.is_dirty(untracked_files=True):
-                        return _SkipReason.DIRTY
-                    if not _matches_recorded_identity(
-                        worktree_repo,
-                        expected_branch=expected_branch,
-                        expected_commit=expected_commit,
-                    ):
-                        return _SkipReason.CHANGED
-            except (InvalidGitRepositoryError, NoSuchPathError):
-                return _SkipReason.UNAVAILABLE
-            except (GitCommandError, UnicodeError, OSError):
-                # An unreadable index, worktree state, or path name must not
-                # abort the batch; report it as a skip and continue.
+                completed = self.local_git(_WORKTREE_STATUS_ARGUMENTS, worktree_path)
+            except (OSError, subprocess.SubprocessError, UnicodeDecodeError):
                 return _SkipReason.UNREADABLE
+            state = _parse_worktree_status(completed)
+            if isinstance(state, _SkipReason):
+                return state
+            if state.is_dirty:
+                return _SkipReason.DIRTY
+            if not _matches_worktree_state(
+                state,
+                expected_branch=expected_branch,
+                expected_commit=expected_commit,
+            ):
+                return _SkipReason.CHANGED
             return None
 
     def remove_worktree(self, worktree_path: Path) -> bool:

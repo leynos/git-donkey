@@ -16,14 +16,18 @@ from __future__ import annotations
 import dataclasses
 import typing as typ
 
-from git_donkey import helpers, plonk_github, plonk_policy
+from git_donkey import observability, plonk_policy
 from git_donkey.plonk_records import (
-    GIT_PLONK_PREFIX,
+    MergedPullRequestLookup,
     UpstreamState,
     _CompletionEvidence,
+    _GitHubRepository,
+    _GitPort,
+    _MergedPullRequest,
     _PlonkCandidate,
     _PlonkContext,
     _PlonkMode,
+    _PullRequestQuery,
     _UnverifiedReason,
     _UnverifiedWorktree,
 )
@@ -35,13 +39,6 @@ from git_donkey.plonk_workflow import (
     _record_unverified,
 )
 
-if typ.TYPE_CHECKING:
-    from git_donkey.plonk_adapters import _GitWorktreeAdapter
-
-_GITHUB_FALLBACK_NOTICE = (
-    "gh is not installed; merged pull-request lookups are unavailable"
-)
-
 
 @dataclasses.dataclass(slots=True)
 class _SweepState:
@@ -51,7 +48,7 @@ class _SweepState:
     ----------
     context : _PlonkContext
         Resolved repository state the sweep runs against.
-    adapter : _GitWorktreeAdapter
+    adapter : _GitPort
         Git surface used for history, upstream, and mutation.
     mode : _PlonkMode
         Cleanup mode the sweep runs in.
@@ -65,6 +62,9 @@ class _SweepState:
     upstream_states : dict[str, UpstreamState]
         Upstream verdicts already obtained, so every worktree on a branch sees
         the same answer.
+    github_lookup : MergedPullRequestLookup | None
+        Merged-pull-request lookup resolved by the composition layer, or
+        ``None`` when the tier is disabled or unavailable.
     handled_branches : set[str]
         Branches this sweep already deleted or planned for deletion, so a
         second worktree on the same branch contributes one summary entry.
@@ -72,7 +72,7 @@ class _SweepState:
     """
 
     context: _PlonkContext
-    adapter: _GitWorktreeAdapter
+    adapter: _GitPort
     mode: _PlonkMode
     options: _CleanupOptions
     resolutions: dict[str, _CompletionEvidence] = dataclasses.field(
@@ -82,30 +82,13 @@ class _SweepState:
         dataclasses.field(default_factory=dict)
     )
     upstream_states: dict[str, UpstreamState] = dataclasses.field(default_factory=dict)
+    github_lookup: MergedPullRequestLookup | None = None
     handled_branches: set[str] = dataclasses.field(default_factory=set)
-
-
-@dataclasses.dataclass(frozen=True, slots=True)
-class _GitHubTier:
-    """The read-only GitHub fallback one sweep may use.
-
-    Attributes
-    ----------
-    repository : plonk_github._GitHubRepository | None
-        Repository parsed from the raw principal-remote URL, or ``None`` when
-        the fallback is disabled or the URL is not GitHub.
-    lookup : plonk_github.MergedPullRequestLookup | None
-        Injected or real lookup, or ``None`` when no lookup is available.
-
-    """
-
-    repository: plonk_github._GitHubRepository | None = None
-    lookup: plonk_github.MergedPullRequestLookup | None = None
 
 
 def _offline_evidence(
     candidates: typ.Iterable[_PlonkCandidate],
-    adapter: _GitWorktreeAdapter,
+    adapter: _GitPort,
     trunk_ref: str,
 ) -> dict[str, _CompletionEvidence]:
     """Return the offline evidence trunk history supplies, keyed by branch."""
@@ -118,40 +101,27 @@ def _offline_evidence(
     }
 
 
-def _github_resolution(state: _SweepState) -> _GitHubTier:
-    """Return the GitHub tier the sweep may use, if any.
-
-    The fallback is enabled by default only for a GitHub principal remote when
-    ``gh`` is installed and the caller has not disabled it. A missing tool is
-    reported once per run as a notice; the sweep then fails closed, leaving its
-    unresolved candidates unverified.
-
-    Returns
-    -------
-    _GitHubTier
-        The repository to query and the lookup to use. Both are ``None`` when
-        the fallback is unavailable, and the lookup alone is ``None`` when the
-        repository is GitHub but ``gh`` is missing.
-
-    """
-    if state.options.no_github:
-        return _GitHubTier()
-    repository = plonk_github.parse_github_remote_url(state.context.remote_url)
-    if repository is None:
-        return _GitHubTier()
-    if state.options.github_lookup is not None:
-        return _GitHubTier(repository, state.options.github_lookup)
-    if not plonk_github.gh_available():
-        helpers._eprint(f"{GIT_PLONK_PREFIX}: {_GITHUB_FALLBACK_NOTICE}")
-        return _GitHubTier(repository)
-    return _GitHubTier(repository, plonk_github.merged_pull_request)
+def _lookup_pull_request(
+    lookup: MergedPullRequestLookup,
+    query: _PullRequestQuery,
+) -> _MergedPullRequest:
+    """Run one lookup inside the GitHub process boundary's observation."""
+    with observability.get_recorder().span("github_lookup"):
+        result = lookup(query)
+    observability.get_recorder().record(
+        observability.Observation(
+            operation="github_lookup",
+            outcome="failure" if result.state == "unknown" else "success",
+        )
+    )
+    return result
 
 
 def _github_evidence(
     state: _SweepState,
     candidate: _PlonkCandidate,
-    repository: plonk_github._GitHubRepository,
-    lookup: plonk_github.MergedPullRequestLookup,
+    repository: _GitHubRepository,
+    lookup: MergedPullRequestLookup,
 ) -> tuple[_CompletionEvidence | None, _UnverifiedReason]:
     """Return the GitHub fallback's verdict for one candidate."""
     if candidate.commit_id is None:
@@ -159,14 +129,15 @@ def _github_evidence(
         # apart from an earlier merge of a reused branch name, so it fails
         # closed instead of guessing.
         return None, _UnverifiedReason.GITHUB_UNKNOWN
-    result = lookup(
-        plonk_github._PullRequestQuery(
+    result = _lookup_pull_request(
+        lookup,
+        _PullRequestQuery(
             owner=repository.owner,
             repository=repository.name,
             head_branch=candidate.branch_name,
             base_branch=state.context.branch,
             head_sha=candidate.commit_id,
-        )
+        ),
     )
     if result.state == "merged":
         if result.number is None:
@@ -204,17 +175,18 @@ def _upstream_evidence(
 def _fallback_evidence(
     state: _SweepState,
     candidate: _PlonkCandidate,
-    github: _GitHubTier,
 ) -> tuple[_CompletionEvidence | None, _UnverifiedReason]:
     """Return fallback evidence for ``candidate``, or why none was found."""
     reason = _UnverifiedReason.NO_SIGNAL
-    if github.repository is not None and github.lookup is not None:
+    repository = state.context.github_repository
+    lookup = state.github_lookup
+    if repository is not None and lookup is not None:
         if candidate.branch_name not in state.github_lookups:
             state.github_lookups[candidate.branch_name] = _github_evidence(
                 state,
                 candidate,
-                github.repository,
-                github.lookup,
+                repository,
+                lookup,
             )
         evidence, reason = state.github_lookups[candidate.branch_name]
         if evidence is not None:
@@ -241,13 +213,13 @@ class _FallbackResolution:
     reason: _UnverifiedReason | None = None
 
 
-def _query_fallbacks(
+def _fetch_fallback_verdicts(
     state: _SweepState,
     candidates: typ.Iterable[_PlonkCandidate],
 ) -> list[_FallbackResolution]:
-    """Query the fallback tiers for every unresolved candidate.
+    """Fetch and cache the fallback tiers' verdict for each candidate.
 
-    This is the query phase: it performs the read-only lookups and caches one
+    This is the fetch phase: it performs the read-only lookups and caches one
     verdict per branch, but it does not log or record per-candidate outcomes.
 
     Returns
@@ -256,12 +228,11 @@ def _query_fallbacks(
         One answer per unresolved candidate, in sweep order.
 
     """
-    github = _github_resolution(state)
     resolutions: list[_FallbackResolution] = []
     for candidate in candidates:
         if candidate.branch_name in state.resolutions:
             continue
-        evidence, reason = _fallback_evidence(state, candidate, github)
+        evidence, reason = _fallback_evidence(state, candidate)
         resolutions.append(_FallbackResolution(candidate, evidence, reason))
     return resolutions
 
@@ -315,4 +286,4 @@ def _resolve_fallbacks(
         The candidates no tier resolved, in sweep order.
 
     """
-    return _apply_fallbacks(state, _query_fallbacks(state, candidates))
+    return _apply_fallbacks(state, _fetch_fallback_verdicts(state, candidates))

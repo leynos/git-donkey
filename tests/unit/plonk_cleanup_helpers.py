@@ -94,6 +94,9 @@ class AdapterBehaviour:
         Worktrees that pass the preflight but whose removal Git refuses.
     deletion_failures : frozenset[str]
         Branches Git refuses to delete.
+    current_commits : dict[str, str]
+        Current tip each branch has moved to since selection. A worktree on
+        such a branch, or a deletion of it, is refused as changed.
     fail_on_upstream : bool
         Fail the test if the upstream query is reached, proving a stronger tier
         already resolved the candidate.
@@ -108,6 +111,7 @@ class AdapterBehaviour:
     )
     removal_failures: frozenset[Path] = frozenset()
     deletion_failures: frozenset[str] = frozenset()
+    current_commits: dict[str, str] = dataclasses.field(default_factory=dict)
     fail_on_upstream: bool = False
 
 
@@ -132,8 +136,13 @@ class RecordingGitAdapter:
         self.upstream_states = dict(self.behaviour.upstream_states)
         self.removal_failures = set(self.behaviour.removal_failures)
         self.deletion_failures = set(self.behaviour.deletion_failures)
+        self.current_commits = dict(self.behaviour.current_commits)
         self.removed: list[Path] = []
         self.deleted: list[str] = []
+        # The identity arguments the sweep passed, so a test can prove the
+        # guards are wired rather than merely present in the adapter.
+        self.preflight_identities: list[tuple[str | None, str | None]] = []
+        self.deletion_commits: list[str | None] = []
 
     def history_messages(self, ref: str) -> typ.Iterator[str]:
         """Assert the resolved trunk ref, then yield the configured history."""
@@ -150,6 +159,10 @@ class RecordingGitAdapter:
         expected_commit: str | None = None,
     ) -> plonk_records._SkipReason | None:
         """Return the configured reason for ``worktree_path``, if it has one."""
+        self.preflight_identities.append((expected_branch, expected_commit))
+        current = self.current_commits.get(worktree_path.name)
+        if current is not None and current != expected_commit:
+            return plonk_records._SkipReason.CHANGED
         if worktree_path in self.skip_reasons:
             return self.skip_reasons[worktree_path]
         return None
@@ -174,10 +187,14 @@ class RecordingGitAdapter:
         expected_commit: str | None = None,
     ) -> bool:
         """Record a branch deletion, which must follow its worktree's removal."""
+        self.deletion_commits.append(expected_commit)
         removed_branches = [path.name for path in self.removed]
         if branch_name not in removed_branches:
             msg = "hard mode deletes a branch only once its worktree is gone"
             raise AssertionError(msg)
+        current = self.current_commits.get(branch_name)
+        if current is not None and current != expected_commit:
+            return False
         if branch_name in self.deletion_failures:
             return False
         self.deleted.append(branch_name)
@@ -259,7 +276,7 @@ def cleanup_context(
         invoking_worktree=invoking_worktree,
         remote="origin",
         branch="main",
-        remote_url=remote_url,
+        github_repository=plonk_github.parse_github_remote_url(remote_url),
     )
 
 
@@ -286,7 +303,7 @@ class CleanupRunOptions:
     dry_run: bool = False
     no_github: bool = False
     upstream_gone: bool = False
-    github_lookup: plonk_github.MergedPullRequestLookup | None = None
+    github_lookup: plonk_records.MergedPullRequestLookup | None = None
     context: plonk_records._PlonkContext | None = None
 
 
@@ -322,7 +339,7 @@ def run_cleanup(
     return plonk._run_completed_cleanup(
         options.context if options.context is not None else cleanup_context(candidates),
         mode,
-        typ.cast("plonk._GitWorktreeAdapter", adapter),
+        typ.cast("plonk_records._GitPort", adapter),
         options=plonk._CleanupOptions(
             dry_run=options.dry_run,
             no_github=options.no_github,

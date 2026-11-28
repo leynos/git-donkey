@@ -18,9 +18,6 @@ import pytest
 
 from git_donkey import plonk_github
 
-if typ.TYPE_CHECKING:
-    from tests.observability_helpers import RecordingRecorder
-
 _HEAD_BRANCH = "fix-markdown-gates"
 _BASE_BRANCH = "main"
 _OWNER = "leynos"
@@ -259,45 +256,6 @@ def test_matching_record_after_a_fork_is_accepted() -> None:
 
     assert result == plonk_github._MergedPullRequest("merged", 61), (
         "expected the local identity filter to consider the whole page"
-    )
-
-
-def test_lookup_records_a_bounded_span_and_failure(
-    recording_recorder: RecordingRecorder,
-) -> None:
-    """A failed response should leave a bounded failure observation."""
-    result = _lookup([{"unexpected": "record"}])
-
-    assert result.state == "unknown", "expected a malformed record to be unknown"
-    assert recording_recorder.span_operations() == ["github_lookup"], (
-        "expected the gh process boundary to be timed"
-    )
-    assert [
-        (observation.operation, observation.outcome)
-        for observation in recording_recorder.observations
-    ] == [("github_lookup", "failure")], (
-        "expected the failed lookup to record one bounded failure"
-    )
-    assert recording_recorder.unbounded_values() == set(), (
-        "every recorded value comes from a declared vocabulary"
-    )
-
-
-def test_lookup_records_a_bounded_span_and_success(
-    recording_recorder: RecordingRecorder,
-) -> None:
-    """A successful query should record a success observation."""
-    result = _lookup([_record()])
-
-    assert result.state == "merged", "expected the matching record to complete"
-    assert recording_recorder.span_operations() == ["github_lookup"], (
-        "expected the gh process boundary to be timed"
-    )
-    assert [
-        (observation.operation, observation.outcome)
-        for observation in recording_recorder.observations
-    ] == [("github_lookup", "success")], (
-        "expected the successful lookup to record one bounded success"
     )
 
 

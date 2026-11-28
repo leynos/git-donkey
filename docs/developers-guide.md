@@ -427,8 +427,10 @@ reporting, summary rendering, and CLI parsing:
   (`(2.2.1)`), and legacy roadmap branches (`(road.1.2.3a.4)`), and scans
   history for markers, issue closing keywords, the exact branch named in a
   merge commit's subject, and bounded verbatim branch names. Merge evidence
-  requires a commit with more than one parent. It returns completion evidence
-  and stays free of GitPython, filesystem, and process mutation.
+  requires a commit with more than one parent. It also owns the pure
+  pull-request acceptance rule, so the GitHub module only runs `gh` and parses
+  its response. It returns completion evidence and stays free of GitPython,
+  filesystem, and process mutation.
 - `git_donkey.plonk_records` owns the values and vocabulary: modes, completion
   signals, upstream states, skip and unverified reasons, history messages,
   candidates, evidence, results, and contexts. It holds values only: no Git
@@ -438,17 +440,26 @@ reporting, summary rendering, and CLI parsing:
   carrying the marker, issue number, checked-out commit, and lock state the
   branch and registration imply. It is pure: it reads stanza values and path
   objects, never Git state or the filesystem.
-- `git_donkey.plonk_completion` owns the fallback tiers. It resolves the offline
-  evidence, queries the GitHub merged-pull-request lookup and the opt-in
-  upstream check in order, caches one verdict per branch, and reports
-  unresolved candidates as unverified. Query and reporting are separate steps.
+- `git_donkey.plonk_completion` owns the fallback tiers. It fetches and caches
+  one verdict per branch, applies the verdicts, and reports unresolved
+  candidates as unverified. Fetch and reporting are separate steps. The GitHub
+  lookup arrives already resolved in `_SweepState`, and this module times it as
+  the `github_lookup` boundary.
 - `git_donkey.plonk_github` owns raw GitHub remote URL parsing and the read-only
-  `gh pr list` lookup. It validates the head branch, base branch, head owner,
-  and head commit, pins the host, closes stdin, and maps every failure to
-  unknown.
-- `git_donkey.plonk_adapters` owns the Git and filesystem boundaries: history,
-  the upstream query, the cleanliness and identity preflight, unforced worktree
-  removal, conditional branch deletion, and generated-directory cleanup.
+  `gh pr list` process call. It parses each row into a neutral pull-request
+  record, pins the host, closes stdin, and maps every failure to unknown. The
+  identity rule lives in `plonk_policy`, and the observation lives in the
+  caller, so this module stays a parser and process boundary.
+- `git_donkey.plonk_remote` owns the network-facing remote-advertisement probe
+  behind the opt-in upstream check. It validates the configured ref, runs one
+  bounded `git ls-remote` through an injected runner, times it, and reports
+  present, gone, or unknown. It never mutates the repository.
+- `git_donkey.plonk_adapters` owns the local Git and filesystem boundaries:
+  history, the upstream configuration read, the cleanliness and identity
+  preflight, unforced worktree removal, conditional branch deletion, and
+  generated-directory cleanup. The preflight runs `git status` through an
+  injected runner with a cleaned environment, so it never mutates process
+  state. Remote queries are delegated to `plonk_remote`.
 - `git_donkey.plonk_cleanup` performs the removals for completed candidates and
   tallies what was removed, skipped, or failed.
 - `git_donkey.plonk_workflow` owns the invocation options, structured logs, and
@@ -456,7 +467,9 @@ reporting, summary rendering, and CLI parsing:
 - `git_donkey.plonk_summary` renders the finished result. `_render_summary()` is
   what `run_git_plonk()` prints.
 - `git_donkey.plonk` keeps orchestration: repository state, candidate
-  preparation, tier composition, soft cleanup, and `run_git_plonk()`.
+  preparation, tier composition, soft cleanup, and `run_git_plonk()`. It is the
+  composition root: it parses the GitHub remote once, resolves `gh`
+  availability and the default lookup, and emits the missing-tool notice.
 - `git_donkey.remote_default` owns the principal-remote and default-branch
   discovery both commands use, so completion history and base selection cannot
   diverge.
@@ -841,9 +854,23 @@ empty cassette (`interactions: []`) from `tests/integration/cassettes/` through
 request raises inside the code under test instead of reaching the network. The
 worktree commands reach their remote over the Git protocol, which the temporary
 bare repositories stand in for, so a scenario run under the fixture proves that
-`git donkey` and `git plonk` never consult the GitHub API. Record a real
+`git donkey` never consults the GitHub REST API, and that `git plonk` does not
+reach it either: its GitHub tier runs the `gh` CLI, which the suite stubs
+separately. `git plonk` consults that tier only when the principal remote is
+GitHub, `gh` is installed, and `--no-github` is not set; local-remote plonk
+scenarios record the stub and assert it was never invoked. Record a real
 cassette only for a command that is meant to call the API, and never edit a
 recording by hand.
+
+The `github_cli_stub` autouse fixture in `tests/integration/conftest.py`
+installs a recording `gh` executable first on `PATH` for every
+`test_git_plonk*` module. The stub appends each argument line to `gh-calls.log`
+and exits non-zero unless a payload file exists, so an accidental lookup in a
+local-remote scenario fails closed and leaves evidence. A scenario that expects
+the fallback calls `GitHubCliStub.stub_merged_pull_request()` with a
+`StubbedPullRequest`, which writes the matching `gh pr list --json` payload, or
+`stub_failure()` to remove it. `GitHubCliStub.calls()` returns the recorded
+invocations, and `clear()` removes both the log and the payload.
 
 The behaviours the
 [worktree-management skill](../skill/git-donkey-worktrees/SKILL.md) documents
@@ -866,6 +893,18 @@ the absence of GitHub API calls) and completion-marker semantics.
 `test_git_plonk_outcomes_bdd.py` cover the path-based worktree scope, remote
 branches surviving hard mode, soft mode's reach, missing directories, skipped
 previews, refused branch deletions, and exit statuses.
+`tests/integration/test_git_plonk_github_bdd.py` binds
+`features/git_plonk_github.feature`: a matching merged pull request, a failed
+lookup, a base mismatch, and a reused branch name whose recorded head commit
+differs. `tests/integration/test_git_plonk_upstream_bdd.py` binds
+`features/git_plonk_upstream.feature`: gone, present, and never-configured
+upstreams. The matching unit suites are `tests/unit/test_plonk_github.py` for
+URL parsing, payload interpretation, and the lookup boundary;
+`tests/unit/test_plonk_policy.py` for the branch grammars, history matchers,
+evidence priority, and generated properties;
+`tests/unit/test_plonk_fallbacks.py` for tier ordering, caching, and unverified
+reporting; and `tests/unit/test_plonk_upstream_adapter.py` for the upstream
+query's configuration rules, deadline, and observations.
 
 `tests/integration/_fafo_adoption_stubs.py` builds local bare remotes with
 specific histories for adoption tests. Use these helpers when adding new

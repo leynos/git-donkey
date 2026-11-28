@@ -205,6 +205,42 @@ def test_github_lookup_runs_once_per_branch() -> None:
     )
 
 
+def test_github_lookup_records_a_failure_observation(
+    recording_recorder: RecordingRecorder,
+) -> None:
+    """A failed lookup leaves one bounded failure at the process boundary."""
+    _run_single_lookup(plonk_github._MergedPullRequest("unknown"))
+
+    assert recording_recorder.span_operations() == ["github_lookup"], (
+        "expected the gh process boundary to be timed"
+    )
+    assert [
+        (observation.operation, observation.outcome)
+        for observation in recording_recorder.observations
+        if observation.operation == "github_lookup"
+    ] == [("github_lookup", "failure")], (
+        "expected the failed lookup to record one bounded failure"
+    )
+    assert recording_recorder.unbounded_values() == set(), (
+        "every recorded value comes from a declared vocabulary"
+    )
+
+
+def test_github_lookup_records_a_success_observation(
+    recording_recorder: RecordingRecorder,
+) -> None:
+    """A successful lookup records one bounded success."""
+    _run_single_lookup(plonk_github._MergedPullRequest("merged", 61))
+
+    assert [
+        (observation.operation, observation.outcome)
+        for observation in recording_recorder.observations
+        if observation.operation == "github_lookup"
+    ] == [("github_lookup", "success")], (
+        "expected the successful lookup to record one bounded success"
+    )
+
+
 def test_github_unknown_leaves_the_candidate_unverified() -> None:
     """A failed lookup should retain the worktree and say why."""
     worktree, result = _run_single_lookup(plonk_github._MergedPullRequest("unknown"))

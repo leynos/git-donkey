@@ -13,7 +13,9 @@ included, because the subprocess that reports the refusal ran too.
 
 from __future__ import annotations
 
+import os
 import shutil
+import subprocess  # ruff: ignore[suspicious-subprocess-import]  # asserts runner seams
 import typing as typ
 from pathlib import Path
 from types import SimpleNamespace
@@ -430,53 +432,43 @@ def test_preflight_ignores_inherited_repository_location(
 
 
 type _UnreadableFailure = typ.Literal[
-    "directory", "git-file", "git-command-error", "encoding-error"
+    "directory", "unreadable-status", "missing-tool", "timeout"
 ]
 
 
-def _make_preflight_unreadable(
-    monkeypatch: pytest.MonkeyPatch,
+def _unreadable_runner(
     failure: _UnreadableFailure,
-) -> None:
-    """Make one stage of the preflight raise an unreadable-state failure."""
-    match failure:
-        case "directory":
+) -> plonk_adapters._LocalGitRunner:
+    """Return a runner, or a working default, for one unreadable failure."""
 
-            def fail_is_dir(self: Path) -> bool:
-                """Simulate a path the process is not allowed to stat."""
-                raise PermissionError(self)
+    def run(
+        arguments: typ.Sequence[str],
+        cwd: Path,
+    ) -> subprocess.CompletedProcess[str]:
+        """Simulate the configured failure of the status query."""
+        match failure:
+            case "unreadable-status":
+                return subprocess.CompletedProcess(
+                    arguments, 128, "", "fatal: unable to read index"
+                )
+            case "missing-tool":
+                msg = "git is not installed"
+                raise FileNotFoundError(msg)
+            case "timeout":
+                raise subprocess.TimeoutExpired(list(arguments), 10)
+            case _:
+                return subprocess.CompletedProcess(arguments, 0, "", "")
 
-            monkeypatch.setattr(Path, "is_dir", fail_is_dir)
-
-        case "git-file":
-
-            def fail_repo(path: Path) -> Repo:
-                """Simulate a permission error while opening the worktree."""
-                raise PermissionError(path)
-
-            monkeypatch.setattr(plonk_adapters, "Repo", fail_repo)
-
-        case "git-command-error" | "encoding-error":
-            error: Exception = (
-                GitCommandError(["git", "status"], 128)
-                if failure == "git-command-error"
-                else UnicodeEncodeError("ascii", "é", 0, 1, "ordinal not in range")
-            )
-
-            def fail_is_dirty(self: Repo, **kwargs: object) -> bool:
-                """Simulate a failure while reading the candidate's status."""
-                raise error
-
-            monkeypatch.setattr(Repo, "is_dirty", fail_is_dirty)
+    return run
 
 
 @pytest.mark.parametrize(
     "failure",
     [
         pytest.param("directory", id="unreadable-directory"),
-        pytest.param("git-file", id="unreadable-git-file"),
-        pytest.param("git-command-error", id="unreadable-status"),
-        pytest.param("encoding-error", id="encoding-error"),
+        pytest.param("unreadable-status", id="unreadable-status"),
+        pytest.param("missing-tool", id="missing-tool"),
+        pytest.param("timeout", id="status-timeout"),
     ],
 )
 def test_preflight_reports_unreadable_state_as_a_skip(
@@ -486,12 +478,41 @@ def test_preflight_reports_unreadable_state_as_a_skip(
 ) -> None:
     """Any unreadable worktree state is a skip, never a batch abort."""
     repo, worktree_path = _worktree_with_dirt(tmp_path, "clean")
-    _make_preflight_unreadable(monkeypatch, failure)
+    if failure == "directory":
 
-    reason = plonk._GitWorktreeAdapter(repo).skip_reason(worktree_path)
+        def fail_is_dir(self: Path) -> bool:
+            """Simulate a path the process is not allowed to stat."""
+            raise PermissionError(self)
+
+        monkeypatch.setattr(Path, "is_dir", fail_is_dir)
+        adapter = plonk_adapters._GitWorktreeAdapter(repo)
+    else:
+        adapter = plonk_adapters._GitWorktreeAdapter(
+            repo, local_git=_unreadable_runner(failure)
+        )
+
+    reason = adapter.skip_reason(worktree_path)
 
     assert reason is plonk_records._SkipReason.UNREADABLE, (
         "expected an unreadable worktree state to be reported as a skip"
+    )
+
+
+def test_preflight_leaves_the_process_environment_unchanged(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The preflight must not mutate the process environment."""
+    repo, worktree_path = _worktree_with_dirt(tmp_path, "clean")
+    monkeypatch.setenv("GIT_DIR", "/nonexistent")
+    monkeypatch.setenv("GIT_WORK_TREE", "/nonexistent")
+    before = dict(os.environ)
+
+    reason = plonk._GitWorktreeAdapter(repo).skip_reason(worktree_path)
+
+    assert reason is None, "expected the clean worktree to remain removable"
+    assert dict(os.environ) == before, (
+        "expected the preflight to leave the process environment untouched"
     )
 
 

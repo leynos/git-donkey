@@ -164,6 +164,48 @@ def test_two_worktrees_on_one_branch_report_one_deletion() -> None:
     )
 
 
+def test_sweep_passes_recorded_identity_to_the_adapter() -> None:
+    """The guards only work if the sweep supplies the recorded identity."""
+    recorded = "a" * 40
+    completed = dataclasses.replace(
+        candidate("issue-123-fix", 123),
+        commit_id=recorded,
+    )
+    adapter = RecordingGitAdapter([marker_for(completed)])
+
+    run_cleanup([completed], adapter, mode=plonk._PlonkMode.HARD)
+
+    assert adapter.preflight_identities == [("issue-123-fix", recorded)], (
+        "expected the preflight to receive the recorded branch and commit"
+    )
+    assert adapter.deletion_commits == [recorded], (
+        "expected the conditional deletion to receive the recorded commit"
+    )
+
+
+def test_branch_that_moved_during_the_sweep_is_skipped() -> None:
+    """A branch advanced after selection must keep its worktree and branch."""
+    recorded = "a" * 40
+    completed = dataclasses.replace(
+        candidate("issue-123-fix", 123),
+        commit_id=recorded,
+    )
+    adapter = RecordingGitAdapter(
+        [marker_for(completed)],
+        behaviour=AdapterBehaviour(current_commits={"issue-123-fix": "b" * 40}),
+    )
+
+    result = run_cleanup([completed], adapter, mode=plonk._PlonkMode.HARD)
+
+    assert result.skipped_worktrees == (
+        plonk_records._SkippedWorktree(
+            completed.worktree_path, plonk_records._SkipReason.CHANGED
+        ),
+    ), "expected the moved branch to be reported as changed"
+    assert not result.removed_worktrees, "the worktree must survive"
+    assert not result.removed_branches, "the branch must survive"
+
+
 def test_failed_removal_is_skipped_and_the_batch_continues() -> None:
     """A removal Git refuses should report a skip, not abandon the sweep."""
     stubborn = candidate("issue-456-stubborn", 456)

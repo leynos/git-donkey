@@ -19,6 +19,7 @@ import typing as typ
 from git_donkey.plonk_records import (
     _SKIP_REASON_LABELS,
     _CandidateOutcome,
+    _GitPort,
     _PlonkMode,
     _RemovableCandidate,
     _RemovalEvidence,
@@ -39,7 +40,6 @@ from git_donkey.plonk_workflow import (
 if typ.TYPE_CHECKING:
     from pathlib import Path
 
-    from git_donkey.plonk_adapters import _GitWorktreeAdapter
     from git_donkey.plonk_completion import _SweepState
 
 
@@ -98,7 +98,7 @@ def _preflight_reason(
     candidate = removable.candidate
     if candidate.is_locked:
         return _SkipReason.LOCKED
-    adapter: _GitWorktreeAdapter = state.adapter
+    adapter: _GitPort = state.adapter
     return adapter.skip_reason(
         candidate.worktree_path,
         expected_branch=candidate.branch_name,
@@ -112,7 +112,7 @@ def _remove_candidate_worktree(
 ) -> _CandidateOutcome | None:
     """Remove or plan one worktree, returning an outcome when it was skipped."""
     candidate = removable.candidate
-    adapter: _GitWorktreeAdapter = state.adapter
+    adapter: _GitPort = state.adapter
     _log_planned_action(
         removable,
         state.mode,
@@ -157,7 +157,7 @@ def _delete_candidate_branch(
 
     """
     candidate = removable.candidate
-    adapter: _GitWorktreeAdapter = state.adapter
+    adapter: _GitPort = state.adapter
     branch_name = candidate.branch_name
     if branch_name in state.handled_branches:
         return _CandidateOutcome()

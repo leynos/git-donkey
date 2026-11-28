@@ -35,7 +35,7 @@ from pathlib import Path
 
 from git import GitCommandError, Repo
 
-from git_donkey import helpers, layout, remote_default
+from git_donkey import helpers, layout, plonk_github, remote_default
 from git_donkey.plonk_adapters import _FilesystemCleanupAdapter, _GitWorktreeAdapter
 from git_donkey.plonk_cleanup import _clean_removable
 from git_donkey.plonk_completion import (
@@ -45,6 +45,8 @@ from git_donkey.plonk_completion import (
 )
 from git_donkey.plonk_records import (
     GIT_PLONK_PREFIX,
+    MergedPullRequestLookup,
+    _GitPort,
     _PlonkCandidate,
     _PlonkContext,
     _PlonkMode,
@@ -61,6 +63,7 @@ from git_donkey.plonk_summary import _render_summary
 from git_donkey.plonk_workflow import (
     _DEFAULT_CLEANUP_OPTIONS,
     _DEFAULT_RUN_OPTIONS,
+    _GITHUB_FALLBACK_NOTICE,
     _CleanupOptions,
     _log_plonk_candidates_selected,
     _log_plonk_cleanup_start,
@@ -182,7 +185,9 @@ def _load_plonk_context() -> _PlonkContext:
         invoking_worktree=invoking_worktree,
         remote=remote,
         branch=branch,
-        remote_url=_configured_remote_url(repo_home, remote),
+        github_repository=plonk_github.parse_github_remote_url(
+            _configured_remote_url(repo_home, remote)
+        ),
     )
 
 
@@ -250,7 +255,10 @@ def _prepare_candidates(
     candidates: typ.Sequence[_PlonkCandidate],
     invoking_worktree: Path | None,
 ) -> tuple[list[_PlonkCandidate], list[_PlonkCandidate], list[_PlonkCandidate]]:
-    """Resolve offline evidence and partition candidates for the fallback tiers.
+    """Partition candidates around the evidence the sweep has already resolved.
+
+    The offline evidence was recorded by the caller, so this unit only reads
+    it to decide which candidates the fallback tiers may still consider.
 
     Returns
     -------
@@ -259,9 +267,6 @@ def _prepare_candidates(
         worktree, and every candidate the fallback tiers may consider.
 
     """
-    state.resolutions.update(
-        _offline_evidence(candidates, state.adapter, state.context.trunk_ref)
-    )
     offline_completed = [
         candidate
         for candidate in candidates
@@ -280,10 +285,38 @@ def _prepare_candidates(
     return offline_completed, removable_offline, active
 
 
+def _resolve_github_lookup(
+    context: _PlonkContext,
+    options: _CleanupOptions,
+) -> MergedPullRequestLookup | None:
+    """Resolve the merged-pull-request lookup once, before the sweep starts.
+
+    The tier is available only for a GitHub principal remote when the caller
+    has not disabled it. An explicitly injected lookup always wins, so tests
+    and embedders never reach for ``gh``. A missing ``gh`` is reported once
+    here, as a notice, and leaves the tier unavailable so the sweep fails
+    closed.
+
+    Returns
+    -------
+    MergedPullRequestLookup | None
+        The lookup to use, or ``None`` when the tier is disabled or unavailable.
+
+    """
+    if options.no_github or context.github_repository is None:
+        return None
+    if options.github_lookup is not None:
+        return options.github_lookup
+    if not plonk_github.gh_available():
+        helpers._eprint(f"{GIT_PLONK_PREFIX}: {_GITHUB_FALLBACK_NOTICE}")
+        return None
+    return plonk_github.merged_pull_request
+
+
 def _run_completed_cleanup(
     context: _PlonkContext,
     mode: _PlonkMode,
-    git_adapter: _GitWorktreeAdapter | None = None,
+    git_adapter: _GitPort | None = None,
     *,
     options: _CleanupOptions = _DEFAULT_CLEANUP_OPTIONS,
 ) -> _PlonkResult:
@@ -307,10 +340,14 @@ def _run_completed_cleanup(
         adapter=adapter,
         mode=mode,
         options=options,
+        github_lookup=_resolve_github_lookup(context, options),
     )
     _log_plonk_cleanup_start(mode, context)
     candidate_list: list[_PlonkCandidate] = _donkey_worktree_candidates(
         context.stanzas, context.worktrees_root, context.anchor_dir
+    )
+    state.resolutions.update(
+        _offline_evidence(candidate_list, adapter, context.trunk_ref)
     )
     offline_completed, removable_offline, active_candidates = _prepare_candidates(
         state,

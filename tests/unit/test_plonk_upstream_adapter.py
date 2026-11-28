@@ -18,7 +18,7 @@ from pathlib import Path
 import pytest
 from git import Repo
 
-from git_donkey import plonk, plonk_adapters, plonk_records
+from git_donkey import plonk, plonk_records, plonk_remote
 from tests import git_repo_helpers
 
 if typ.TYPE_CHECKING:
@@ -127,15 +127,54 @@ def test_upstream_state_rejects_a_merge_value_with_a_line_break(
     assert state == "unknown", "expected the whole malformed merge value to be rejected"
 
 
-def test_upstream_state_fails_closed_with_per_worktree_config(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    "setting",
+    [
+        pytest.param("true", id="explicit-true"),
+        pytest.param("banana", id="uninterpretable"),
+    ],
+)
+def test_upstream_state_fails_closed_with_per_worktree_config(
+    tmp_path: Path,
+    setting: str,
+) -> None:
     """Per-worktree overrides make the shared-config answer untrustworthy."""
     repo, _remote_path, branch = _repository_with_tracking(tmp_path, "present")
-    repo.git.config("extensions.worktreeConfig", "true")
+    repo.git.config("extensions.worktreeConfig", setting)
 
     state = plonk._GitWorktreeAdapter(repo).upstream_state(branch)
 
     assert state == "unknown", (
-        "expected per-worktree configuration to leave the upstream unresolved"
+        "expected enabled or uninterpretable per-worktree configuration to "
+        "leave the upstream unresolved"
+    )
+
+
+def test_upstream_state_treats_a_valueless_extension_as_enabled(
+    tmp_path: Path,
+) -> None:
+    """Git reads a valueless boolean entry as true, so the check must too."""
+    repo, _remote_path, branch = _repository_with_tracking(tmp_path, "present")
+    config_path = Path(repo.git_dir) / "config"
+    with config_path.open("a", encoding="utf-8") as handle:
+        handle.write("[extensions]\n\tworktreeConfig\n")
+
+    state = plonk._GitWorktreeAdapter(repo).upstream_state(branch)
+
+    assert state == "unknown", (
+        "expected the valueless entry to enable the extension and fail closed"
+    )
+
+
+def test_upstream_state_ignores_a_disabled_worktree_config(tmp_path: Path) -> None:
+    """An explicit false leaves the shared configuration authoritative."""
+    repo, _remote_path, branch = _repository_with_tracking(tmp_path, "present")
+    repo.git.config("extensions.worktreeConfig", "false")
+
+    state = plonk._GitWorktreeAdapter(repo).upstream_state(branch)
+
+    assert state == "present", (
+        "expected the shared upstream to be queried when the extension is off"
     )
 
 
@@ -204,7 +243,6 @@ def test_upstream_state_preserves_unicode_line_separator(tmp_path: Path) -> None
 
 def test_upstream_state_maps_a_timeout_to_unknown(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
     recording_recorder: RecordingRecorder,
 ) -> None:
     """A stalled upstream should become unknown rather than block the sweep."""
@@ -212,25 +250,13 @@ def test_upstream_state_maps_a_timeout_to_unknown(
 
     def fail_run(
         arguments: typ.Sequence[str],
-        **kwargs: object,
-    ) -> None:
+        cwd: str,
+    ) -> subprocess.CompletedProcess[str]:
         """Simulate the upstream query exceeding its deadline."""
-        assert list(arguments)[1] == "ls-remote", (
-            "expected the timeout to come from the upstream query itself"
-        )
-        assert kwargs.get("timeout") is not None, (
-            "expected the query to be bounded by a deadline"
-        )
-        raise subprocess.TimeoutExpired(arguments, 10)
+        raise subprocess.TimeoutExpired(list(arguments), 10)
 
-    monkeypatch.setattr(
-        plonk_adapters.shutil,
-        "which",
-        lambda name: "/usr/bin/git",
-    )
-    monkeypatch.setattr(plonk_adapters.subprocess, "run", fail_run)
-
-    state = plonk._GitWorktreeAdapter(repo).upstream_state(branch)
+    probe = plonk_remote._RemoteRefProbe(str(repo.working_tree_dir), run=fail_run)
+    state = plonk._GitWorktreeAdapter(repo, remote_probe=probe).upstream_state(branch)
 
     assert state == "unknown", (
         "expected a timed-out upstream query to be reported as unknown"
@@ -254,7 +280,6 @@ def test_upstream_state_maps_a_timeout_to_unknown(
 
 def test_upstream_state_records_a_failed_query_as_a_failure(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
     recording_recorder: RecordingRecorder,
 ) -> None:
     """A non-zero exit other than "no match" is a failed query, not a success."""
@@ -262,19 +287,13 @@ def test_upstream_state_records_a_failed_query_as_a_failure(
 
     def fail_run(
         arguments: typ.Sequence[str],
-        **kwargs: object,
+        cwd: str,
     ) -> subprocess.CompletedProcess[str]:
         """Report the generic Git failure status for the query."""
         return subprocess.CompletedProcess(arguments, 128, "", "fatal: unreachable")
 
-    monkeypatch.setattr(
-        plonk_adapters.shutil,
-        "which",
-        lambda name: "/usr/bin/git",
-    )
-    monkeypatch.setattr(plonk_adapters.subprocess, "run", fail_run)
-
-    state = plonk._GitWorktreeAdapter(repo).upstream_state(branch)
+    probe = plonk_remote._RemoteRefProbe(str(repo.working_tree_dir), run=fail_run)
+    state = plonk._GitWorktreeAdapter(repo, remote_probe=probe).upstream_state(branch)
 
     assert state == "unknown", "expected a failed query to be reported as unknown"
     assert [
@@ -292,10 +311,10 @@ def test_exact_ref_match_rejects_a_longer_branch_tail() -> None:
     """``ls-remote`` patterns match a ref tail, so presence needs an exact check."""
     output = "abc123\trefs/heads/other/refs/heads/issue-123-fix\n"
 
-    assert not plonk._GitWorktreeAdapter._mentions_exact_ref(
-        output, "refs/heads/issue-123-fix"
-    ), "expected a longer ref with the same tail not to count as present"
-    assert plonk._GitWorktreeAdapter._mentions_exact_ref(
+    assert not plonk_remote.mentions_exact_ref(output, "refs/heads/issue-123-fix"), (
+        "expected a longer ref with the same tail not to count as present"
+    )
+    assert plonk_remote.mentions_exact_ref(
         f"{output}def456\trefs/heads/issue-123-fix\n",
         "refs/heads/issue-123-fix",
     ), "expected the exact ref to count as present"

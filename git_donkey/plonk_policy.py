@@ -29,7 +29,12 @@ import re
 import string
 import typing as typ
 
-from git_donkey.plonk_records import _CompletionEvidence, _HistoryMessage
+from git_donkey.plonk_records import (
+    _CompletionEvidence,
+    _HistoryMessage,
+    _PullRequestQuery,
+    _PullRequestRecord,
+)
 
 _ISSUE_BRANCH_PATTERN = re.compile(r"^issue-(\d+)-")
 _DF12_ROADMAP_BRANCH_PATTERN = re.compile(r"^roadmap-(\d+(?:-\d+){1,3})(?:-addendum)?$")
@@ -481,3 +486,41 @@ def completed_candidates[CandidateT: CompletionCandidate](
 
     found = _resolve_messages(matcher_list, pending, messages)
     return [(candidate_list[index], found[index]) for index in sorted(found)]
+
+
+def matching_pull_request_number(
+    records: typ.Iterable[_PullRequestRecord],
+    query: _PullRequestQuery,
+) -> int | None:
+    """Return the number of the first pull request matching ``query``.
+
+    A record matches only when its head branch, base branch, head owner, and
+    head commit all agree with the query. The head commit must match because a
+    branch name can be reused after its earlier pull request merged; the old
+    merge must not complete new work. The owner comparison follows GitHub's
+    case-insensitive login rules.
+
+    Parameters
+    ----------
+    records : typ.Iterable[_PullRequestRecord]
+        Well-formed pull-request rows from one lookup response.
+    query : _PullRequestQuery
+        Identity the merged pull request must have.
+
+    Returns
+    -------
+    int | None
+        The matching pull-request number, or ``None`` when no record matches.
+
+    """
+    for record in records:
+        if record.head_branch != query.head_branch:
+            continue
+        if record.base_branch != query.base_branch:
+            continue
+        if record.owner.casefold() != query.owner.casefold():
+            continue
+        if record.head_sha.casefold() != query.head_sha.casefold():
+            continue
+        return record.number
+    return None

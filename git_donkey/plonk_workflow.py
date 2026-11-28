@@ -14,11 +14,12 @@ import dataclasses
 import logging
 import typing as typ
 
-from git_donkey import observability, plonk_github
+from git_donkey import observability
 from git_donkey.plonk_records import (
     _MODE_LABELS,
     _SIGNAL_LABELS,
     _UNVERIFIED_REASON_LABELS,
+    MergedPullRequestLookup,
     _CompletionEvidence,
     _PlonkCandidate,
     _PlonkContext,
@@ -66,7 +67,7 @@ class _CleanupOptions:
         Disable the GitHub merged-pull-request fallback.
     upstream_gone : bool
         Treat a gone upstream branch as completion evidence.
-    github_lookup : plonk_github.MergedPullRequestLookup | None
+    github_lookup : MergedPullRequestLookup | None
         Injected merged-pull-request lookup. ``None`` uses the real ``gh`` tool
         when the fallback is enabled.
 
@@ -75,8 +76,13 @@ class _CleanupOptions:
     dry_run: bool = False
     no_github: bool = False
     upstream_gone: bool = False
-    github_lookup: plonk_github.MergedPullRequestLookup | None = None
+    github_lookup: MergedPullRequestLookup | None = None
 
+
+_GITHUB_FALLBACK_NOTICE = (
+    "gh is not installed; merged pull-request lookups are unavailable"
+)
+"""Notice the composition layer prints when the GitHub tier is unavailable."""
 
 _DEFAULT_CLEANUP_OPTIONS = _CleanupOptions()
 

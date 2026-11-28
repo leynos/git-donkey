@@ -20,7 +20,6 @@ the fallback must query the repository the user configured.
 
 from __future__ import annotations
 
-import dataclasses
 import json
 import os
 import re
@@ -28,7 +27,13 @@ import shutil
 import subprocess  # ruff: ignore[suspicious-subprocess-import]  # runs read-only gh
 import typing as typ
 
-from git_donkey import observability
+from git_donkey import plonk_policy
+from git_donkey.plonk_records import (
+    _GitHubRepository,
+    _MergedPullRequest,
+    _PullRequestQuery,
+    _PullRequestRecord,
+)
 
 _DEFAULT_TIMEOUT_SECONDS = 10.0
 _GH_PROMPT_DISABLED_ENV = "GH_PROMPT_DISABLED"
@@ -71,71 +76,6 @@ _GITHUB_URL_PATTERNS = tuple(
     )
 )
 
-type _LookupState = typ.Literal["merged", "not_merged", "unknown"]
-
-
-@dataclasses.dataclass(frozen=True, slots=True)
-class _GitHubRepository:
-    """GitHub repository named by a configured remote URL.
-
-    Attributes
-    ----------
-    owner : str
-        Account or organization that owns the repository.
-    name : str
-        Repository name, without a trailing ``.git``.
-
-    """
-
-    owner: str
-    name: str
-
-
-@dataclasses.dataclass(frozen=True, slots=True)
-class _PullRequestQuery:
-    """One read-only merged-pull-request query.
-
-    Attributes
-    ----------
-    owner : str
-        Owner of the repository to query.
-    repository : str
-        Repository name to query.
-    head_branch : str
-        Head branch the pull request must have.
-    base_branch : str
-        Base branch the pull request must target.
-    head_sha : str
-        Commit the local branch had checked out. The merged pull request must
-        record the same head commit, so a reused branch name does not complete
-        new work on the strength of an earlier merge.
-
-    """
-
-    owner: str
-    repository: str
-    head_branch: str
-    base_branch: str
-    head_sha: str
-
-
-@dataclasses.dataclass(frozen=True, slots=True)
-class _MergedPullRequest:
-    """Outcome of one merged-pull-request lookup.
-
-    Attributes
-    ----------
-    state : _LookupState
-        ``merged`` only when a matching pull request was found; ``unknown``
-        whenever the answer could not be established.
-    number : int | None
-        Pull-request number, present only when ``state`` is ``merged``.
-
-    """
-
-    state: _LookupState
-    number: int | None = None
-
 
 class _GhRunner(typ.Protocol):
     """Callable that runs an argument list and returns its completed process."""
@@ -144,13 +84,6 @@ class _GhRunner(typ.Protocol):
         self, arguments: typ.Sequence[str], /
     ) -> subprocess.CompletedProcess[str]:
         """Run ``arguments`` without a shell and return the completed process."""
-
-
-class MergedPullRequestLookup(typ.Protocol):
-    """Injectable read-only merged-pull-request lookup."""
-
-    def __call__(self, query: _PullRequestQuery, /) -> _MergedPullRequest:
-        """Return whether ``query`` names a merged pull request."""
 
 
 def _is_valid_path_component(value: str) -> bool:
@@ -275,11 +208,8 @@ def _run_gh(arguments: typ.Sequence[str]) -> subprocess.CompletedProcess[str]:
     )
 
 
-def _matching_pull_request_number(
-    record: object,
-    query: _PullRequestQuery,
-) -> int | None:
-    """Return the PR number when ``record`` matches every identity field."""
+def _pull_request_record(record: object) -> _PullRequestRecord | None:
+    """Return ``record`` as a neutral pull request, or ``None`` if malformed."""
     match record:
         case {
             "number": int() as number,
@@ -290,13 +220,7 @@ def _matching_pull_request_number(
         }:
             if isinstance(number, bool) or number <= 0:
                 return None
-            if head != query.head_branch or base != query.base_branch:
-                return None
-            if login.casefold() != query.owner.casefold():
-                return None
-            if head_sha.casefold() != query.head_sha.casefold():
-                return None
-            return number
+            return _PullRequestRecord(number, head, base, login, head_sha)
     return None
 
 
@@ -310,12 +234,14 @@ def _pull_request_from_payload(
     if not payload:
         return _MergedPullRequest("not_merged")
     # The page may contain a fork's same-named branch ahead of the configured
-    # owner, so select the first record that matches every identity field
-    # instead of rejecting the page on its first row.
-    for record in payload:
-        number = _matching_pull_request_number(record, query)
-        if number is not None:
-            return _MergedPullRequest("merged", number)
+    # owner, so select the first well-formed record that matches every identity
+    # field instead of rejecting the page on its first row.
+    records = [
+        parsed for item in payload if (parsed := _pull_request_record(item)) is not None
+    ]
+    number = plonk_policy.matching_pull_request_number(records, query)
+    if number is not None:
+        return _MergedPullRequest("merged", number)
     return _MergedPullRequest("unknown")
 
 
@@ -347,22 +273,6 @@ def merged_pull_request(
         The lookup outcome.
 
     """
-    with observability.get_recorder().span("github_lookup"):
-        result = _perform_lookup(query, run)
-    observability.get_recorder().record(
-        observability.Observation(
-            operation="github_lookup",
-            outcome="failure" if result.state == "unknown" else "success",
-        )
-    )
-    return result
-
-
-def _perform_lookup(
-    query: _PullRequestQuery,
-    run: _GhRunner,
-) -> _MergedPullRequest:
-    """Run one ``gh`` query and interpret its response."""
     arguments = _gh_arguments(query)
     try:
         completed = run(arguments)
