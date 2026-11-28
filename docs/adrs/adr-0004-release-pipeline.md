@@ -90,12 +90,12 @@ releases waits on the version check instead.
 ### Building and attesting
 
 The shared `.github/actions/pure-python-wheel` action runs `uv build` with
-`build-constraints.txt` and `--require-hashes`, which fixes the build backend
-and its dependencies before anything is attested and builds the source
-distribution first, then the wheel from that source distribution. Every build
-therefore proves the sdist is buildable. The same action runs in the
-`build-dist` pull-request job, so a missing or incomplete sdist fails
-continuous integration rather than the tag.
+`build-constraints.txt`, `--require-hashes` and `--require-build-hashes`, which
+fixes the build backend and its dependencies before anything is attested and
+builds the source distribution first, then the wheel from that source
+distribution. Every build therefore proves the sdist is buildable. The same
+action runs in the `build-dist` pull-request job, so a missing or incomplete
+sdist fails continuous integration rather than the tag.
 
 `scripts/check_dist.py` requires exactly one sdist and at least one wheel,
 requires the sdist to carry the manual-page sources and Docutils configuration,

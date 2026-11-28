@@ -958,7 +958,8 @@ Build both distributions to check the source boundary; the `build-release`
 target runs the same command as the release workflow's build action:
 
 ```shell
-uv build --build-constraints build-constraints.txt --require-hashes
+uv build --build-constraints build-constraints.txt \
+  --require-hashes --require-build-hashes
 ```
 
 Run the focused manual tests:

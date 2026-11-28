@@ -41,7 +41,8 @@ runs:
         # before anything is attested, so every build dependency is pinned by
         # version and hash rather than resolved from the index.
         uv build --out-dir "${OUT_DIR}" \
-          --build-constraints build-constraints.txt --require-hashes
+          --build-constraints build-constraints.txt \
+          --require-hashes --require-build-hashes
     # The release publishes this build, so a missing or incomplete sdist fails
     # here rather than at tag time.
     - name: Check the distribution contents

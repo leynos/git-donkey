@@ -118,7 +118,7 @@ def test_each_bundle_check_gates_its_own_cli() -> None:
 
 
 def test_the_build_uses_hash_pinned_constraints() -> None:
-    """The build backend must be fixed before a release build is attested."""
+    """The build action must constrain the build environment by hash."""
     action = (
         ROOT / ".github" / "actions" / "pure-python-wheel" / "action.yml"
     ).read_text(encoding="utf-8")
@@ -127,6 +127,16 @@ def test_the_build_uses_hash_pinned_constraints() -> None:
     )
     assert "--require-hashes" in action, (
         "the build action must require the pinned hashes"
+    )
+
+
+def test_the_build_requires_a_hash_for_every_dependency() -> None:
+    """An unlisted build dependency must fail rather than resolve."""
+    action = (
+        ROOT / ".github" / "actions" / "pure-python-wheel" / "action.yml"
+    ).read_text(encoding="utf-8")
+    assert "--require-build-hashes" in action, (
+        "the build action must require a hash for every build dependency"
     )
     constraints = (ROOT / "build-constraints.txt").read_text(encoding="utf-8")
     for requirement in ("hatchling==", "hatch-build-scripts==", "docutils=="):

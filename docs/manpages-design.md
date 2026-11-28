@@ -58,7 +58,8 @@ man -l docs/man/git-donkey.1
 Build a source distribution and a wheel using the normal release workflow:
 
 ```shell
-uv build --build-constraints build-constraints.txt --require-hashes
+uv build --build-constraints build-constraints.txt \
+  --require-hashes --require-build-hashes
 ```
 
 The `make build-release` target runs the same hash-pinned command as the

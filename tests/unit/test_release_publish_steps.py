@@ -199,9 +199,9 @@ def test_collection_fails_without_exactly_one_sdist(
     completed = run_bash(step_script(*_COLLECT_STEP), tmp_path)
 
     assert completed.returncode != 0, "the release needs exactly one sdist"
-    assert completed.stderr.splitlines()[0] == (
-        "Expected exactly one source distribution."
-    ), "the failure must explain the missing or duplicated sdist"
+    assert completed.stderr.startswith("Expected exactly one source distribution.\n"), (
+        "the failure must end that line and start the stderr with it"
+    )
 
 
 def test_collection_fails_when_no_wheel_was_built(tmp_path: pth.Path) -> None:
@@ -211,8 +211,8 @@ def test_collection_fails_when_no_wheel_was_built(tmp_path: pth.Path) -> None:
     completed = run_bash(step_script(*_COLLECT_STEP), tmp_path)
 
     assert completed.returncode != 0, "the release needs at least one wheel"
-    assert completed.stderr.splitlines()[0] == "Expected at least one wheel.", (
-        "the failure must explain the missing wheel"
+    assert completed.stderr.startswith("Expected at least one wheel.\n"), (
+        "the failure must end that line and start the stderr with it"
     )
 
 
