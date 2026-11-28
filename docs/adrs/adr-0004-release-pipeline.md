@@ -125,6 +125,23 @@ omits means the index has not caught up or the upload did not happen; the step
 fails and a rerun waits for the index rather than uploading this run's rebuild
 in place of bytes PyPI serves.
 
+### Provenance policy for PyPI bytes
+
+The issue asks the GitHub Release to take PyPI's bytes for any filename PyPI
+already holds. That carry-over is deliberately bounded by the provenance
+policy: a PyPI file is carried only when an attestation binds its exact digest
+to this repository, `release.yml`, the tag, and the triggering commit. A
+digest-matching file with no such attestation is not carried, and the release
+stays a draft.
+
+This is intentional. PyPI's index digest proves only that a download arrived
+intact; it says nothing about who built the bytes. Allowing a digest-matching
+but unattested file onto the release would launder it into a provenance-bearing
+asset. The 0.2.0 files predate the workflow and cannot pass this gate, which is
+why the first automated release must use a higher version. Recovering
+unattested bytes requires a new version; the gate is not relaxed to make
+reconciliation pass.
+
 ### No-overwrite verification and manual recovery
 
 Before `publish-release` makes the release visible, it re-reads both the PyPI

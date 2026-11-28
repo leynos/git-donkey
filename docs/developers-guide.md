@@ -173,6 +173,10 @@ These settings are manual and must exist before the first automated release:
   workflow, and those files carry no provenance this repository attests. The
   first automated release must therefore be above 0.2.0; a `v0.2.0` tag leaves
   the GitHub Release a draft.
+- **Provenance policy:** the release carries a PyPI file over only when an
+  attestation binds its exact digest to this repository, `release.yml`, the
+  tag, and the triggering commit. A digest-matching but unattested file is not
+  carried; publish a new version instead of relaxing the gate.
 
 ## git-donkey workflow
 
