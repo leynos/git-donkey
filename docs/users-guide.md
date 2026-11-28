@@ -144,8 +144,31 @@ changes in the primary checkout are not used as the implicit base. An
 unavailable remote default produces an error asking for an explicit base; the
 command never silently falls back to local `main`.
 
-A named base still selects that branch. `.` selects the branch checked out in
-the calling working directory, including when called from a linked worktree.
+A named base selects that branch, `.` selects the branch checked out in the
+calling working directory, including when called from a linked worktree, and a
+remote-qualified base such as `origin/main` selects that remote-tracking ref. A
+base may also be a tag or any revision Git resolves to a commit, so the remote
+tip can be named explicitly even when the local branch is stale.
+
+An explicit base is interpreted in this order:
+
+1. a fully qualified `refs/` value is used as written, and a canonical ref
+   that does not exist is rejected rather than resolved through another
+   namespace. The ref component of an expression such as
+   `refs/remotes/origin/main~1` must exist for the same reason;
+2. otherwise a literal local branch name keeps its own meaning;
+3. otherwise a configured `<remote>/<branch>` whose remote-tracking ref exists
+   is used;
+4. otherwise Git resolves the value to a commit, including a tag, an
+   abbreviated commit ID, and an expression such as `HEAD~2`.
+
+Revision expressions resolve in the calling checkout, so `HEAD~2` names the
+caller's history even when the command runs from a linked worktree. Only the
+principal remote is fetched, so a ref belonging to another configured remote is
+resolved as that fetch left it. A base that names neither a branch nor a commit
+exits with code 1 and reports the supplied base once, without repeating a
+remote the caller already supplied.
+
 Existing local or remote feature branches are reused with their existing
 tracking rules; the base is used only when creating a new branch. If the
 worktree path already exists or the branch is already checked out elsewhere,
@@ -192,6 +215,15 @@ git donkey feature/foo .
 
 git donkey feature/foo release/1.2
 
+# Start from the fetched remote tip even when local main is stale
+
+git donkey feature/foo origin/main
+
+# Start from a tag or a commit
+
+git donkey feature/foo v1.2.0
+git donkey feature/foo 4f3c2a1
+
 # Enable the existing confirmation workflow for pull plus rebase
 
 git donkey feature/foo release/1.2 --pull-rebase
@@ -218,9 +250,14 @@ the selected local base; if that branch is not checked out, the command fails
 rather than updating an unrelated primary-checkout branch.
 
 With an omitted base, an enabled pull option may update the corresponding local
-default branch, but the new feature branch still starts at the remote commit.
-Supply the local base explicitly, or use `.`, to include local commits after an
-approved update.
+default branch, but the new feature branch still starts at the remote commit. A
+base qualified by the principal remote, such as `origin/main`, behaves the same
+way: the local branch of the same name may be updated, while the new branch
+still starts at the remote-tracking commit. A base qualified by another
+configured remote is resolved from its remote-tracking ref without updating a
+local branch. A tag or commit base also has no local branch to update, so it
+neither prompts nor updates. Supply the local base explicitly, or use `.`, to
+include local commits after an approved update.
 
 The [default-base and pull-mode design](default-base-and-pull-modes.md) records
 the discovery, preservation, and verification contracts. The

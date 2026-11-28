@@ -20,7 +20,7 @@ from pathlib import Path
 
 from git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
 
-from git_donkey import fetch_refspec
+from git_donkey import fetch_refspec, incoming_outgoing_policy
 
 _GIT_DONKEY_PREFIX = "git-donkey"
 _GIT_DONKEY_EMOJI = "💀"
@@ -134,6 +134,117 @@ def _ref_exists(repo: Repo, ref: str) -> bool:
     except GitCommandError:
         return False
     return True
+
+
+def _resolve_commit(repo: Repo, revision: str) -> str | None:
+    """Resolve a user-supplied revision to the commit it names, if any.
+
+    The revision is resolved first and only the resulting object ID is
+    peeled, because a revision expression such as ``:/^release$`` would
+    otherwise absorb ``^{commit}`` into its own pattern. ``--end-of-options``
+    stops an input such as ``--all`` from being read as a Git option, and
+    ``^{commit}`` peels an annotated tag while rejecting an object that is
+    not a commit, such as a tree.
+
+    Parameters
+    ----------
+    repo : Repo
+        Repository the revision is resolved in.
+    revision : str
+        Branch, tag, remote-tracking ref, object ID, or other revision
+        expression to resolve.
+
+    Returns
+    -------
+    str | None
+        The full commit object ID, or ``None`` when Git cannot resolve the
+        revision to a commit.
+
+    """
+    try:
+        object_id = repo.git.rev_parse(
+            "--verify",
+            "--quiet",
+            "--end-of-options",
+            revision,
+        )
+        return repo.git.rev_parse(
+            "--verify",
+            "--quiet",
+            "--end-of-options",
+            f"{object_id}^{{commit}}",
+        )
+    except GitCommandError:
+        return None
+
+
+def _canonical_ref_component(value: str) -> str:
+    """Return the leading ref path of a value before any revision suffix.
+
+    A Git ref name cannot contain ``~``, ``^`` or ``:``, nor the ``@{``
+    sequence, so the earliest of those starts a revision suffix. The prefix
+    before it is the ref Git must find exactly; a literal ref path has no
+    suffix and is returned whole. ``@`` alone remains valid in a ref name, so
+    only ``@{`` marks a suffix.
+
+    Parameters
+    ----------
+    value : str
+        Revision expression or literal ref path supplied by the caller.
+
+    Returns
+    -------
+    str
+        The leading ref path, without any revision suffix.
+
+    """
+    end = len(value)
+    for marker in ("~", "^", ":", "@{"):
+        index = value.find(marker)
+        if index != -1:
+            end = min(end, index)
+    return value[:end]
+
+
+def _configured_remote_names(repo: Repo) -> list[str]:
+    """Return the configured remote names, in configuration order."""
+    return [remote.name for remote in repo.remotes]
+
+
+def _base_not_found_message(repo: Repo, base_branch: str, remote: str) -> str:
+    """Explain a base that names neither a branch nor a commit.
+
+    A base that is already remote-qualified or canonical is named once; only a
+    bare branch name is reported with the ``<remote>/<name>`` ref that was
+    also checked, so the message never repeats a remote the caller supplied.
+
+    Parameters
+    ----------
+    repo : Repo
+        Repository whose configured remotes decide whether the base is
+        already remote-qualified.
+    base_branch : str
+        The base supplied by the caller.
+    remote : str
+        Principal remote name reported alongside a bare branch name.
+
+    Returns
+    -------
+    str
+        The error text naming the base, and for a bare name the remote ref
+        that was also checked.
+
+    """
+    if base_branch.startswith("refs/") or (
+        incoming_outgoing_policy.remote_name_for_ref(
+            _configured_remote_names(repo), base_branch
+        )
+        is not None
+    ):
+        return f"base '{base_branch}' not found"
+    return (
+        f"base branch '{base_branch}' not found locally or on '{remote}/{base_branch}'"
+    )
 
 
 def _local_branch_exists(repo: Repo, branch: str) -> bool:

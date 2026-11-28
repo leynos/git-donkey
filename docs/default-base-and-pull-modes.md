@@ -14,9 +14,10 @@ flowchart TD
     Advertise --> Fetch["fetch_default_branch_ref"]
     Fetch --> RemoteBase["fully qualified remote-tracking ref"]
     Base -->|yes| Explicit["choose_base_branch"]
+    Explicit --> Normalize["normalize remote-qualified ref"]
     RemoteBase --> Update["optional confirmed base update"]
-    Explicit --> Update
-    Update --> Resolve["commit(base).hexsha"]
+    Normalize --> Update
+    Update --> Resolve["resolve base to a commit"]
     Resolve --> Create["worktree add(--no-track)"]
     Create --> Done["new feature worktree"]
 ```
@@ -41,6 +42,44 @@ ID. Worktree creation uses that ID with `--no-track`, so a new feature branch
 does not accidentally track the remote's default branch. Existing local and
 remote feature branches retain their separate reuse and tracking behaviour.
 
+## Explicit base resolution
+
+An explicit base is resolved in a fixed order, so every input that worked
+before keeps its meaning:
+
+1. A fully qualified `refs/` value is used as written. A canonical ref that
+   does not exist is rejected, rather than letting Git's revision resolver find
+   a ref of the same name in another namespace. The ref component of a revision
+   expression, such as `refs/remotes/origin/main` in
+   `refs/remotes/origin/main~1`, must exist exactly for the same reason.
+2. A literal local branch name is used as that branch, even when the name also
+   spells a remote-tracking ref.
+3. A configured `<remote>/<branch>` whose `refs/remotes/<remote>/<branch>`
+   exists is normalized to that canonical remote-tracking ref.
+4. Anything else is resolved in two stages:
+   `git rev-parse --verify --quiet --end-of-options <base>` resolves the
+   unchanged value to an object ID, and
+   `git rev-parse --verify --quiet --end-of-options <object-id>^{commit}` peels
+   that object to a commit. Resolving first keeps `^{commit}` out of a
+   message-search pattern such as `:/^release$`; `--end-of-options` in both
+   calls keeps an option-shaped input such as `--all` from being read as a Git
+   option, and `^{commit}` rejects an object that is not a commit, such as a
+   tree. Resolution runs in the calling checkout, so a revision expression such
+   as `HEAD~2` names the caller's history even from a linked worktree.
+
+Only the principal remote is fetched. A base naming another configured remote
+resolves against the remote-tracking ref the principal fetch left in place.
+
+A bare branch name that exists only on the principal remote still gains a local
+tracking branch, preserving the reuse behaviour. A remote-qualified base and
+any other commit-ish resolve without creating a local branch of that name. The
+resolved commit ID is passed to `git worktree add --no-track -b`, so a newly
+created branch never inherits tracking.
+
+A base that names neither a branch nor a commit exits with code 1. The message
+names a bare branch together with the `<remote>/<branch>` ref also checked, and
+names a remote-qualified or `refs/` value once, without a doubled remote prefix.
+
 ## Local checkout updates
 
 Fetching remote references is distinct from integrating changes into a local
@@ -60,10 +99,24 @@ When an update is needed but no worktree holds the base, the operation fails
 rather than pulling into an unrelated branch in the primary checkout. Local
 bases without a remote counterpart retain the existing skip behaviour.
 
+A base that names a tag or commit has no local branch to update; the preflight
+accepts it once Git resolves it and skips both the update and the prompt. A
+base qualified by the principal remote behaves like an omitted base: the local
+branch of the same name may be updated, while the new branch still starts at
+the remote-tracking commit. A base qualified by another configured remote names
+no local branch this command updates, because only the principal remote is
+fetched. A fully qualified local branch, `refs/heads/<branch>`, is treated as
+that local branch for the same comparison. Only one outer ref namespace is
+removed, so a principal-remote branch whose own name contains `refs/heads/`
+keeps it. The behind comparison uses fully qualified refs, so a tag named like
+the base branch cannot shadow it in Git's ambiguous short-name resolution.
+
 An omitted base continues to select the remote commit even when an opt-in
-update also synchronizes its local counterpart. An explicit base, including `.`
-for the calling worktree's branch, selects the local branch after any confirmed
-update and therefore can include local commits.
+update also synchronizes its local counterpart. An explicit local branch base,
+including `.` for the calling worktree's branch, selects the local branch after
+any confirmed update and therefore can include local commits. A base qualified
+by the principal remote selects its remote-tracking commit after any confirmed
+update of the local branch of the same name.
 
 ## Verification contract
 
@@ -72,11 +125,27 @@ remote `HEAD`, narrow fetch configuration, and an unavailable advertised
 default. They also verify preservation of local commits, the index, tracked
 modifications, and untracked files during default worktree creation.
 
+Explicit-base tests cover a remote-qualified branch, its canonical
+remote-tracking ref, a non-principal configured remote, lightweight and
+annotated tags, full and abbreviated commit IDs, a literal local branch whose
+name spells a remote ref, and an unresolvable base that must leave neither a
+branch nor a worktree behind. Unit tests cover the resolution order,
+remote-name matching, and the commit resolution that rejects a tree and an
+option-shaped input.
+
 Pull-mode tests cover accepted and declined prompts, actual rebase and
 fast-forward operations, divergent histories, hostile pull configuration, and
-base branches held in another worktree. CLI tests exercise the Cyclopts parser,
-including conflicting options. Unit tests cover advertisement parsing and
-explicit mode selection.
+base branches held in another worktree. They also cover a base qualified by the
+principal remote, a fully qualified local base, a tag that shadows the base
+branch name, and tag or commit bases that neither prompt nor update. CLI tests
+exercise the Cyclopts parser, including conflicting options. Unit tests cover
+advertisement parsing and explicit mode selection.
+
+The integration tests assert complete command output streams with the shared
+`tests/output_assertions.py` helpers, following the repository's exact-output
+policy. A run's progress lines and its final diagnostic are therefore specified
+exactly rather than matched as substrings, and a doubled remote name cannot
+pass unnoticed.
 
 The change does not alter remote selection, template overlays, `git track`,
 branch cleanup, or the confirmation policy for existing updates. `git plonk`
