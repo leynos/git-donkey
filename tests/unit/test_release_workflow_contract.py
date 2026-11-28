@@ -412,6 +412,9 @@ def test_the_attached_bundle_covers_the_published_bytes() -> None:
     )
     for fragment in (
         "gh release download",
+        "--bundle",
+        '--source-digest "${GITHUB_SHA}"',
+        "gh release delete-asset",
         "bundle-coverage",
         "--bundles release-bundles",
     ):
@@ -472,6 +475,8 @@ def test_an_incomplete_published_release_returns_to_draft() -> None:
     for fragment in (
         "--json isDraft,assets",
         "gh release download",
+        "--bundle",
+        "gh release delete-asset",
         "release-complete",
         "--index pypi-index.json",
         "--bundles release-bundles",

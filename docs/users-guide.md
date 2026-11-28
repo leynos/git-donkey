@@ -50,12 +50,13 @@ transfer them with the bundle, and pass both to the verifier:
 
 ```shell
 gh attestation trusted-root > trusted_root.jsonl
-bundle="$(ls git-donkey-v1.2.3-*.attestations.jsonl)"
-gh attestation verify git_donkey-1.2.3-py3-none-any.whl \
-  --repo leynos/git-donkey \
-  --signer-workflow leynos/git-donkey/.github/workflows/release.yml \
-  --bundle "${bundle}" \
-  --custom-trusted-root trusted_root.jsonl
+for bundle in git-donkey-v1.2.3-*.attestations.jsonl; do
+  gh attestation verify git_donkey-1.2.3-py3-none-any.whl \
+    --repo leynos/git-donkey \
+    --signer-workflow leynos/git-donkey/.github/workflows/release.yml \
+    --bundle "${bundle}" \
+    --custom-trusted-root trusted_root.jsonl && break
+done
 ```
 
 For an unreleased source checkout, run `uv tool install .` from the repository

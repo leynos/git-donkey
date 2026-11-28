@@ -36,6 +36,7 @@ import typing as typ
 from fnmatch import fnmatch
 from pathlib import Path
 
+from scripts.release_bundle import read_bundle_subjects
 from tests.release_asset_provenance import bundle_line, sha256_hex
 
 #: Where the fake PyPI index says each file can be downloaded from.
@@ -261,6 +262,12 @@ def _gh_attestation_verify(args: list[str]) -> int:
 
     asset = Path(args[2])
     digest = sha256_hex(asset.read_bytes())
+    bundle = _option(args, "--bundle")
+    if bundle is not None and (asset.name, digest) not in read_bundle_subjects([
+        Path(bundle)
+    ]):
+        print(f"No matching bundle subject for {asset.name}", file=sys.stderr)
+        return 1
     records_path = Path(os.environ["FAKE_ATTESTATIONS"])
     digest_matches = _attestations_for_digest(records_path, digest)
     if not digest_matches:
@@ -328,21 +335,30 @@ def _gh_release_edit(args: list[str]) -> int:
     return 0
 
 
+def _gh_delete_asset(args: list[str]) -> int:
+    """Delete the named asset from the fake release."""
+    target = _directory("FAKE_GITHUB_ASSETS") / args[0]
+    if not target.exists():
+        print(f"asset {args[0]} not found", file=sys.stderr)
+        return 1
+    target.unlink()
+    return 0
+
+
 def _gh_release(args: list[str]) -> int:
     """Serve the supported release subcommands."""
-    match args[1]:
-        case "view":
-            return _gh_release_view(args)
-        case "create":
-            return _gh_release_create(args)
-        case "edit":
-            return _gh_release_edit(args)
-        case "upload":
-            return _gh_upload(args[3:])
-        case "download":
-            return _gh_download(args)
-        case _:
-            return _unsupported_gh_operation(args[:2])
+    handlers = {
+        "view": _gh_release_view,
+        "create": _gh_release_create,
+        "edit": _gh_release_edit,
+        "download": _gh_download,
+        "upload": lambda call: _gh_upload(call[3:]),
+        "delete-asset": lambda call: _gh_delete_asset(call[3:]),
+    }
+    handler = handlers.get(args[1])
+    if handler is None:
+        return _unsupported_gh_operation(args[:2])
+    return handler(args)
 
 
 def _unsupported_gh_operation(args: list[str]) -> int:

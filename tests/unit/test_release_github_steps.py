@@ -392,7 +392,9 @@ def test_a_moved_tag_published_release_lacks_current_provenance(
     written = _run_redraft_check(tmp_path, fake, env)
     provenance = _run_published_provenance(tmp_path, env)
 
-    assert written["complete"] == "true", "digests and coverage still agree"
+    assert written["complete"] == "false", (
+        "a bundle that fails its commit check must not count as complete"
+    )
     assert provenance["ok"] == "false", (
         "provenance for another commit must not satisfy the release"
     )

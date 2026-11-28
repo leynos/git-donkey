@@ -127,6 +127,7 @@ def test_the_tag_check_accepts_the_live_commit_and_rejects_a_moved_tag(
     _git(tmp_path, "init", str(clone))
     _git(clone, "config", "user.name", "Test")
     _git(clone, "config", "user.email", "test@example.test")
+    _git(clone, "config", "commit.gpgsign", "false")
     (clone / "file.txt").write_text("one", encoding="utf-8")
     _git(clone, "add", "file.txt")
     _git(clone, "commit", "-m", "first")

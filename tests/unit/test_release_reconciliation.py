@@ -358,6 +358,33 @@ def test_the_check_fails_when_the_destinations_disagree(fake: FakeRelease) -> No
     )
 
 
+def test_an_unverifiable_attached_bundle_is_replaced(tmp_path: pth.Path) -> None:
+    """A bundle that does not verify for the release is rebuilt."""
+    fake = fake_release(tmp_path)
+    for name in _ARTEFACTS:
+        (fake.pypi / name).write_bytes(f"published {name}".encode())
+        if name != _PYPI_ONLY:
+            shutil.copyfile(fake.pypi / name, fake.github / name)
+    fake.attest_pypi_holdings()
+    (fake.github / _EXISTING_BUNDLE).write_text(
+        bundle_line("wrong.whl", "0" * 64) + "\n", encoding="utf-8"
+    )
+
+    cwd = _publish_release(fake)
+
+    written = outputs(cwd / "output")
+    assert written["covered"] == "false", "the invalid bundle must not count"
+    assert not (fake.github / _EXISTING_BUNDLE).exists(), (
+        "the workflow must remove the unverifiable bundle"
+    )
+    assert (fake.github / _PYPI_ONLY).read_bytes() == (
+        f"published {_PYPI_ONLY}".encode()
+    ), "PyPI's bytes must reach the release"
+    assert (fake.github / _ASSEMBLED_BUNDLE).exists(), (
+        "the workflow must upload a valid replacement bundle"
+    )
+
+
 def test_an_existing_asset_from_another_commit_stops_publication(
     tmp_path: pth.Path,
 ) -> None:

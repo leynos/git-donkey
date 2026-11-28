@@ -246,6 +246,28 @@ jobs:
             gh release download "${GITHUB_REF_NAME}" --pattern '*.attestations.jsonl' --dir release-bundles || true
             gh release download "${GITHUB_REF_NAME}" --pattern '*.sigstore.json' --dir release-bundles || true
           fi
+          # A bundle must verify for every released distribution before its
+          # subjects count; a corrupted bundle is removed and rebuilt.
+          while IFS= read -r name; do
+            [ -n "${name}" ] || continue
+            for bundle in release-bundles/*.attestations.jsonl; do
+              [ -e "${bundle}" ] || continue
+              work="$(mktemp -d)"
+              gh release download "${GITHUB_REF_NAME}" --pattern "${name}" --dir "${work}"
+              if ! gh attestation verify "${work}/${name}" \
+                --bundle "${bundle}" \
+                --repo "${GITHUB_REPOSITORY}" \
+                --signer-workflow "${GITHUB_REPOSITORY}/.github/workflows/release.yml" \
+                --source-ref "${GITHUB_REF}" \
+                --source-digest "${GITHUB_SHA}" \
+                --deny-self-hosted-runners > /dev/null; then
+                echo "::notice::Removing unverifiable bundle $(basename "${bundle}")."
+                gh release delete-asset "${GITHUB_REF_NAME}" "$(basename "${bundle}")" --yes || true
+                rm -f "${bundle}"
+              fi
+              rm -rf "${work}"
+            done
+          done <<< "$(jq -r '.assets[].name | select((. | endswith(".attestations.jsonl") or endswith(".sigstore.json")) | not)' draft-assets.json)"
           python3 -m scripts.release_assets_cli release-complete --publish dist/publish \
             --index pypi-index.json --assets draft-assets.json --output github-state/files \
             --bundles release-bundles
@@ -446,6 +468,28 @@ jobs:
             gh release download "${GITHUB_REF_NAME}" --pattern '*.attestations.jsonl' --dir release-bundles || true
             gh release download "${GITHUB_REF_NAME}" --pattern '*.sigstore.json' --dir release-bundles || true
           fi
+          # A bundle must verify for every released distribution before its
+          # subjects count; a corrupted bundle is removed and rebuilt.
+          while IFS= read -r name; do
+            [ -n "${name}" ] || continue
+            for bundle in release-bundles/*.attestations.jsonl; do
+              [ -e "${bundle}" ] || continue
+              work="$(mktemp -d)"
+              gh release download "${GITHUB_REF_NAME}" --pattern "${name}" --dir "${work}"
+              if ! gh attestation verify "${work}/${name}" \
+                --bundle "${bundle}" \
+                --repo "${GITHUB_REPOSITORY}" \
+                --signer-workflow "${GITHUB_REPOSITORY}/.github/workflows/release.yml" \
+                --source-ref "${GITHUB_REF}" \
+                --source-digest "${GITHUB_SHA}" \
+                --deny-self-hosted-runners > /dev/null; then
+                echo "::notice::Removing unverifiable bundle $(basename "${bundle}")."
+                gh release delete-asset "${GITHUB_REF_NAME}" "$(basename "${bundle}")" --yes || true
+                rm -f "${bundle}"
+              fi
+              rm -rf "${work}"
+            done
+          done <<< "$(jq -r '.assets[].name | select((. | endswith(".attestations.jsonl") or endswith(".sigstore.json")) | not)' release-assets.json)"
           python3 -m scripts.release_assets_cli bundle-coverage --publish dist/publish \
             --assets release-assets.json --bundles release-bundles
       # Every missing name is fetched from PyPI, whose bytes are canonical. A
