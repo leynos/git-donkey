@@ -272,6 +272,29 @@ def test_a_persistently_unverifiable_bundle_is_preserved(
     ), "the workflow must not delete release assets"
 
 
+def test_a_bundle_that_fails_verification_does_not_redraft(
+    tmp_path: pth.Path,
+) -> None:
+    """A covering bundle that fails verification stops without editing."""
+    fake, env = _published_release(tmp_path, complete=True)
+
+    fetch, report, written = _run_redraft_steps(
+        tmp_path, {**env, "FAKE_BUNDLE_FAIL": "bundle signature invalid"}
+    )
+
+    assert fetch.returncode == 0, fetch.stderr
+    assert report is not None, "the completeness step must run"
+    assert report.returncode != 0, "an unverifiable covering bundle must fail"
+    assert written["published"] == "true", "the release is published"
+    assert not _redraft_fires(written), "an unverifiable bundle must not redraft"
+    assert (fake.github / _BUNDLE_ASSET).exists(), (
+        "the bundle must be preserved for investigation"
+    )
+    assert not any(call[:2] == ["release", "edit"] for call in fake.calls("gh")), (
+        "an unverifiable bundle must not edit the release"
+    )
+
+
 def test_a_failed_index_lookup_does_not_redraft(tmp_path: pth.Path) -> None:
     """An unavailable index is inconclusive, not an incomplete release."""
     fake, env = _published_release(tmp_path, complete=True)

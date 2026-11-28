@@ -253,6 +253,21 @@ def _gh_attestation_download(args: list[str]) -> int:
     return 0
 
 
+def _bundle_failure(args: list[str], asset: Path, digest: str) -> int | None:
+    """Return a failure status when the requested bundle does not verify."""
+    bundle = _option(args, "--bundle")
+    if bundle is None:
+        return None
+    failure = os.environ.get("FAKE_BUNDLE_FAIL", "")
+    if failure:
+        print(failure, file=sys.stderr)
+        return 1
+    if (asset.name, digest) not in read_bundle_subjects([Path(bundle)]):
+        print(f"No matching bundle subject for {asset.name}", file=sys.stderr)
+        return 1
+    return None
+
+
 def _gh_attestation_verify(args: list[str]) -> int:
     """Verify fake digest records against the workflow's identity policy."""
     if failure := os.environ.get("FAKE_ATTEST_FAIL"):
@@ -269,12 +284,9 @@ def _gh_attestation_verify(args: list[str]) -> int:
 
     asset = Path(args[2])
     digest = sha256_hex(asset.read_bytes())
-    bundle = _option(args, "--bundle")
-    if bundle is not None and (asset.name, digest) not in read_bundle_subjects([
-        Path(bundle)
-    ]):
-        print(f"No matching bundle subject for {asset.name}", file=sys.stderr)
-        return 1
+    bundle_failure = _bundle_failure(args, asset, digest)
+    if bundle_failure is not None:
+        return bundle_failure
     records_path = Path(os.environ["FAKE_ATTESTATIONS"])
     digest_matches = _attestations_for_digest(records_path, digest)
     if not digest_matches:

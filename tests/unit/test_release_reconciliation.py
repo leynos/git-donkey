@@ -409,6 +409,75 @@ def test_an_assembled_bundle_missing_a_subject_stops_publication(
     )
 
 
+def test_a_rerun_ignores_an_older_partial_bundle(tmp_path: pth.Path) -> None:
+    """A complete bundle is verified without failing on an older partial one."""
+    fake = fake_release(tmp_path)
+    digest = sha256_hex(b"published")
+    existing = ("git_donkey-1-py3-none-any.whl", _NEITHER)
+    for name in _ARTEFACTS:
+        (fake.pypi / name).write_bytes(b"published")
+        (fake.github / name).write_bytes(b"published")
+        fake.add_attestation(fake.github / name)
+    (fake.github / _EXISTING_BUNDLE).write_text(
+        bundle_line(existing[0], digest) + "\n", encoding="utf-8"
+    )
+    (fake.github / _ASSEMBLED_BUNDLE).write_text(
+        "\n".join(bundle_line(name, digest) for name in _ARTEFACTS) + "\n",
+        encoding="utf-8",
+    )
+
+    cwd = _publish_release(fake)
+
+    written = outputs(cwd / "output")
+    assert written["files"] == "false", "the release needs no distributions"
+    assert written["pending"] == "false", "the release needs no bundle"
+    assert written["covered"] == "true", "the complete bundle covers the release"
+    assert not any(call[:2] == ["release", "upload"] for call in fake.calls("gh")), (
+        "a complete re-run must not upload"
+    )
+    assert not any(
+        call[:2] == ["attestation", "download"] for call in fake.calls("gh")
+    ), "a complete re-run must not download attestations"
+
+
+def test_a_publish_bundle_download_failure_changes_nothing(
+    tmp_path: pth.Path,
+) -> None:
+    """A download failure in the publish job must not rebuild the release."""
+    fake = fake_release(tmp_path)
+    digest = sha256_hex(b"published")
+    for name in _ARTEFACTS:
+        (fake.pypi / name).write_bytes(b"published")
+        (fake.github / name).write_bytes(b"published")
+        fake.add_attestation(fake.github / name)
+    (fake.github / _ASSEMBLED_BUNDLE).write_text(
+        "\n".join(bundle_line(name, digest) for name in _ARTEFACTS) + "\n",
+        encoding="utf-8",
+    )
+    link_scripts(tmp_path)
+    (tmp_path / "dist" / "publish").mkdir(parents=True)
+    env = fake.env(FAKE_DOWNLOAD_FAIL="*.attestations.jsonl")
+    listed = run_bash(
+        step_script("publish-release", "List the release assets"), tmp_path, env
+    )
+    assert listed.returncode == 0, listed.stderr
+
+    completed = run_bash(
+        step_script("publish-release", "Check the attached bundle coverage"),
+        tmp_path,
+        env,
+    )
+
+    assert completed.returncode != 0, "a failed bundle download must fail the step"
+    assert "controlled download failure" in completed.stderr, (
+        "the failure must identify the download"
+    )
+    assert not any(call[:2] == ["release", "upload"] for call in fake.calls("gh")), (
+        "a failed download must not upload"
+    )
+    assert (fake.github / _ASSEMBLED_BUNDLE).exists(), "the bundle must be preserved"
+
+
 def test_an_existing_asset_from_another_commit_stops_publication(
     tmp_path: pth.Path,
 ) -> None:
