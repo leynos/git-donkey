@@ -139,8 +139,11 @@ notice, and the sweep fails closed. `--no-github` disables the tier explicitly;
 it is not valid with `--soft`, which does not judge completion.
 
 Hard mode still force-deletes the branch, so a squash merge leaves the branch
-commits reachable only through that branch. Inspect each branch tip before
-running hard mode.
+commits reachable only through that branch. The deletion is conditional: it
+succeeds only while the branch still points at the commit the sweep recorded. A
+commit made to the branch during the sweep therefore keeps both the branch and
+its later commit, and is reported as a failed deletion. Inspect each branch tip
+before running hard mode.
 
 ### Opt-in upstream-gone check
 
@@ -191,6 +194,10 @@ vocabulary:
 - `worktree state could not be read`: the preflight could not query Git, or
   the process was not allowed to read the path, so the worktree is left alone
   and the sweep continues.
+- `worktree changed during the sweep`: the worktree no longer has the branch
+  or commit the sweep recorded when it selected the candidate. Completion
+  evidence describes the candidate as it was selected, so a commit made during
+  the sweep invalidates it.
 - `worktree is locked`: the registration is locked, which Git records in
   `git worktree list --porcelain`. The planning phase reads that state, so a
   dry run previews the same skip a real run reports instead of promising a

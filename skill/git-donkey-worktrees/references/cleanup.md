@@ -61,18 +61,21 @@ The check protects only what Git itself would refuse to discard:
 - A registered worktree whose directory is missing is skipped with the reason
   `worktree directory is missing`. A status query that cannot read Git state is
   skipped as `worktree state could not be read`, and the sweep continues. A
-  locked registration is skipped as `worktree is locked`, in a dry run as well,
-  because Git refuses to remove it. Any other refusal during removal is
-  reported as `worktree removal failed`, and the worktree stays registered. A
-  worktree with a populated submodule takes this path: the preflight does not
-  call it dirty, and the unforced removal refuses it.
+  worktree whose branch or commit changed after selection is skipped as
+  `worktree changed during the sweep`. A locked registration is skipped as
+  `worktree is locked`, in a dry run as well, because Git refuses to remove it.
+  Any other refusal during removal is reported as `worktree removal failed`,
+  and the worktree stays registered. A worktree with a populated submodule
+  takes this path: the preflight does not call it dirty, and the unforced
+  removal refuses it.
 
-Hard mode deletes a branch only after its worktree was removed, using
-`git branch -D`. That deletion performs no merged or ancestry check, so a
-branch carrying commits after the matching marker is deleted with them. A
-branch Git refuses to delete is listed under `Failed branch deletions:`; its
-worktree is already gone, the sweep continues, and the run exits with status
-`1`.
+Hard mode deletes a branch only after its worktree was removed, using a
+conditional ref deletion. It performs no merged or ancestry check, so a branch
+carrying commits after the matching marker is deleted with them, provided the
+branch has not moved since the sweep recorded it. A commit made during the
+sweep keeps the branch. A branch Git refuses to delete is listed under
+`Failed branch deletions:`; its worktree is already gone, the sweep continues,
+and the run exits with status `1`.
 
 ## Resolve completion history before default or hard cleanup
 

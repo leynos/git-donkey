@@ -231,8 +231,8 @@ each removal's signal. A candidate no tier resolves is reported as unverified
 and kept. None of these signals proves that current work is safe to discard:
 plonk skips a completed worktree holding modified, staged, or untracked files
 and reports it, but it deletes ignored files with the worktree, and `--hard`
-deletes a removed worktree's local branch with `git branch -D`, without a
-merged check.
+deletes a removed worktree's local branch only while it still points at the
+commit the sweep recorded, without a merged check.
 
 Default and hard runs, previews included, contact the principal remote: plonk
 discovers and fetches its advertised default branch before every sweep, and

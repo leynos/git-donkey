@@ -77,6 +77,7 @@ class _SkipReason(enum.StrEnum):
     DIRTY = "uncommitted changes"
     UNAVAILABLE = "worktree directory is missing"
     UNREADABLE = "worktree state could not be read"
+    CHANGED = "worktree changed during the sweep"
     LOCKED = "worktree is locked"
     REMOVAL_FAILED = "worktree removal failed"
 
@@ -88,6 +89,7 @@ _SKIP_REASON_LABELS: dict[_SkipReason, observability.SkipReasonLabel] = {
     _SkipReason.DIRTY: "dirty",
     _SkipReason.UNAVAILABLE: "unavailable",
     _SkipReason.UNREADABLE: "unreadable",
+    _SkipReason.CHANGED: "changed",
     _SkipReason.LOCKED: "locked",
     _SkipReason.REMOVAL_FAILED: "removal_failed",
 }

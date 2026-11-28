@@ -44,6 +44,11 @@ _LS_REMOTE_QUERY_STATUSES = frozenset({0, _LS_REMOTE_NO_MATCH_STATUS})
 _CONFIG_KEY_UNSET_STATUS = 1
 _LS_REMOTE_TIMEOUT_SECONDS = 10.0
 _GIT_TERMINAL_PROMPT_ENV = "GIT_TERMINAL_PROMPT"
+# Characters Git forbids in ref names, plus the ones `ls-remote` treats as a
+# pattern. A merge ref containing any of them cannot be queried literally.
+_INVALID_REF_CHARS = frozenset(" ~^:?*[\\")
+_FIRST_PRINTABLE_CODE_POINT = 0x20
+_DELETE_CODE_POINT = 0x7F
 # GitPython reads these from the process environment when it constructs a
 # repository. A hook that exports them for the invoking worktree would make the
 # preflight inspect that worktree instead of the candidate.
@@ -82,6 +87,29 @@ def _clean_git_environment() -> typ.Iterator[None]:
         yield
     finally:
         os.environ.update(saved)
+
+
+def _matches_recorded_identity(
+    worktree_repo: Repo,
+    *,
+    expected_branch: str | None,
+    expected_commit: str | None,
+) -> bool:
+    """Return whether ``worktree_repo`` still matches the recorded identity.
+
+    Returns
+    -------
+    bool
+        ``True`` when the checked-out branch and commit, where supplied, still
+        equal the recorded values.
+
+    """
+    head = worktree_repo.head
+    branch_matches = expected_branch is None or (
+        not head.is_detached and head.ref.name == expected_branch
+    )
+    commit_matches = expected_commit is None or head.commit.hexsha == expected_commit
+    return branch_matches and commit_matches
 
 
 class _GitWorktreeAdapter:
@@ -167,6 +195,44 @@ class _GitWorktreeAdapter:
             return None
 
     @staticmethod
+    def _has_control_character(ref: str) -> bool:
+        """Return whether ``ref`` contains an ASCII control character."""
+        return any(
+            ord(character) < _FIRST_PRINTABLE_CODE_POINT
+            or ord(character) == _DELETE_CODE_POINT
+            for character in ref
+        )
+
+    @staticmethod
+    def _has_git_ref_structure_error(ref: str) -> bool:
+        """Return whether ``ref`` uses structure Git forbids in ref names."""
+        return (
+            not ref.startswith("refs/heads/")
+            or ref.endswith(("/", ".", ".lock"))
+            or ".." in ref
+            or "@{" in ref
+        )
+
+    @classmethod
+    def _is_exact_branch_ref(cls, ref: str) -> bool:
+        """Return whether ``ref`` is a full branch ref that names one ref exactly.
+
+        ``git ls-remote`` matches its argument as a pattern, so a wildcard would
+        answer for a different ref than the one the branch configured. This
+        check accepts only complete ``refs/heads/`` names that contain no
+        pattern metacharacter, control character, or structure Git forbids.
+
+        Returns
+        -------
+        bool
+            ``True`` only for a literal, complete branch ref.
+
+        """
+        if cls._has_git_ref_structure_error(ref) or cls._has_control_character(ref):
+            return False
+        return not any(character in _INVALID_REF_CHARS for character in ref)
+
+    @staticmethod
     def _mentions_exact_ref(output: str, ref: str) -> bool:
         """Return whether ``git ls-remote`` output names ``ref`` exactly."""
         return any(line.rpartition("\t")[2] == ref for line in output.split("\n"))
@@ -240,28 +306,34 @@ class _GitWorktreeAdapter:
         """
         try:
             # `--get` returns the effective (last) remote; Git reads the first
-            # merge value for @{upstream}, so that list keeps its order.
+            # merge value for @{upstream}, so that entry decides the answer.
             remote = self.repo.git.config("--get", f"branch.{branch_name}.remote")
-            merges = [
-                line
-                for line in self.repo.git.config(
-                    "--get-all", f"branch.{branch_name}.merge"
-                ).split("\n")
-                if line
-            ]
+            merges = self.repo.git.config(
+                "--get-all", f"branch.{branch_name}.merge"
+            ).split("\n")
         except GitCommandError as exc:
             return "unset" if exc.status == _CONFIG_KEY_UNSET_STATUS else "unknown"
         merge_ref = merges[0] if merges else ""
-        if not remote or not merge_ref:
+        if not remote:
             return "unset"
-        if not merge_ref.startswith("refs/heads/"):
-            # A merge ref outside refs/heads is not a branch this check knows
-            # how to query, so the honest answer is unknown.
+        if not merge_ref:
+            # Git does not fall through to a later merge value when the first
+            # one is empty, so this branch has no resolvable upstream.
+            return "unknown"
+        if not self._is_exact_branch_ref(merge_ref):
+            # `ls-remote` treats its argument as a pattern. A wildcard or an
+            # invalid ref could match a ref it does not name and make a deleted
+            # branch look present, or vice versa, so fail closed.
             return "unknown"
         return self._ls_remote_state(remote, merge_ref)
 
     @staticmethod
-    def skip_reason(worktree_path: Path) -> _SkipReason | None:
+    def skip_reason(
+        worktree_path: Path,
+        *,
+        expected_branch: str | None = None,
+        expected_commit: str | None = None,
+    ) -> _SkipReason | None:
         """Return why ``worktree_path`` cannot be discarded, if it cannot.
 
         The check reads the worktree's own repository rather than the main
@@ -275,10 +347,19 @@ class _GitWorktreeAdapter:
         ``worktree_preflight`` span: reading another repository crosses a
         storage boundary.
 
+        When the caller supplies the branch and commit the sweep recorded, the
+        worktree must still match them. Completion evidence describes the
+        candidate as it was selected, so work committed or checked out during
+        the sweep invalidates that evidence and the candidate is skipped.
+
         Parameters
         ----------
         worktree_path : Path
             Worktree to inspect. It is not modified.
+        expected_branch : str | None, optional
+            Branch the sweep recorded for this worktree.
+        expected_commit : str | None, optional
+            Commit the sweep recorded for this worktree.
 
         Returns
         -------
@@ -300,6 +381,12 @@ class _GitWorktreeAdapter:
                 with Repo(worktree_path) as worktree_repo:
                     if worktree_repo.is_dirty(untracked_files=True):
                         return _SkipReason.DIRTY
+                    if not _matches_recorded_identity(
+                        worktree_repo,
+                        expected_branch=expected_branch,
+                        expected_commit=expected_commit,
+                    ):
+                        return _SkipReason.CHANGED
             except (InvalidGitRepositoryError, NoSuchPathError):
                 return _SkipReason.UNAVAILABLE
             except (GitCommandError, UnicodeError, OSError):
@@ -347,7 +434,12 @@ class _GitWorktreeAdapter:
             return False
         return True
 
-    def delete_branch(self, branch_name: str) -> bool:
+    def delete_branch(
+        self,
+        branch_name: str,
+        *,
+        expected_commit: str | None = None,
+    ) -> bool:
         """Delete ``branch_name``, reporting whether Git deleted it.
 
         Like the worktree removal, a refusal is reported rather than fatal: a
@@ -356,10 +448,18 @@ class _GitWorktreeAdapter:
         Git invocation is timed as the ``branch_deletion`` span, refusal
         included, because the subprocess runs either way.
 
+        When ``expected_commit`` is supplied, the deletion is conditional: Git
+        deletes the ref only while it still points at that commit. A commit made
+        to the branch after the sweep recorded it therefore leaves the branch in
+        place instead of losing its only reference.
+
         Parameters
         ----------
         branch_name : str
             Local branch to delete.
+        expected_commit : str | None, optional
+            Commit the sweep recorded for the branch. When supplied, deletion
+            fails if the ref has moved.
 
         Returns
         -------
@@ -369,7 +469,14 @@ class _GitWorktreeAdapter:
         """
         try:
             with observability.get_recorder().span("branch_deletion"):
-                self.repo.git.branch("-D", branch_name)
+                if expected_commit is None:
+                    self.repo.git.branch("-D", branch_name)
+                else:
+                    self.repo.git.update_ref(
+                        "-d",
+                        f"refs/heads/{branch_name}",
+                        expected_commit,
+                    )
         except GitCommandError as exc:
             _LOGGER.exception(
                 "Failed to delete git-plonk branch",

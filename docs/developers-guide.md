@@ -443,11 +443,12 @@ reporting, summary rendering, and CLI parsing:
   upstream check in order, caches one verdict per branch, and reports
   unresolved candidates as unverified. Query and reporting are separate steps.
 - `git_donkey.plonk_github` owns raw GitHub remote URL parsing and the read-only
-  `gh pr list` lookup. It validates the head branch, base branch, and head
-  owner, pins the host, closes stdin, and maps every failure to unknown.
+  `gh pr list` lookup. It validates the head branch, base branch, head owner,
+  and head commit, pins the host, closes stdin, and maps every failure to
+  unknown.
 - `git_donkey.plonk_adapters` owns the Git and filesystem boundaries: history,
-  the upstream query, the cleanliness preflight, unforced worktree removal,
-  branch deletion, and generated-directory cleanup.
+  the upstream query, the cleanliness and identity preflight, unforced worktree
+  removal, conditional branch deletion, and generated-directory cleanup.
 - `git_donkey.plonk_cleanup` performs the removals for completed candidates and
   tallies what was removed, skipped, or failed.
 - `git_donkey.plonk_workflow` owns the invocation options, structured logs, and

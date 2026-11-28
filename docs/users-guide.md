@@ -480,10 +480,12 @@ Cleanup never discards uncommitted worktree files. A completed worktree holding
 modified, staged, or untracked files is skipped and reported, and the sweep
 continues with the remaining worktrees, so one dirty candidate cannot strand
 its clean siblings. Files ignored by `.gitignore` are the exception, because
-Git's own removal rule ignores them too. A worktree with a locked registration
-is skipped as `worktree is locked`, including in a dry run, because Git refuses
-to remove it. There is no option that forces removal, so a skipped worktree
-stays on disk with its branch intact.
+Git's own removal rule ignores them too. A worktree whose branch or commit
+changed after the sweep selected it is skipped as
+`worktree changed during the sweep`. A worktree with a locked registration is
+skipped as `worktree is locked`, including in a dry run, because Git refuses to
+remove it. There is no option that forces removal, so a skipped worktree stays
+on disk with its branch intact.
 
 In hard mode, if Git refuses to delete a local branch, the command reports it
 under a `Failed branch deletions:` heading and continues with the remaining
@@ -512,10 +514,12 @@ default mode. The branch is deleted only after its worktree is removed, so a
 skipped worktree keeps its branch. It deletes local branches only; it never
 forces a removal and never deletes remote branches.
 
-Hard mode force-deletes each matching branch with `git branch -D`. A merged
-pull request matched by name does not prove that every local commit on the
-branch was merged, and a commit made after the merge loses its branch reference
-when the branch goes. Inspect each branch tip with `git log` before running
+Hard mode force-deletes each matching branch, but only while it still points at
+the commit the sweep recorded. A commit made to the branch during the sweep
+keeps the branch and is reported as a failed deletion. A merged pull request
+matched by name does not prove that every local commit on the branch was
+merged, and a commit made after the merge can lose its branch reference when
+the branch goes. Inspect each branch tip with `git log` before running
 `git plonk --hard`.
 
 Dry-run mode prints the actions `git plonk` would take and exits without

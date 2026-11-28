@@ -78,6 +78,101 @@ def _candidate_skip_event(reason: _SkipReason) -> _CandidateLeftEvent:
     )
 
 
+def _preflight_reason(
+    removable: _RemovableCandidate,
+    state: _SweepState,
+) -> _SkipReason | None:
+    """Return why the candidate cannot be discarded, or ``None`` when it can.
+
+    Git refuses to remove a locked registration, so reporting the skip while
+    planning keeps a preview honest instead of promising a removal that the
+    real run cannot perform.
+
+    Returns
+    -------
+    _SkipReason | None
+        The reason to leave the candidate alone, or ``None`` when it may be
+        cleaned.
+
+    """
+    candidate = removable.candidate
+    if candidate.is_locked:
+        return _SkipReason.LOCKED
+    adapter: _GitWorktreeAdapter = state.adapter
+    return adapter.skip_reason(
+        candidate.worktree_path,
+        expected_branch=candidate.branch_name,
+        expected_commit=candidate.commit_id,
+    )
+
+
+def _remove_candidate_worktree(
+    removable: _RemovableCandidate,
+    state: _SweepState,
+) -> _CandidateOutcome | None:
+    """Remove or plan one worktree, returning an outcome when it was skipped."""
+    candidate = removable.candidate
+    adapter: _GitWorktreeAdapter = state.adapter
+    _log_planned_action(
+        removable,
+        state.mode,
+        _REMOVE_WORKTREE_ACTION,
+        dry_run=state.options.dry_run,
+    )
+    if state.options.dry_run:
+        return None
+    if not adapter.remove_worktree(candidate.worktree_path):
+        _log_candidate_left(
+            candidate,
+            state.mode,
+            _candidate_skip_event(_SkipReason.REMOVAL_FAILED),
+        )
+        _record_failure("worktree_removal", state.mode)
+        return _CandidateOutcome(skip_reason=_SkipReason.REMOVAL_FAILED)
+    _record_signal_step(
+        "worktree_removal",
+        "success",
+        state.mode,
+        removable.evidence,
+    )
+    return None
+
+
+def _delete_candidate_branch(
+    removable: _RemovableCandidate,
+    state: _SweepState,
+) -> _CandidateOutcome:
+    """Delete or plan the branch of a removed candidate in hard mode.
+
+    The deletion is conditional on the branch still pointing at the commit the
+    sweep recorded, so work committed during the sweep keeps its branch.
+
+    Returns
+    -------
+    _CandidateOutcome
+        A branch-deletion failure when Git refused, otherwise neither a skip
+        nor a failure.
+
+    """
+    candidate = removable.candidate
+    adapter: _GitWorktreeAdapter = state.adapter
+    _log_planned_action(
+        removable,
+        state.mode,
+        _BRANCH_DELETION_ACTION,
+        dry_run=state.options.dry_run,
+    )
+    if state.options.dry_run:
+        return _CandidateOutcome()
+    if not adapter.delete_branch(
+        candidate.branch_name, expected_commit=candidate.commit_id
+    ):
+        _record_failure("branch_deletion", state.mode)
+        return _CandidateOutcome(branch_deletion_failed=True)
+    _record_step("branch_deletion", "success", state.mode)
+    return _CandidateOutcome()
+
+
 def _clean_completed_candidate(
     removable: _RemovableCandidate,
     state: _SweepState,
@@ -106,16 +201,8 @@ def _clean_completed_candidate(
 
     """
     candidate = removable.candidate
-    adapter: _GitWorktreeAdapter = state.adapter
     mode = state.mode
-    # Git refuses to remove a locked registration, so reporting the skip while
-    # planning keeps a preview honest instead of promising a removal that the
-    # real run cannot perform.
-    reason = (
-        _SkipReason.LOCKED
-        if candidate.is_locked
-        else adapter.skip_reason(candidate.worktree_path)
-    )
+    reason = _preflight_reason(removable, state)
     if reason is not None:
         _log_candidate_left(candidate, mode, _candidate_skip_event(reason))
         _record_step(
@@ -127,36 +214,12 @@ def _clean_completed_candidate(
         return _CandidateOutcome(skip_reason=reason)
 
     _record_step("worktree_preflight", "success", mode)
-    _log_planned_action(
-        removable, mode, _REMOVE_WORKTREE_ACTION, dry_run=state.options.dry_run
-    )
-    if not state.options.dry_run:
-        if not adapter.remove_worktree(candidate.worktree_path):
-            _log_candidate_left(
-                candidate, mode, _candidate_skip_event(_SkipReason.REMOVAL_FAILED)
-            )
-            _record_failure("worktree_removal", mode)
-            return _CandidateOutcome(skip_reason=_SkipReason.REMOVAL_FAILED)
-        _record_signal_step(
-            "worktree_removal",
-            "success",
-            mode,
-            removable.evidence,
-        )
-
+    removal_outcome = _remove_candidate_worktree(removable, state)
+    if removal_outcome is not None:
+        return removal_outcome
     if mode is not _PlonkMode.HARD:
         return _CandidateOutcome()
-
-    _log_planned_action(
-        removable, mode, _BRANCH_DELETION_ACTION, dry_run=state.options.dry_run
-    )
-    if state.options.dry_run:
-        return _CandidateOutcome()
-    if not adapter.delete_branch(candidate.branch_name):
-        _record_failure("branch_deletion", mode)
-        return _CandidateOutcome(branch_deletion_failed=True)
-    _record_step("branch_deletion", "success", mode)
-    return _CandidateOutcome()
+    return _delete_candidate_branch(removable, state)
 
 
 def _clean_removable(

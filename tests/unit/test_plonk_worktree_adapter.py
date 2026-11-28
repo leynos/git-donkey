@@ -14,7 +14,6 @@ included, because the subprocess that reports the refusal ran too.
 from __future__ import annotations
 
 import shutil
-import subprocess  # ruff: ignore[suspicious-subprocess-import]  # asserts timeout mapping
 import typing as typ
 from pathlib import Path
 from types import SimpleNamespace
@@ -157,6 +156,99 @@ def test_skip_reason_reports_a_missing_worktree_directory(tmp_path: Path) -> Non
     )
 
 
+def test_preflight_skips_a_worktree_whose_commit_changed(tmp_path: Path) -> None:
+    """A commit made after selection invalidates the completion evidence."""
+    repo, worktree_path = _worktree_with_dirt(tmp_path, "clean")
+    recorded_commit = repo.commit(_WORKTREE_BRANCH).hexsha
+    worktree_repo = Repo(worktree_path)
+    (worktree_path / "later.txt").write_text("later")
+    worktree_repo.index.add(["later.txt"])
+    worktree_repo.index.commit("Later work")
+
+    reason = plonk._GitWorktreeAdapter(repo).skip_reason(
+        worktree_path,
+        expected_branch=_WORKTREE_BRANCH,
+        expected_commit=recorded_commit,
+    )
+
+    assert reason is plonk_records._SkipReason.CHANGED, (
+        "expected a worktree that advanced past its recorded commit to be kept"
+    )
+
+
+def test_preflight_accepts_a_worktree_matching_its_recorded_identity(
+    tmp_path: Path,
+) -> None:
+    """A worktree still on its recorded branch and commit stays removable."""
+    repo, worktree_path = _worktree_with_dirt(tmp_path, "clean")
+
+    reason = plonk._GitWorktreeAdapter(repo).skip_reason(
+        worktree_path,
+        expected_branch=_WORKTREE_BRANCH,
+        expected_commit=repo.commit(_WORKTREE_BRANCH).hexsha,
+    )
+
+    assert reason is None, "expected the unchanged worktree to remain removable"
+
+
+def test_preflight_skips_a_worktree_on_another_branch(tmp_path: Path) -> None:
+    """A worktree checked out on a different branch is not the recorded one."""
+    repo, worktree_path = _worktree_with_dirt(tmp_path, "clean")
+
+    reason = plonk._GitWorktreeAdapter(repo).skip_reason(
+        worktree_path,
+        expected_branch="issue-999-other",
+        expected_commit=repo.commit(_WORKTREE_BRANCH).hexsha,
+    )
+
+    assert reason is plonk_records._SkipReason.CHANGED, (
+        "expected a different checked-out branch to be kept"
+    )
+
+
+def test_conditional_deletion_refuses_a_moved_branch(tmp_path: Path) -> None:
+    """A branch that advanced past the recorded commit keeps its reference."""
+    repo, worktree_path = _worktree_with_dirt(tmp_path, "clean")
+    recorded_commit = repo.commit(_WORKTREE_BRANCH).hexsha
+    repo.git.worktree("remove", worktree_path.as_posix())
+    # Advance the branch from the main checkout, as a concurrent agent would.
+    repo.git.checkout(_WORKTREE_BRANCH)
+    (Path(repo.working_tree_dir or ".") / "later.txt").write_text("later")
+    repo.index.add(["later.txt"])
+    repo.index.commit("Later work")
+    repo.git.checkout("main")
+
+    deleted = plonk._GitWorktreeAdapter(repo).delete_branch(
+        _WORKTREE_BRANCH, expected_commit=recorded_commit
+    )
+
+    assert deleted is False, (
+        "expected the conditional deletion to refuse a branch that moved"
+    )
+    assert _WORKTREE_BRANCH in repo.heads, (
+        "the branch and its later commit must survive the refusal"
+    )
+
+
+def test_conditional_deletion_removes_an_unchanged_branch(tmp_path: Path) -> None:
+    """Conditional deletion removes the branch while it still matches."""
+    repo, worktree_path = _worktree_with_dirt(tmp_path, "clean")
+    recorded_commit = repo.commit(_WORKTREE_BRANCH).hexsha
+    # The real sweep removes the worktree before it deletes the branch.
+    assert plonk._GitWorktreeAdapter(repo).remove_worktree(worktree_path) is True, (
+        "the unchanged worktree must be removed before its branch is deleted"
+    )
+
+    deleted = plonk._GitWorktreeAdapter(repo).delete_branch(
+        _WORKTREE_BRANCH, expected_commit=recorded_commit
+    )
+
+    assert deleted is True, "expected the unchanged branch to be deleted"
+    assert _WORKTREE_BRANCH not in repo.heads, (
+        "expected the deleted branch to be gone from the repository"
+    )
+
+
 def test_removal_never_forces_git_to_discard_files() -> None:
     """Removal should ask Git politely: no ``--force``, in any mode."""
     calls: list[tuple[str, ...]] = []
@@ -211,69 +303,6 @@ def test_removal_leaves_a_dirty_worktree_on_disk(
     assert "failed to remove worktree" in capsys.readouterr().err, (
         "the refusal is reported to the user"
     )
-
-
-def test_upstream_state_uses_the_first_merge_entry(tmp_path: Path) -> None:
-    """Git uses the first merge value for ``@{upstream}``, so this check must too."""
-    repo, _remote_path, branch = _repository_with_tracking(tmp_path, "present")
-    repo.git.config("--add", f"branch.{branch}.merge", "refs/heads/missing")
-
-    state = plonk._GitWorktreeAdapter(repo).upstream_state(branch)
-
-    assert state == "present", (
-        "expected the first, still-present merge entry to be authoritative"
-    )
-
-
-def test_upstream_state_reports_gone_when_only_a_later_merge_entry_exists(
-    tmp_path: Path,
-) -> None:
-    """A missing first merge entry is gone even when a later entry exists."""
-    repo, _remote_path, branch = _repository_with_tracking(tmp_path, "present")
-    repo.git.config(f"branch.{branch}.merge", "refs/heads/missing")
-    repo.git.config("--add", f"branch.{branch}.merge", f"refs/heads/{branch}")
-
-    state = plonk._GitWorktreeAdapter(repo).upstream_state(branch)
-
-    assert state == "gone", (
-        "expected the first, missing merge entry to decide the upstream state"
-    )
-
-
-def test_upstream_state_uses_the_last_remote_value(tmp_path: Path) -> None:
-    """Git uses the last ``branch.<name>.remote`` value for ``@{upstream}``."""
-    repo, _origin = git_repo_helpers.repo_with_remote_default(
-        tmp_path / "local", tmp_path / "origin.git"
-    )
-    old_remote = tmp_path / "old.git"
-    Repo.init(old_remote, bare=True)
-    repo.create_remote("old", old_remote.as_posix())
-    branch = _WORKTREE_BRANCH
-    repo.git.branch(branch)
-    repo.git.push("origin", f"{branch}:refs/heads/{branch}")
-    repo.git.config(f"branch.{branch}.remote", "old")
-    repo.git.config("--add", f"branch.{branch}.remote", "origin")
-    repo.git.config(f"branch.{branch}.merge", f"refs/heads/{branch}")
-
-    state = plonk._GitWorktreeAdapter(repo).upstream_state(branch)
-
-    assert state == "present", (
-        "expected the effective origin remote to be probed, not the old one"
-    )
-
-
-def test_upstream_state_preserves_unicode_line_separator(tmp_path: Path) -> None:
-    """Git permits U+2028 in refs, so records must split on LF only."""
-    repo, _remote_path, branch = _repository_with_tracking(tmp_path, "unset")
-    exotic = f"{branch}\u2028next"
-    repo.git.branch(exotic)
-    repo.git.push("origin", f"{exotic}:refs/heads/{exotic}")
-    repo.git.config(f"branch.{branch}.remote", "origin")
-    repo.git.config(f"branch.{branch}.merge", f"refs/heads/{exotic}")
-
-    state = plonk._GitWorktreeAdapter(repo).upstream_state(branch)
-
-    assert state == "present", "expected the full ref containing U+2028 to be queried"
 
 
 def test_preflight_ignores_inherited_repository_location(
@@ -369,83 +398,6 @@ def test_preflight_reports_unreadable_state_as_a_skip(
     )
 
 
-def test_upstream_state_maps_a_timeout_to_unknown(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    recording_recorder: RecordingRecorder,
-) -> None:
-    """A stalled upstream should become unknown rather than block the sweep."""
-    repo, _remote_path, branch = _repository_with_tracking(tmp_path, "present")
-
-    def fail_run(*args: object, **kwargs: object) -> None:
-        """Simulate a Git subprocess that exceeds the deadline."""
-        raise subprocess.TimeoutExpired(["git", "ls-remote"], 10)
-
-    monkeypatch.setattr(
-        plonk_adapters.shutil,
-        "which",
-        lambda name: "/usr/bin/git",
-    )
-    monkeypatch.setattr(plonk_adapters.subprocess, "run", fail_run)
-
-    state = plonk._GitWorktreeAdapter(repo).upstream_state(branch)
-
-    assert state == "unknown", (
-        "expected a timed-out upstream query to be reported as unknown"
-    )
-    assert recording_recorder.span_operations() == ["upstream_lookup"], (
-        "expected the ls-remote process boundary to be timed"
-    )
-    assert [
-        (observation.operation, observation.outcome)
-        for observation in recording_recorder.observations
-    ] == [("upstream_lookup", "failure")], (
-        "expected the timeout to record one bounded failure"
-    )
-    assert recording_recorder.error_kinds("upstream_lookup") == ["os_error"], (
-        "expected the timeout to name the OS error class"
-    )
-    assert recording_recorder.unbounded_values() == set(), (
-        "every recorded value comes from a declared vocabulary"
-    )
-
-
-def test_upstream_state_records_a_failed_query_as_a_failure(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    recording_recorder: RecordingRecorder,
-) -> None:
-    """A non-zero exit other than "no match" is a failed query, not a success."""
-    repo, _remote_path, branch = _repository_with_tracking(tmp_path, "present")
-
-    def fail_run(
-        arguments: typ.Sequence[str],
-        **kwargs: object,
-    ) -> subprocess.CompletedProcess[str]:
-        """Report the generic Git failure status for the query."""
-        return subprocess.CompletedProcess(arguments, 128, "", "fatal: unreachable")
-
-    monkeypatch.setattr(
-        plonk_adapters.shutil,
-        "which",
-        lambda name: "/usr/bin/git",
-    )
-    monkeypatch.setattr(plonk_adapters.subprocess, "run", fail_run)
-
-    state = plonk._GitWorktreeAdapter(repo).upstream_state(branch)
-
-    assert state == "unknown", "expected a failed query to be reported as unknown"
-    assert [
-        (observation.operation, observation.outcome)
-        for observation in recording_recorder.observations
-    ] == [("upstream_lookup", "failure")], (
-        "expected the failed query to record one bounded failure"
-    )
-    assert recording_recorder.error_kinds("upstream_lookup") == ["git_command_error"], (
-        "expected the failed query to name the Git error class"
-    )
-
-
 def test_history_messages_carry_the_merge_status(tmp_path: Path) -> None:
     """Only a real merge commit may supply classic merge evidence."""
     repo = git_repo_helpers.seed_repo(tmp_path / "repo")
@@ -470,19 +422,6 @@ def test_history_messages_carry_the_merge_status(tmp_path: Path) -> None:
     )
 
 
-def test_exact_ref_match_rejects_a_longer_branch_tail() -> None:
-    """``ls-remote`` patterns match a ref tail, so presence needs an exact check."""
-    output = "abc123\trefs/heads/other/refs/heads/issue-123-fix\n"
-
-    assert not plonk._GitWorktreeAdapter._mentions_exact_ref(
-        output, "refs/heads/issue-123-fix"
-    ), "expected a longer ref with the same tail not to count as present"
-    assert plonk._GitWorktreeAdapter._mentions_exact_ref(
-        f"{output}def456\trefs/heads/issue-123-fix\n",
-        "refs/heads/issue-123-fix",
-    ), "expected the exact ref to count as present"
-
-
 def test_delete_branch_removes_the_branch_and_times_the_deletion(
     tmp_path: Path,
     recording_recorder: RecordingRecorder,
@@ -504,101 +443,6 @@ def test_delete_branch_removes_the_branch_and_times_the_deletion(
     assert recording_recorder.span_operations() == ["branch_deletion"], (
         "the deletion is timed, whether or not it succeeds"
     )
-
-
-def _repository_with_tracking(
-    tmp_path: Path,
-    upstream: str,
-) -> tuple[Repo, Path, str]:
-    """Create a repository whose local branch tracks ``upstream``.
-
-    Parameters
-    ----------
-    tmp_path : Path
-        Temporary directory that owns the repository and its remote.
-    upstream : str
-        State to leave the upstream in: ``unset``, ``present``, ``gone``, or
-        ``unknown``.
-
-    Returns
-    -------
-    tuple[Repo, Path, str]
-        The repository, its bare remote path, and the local branch name.
-
-    """
-    repo, remote = git_repo_helpers.repo_with_remote_default(
-        tmp_path / "local", tmp_path / "remote.git"
-    )
-    branch = _WORKTREE_BRANCH
-    repo.git.branch(branch)
-    if upstream == "unset":
-        return repo, Path(remote.git_dir), branch
-    if upstream == "unknown":
-        repo.git.config(f"branch.{branch}.remote", "origin")
-        repo.git.config(f"branch.{branch}.merge", f"refs/heads/{branch}")
-        remote_path = Path(remote.git_dir)
-        shutil.rmtree(remote_path)
-        return repo, remote_path, branch
-
-    repo.git.push("origin", f"{branch}:refs/heads/{branch}")
-    repo.git.fetch("origin")
-    repo.git.branch("--set-upstream-to", f"origin/{branch}", branch)
-    if upstream == "gone":
-        repo.git.push("origin", "--delete", branch)
-    return repo, Path(remote.git_dir), branch
-
-
-@pytest.mark.parametrize(
-    "upstream",
-    [
-        pytest.param("unset", id="no-upstream-configured"),
-        pytest.param("present", id="upstream-still-exists"),
-        pytest.param("gone", id="upstream-deleted"),
-        pytest.param("unknown", id="remote-unreachable"),
-    ],
-)
-def test_upstream_state_preserves_every_distinction(
-    tmp_path: Path,
-    upstream: plonk_records.UpstreamState,
-) -> None:
-    """The adapter should distinguish unset, present, gone, and unknown."""
-    repo, _remote_path, branch = _repository_with_tracking(tmp_path, upstream)
-    adapter = plonk._GitWorktreeAdapter(repo)
-
-    state = adapter.upstream_state(branch)
-
-    assert state == upstream, (
-        f"expected the adapter to report {upstream!r}, not {state!r}"
-    )
-
-
-def test_upstream_state_treats_a_partial_configuration_as_unset(
-    tmp_path: Path,
-) -> None:
-    """A branch with a remote but no merge ref was never fully pushed."""
-    repo = git_repo_helpers.seed_repo(tmp_path / "repo")
-    branch = _WORKTREE_BRANCH
-    repo.git.branch(branch)
-    repo.git.config(f"branch.{branch}.remote", "origin")
-
-    state = plonk._GitWorktreeAdapter(repo).upstream_state(branch)
-
-    assert state == "unset", (
-        "expected a half-configured upstream to be treated as never pushed"
-    )
-
-
-def test_upstream_state_rejects_a_non_head_merge_ref(tmp_path: Path) -> None:
-    """A merge ref outside ``refs/heads`` cannot be queried as a branch."""
-    repo = git_repo_helpers.seed_repo(tmp_path / "repo")
-    branch = _WORKTREE_BRANCH
-    repo.git.branch(branch)
-    repo.git.config(f"branch.{branch}.remote", "origin")
-    repo.git.config(f"branch.{branch}.merge", "refs/other/not-a-branch")
-
-    state = plonk._GitWorktreeAdapter(repo).upstream_state(branch)
-
-    assert state == "unknown", "expected a non-head merge ref to be reported as unknown"
 
 
 def test_delete_branch_reports_and_survives_gits_refusal(

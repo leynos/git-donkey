@@ -50,7 +50,12 @@ class FailingGitAdapter:
         yield marker_for(candidate(WORKTREE_BRANCH, 123))
 
     @staticmethod
-    def skip_reason(worktree_path: Path) -> plonk_records._SkipReason | None:
+    def skip_reason(
+        worktree_path: Path,
+        *,
+        expected_branch: str | None = None,
+        expected_commit: str | None = None,
+    ) -> plonk_records._SkipReason | None:
         """Report every candidate as clean, so planning reaches the mutations."""
         return None
 
@@ -65,7 +70,11 @@ class FailingGitAdapter:
         pytest.fail(f"dry run should not remove worktree {worktree_path}")
 
     @staticmethod
-    def delete_branch(branch_name: str) -> bool:
+    def delete_branch(
+        branch_name: str,
+        *,
+        expected_commit: str | None = None,
+    ) -> bool:
         """Fail the test unconditionally — dry runs must not delete branches."""
         pytest.fail(f"dry run should not delete branch {branch_name}")
 
@@ -133,7 +142,13 @@ class RecordingGitAdapter:
             raise AssertionError(msg)
         yield from self._markers
 
-    def skip_reason(self, worktree_path: Path) -> plonk_records._SkipReason | None:
+    def skip_reason(
+        self,
+        worktree_path: Path,
+        *,
+        expected_branch: str | None = None,
+        expected_commit: str | None = None,
+    ) -> plonk_records._SkipReason | None:
         """Return the configured reason for ``worktree_path``, if it has one."""
         if worktree_path in self.skip_reasons:
             return self.skip_reasons[worktree_path]
@@ -152,7 +167,12 @@ class RecordingGitAdapter:
         self.removed.append(worktree_path)
         return True
 
-    def delete_branch(self, branch_name: str) -> bool:
+    def delete_branch(
+        self,
+        branch_name: str,
+        *,
+        expected_commit: str | None = None,
+    ) -> bool:
         """Record a branch deletion, which must follow its worktree's removal."""
         removed_branches = [path.name for path in self.removed]
         if branch_name not in removed_branches:

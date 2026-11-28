@@ -129,9 +129,11 @@ OPTIONS
     A worktree skipped for uncommitted or untracked files keeps its branch,
     because the branch is deleted only after its worktree is removed; a
     refused branch deletion is reported rather than fatal.
-    The branch is force-deleted: a merged pull request matched by name does not
-    prove that every local commit on the branch was merged, so inspect each
-    branch tip before running it.
+    The branch is force-deleted, but only while it still points at the commit
+    the sweep recorded, so a commit made during the sweep keeps the branch.
+    A merged pull request matched by name does not prove that every local
+    commit on the branch was merged, so inspect each branch tip before running
+    it.
     Never force a removal and never delete remote branches.
 
 --dry-run
