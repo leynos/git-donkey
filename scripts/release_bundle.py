@@ -153,6 +153,24 @@ def uncovered(
     ]
 
 
+def has_combined_bundle(paths: cabc.Iterable[pth.Path]) -> bool:
+    """Return whether any path is a combined attestation bundle.
+
+    Parameters
+    ----------
+    paths : collections.abc.Iterable[pathlib.Path]
+        Candidate bundle files.
+
+    Returns
+    -------
+    bool
+        Whether a ``.attestations.jsonl`` bundle is present. A release with no
+        combined bundle is never complete, even when it holds no distributions
+        yet.
+    """
+    return any(path.name.endswith(ATTESTATIONS_SUFFIX) for path in paths)
+
+
 def combined_coverage(
     assets: cabc.Mapping[str, str | None],
     paths: cabc.Iterable[pth.Path],

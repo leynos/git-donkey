@@ -262,6 +262,10 @@ def _bundle_failure(args: list[str], asset: Path, digest: str) -> int | None:
     if failure:
         print(failure, file=sys.stderr)
         return 1
+    fail_name = os.environ.get("FAKE_BUNDLE_FAIL_NAME", "")
+    if fail_name and Path(bundle).name == fail_name:
+        print(f"controlled bundle failure for {fail_name}", file=sys.stderr)
+        return 1
     if (asset.name, digest) not in read_bundle_subjects([Path(bundle)]):
         print(f"No matching bundle subject for {asset.name}", file=sys.stderr)
         return 1

@@ -269,10 +269,11 @@ jobs:
               echo "::error title=bundle-coverage::No covering bundle could be selected." >&2
               exit 1
             fi
-            while IFS= read -r name; do
-              [ -n "${name}" ] || continue
-              for bundle in "${covering[@]}"; do
-                [ -e "${bundle}" ] || continue
+            verified_bundle=""
+            for bundle in "${covering[@]}"; do
+              bundle_ok=true
+              while IFS= read -r name; do
+                [ -n "${name}" ] || continue
                 work="$(mktemp -d)"
                 gh release download "${GITHUB_REF_NAME}" --pattern "${name}" --dir "${work}"
                 verified=false
@@ -291,13 +292,21 @@ jobs:
                     sleep "$((attempt * 2))"
                   fi
                 done
-                if [ "${verified}" != true ]; then
-                  echo "::error title=bundle-verification::Bundle $(basename "${bundle}") could not be verified; refusing to change the release." >&2
-                  exit 1
-                fi
                 rm -rf "${work}"
-              done
-            done <<< "$(jq -r '.assets[].name | select((. | endswith(".attestations.jsonl") or endswith(".sigstore.json")) | not)' draft-assets.json)"
+                if [ "${verified}" != true ]; then
+                  bundle_ok=false
+                  break
+                fi
+              done <<< "$(jq -r '.assets[].name | select((. | endswith(".attestations.jsonl") or endswith(".sigstore.json")) | not)' draft-assets.json)"
+              if [ "${bundle_ok}" = true ]; then
+                verified_bundle="${bundle}"
+                break
+              fi
+            done
+            if [ -z "${verified_bundle}" ]; then
+              echo "::error title=bundle-verification::No covering bundle verified for the release." >&2
+              exit 1
+            fi
           fi
           python3 -m scripts.release_assets_cli release-complete --publish dist/publish \
             --index pypi-index.json --assets draft-assets.json --output github-state/files \
@@ -519,10 +528,11 @@ jobs:
               echo "::error title=bundle-coverage::No covering bundle could be selected." >&2
               exit 1
             fi
-            while IFS= read -r name; do
-              [ -n "${name}" ] || continue
-              for bundle in "${covering[@]}"; do
-                [ -e "${bundle}" ] || continue
+            verified_bundle=""
+            for bundle in "${covering[@]}"; do
+              bundle_ok=true
+              while IFS= read -r name; do
+                [ -n "${name}" ] || continue
                 work="$(mktemp -d)"
                 gh release download "${GITHUB_REF_NAME}" --pattern "${name}" --dir "${work}"
                 verified=false
@@ -541,13 +551,21 @@ jobs:
                     sleep "$((attempt * 2))"
                   fi
                 done
-                if [ "${verified}" != true ]; then
-                  echo "::error title=bundle-verification::Bundle $(basename "${bundle}") could not be verified; refusing to change the release." >&2
-                  exit 1
-                fi
                 rm -rf "${work}"
-              done
-            done <<< "$(jq -r '.assets[].name | select((. | endswith(".attestations.jsonl") or endswith(".sigstore.json")) | not)' release-assets.json)"
+                if [ "${verified}" != true ]; then
+                  bundle_ok=false
+                  break
+                fi
+              done <<< "$(jq -r '.assets[].name | select((. | endswith(".attestations.jsonl") or endswith(".sigstore.json")) | not)' release-assets.json)"
+              if [ "${bundle_ok}" = true ]; then
+                verified_bundle="${bundle}"
+                break
+              fi
+            done
+            if [ -z "${verified_bundle}" ]; then
+              echo "::error title=bundle-verification::No covering bundle verified for the release." >&2
+              exit 1
+            fi
           fi
       # Every missing name is fetched from PyPI, whose bytes are canonical. A
       # fully published re-run stages nothing, so the upload steps below are

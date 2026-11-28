@@ -37,7 +37,7 @@ from scripts.release_assets import (
     verify,
     write_output,
 )
-from scripts.release_bundle import combined_coverage
+from scripts.release_bundle import combined_coverage, has_combined_bundle
 from scripts.release_github_upload import (
     check_fetched,
     check_provenance,
@@ -136,6 +136,8 @@ def _release_complete(state: State, args: argparse.Namespace) -> None:
     bundles = _path(args, "bundles")
     paths = sorted(bundles.iterdir()) if bundles.is_dir() else []
     problems = verify(state, _path(args, "output"))
+    if not has_combined_bundle(paths):
+        problems.append("the GitHub Release holds no combined attestation bundle")
     problems.extend(
         f"{name} is not covered by the attached bundle"
         for name in combined_coverage(state.github, paths)
@@ -149,10 +151,13 @@ def _bundle_coverage(state: State, args: argparse.Namespace) -> None:
     """Report whether the attached bundle covers every release distribution."""
     bundles = _path(args, "bundles")
     paths = sorted(bundles.iterdir()) if bundles.is_dir() else []
+    combined = has_combined_bundle(paths)
     missing = combined_coverage(state.github, paths)
+    if not combined:
+        print("::notice::No combined attestation bundle is attached.")
     for name in missing:
         print(f"::notice::{name} is not covered by the attached bundle")
-    write_output("covered", value=not missing)
+    write_output("covered", value=combined and not missing)
 
 
 _COMMANDS: dict[str, cabc.Callable[[State, argparse.Namespace], None]] = {

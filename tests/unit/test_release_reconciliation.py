@@ -1,533 +1,61 @@
-"""End-to-end behaviour of the release's asset reconciliation across its jobs.
+"""End-to-end behaviour of the release's canonical-byte reconciliation.
 
-Each test runs the checked-in steps of ``draft-release``, ``publish-pypi``, and
-``publish-release`` in order, against ``gh`` and ``curl`` stand-ins whose
-directories hold the GitHub Release's assets and PyPI's files. The one step
-that cannot run here, pypa's upload action, is modelled as copying the staged
-files to PyPI without overwriting, which is what ``skip-existing`` promises.
-The assertions are about bytes: every name ends up identical on both sides,
-taken from PyPI first, then GitHub, then this run, and nothing is replaced.
-The provenance gate runs between the index-digest check and the upload, so
-these tests also pin which PyPI bytes the release may receive: only those an
-approved attestation binds to the exact filename, digest, tag, and commit.
+The happy-path scenarios run the checked-in steps of ``draft-release``,
+``publish-pypi``, and ``publish-release`` in order against fake ``gh`` and
+``curl`` destinations: every name converges on its canonical bytes, each
+destination receives only what it lacks, and a complete rerun changes nothing.
 """
 
 from __future__ import annotations
 
-import json
 import shutil
 import sys
 import typing as typ
 
 import pytest
 
-from scripts.release_assets import BUNDLE_SUFFIX
-from tests.release_asset_provenance import bundle_line, provenance_record, sha256_hex
+from tests.release_asset_provenance import bundle_line, sha256_hex
+from tests.release_reconciliation import (
+    _ARTEFACTS,
+    _ASSEMBLED_BUNDLE,
+    _BOTH,
+    _EXISTING_BUNDLE,
+    _GITHUB_ONLY,
+    _NEITHER,
+    _PREDICATE_TYPE,
+    _PYPI_ONLY,
+    _basename,
+    _draft_and_publish_pypi,
+    _holdings,
+    _local,
+    _publish_release,
+    _seeded,
+)
 from tests.release_workflow import (
-    AttestationOverrides,
     FakeRelease,
     fake_release,
-    link_scripts,
     outputs,
-    run_bash,
-    step_script,
 )
 
 if typ.TYPE_CHECKING:
     import pathlib as pth
-    import subprocess
 
-_TAG = "v1.2.3"
-_BUNDLE = f"git-donkey-v1.2.3-run7-1{BUNDLE_SUFFIX}"
-_ASSEMBLED_BUNDLE = "git-donkey-v1.2.3-run7-1.attestations.jsonl"
-_EXISTING_BUNDLE = "git-donkey-v1.2.3-run6-1.attestations.jsonl"
-#: One name per reconciliation case: PyPI only, GitHub only, neither, both.
-_PYPI_ONLY, _GITHUB_ONLY, _NEITHER, _BOTH = (
-    "git_donkey-1-cp313-linux.whl",
-    "git_donkey-1-cp313-macos.whl",
-    "git_donkey-1-py3-none-any.whl",
-    "git_donkey-1.tar.gz",
-)
-_ARTEFACTS = (_PYPI_ONLY, _GITHUB_ONLY, _NEITHER, _BOTH)
-#: The provenance gate sits after the index-digest check and before the
-#: upload, so nothing unverified can reach the release.
-_PROVENANCE_STEP = "Verify provenance of PyPI bytes"
-_ASSEMBLY_STEP = "Assemble the release attestations"
-_UPLOAD_STEP = "Upload the assets the release lacks"
-_PRE_PROVENANCE = (
-    "Fetch the PyPI index",
-    "List the release assets",
-    "Check the attached bundle coverage",
-    "Stage the assets the release lacks",
-    "Check the fetched PyPI bytes",
-)
-_PUBLISH_STEPS = (*_PRE_PROVENANCE, _PROVENANCE_STEP)
-_PREDICATE_TYPE = "https://slsa.dev/provenance/v1"
+
+@pytest.fixture
+def fake(tmp_path: pth.Path) -> FakeRelease:
+    """Return the seeded destinations with PyPI's bytes attested."""
+    release = _seeded(tmp_path)
+    release.attest_approved(release.pypi / _PYPI_ONLY)
+    return release
+
 
 pytestmark = [
     pytest.mark.skipif(
         sys.platform == "win32",
         reason="The release workflow's steps run under Bash on Linux.",
     ),
-    # Each test executes many checked-in shell steps, each of which starts its
-    # own process; the module timeout must allow for a loaded xdist worker.
     pytest.mark.timeout(120),
 ]
-
-
-def _local(name: str) -> bytes:
-    """Return the bytes this run's build produced for ``name``."""
-    return f"rebuilt {name}".encode()
-
-
-def _job_directory(fake: FakeRelease, job: str) -> tuple[pth.Path, dict[str, str]]:
-    """Stage one job's workspace with this run's artefacts and bundle."""
-    cwd = fake.root / job
-    for name in _ARTEFACTS:
-        (cwd / "dist" / "publish").mkdir(parents=True, exist_ok=True)
-        (cwd / "dist" / "publish" / name).write_bytes(_local(name))
-    (cwd / "dist" / "attestations").mkdir(parents=True)
-    (cwd / "dist" / "attestations" / _BUNDLE).write_bytes(b"bundle")
-    link_scripts(cwd)
-    return cwd, fake.env(GITHUB_OUTPUT=str(cwd / "output"))
-
-
-def _step(job: str, name: str, cwd: pth.Path, env: dict[str, str]) -> None:
-    """Run one step and require it to succeed."""
-    completed = run_bash(step_script(job, name), cwd, env)
-    assert completed.returncode == 0, f"{job}/{name}: {completed.stderr}"
-
-
-def _draft_and_publish_pypi(fake: FakeRelease) -> None:
-    """Run the snapshot, the PyPI staging, and the modelled PyPI upload."""
-    draft, env = _job_directory(fake, "draft-release")
-    _step("draft-release", "Snapshot the release assets", draft, env)
-    _step("draft-release", "Verify carried asset provenance", draft, env)
-    pypi, env = _job_directory(fake, "publish-pypi")
-    shutil.copytree(draft / "github-state", pypi / "github-state")
-    _step("publish-pypi", "Fetch the PyPI index", pypi, env)
-    _step("publish-pypi", "Skip artefacts already on PyPI", pypi, env)
-    if outputs(pypi / "output")["remaining"] == "true":
-        for staged in (pypi / "dist" / "publish").iterdir():
-            assert not (fake.pypi / staged.name).exists(), "PyPI never overwrites"
-            shutil.copyfile(staged, fake.pypi / staged.name)
-            # `attest` attested these bytes before the PyPI upload, so the
-            # release job can verify the copy PyPI now serves back.
-            fake.attest_approved(fake.pypi / staged.name)
-
-
-def _publish_release(fake: FakeRelease, *, verify: bool = True) -> pth.Path:
-    """Run ``publish-release`` through publication; return its workspace."""
-    cwd, env = _job_directory(fake, "publish-release")
-    for name in _PUBLISH_STEPS:
-        _step("publish-release", name, cwd, env)
-    written = outputs(cwd / "output")
-    if written["files"] == "true":
-        _step("publish-release", _UPLOAD_STEP, cwd, env)
-    if written["pending"] == "true" or written["covered"] == "false":
-        _step("publish-release", _ASSEMBLY_STEP, cwd, env)
-    else:
-        _step("publish-release", "Verify release distributions", cwd, env)
-    if verify:
-        _step(
-            "publish-release", "Check both destinations hold the same bytes", cwd, env
-        )
-        _step("publish-release", "Publish the GitHub Release", cwd, env)
-    return cwd
-
-
-def _holdings(directory: pth.Path) -> dict[str, bytes]:
-    """Return each file's bytes in one destination."""
-    return {path.name: path.read_bytes() for path in directory.iterdir()}
-
-
-def _seeded(root: pth.Path) -> FakeRelease:
-    """Return destinations holding one name per reconciliation case."""
-    release = fake_release(root)
-    (release.pypi / _PYPI_ONLY).write_bytes(b"pypi")
-    (release.github / _GITHUB_ONLY).write_bytes(b"github")
-    release.attest_approved(release.github / _GITHUB_ONLY)
-    (release.pypi / _BOTH).write_bytes(b"both")
-    (release.github / _BOTH).write_bytes(b"both")
-    release.attest_approved(release.github / _BOTH)
-    return release
-
-
-@pytest.fixture
-def fake(tmp_path: pth.Path) -> FakeRelease:
-    """Return the seeded destinations with PyPI's bytes attested.
-
-    PyPI's bytes are attested as this tag's build, which is what an earlier
-    run of the same tag stored. Without that record the release could not
-    upload them, so every test that expects a successful publish relies on it.
-
-    Returns
-    -------
-    FakeRelease
-        The fake destinations, ready for a successful publish.
-    """
-    release = _seeded(tmp_path)
-    release.attest_approved(release.pypi / _PYPI_ONLY)
-    return release
-
-
-def test_every_name_converges_on_its_canonical_bytes(fake: FakeRelease) -> None:
-    """PyPI's bytes win, then GitHub's, then this run's, on both sides."""
-    _draft_and_publish_pypi(fake)
-    _publish_release(fake)
-
-    expected = {
-        _PYPI_ONLY: b"pypi",
-        _GITHUB_ONLY: b"github",
-        _NEITHER: _local(_NEITHER),
-        _BOTH: b"both",
-    }
-    published = _holdings(fake.pypi)
-    released = _holdings(fake.github)
-    assert published == expected, "PyPI must hold each name's canonical bytes"
-    assert {name: released[name] for name in expected} == expected, (
-        "the release must hold the same bytes as PyPI"
-    )
-    assert _ASSEMBLED_BUNDLE in released, (
-        "the release must carry the assembled attestation bundle"
-    )
-
-
-def test_verified_prior_run_asset_is_published_to_pypi(fake: FakeRelease) -> None:
-    """A tag-bound prior attestation permits interrupted-run carryover."""
-    _draft_and_publish_pypi(fake)
-
-    assert (fake.pypi / _GITHUB_ONLY).read_bytes() == b"github", (
-        "PyPI must receive the bytes from the approved prior release"
-    )
-    assert any(call[:2] == ["attestation", "verify"] for call in fake.calls("gh")), (
-        "the draft job must verify the carried asset before PyPI staging"
-    )
-
-
-def test_unverified_differing_asset_stops_before_pypi_upload(
-    tmp_path: pth.Path,
-) -> None:
-    """An untrusted GitHub asset fails staging before either destination writes."""
-    fake = fake_release(tmp_path)
-    (fake.github / _GITHUB_ONLY).write_bytes(b"untrusted carried bytes")
-    draft, env = _job_directory(fake, "draft-release")
-    _step("draft-release", "Snapshot the release assets", draft, env)
-    _step("draft-release", "Verify carried asset provenance", draft, env)
-
-    pypi, env = _job_directory(fake, "publish-pypi")
-    shutil.copytree(draft / "github-state", pypi / "github-state")
-    _step("publish-pypi", "Fetch the PyPI index", pypi, env)
-    local_bytes = _local(_GITHUB_ONLY)
-    completed = run_bash(
-        step_script("publish-pypi", "Skip artefacts already on PyPI"),
-        pypi,
-        env,
-    )
-
-    assert completed.returncode != 0, "unverified release bytes must stop staging"
-    assert _GITHUB_ONLY in completed.stderr, (
-        "the staging failure must name the unverified release asset"
-    )
-    assert "delete the named asset and rerun" in completed.stderr, (
-        "the staging failure must explain the recovery action"
-    )
-    assert (pypi / "dist" / "publish" / _GITHUB_ONLY).read_bytes() == local_bytes, (
-        "failed provenance validation must preserve this run's local bytes"
-    )
-    assert not (fake.pypi / _GITHUB_ONLY).exists(), "PyPI receives no bytes"
-
-
-def test_reported_digest_mismatch_stops_before_pypi_upload(fake: FakeRelease) -> None:
-    """Reject carried bytes that disagree with GitHub's release metadata."""
-    reported_digest = sha256_hex(b"different release metadata")
-    fake.reported_digests[_GITHUB_ONLY] = reported_digest
-    draft, env = _job_directory(fake, "draft-release")
-    _step("draft-release", "Snapshot the release assets", draft, env)
-    _step("draft-release", "Verify carried asset provenance", draft, env)
-
-    record = draft / "github-state" / "provenance" / f"{_GITHUB_ONLY}.json"
-    assert json.loads(record.read_text(encoding="utf-8")) == provenance_record(
-        _GITHUB_ONLY, sha256_hex(b"github")
-    ), "the verifier must attest the downloaded bytes, not the metadata override"
-
-    pypi, env = _job_directory(fake, "publish-pypi")
-    shutil.copytree(draft / "github-state", pypi / "github-state")
-    _step("publish-pypi", "Fetch the PyPI index", pypi, env)
-    publish = pypi / "dist" / "publish"
-    before_publish = _holdings(publish)
-    before_pypi = _holdings(fake.pypi)
-    completed = run_bash(
-        step_script("publish-pypi", "Skip artefacts already on PyPI"), pypi, env
-    )
-
-    assert completed.returncode != 0, "mismatched release metadata must stop staging"
-    assert _GITHUB_ONLY in completed.stderr, "the error must name the carried asset"
-    assert f"expected {reported_digest}" in completed.stderr, (
-        "the error must identify the independently reported digest"
-    )
-    assert "delete the named asset and rerun" in completed.stderr, (
-        "the error must explain the recovery action"
-    )
-    assert _holdings(publish) == before_publish, "staging must not change local bytes"
-    assert _holdings(fake.pypi) == before_pypi, "PyPI must receive no uploaded bytes"
-    assert not (fake.root / "publish-release").exists(), (
-        "a failed staging step must prevent the publish-release job"
-    )
-    assert not any(call[:2] == ["release", "upload"] for call in fake.calls("gh")), (
-        "a failed staging step must not upload to the GitHub release"
-    )
-
-
-def test_each_destination_is_sent_only_what_it_lacks(fake: FakeRelease) -> None:
-    """GitHub is sent the PyPI-only and new names and the bundle, nothing else."""
-    _draft_and_publish_pypi(fake)
-    _publish_release(fake)
-
-    uploads = [call for call in fake.calls("gh") if call[:2] == ["release", "upload"]]
-    assert uploads, "the release must receive the names it lacks"
-    sent = sorted(_basename(path) for call in uploads for path in call[3:])
-    assert sent == sorted((_PYPI_ONLY, _NEITHER, _ASSEMBLED_BUNDLE)), (
-        "the release must receive only the names it lacks plus its bundle"
-    )
-    assert not any("--clobber" in call for call in fake.calls("gh")), (
-        "no upload may overwrite an existing asset"
-    )
-
-
-def _basename(path: str) -> str:
-    """Return the final path component of one recorded upload argument."""
-    return path.rsplit("/", 1)[-1]
-
-
-def test_a_rerun_after_success_uploads_nothing(fake: FakeRelease) -> None:
-    """A second complete run finds every name on both sides and changes nothing."""
-    _draft_and_publish_pypi(fake)
-    _publish_release(fake)
-    before = (_holdings(fake.pypi), _holdings(fake.github))
-    for job in ("draft-release", "publish-pypi", "publish-release"):
-        shutil.rmtree(fake.root / job)
-    (fake.root / "calls.jsonl").unlink(missing_ok=True)
-
-    _draft_and_publish_pypi(fake)
-    cwd = _publish_release(fake)
-
-    assert (_holdings(fake.pypi), _holdings(fake.github)) == before, (
-        "a fully published re-run must not change either destination"
-    )
-    assert outputs(fake.root / "publish-pypi" / "output")["remaining"] == "false", (
-        "PyPI must need nothing"
-    )
-    written = outputs(cwd / "output")
-    assert written["files"] == "false", "the release must need no distributions"
-    assert written["pending"] == "false", "the release must need no bundle"
-    assert written["covered"] == "true", "the attached bundle must cover every file"
-    assert not any(
-        call[:2] == ["attestation", "download"] for call in fake.calls("gh")
-    ), "a complete re-run must not download attestations"
-    assert not any(call[:2] == ["release", "upload"] for call in fake.calls("gh")), (
-        "a fully published re-run must not upload"
-    )
-    assert not any(call[:2] == ["release", "edit"] for call in fake.calls("gh")), (
-        "a fully published re-run must not edit the release"
-    )
-
-
-def test_the_check_fails_when_the_destinations_disagree(fake: FakeRelease) -> None:
-    """Differing bytes under one name stop the release before it is visible."""
-    (fake.github / _BOTH).write_bytes(b"clobbered by an earlier workflow")
-    fake.attest_approved(fake.github / _BOTH)
-    _draft_and_publish_pypi(fake)
-    cwd = _publish_release(fake, verify=False)
-
-    completed = run_bash(
-        step_script("publish-release", "Check both destinations hold the same bytes"),
-        cwd,
-        fake.env(GITHUB_OUTPUT=str(cwd / "output")),
-    )
-
-    assert completed.returncode != 0, "a digest mismatch must fail the release"
-    assert f"{_BOTH} differs" in completed.stderr, (
-        "the failure must name the differing artefact"
-    )
-    assert (fake.github / _BOTH).read_bytes() == b"clobbered by an earlier workflow", (
-        "the existing asset must not be overwritten"
-    )
-
-
-def test_an_unverifiable_attached_bundle_is_replaced(tmp_path: pth.Path) -> None:
-    """A bundle that does not verify for the release is rebuilt."""
-    fake = fake_release(tmp_path)
-    for name in _ARTEFACTS:
-        (fake.pypi / name).write_bytes(f"published {name}".encode())
-        if name != _PYPI_ONLY:
-            shutil.copyfile(fake.pypi / name, fake.github / name)
-    fake.attest_pypi_holdings()
-    (fake.github / _EXISTING_BUNDLE).write_text(
-        bundle_line("wrong.whl", "0" * 64) + "\n", encoding="utf-8"
-    )
-
-    cwd = _publish_release(fake)
-
-    written = outputs(cwd / "output")
-    assert written["covered"] == "false", "the invalid bundle must not count"
-    assert (fake.github / _EXISTING_BUNDLE).exists(), (
-        "an unverifiable asset must not be deleted"
-    )
-    assert (fake.github / _PYPI_ONLY).read_bytes() == (
-        f"published {_PYPI_ONLY}".encode()
-    ), "PyPI's bytes must reach the release"
-    assert (fake.github / _ASSEMBLED_BUNDLE).exists(), (
-        "the workflow must upload a valid replacement bundle"
-    )
-
-
-def test_an_assembled_bundle_missing_a_subject_stops_publication(
-    tmp_path: pth.Path,
-) -> None:
-    """The assembled bundle itself must name every distribution."""
-    fake = _seeded(tmp_path)
-    _draft_and_publish_pypi(fake)
-    cwd, env = _job_directory(fake, "publish-release")
-    for name in _PRE_PROVENANCE:
-        _step("publish-release", name, cwd, env)
-
-    completed = run_bash(
-        step_script("publish-release", _ASSEMBLY_STEP),
-        cwd,
-        {**env, "FAKE_ATTEST_DOWNLOAD_SUBJECT": "wrong.whl"},
-    )
-
-    assert completed.returncode != 0, (
-        "an assembled bundle without the released subjects must stop publication"
-    )
-    assert "not covered by the assembled bundle" in completed.stderr, (
-        "the failure must name the missing coverage"
-    )
-    assert not any(call[:2] == ["release", "upload"] for call in fake.calls("gh")), (
-        "nothing may be uploaded after a failed bundle verification"
-    )
-
-
-def test_a_rerun_ignores_an_older_partial_bundle(tmp_path: pth.Path) -> None:
-    """A complete bundle is verified without failing on an older partial one."""
-    fake = fake_release(tmp_path)
-    digest = sha256_hex(b"published")
-    existing = ("git_donkey-1-py3-none-any.whl", _NEITHER)
-    for name in _ARTEFACTS:
-        (fake.pypi / name).write_bytes(b"published")
-        (fake.github / name).write_bytes(b"published")
-        fake.add_attestation(fake.github / name)
-    (fake.github / _EXISTING_BUNDLE).write_text(
-        bundle_line(existing[0], digest) + "\n", encoding="utf-8"
-    )
-    (fake.github / _ASSEMBLED_BUNDLE).write_text(
-        "\n".join(bundle_line(name, digest) for name in _ARTEFACTS) + "\n",
-        encoding="utf-8",
-    )
-
-    cwd = _publish_release(fake)
-
-    written = outputs(cwd / "output")
-    assert written["files"] == "false", "the release needs no distributions"
-    assert written["pending"] == "false", "the release needs no bundle"
-    assert written["covered"] == "true", "the complete bundle covers the release"
-    assert not any(call[:2] == ["release", "upload"] for call in fake.calls("gh")), (
-        "a complete re-run must not upload"
-    )
-    assert not any(
-        call[:2] == ["attestation", "download"] for call in fake.calls("gh")
-    ), "a complete re-run must not download attestations"
-
-
-def test_a_publish_bundle_download_failure_changes_nothing(
-    tmp_path: pth.Path,
-) -> None:
-    """A download failure in the publish job must not rebuild the release."""
-    fake = fake_release(tmp_path)
-    digest = sha256_hex(b"published")
-    for name in _ARTEFACTS:
-        (fake.pypi / name).write_bytes(b"published")
-        (fake.github / name).write_bytes(b"published")
-        fake.add_attestation(fake.github / name)
-    (fake.github / _ASSEMBLED_BUNDLE).write_text(
-        "\n".join(bundle_line(name, digest) for name in _ARTEFACTS) + "\n",
-        encoding="utf-8",
-    )
-    link_scripts(tmp_path)
-    (tmp_path / "dist" / "publish").mkdir(parents=True)
-    env = fake.env(FAKE_DOWNLOAD_FAIL="*.attestations.jsonl")
-    listed = run_bash(
-        step_script("publish-release", "List the release assets"), tmp_path, env
-    )
-    assert listed.returncode == 0, listed.stderr
-
-    completed = run_bash(
-        step_script("publish-release", "Check the attached bundle coverage"),
-        tmp_path,
-        env,
-    )
-
-    assert completed.returncode != 0, "a failed bundle download must fail the step"
-    assert "controlled download failure" in completed.stderr, (
-        "the failure must identify the download"
-    )
-    assert not any(call[:2] == ["release", "upload"] for call in fake.calls("gh")), (
-        "a failed download must not upload"
-    )
-    assert (fake.github / _ASSEMBLED_BUNDLE).exists(), "the bundle must be preserved"
-
-
-def test_an_existing_asset_from_another_commit_stops_publication(
-    tmp_path: pth.Path,
-) -> None:
-    """A moved tag cannot publish assets attested for a different commit."""
-    fake = fake_release(tmp_path)
-    for name in _ARTEFACTS:
-        (fake.pypi / name).write_bytes(b"published")
-        (fake.github / name).write_bytes(b"published")
-        fake.add_attestation(
-            fake.github / name, AttestationOverrides(source_digest="b" * 40)
-        )
-    cwd, env = _job_directory(fake, "publish-release")
-    for name in _PRE_PROVENANCE:
-        _step("publish-release", name, cwd, env)
-
-    completed = run_bash(
-        step_script("publish-release", _ASSEMBLY_STEP),
-        cwd,
-        {**env, "PENDING": "false", "COVERED": "false"},
-    )
-
-    assert completed.returncode != 0, (
-        "an asset attested for another commit must stop publication"
-    )
-    assert "No attestations satisfy the verification policy" in completed.stderr, (
-        "the failure must come from the identity policy"
-    )
-    assert not any(call[:2] == ["release", "upload"] for call in fake.calls("gh")), (
-        "no asset may be uploaded after a failed verification"
-    )
-
-
-def test_bytes_that_do_not_match_the_index_are_never_uploaded(
-    fake: FakeRelease,
-) -> None:
-    """A PyPI download whose digest differs from the index stops the upload."""
-    _draft_and_publish_pypi(fake)
-    cwd, env = _job_directory(fake, "publish-release")
-    for name in _PRE_PROVENANCE[:3]:
-        _step("publish-release", name, cwd, env)
-    (fake.pypi / _PYPI_ONLY).write_bytes(b"tampered in transit")
-    _step("publish-release", "Stage the assets the release lacks", cwd, env)
-
-    completed = run_bash(
-        step_script("publish-release", "Check the fetched PyPI bytes"), cwd, env
-    )
-
-    assert completed.returncode != 0, "a download must match PyPI's digest"
-    assert _PYPI_ONLY in completed.stderr, "the failure must name the file"
-    assert _PYPI_ONLY not in _holdings(fake.github), "the file must not be uploaded"
 
 
 def test_pypi_downloads_retry_and_are_bounded(fake: FakeRelease) -> None:
@@ -541,6 +69,41 @@ def test_pypi_downloads_retry_and_are_bounded(fake: FakeRelease) -> None:
         joined = " ".join(call)
         for flag in ("--retry 5", "--retry-all-errors", "--connect-timeout 10"):
             assert flag in joined, f"a PyPI download must pass {flag}"
+
+
+def test_an_attested_pypi_file_carries_over_to_the_release(
+    fake: FakeRelease,
+) -> None:
+    """PyPI's bytes may be uploaded when this tag and commit attested them."""
+    _draft_and_publish_pypi(fake)
+    cwd = _publish_release(fake)
+
+    assert (fake.github / _PYPI_ONLY).read_bytes() == b"pypi", (
+        "approved PyPI bytes must reach the release"
+    )
+    evidence = cwd / "pypi-provenance" / f"{_PYPI_ONLY}.json"
+    assert evidence.exists(), "the verifier record must be kept for the gate"
+    assert not (cwd / "github-upload" / f"{_PYPI_ONLY}.json").exists(), (
+        "verifier output must stay outside the directory that is uploaded"
+    )
+
+
+def test_a_fresh_release_publishes_from_an_empty_github_release(
+    tmp_path: pth.Path,
+) -> None:
+    """An empty draft gains every distribution and a bundle."""
+    fake = fake_release(tmp_path)
+
+    _draft_and_publish_pypi(fake)
+    cwd = _publish_release(fake)
+
+    written = outputs(cwd / "output")
+    assert written["covered"] == "false", "an empty release has no combined bundle yet"
+    assert written["files"] == "true", "every distribution must be staged"
+    assert written["pending"] == "true", "the release needs a bundle"
+    assert set(_holdings(fake.github)) == {*_ARTEFACTS, _ASSEMBLED_BUNDLE}, (
+        "the fresh release must hold every distribution and its bundle"
+    )
 
 
 def test_a_pypi_only_name_uploads_when_the_bundle_is_already_attached(
@@ -575,165 +138,96 @@ def test_a_pypi_only_name_uploads_when_the_bundle_is_already_attached(
     )
 
 
-def _ready_to_verify(
-    fake: FakeRelease, *, extra: str | None = None
-) -> tuple[pth.Path, dict[str, str]]:
-    """Run ``publish-release`` up to, but not including, the provenance gate.
+def test_a_rerun_ignores_an_older_partial_bundle(tmp_path: pth.Path) -> None:
+    """A complete bundle is verified without failing on an older partial one."""
+    fake = fake_release(tmp_path)
+    digest = sha256_hex(b"published")
+    existing = ("git_donkey-1-py3-none-any.whl", _NEITHER)
+    for name in _ARTEFACTS:
+        (fake.pypi / name).write_bytes(b"published")
+        (fake.github / name).write_bytes(b"published")
+        fake.add_attestation(fake.github / name)
+    (fake.github / _EXISTING_BUNDLE).write_text(
+        bundle_line(existing[0], digest) + "\n", encoding="utf-8"
+    )
+    (fake.github / _ASSEMBLED_BUNDLE).write_text(
+        "\n".join(bundle_line(name, digest) for name in _ARTEFACTS) + "\n",
+        encoding="utf-8",
+    )
 
-    ``extra`` names one more locally built artefact to stage, so a test can
-    present more than the four fixed reconciliation cases.
+    cwd = _publish_release(fake)
 
-    Returns
-    -------
-    tuple[pathlib.Path, dict[str, str]]
-        The job's workspace and the environment its steps run with.
-    """
+    written = outputs(cwd / "output")
+    assert written["files"] == "false", "the release needs no distributions"
+    assert written["pending"] == "false", "the release needs no bundle"
+    assert written["covered"] == "true", "the complete bundle covers the release"
+    assert not any(call[:2] == ["release", "upload"] for call in fake.calls("gh")), (
+        "a complete re-run must not upload"
+    )
+    assert not any(
+        call[:2] == ["attestation", "download"] for call in fake.calls("gh")
+    ), "a complete re-run must not download attestations"
+
+
+def test_verified_prior_run_asset_is_published_to_pypi(fake: FakeRelease) -> None:
+    """A tag-bound prior attestation permits interrupted-run carryover."""
     _draft_and_publish_pypi(fake)
-    cwd, env = _job_directory(fake, "publish-release")
-    if extra is not None:
-        (cwd / "dist" / "publish" / extra).write_bytes(_local(extra))
-    for name in _PRE_PROVENANCE:
-        _step("publish-release", name, cwd, env)
-    return cwd, env
 
-
-def _no_github_upload(fake: FakeRelease) -> None:
-    """Require that no asset reached the GitHub Release."""
-    uploads = [call for call in fake.calls("gh") if call[:2] == ["release", "upload"]]
-    assert not uploads, "a failed provenance gate must not upload anything"
-
-
-def _assert_gate_refuses(
-    fake: FakeRelease, cwd: pth.Path, env: dict[str, str], *, named: str = _PYPI_ONLY
-) -> subprocess.CompletedProcess[str]:
-    """Run the provenance gate and require it to refuse and upload nothing."""
-    completed = run_bash(step_script("publish-release", _PROVENANCE_STEP), cwd, env)
-    assert completed.returncode != 0, "the provenance gate must refuse"
-    assert named in completed.stderr, "the failure must name the file"
-    assert _PYPI_ONLY not in _holdings(fake.github), "nothing may reach the release"
-    _no_github_upload(fake)
-    return completed
-
-
-def test_a_fetched_file_without_provenance_is_never_uploaded(
-    tmp_path: pth.Path,
-) -> None:
-    """The index digest alone must not place bytes on the release."""
-    fake = _seeded(tmp_path)
-    cwd, env = _ready_to_verify(fake)
-
-    completed = _assert_gate_refuses(fake, cwd, env)
-
-    assert "Could not verify build provenance" in completed.stderr, (
-        "the step must report the failed verification"
+    assert (fake.pypi / _GITHUB_ONLY).read_bytes() == b"github", (
+        "PyPI must receive the bytes from the approved prior release"
+    )
+    assert any(call[:2] == ["attestation", "verify"] for call in fake.calls("gh")), (
+        "the draft job must verify the carried asset before PyPI staging"
     )
 
 
-def test_the_index_digest_cannot_authorize_other_bytes(tmp_path: pth.Path) -> None:
-    """An attestation for genuine bytes never covers malicious replacements."""
-    fake = _seeded(tmp_path)
-    fake.attest_approved(fake.pypi / _PYPI_ONLY)
-    (fake.pypi / _PYPI_ONLY).write_bytes(b"malicious bytes matching the index")
-    cwd, env = _ready_to_verify(fake)
+def test_each_destination_is_sent_only_what_it_lacks(fake: FakeRelease) -> None:
+    """GitHub is sent the PyPI-only and new names and the bundle, nothing else."""
+    _draft_and_publish_pypi(fake)
+    _publish_release(fake)
 
-    _assert_gate_refuses(fake, cwd, env)
+    uploads = [call for call in fake.calls("gh") if call[:2] == ["release", "upload"]]
+    assert uploads, "the release must receive the names it lacks"
+    sent = sorted(_basename(path) for call in uploads for path in call[3:])
+    assert sent == sorted((_PYPI_ONLY, _NEITHER, _ASSEMBLED_BUNDLE)), (
+        "the release must receive only the names it lacks plus its bundle"
+    )
+    assert not any("--clobber" in call for call in fake.calls("gh")), (
+        "no upload may overwrite an existing asset"
+    )
 
 
-def test_an_attested_pypi_file_carries_over_to_the_release(
-    fake: FakeRelease,
-) -> None:
-    """PyPI's bytes may be uploaded when this tag and commit attested them."""
+def test_a_rerun_after_success_uploads_nothing(fake: FakeRelease) -> None:
+    """A second complete run finds every name on both sides and changes nothing."""
+    _draft_and_publish_pypi(fake)
+    _publish_release(fake)
+    before = (_holdings(fake.pypi), _holdings(fake.github))
+    for job in ("draft-release", "publish-pypi", "publish-release"):
+        shutil.rmtree(fake.root / job)
+    (fake.root / "calls.jsonl").unlink(missing_ok=True)
+
     _draft_and_publish_pypi(fake)
     cwd = _publish_release(fake)
 
-    assert (fake.github / _PYPI_ONLY).read_bytes() == b"pypi", (
-        "approved PyPI bytes must reach the release"
+    assert (_holdings(fake.pypi), _holdings(fake.github)) == before, (
+        "a fully published re-run must not change either destination"
     )
-    evidence = cwd / "pypi-provenance" / f"{_PYPI_ONLY}.json"
-    assert evidence.exists(), "the verifier record must be kept for the gate"
-    assert not (cwd / "github-upload" / f"{_PYPI_ONLY}.json").exists(), (
-        "verifier output must stay outside the directory that is uploaded"
+    assert outputs(fake.root / "publish-pypi" / "output")["remaining"] == "false", (
+        "PyPI must need nothing"
     )
-
-
-@pytest.mark.parametrize(
-    "overrides",
-    [
-        AttestationOverrides(source_ref="refs/tags/v9.9.9"),
-        AttestationOverrides(source_digest="b" * 40),
-        AttestationOverrides(
-            signer_workflow="attacker/other/.github/workflows/release.yml"
-        ),
-    ],
-    ids=["other-tag", "other-commit", "other-signer"],
-)
-def test_evidence_for_another_identity_does_not_authorize_the_bytes(
-    tmp_path: pth.Path, overrides: AttestationOverrides
-) -> None:
-    """Only this tag, commit, and signer workflow may approve the upload."""
-    fake = _seeded(tmp_path)
-    fake.add_attestation(fake.pypi / _PYPI_ONLY, overrides)
-    cwd, env = _ready_to_verify(fake)
-
-    _assert_gate_refuses(fake, cwd, env)
-
-
-def test_a_subject_name_mismatch_is_rejected(tmp_path: pth.Path) -> None:
-    """A record must name the exact file, not merely carry its digest."""
-    fake = _seeded(tmp_path)
-    fake.add_attestation(
-        fake.pypi / _PYPI_ONLY, AttestationOverrides(subject_name="other.whl")
-    )
-    cwd, env = _ready_to_verify(fake)
-
-    completed = _assert_gate_refuses(fake, cwd, env)
-
-    assert "has no approved build provenance" in completed.stderr, (
-        "the gate must report the missing provenance"
-    )
-
-
-def test_a_later_unattested_file_stops_the_whole_upload(tmp_path: pth.Path) -> None:
-    """One passing candidate must not let a later failing one slip through."""
-    later = "git_donkey-2-py3-none-any.whl"
-    fake = _seeded(tmp_path)
-    fake.attest_approved(fake.pypi / _PYPI_ONLY)
-    (fake.pypi / later).write_bytes(b"second pypi file")
-    cwd, env = _ready_to_verify(fake, extra=later)
-
-    _assert_gate_refuses(fake, cwd, env, named=later)
-
-
-def test_every_unattested_file_is_named_in_one_run(tmp_path: pth.Path) -> None:
-    """The gate reports every file it could not verify, not just the first."""
-    later = "git_donkey-2-py3-none-any.whl"
-    fake = _seeded(tmp_path)
-    (fake.pypi / later).write_bytes(b"second pypi file")
-    cwd, env = _ready_to_verify(fake, extra=later)
-
-    completed = _assert_gate_refuses(fake, cwd, env)
-
-    assert later in completed.stderr, "the later failure must be named too"
-
-
-def test_an_old_github_cli_fails_before_any_verification(fake: FakeRelease) -> None:
-    """An unpatched CLI cannot be trusted to enforce the identity flags."""
-    cwd, env = _ready_to_verify(fake)
-    before = len(fake.calls("gh"))
-
-    completed = run_bash(
-        step_script("publish-release", _PROVENANCE_STEP),
-        cwd,
-        {**env, "FAKE_GH_VERSION": "2.101.9"},
-    )
-
-    assert completed.returncode != 0, "an old CLI must fail the gate"
-    assert "GitHub CLI 2.102.0 or newer is required; found 2.101.9." in (
-        completed.stderr
-    ), "the gate must name the minimum and the found release"
+    written = outputs(cwd / "output")
+    assert written["files"] == "false", "the release must need no distributions"
+    assert written["pending"] == "false", "the release must need no bundle"
+    assert written["covered"] == "true", "the attached bundle must cover every file"
     assert not any(
-        call[:2] == ["attestation", "verify"] for call in fake.calls("gh")[before:]
-    ), "no attestation may be checked with an unpatched CLI"
+        call[:2] == ["attestation", "download"] for call in fake.calls("gh")
+    ), "a complete re-run must not download attestations"
+    assert not any(call[:2] == ["release", "upload"] for call in fake.calls("gh")), (
+        "a fully published re-run must not upload"
+    )
+    assert not any(call[:2] == ["release", "edit"] for call in fake.calls("gh")), (
+        "a fully published re-run must not edit the release"
+    )
 
 
 def test_the_verifier_is_called_with_the_full_identity_policy(
@@ -770,4 +264,26 @@ def test_the_verifier_is_called_with_the_full_identity_policy(
     ]
     assert verification == expected, (
         "the verifier must receive exactly the release policy's identity"
+    )
+
+
+def test_every_name_converges_on_its_canonical_bytes(fake: FakeRelease) -> None:
+    """PyPI's bytes win, then GitHub's, then this run's, on both sides."""
+    _draft_and_publish_pypi(fake)
+    _publish_release(fake)
+
+    expected = {
+        _PYPI_ONLY: b"pypi",
+        _GITHUB_ONLY: b"github",
+        _NEITHER: _local(_NEITHER),
+        _BOTH: b"both",
+    }
+    published = _holdings(fake.pypi)
+    released = _holdings(fake.github)
+    assert published == expected, "PyPI must hold each name's canonical bytes"
+    assert {name: released[name] for name in expected} == expected, (
+        "the release must hold the same bytes as PyPI"
+    )
+    assert _ASSEMBLED_BUNDLE in released, (
+        "the release must carry the assembled attestation bundle"
     )

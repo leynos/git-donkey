@@ -417,6 +417,8 @@ def test_the_attached_bundle_is_verified_before_coverage() -> None:
         'if [ "${covered}" = true ]',
         "covering+=(",
         'for bundle in "${covering[@]}"',
+        "verified_bundle",
+        "No covering bundle verified",
         "for attempt in 1 2 3",
         "--bundles release-bundles",
     ):
@@ -511,6 +513,8 @@ def test_an_incomplete_published_release_returns_to_draft() -> None:
         'if [ "${covered}" = true ]',
         "covering+=(",
         'for bundle in "${covering[@]}"',
+        "verified_bundle",
+        "No covering bundle verified",
         "for attempt in 1 2 3",
         "::error title=bundle-verification::",
         "release-complete",

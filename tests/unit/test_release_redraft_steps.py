@@ -199,7 +199,7 @@ def test_a_moved_tag_published_release_lacks_current_provenance(
     assert report.returncode != 0, (
         "an inconclusive bundle must stop the completeness check"
     )
-    assert "could not be verified" in report.stderr, (
+    assert "No covering bundle verified" in report.stderr, (
         "the failure must identify the unverified bundle"
     )
     assert written["published"] == "true", "the release is published"
@@ -330,6 +330,22 @@ def test_a_failed_bundle_download_does_not_redraft(tmp_path: pth.Path) -> None:
     assert (fake.github / _BUNDLE_ASSET).exists(), (
         "the bundle must be preserved after a download failure"
     )
+
+
+def test_an_empty_published_release_is_incomplete(tmp_path: pth.Path) -> None:
+    """A published release with no assets or bundle is incomplete."""
+    fake = fake_release(tmp_path)
+    fake.create_release(draft=False, prerelease=False)
+    link_scripts(tmp_path)
+    (tmp_path / "dist" / "publish").mkdir(parents=True)
+
+    written = _run_redraft_check(tmp_path, fake.env())
+
+    assert written["published"] == "true", "the release is published"
+    assert written["complete"] == "false", (
+        "an empty release has no combined bundle and must be incomplete"
+    )
+    assert _redraft_fires(written), "the empty release must be re-drafted"
 
 
 def test_a_draft_release_is_not_checked_for_completeness(
