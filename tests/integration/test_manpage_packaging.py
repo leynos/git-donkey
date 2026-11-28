@@ -34,7 +34,7 @@ import pytest
 from tests.integration.manpage_backend_cache import (
     CommandResult,
     environment,
-    run_uv,
+    run_measured_build,
     warm_backend_cache,
 )
 
@@ -137,7 +137,11 @@ def build_backends(tmp_path_factory: pytest.TempPathFactory) -> None:
     offline, so they still prove that building a distribution needs no network.
     """
     root = tmp_path_factory.mktemp("manpage-backends")
-    warm_backend_cache(_ROOT / ".uv-cache", root, environment(root))
+    warm_backend_cache(
+        root,
+        environment(root, _ROOT / ".uv-cache"),
+        _ROOT / "pyproject.toml",
+    )
 
 
 @pytest.fixture(scope="module")
@@ -155,12 +159,12 @@ def distributions(
     """
     root = tmp_path_factory.mktemp("manpage-packaging")
     source = _copy_sources(root / "source")
-    build_environment = environment(root)
+    build_environment = environment(root, _ROOT / ".uv-cache")
     # Stale outputs must never hide a broken or omitted generation command.
     for command in _commands():
         (source / f"docs/man/{command}.1").write_text("stale manual", encoding="utf-8")
     _assert_success(
-        run_uv(
+        run_measured_build(
             ("build", "--python", sys.executable, "--sdist", "--wheel"),
             source,
             build_environment,
@@ -169,7 +173,7 @@ def distributions(
     (wheel,) = (source / "dist").glob("*.whl")
     (sdist,) = (source / "dist").glob("*.tar.gz")
     _assert_success(
-        run_uv(
+        run_measured_build(
             (
                 "build",
                 "--python",
@@ -297,7 +301,7 @@ def test_install_places_and_removes_environment_manpages(
     """Install without promoting files into the user manpath."""
     environment = distributions.root / "environment"
     _assert_success(
-        run_uv(
+        run_measured_build(
             ("venv", "--python", sys.executable, str(environment)),
             distributions.root,
             distributions.environment,
@@ -308,7 +312,7 @@ def test_install_places_and_removes_environment_manpages(
     # graph cannot be resolved offline: loctocat requires halo, whose only
     # published wheel targets Python 2.
     _assert_success(
-        run_uv(
+        run_measured_build(
             (
                 "pip",
                 "install",
@@ -329,7 +333,7 @@ def test_install_places_and_removes_environment_manpages(
         "installing must not populate the user manpath"
     )
     _assert_success(
-        run_uv(
+        run_measured_build(
             ("pip", "uninstall", "--python", str(interpreter), "git-donkey"),
             distributions.root,
             distributions.environment,
@@ -356,10 +360,10 @@ def test_broken_manual_source_fails_the_build(
     else:
         with manual.open("a", encoding="utf-8") as stream:
             stream.write("\n.. nonexistent-manpage-directive::\n")
-    result = run_uv(
+    result = run_measured_build(
         ("build", "--python", sys.executable, "--wheel"),
         source,
-        environment(tmp_path),
+        environment(tmp_path, _ROOT / ".uv-cache"),
     )
     assert result.returncode != 0, f"a {failure} source must fail the build"
     assert "git-donkey.rst" in result.output, "build must name the offending source"

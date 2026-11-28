@@ -728,6 +728,19 @@ still specifies the behaviour, and never a substring check;
 `tests/unit/test_output_assertions.py` pins their failure behaviour as well as
 their success behaviour.
 
+`tests/integration/manpage_backend_cache.py` prepares the uv build-backend
+cache the packaging tests need. `run_uv()` runs uv offline by default, and
+`run_measured_build()` names the packaging commands that must stay offline.
+`environment(root, cache)` is the single source of `UV_CACHE_DIR`, and
+`warm_backend_cache()` probes a minimal project written by
+`write_backend_probe()` from the requirements returned by
+`build_requirements()`. `reports_cache_miss()` recognizes uv's offline
+cache-miss messages, and `BuildCacheError` carries the command output for every
+other failure. `CacheWarmUpTools` injects the uv runner and file lock for
+tests. A cold cache warms once online under an exclusive lock in the cache
+directory, so pytest-xdist workers serialize; once cached, the probe and every
+measured build stay offline.
+
 Whole-stream assertions are preferred wherever a run emits only the text under
 test. Where a run emits progress output first — a `Using remote:` line, a plonk
 summary header — assert the complete line with `require_line()`, or the
@@ -830,13 +843,15 @@ Run the focused manual tests:
 
 ```shell
 uv run pytest tests/unit/test_manpage_sources.py \
-  tests/integration/test_manpage_packaging.py
+  tests/integration/test_manpage_packaging.py \
+  tests/integration/test_manpage_backend_cache.py
 ```
 
 The packaging tests drive `uv` offline. They reuse the cache `make build`
 populates, and a session fixture warms that cache with one online build when a
-fresh checkout has not. `make test` depends on `make build` and runs both
-manual test files as well.
+fresh checkout has not, using the helper described under
+[Test infrastructure](#test-infrastructure). `make test` depends on
+`make build` and runs all three manual test files as well.
 
 ## YAML lint
 

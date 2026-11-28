@@ -74,9 +74,22 @@ offline and warms it with one online build when it cannot, so a fresh checkout
 or a direct pytest run works. Run the focused tests or the normal test target:
 
 ```shell
-uv run pytest tests/unit/test_manpage_sources.py tests/integration/test_manpage_packaging.py
+uv run pytest tests/unit/test_manpage_sources.py \
+  tests/integration/test_manpage_packaging.py \
+  tests/integration/test_manpage_backend_cache.py
 make test
 ```
+
+The cache preparation lives in `tests/integration/manpage_backend_cache.py`. It
+writes a minimal probe project that declares only the repository's
+`[build-system]` requirements, so a failed probe reports a cache or environment
+problem rather than a defect in the manual sources. Recognizing uv's offline
+cache-miss messages by text is the signal available across the supported uv
+versions; any other probe failure raises `BuildCacheError` with the command
+output instead of retrying online. An exclusive file lock in the cache
+directory serializes the probe and warm-up across pytest-xdist workers, which
+otherwise each run the session fixture. The measured builds continue to pass
+`--offline`.
 
 Source-contract tests compare manual names, build commands, and installed paths
 with the console-script inventory. They also check manual sections, important
