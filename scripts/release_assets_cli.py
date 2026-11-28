@@ -114,7 +114,10 @@ def _stage_pypi(state: State, args: argparse.Namespace) -> None:
     # Without the index PyPI looks empty, so a name it already publishes would
     # be staged for a second upload instead of skipped.
     _path(args, "index")
-    write_output("remaining", value=stage_pypi(state, github_files, provenance))
+    staged = stage_pypi(state, github_files, provenance)
+    for notice in staged.notices:
+        print(f"::notice::{notice}")
+    write_output("remaining", value=staged.remaining)
 
 
 def _stage_github(state: State, args: argparse.Namespace) -> None:

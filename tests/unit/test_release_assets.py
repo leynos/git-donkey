@@ -333,9 +333,13 @@ def test_stage_pypi_drops_names_pypi_already_holds(tmp_path: Path) -> None:
     """A published filename is never uploaded a second time."""
     state = _state(tmp_path, pypi={_NAME: "published"})
 
-    remaining = stage_pypi(state, tmp_path / "github-files", tmp_path / "provenance")
+    staged = stage_pypi(state, tmp_path / "github-files", tmp_path / "provenance")
 
-    assert not remaining, "nothing remains when PyPI holds every name"
+    assert not staged.remaining, "nothing remains when PyPI holds every name"
+    assert staged.notices == (
+        f"Skipping {_NAME}: already on PyPI",
+        "Every artefact is already on PyPI; nothing to publish.",
+    ), "the decision must be reported as a notice"
     assert not (state.publish / _NAME).exists(), "the published name must be removed"
 
 
@@ -343,9 +347,9 @@ def test_stage_pypi_keeps_a_name_pypi_lacks(tmp_path: Path) -> None:
     """A local build uploads when neither destination holds the name."""
     state = _state(tmp_path)
 
-    remaining = stage_pypi(state, tmp_path / "github-files", tmp_path / "provenance")
+    staged = stage_pypi(state, tmp_path / "github-files", tmp_path / "provenance")
 
-    assert remaining, "an unpublished name must remain staged"
+    assert staged.remaining, "an unpublished name must remain staged"
     assert (state.publish / _NAME).read_bytes() == b"local", (
         "the local attested bytes must remain for upload"
     )
@@ -361,9 +365,12 @@ def test_stage_pypi_carries_verified_github_bytes(tmp_path: Path) -> None:
     record.parent.mkdir()
     record.write_text(json.dumps(provenance_record(_NAME, digest)), encoding="utf-8")
 
-    remaining = stage_pypi(state, tmp_path / "github-files", tmp_path / "provenance")
+    staged = stage_pypi(state, tmp_path / "github-files", tmp_path / "provenance")
 
-    assert remaining, "the carried name still needs an upload"
+    assert staged.remaining, "the carried name still needs an upload"
+    assert staged.notices == (
+        f"Uploading verified GitHub Release bytes for {_NAME}",
+    ), "the carried upload must be reported"
     assert (state.publish / _NAME).read_bytes() == b"prior release", (
         "PyPI must receive the verified GitHub bytes"
     )
@@ -373,9 +380,9 @@ def test_stage_pypi_keeps_local_bytes_that_match_github(tmp_path: Path) -> None:
     """Byte-identical rebuilt bytes need no carryover or provenance record."""
     state = _state(tmp_path, local={_NAME: "same"}, github={_NAME: "self"})
 
-    remaining = stage_pypi(state, tmp_path / "github-files", tmp_path / "provenance")
+    staged = stage_pypi(state, tmp_path / "github-files", tmp_path / "provenance")
 
-    assert remaining, "the name still needs its first PyPI upload"
+    assert staged.remaining, "the name still needs its first PyPI upload"
     assert (state.publish / _NAME).read_bytes() == b"same", (
         "identical local bytes must be retained"
     )

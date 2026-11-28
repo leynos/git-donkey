@@ -436,23 +436,31 @@ def _prepare_carried_asset(
     return asset
 
 
+@dc.dataclass(frozen=True, slots=True)
+class StagedPypi:
+    """PyPI staging's decision and the notices it produced."""
+
+    remaining: bool
+    notices: tuple[str, ...]
+
+
 def _apply_pypi_choice(
     name: str,
     source: Source,
     artefact: Path,
     carried: cabc.Mapping[str, Path],
-) -> None:
-    """Apply one already-validated source choice to the publish directory."""
+) -> str | None:
+    """Apply one already-validated source choice; describe what it did."""
     if source is Source.PYPI:
-        print(f"::notice::Skipping {name}: already on PyPI")
         artefact.unlink()
-    elif source is Source.GITHUB:
+        return f"Skipping {name}: already on PyPI"
+    if source is Source.GITHUB:
         asset = carried.get(name)
         if asset is None:
-            print(f"::notice::Retaining this run's attested bytes for {name}")
-        else:
-            print(f"::notice::Uploading verified GitHub Release bytes for {name}")
-            shutil.copyfile(asset, artefact)
+            return f"Retaining this run's attested bytes for {name}"
+        shutil.copyfile(asset, artefact)
+        return f"Uploading verified GitHub Release bytes for {name}"
+    return None
 
 
 def _require_destinations_agree(state: State) -> None:
@@ -464,7 +472,7 @@ def _require_destinations_agree(state: State) -> None:
         raise ReleaseAssetError(msg)
 
 
-def stage_pypi(state: State, github_files: Path, provenance: Path) -> bool:
+def stage_pypi(state: State, github_files: Path, provenance: Path) -> StagedPypi:
     """Leave in ``publish`` exactly the canonical bytes PyPI lacks.
 
     Parameters
@@ -478,8 +486,8 @@ def stage_pypi(state: State, github_files: Path, provenance: Path) -> bool:
 
     Returns
     -------
-    bool
-        Whether any artefact remains to upload.
+    StagedPypi
+        Whether any artefact remains to upload, and one notice per decision.
     """
     _require_destinations_agree(state)
     decided = state.plan()
@@ -490,11 +498,14 @@ def stage_pypi(state: State, github_files: Path, provenance: Path) -> bool:
             if asset is not None:
                 carried[name] = asset
 
-    for name, source in sorted(decided.canonical.items()):
-        _apply_pypi_choice(name, source, state.publish / name, carried)
+    notices = [
+        notice
+        for name, source in sorted(decided.canonical.items())
+        if (notice := _apply_pypi_choice(name, source, state.publish / name, carried))
+    ]
     if not decided.pypi_uploads:
-        print("Every artefact is already on PyPI; nothing to publish.")
-    return bool(decided.pypi_uploads)
+        notices.append("Every artefact is already on PyPI; nothing to publish.")
+    return StagedPypi(bool(decided.pypi_uploads), tuple(notices))
 
 
 def expected_bundle_problems(
