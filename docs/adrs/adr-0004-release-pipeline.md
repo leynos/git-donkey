@@ -197,23 +197,23 @@ reconciliation PyPI already requires:
   before uploading it, and only then attaches it. The `attest` job's bundle
   remains in the run artefact and the attestation store.
 - Destination digests are compared before any bundle download. A digest
-  mismatch, a missing asset, a missing combined attestation bundle, or any
-  asset left in the ``starter`` upload state (including one outside the
-  required distributions) is a confirmed incomplete release: `publish-release`
-  rebuilds and a published release is returned to draft even when a bundle
-  download or verifier is unavailable. Reconciliation still refuses a listing
-  with a ``starter`` asset until it is deleted. Once the digests agree, bundles
-  are downloaded and checked for coverage; an uncovered distribution is
-  likewise a confirmed gap. Only when the metadata agrees is a covering bundle
-  verified with `gh attestation verify --bundle` against each released
-  distribution; an older partial bundle is ignored rather than blocking a
-  complete replacement. A transient verifier failure is retried; a failure that
-  persists, an unavailable index, or an unavailable download is inconclusive,
-  so the run fails without editing the release or deleting an asset. A
-  published release whose metadata complete passes but whose covering bundle
-  fails signature verification therefore stays visible while the run fails; the
-  redraft step needs a confirmed `complete=false`, and an inconclusive verdict
-  is not one.
+  mismatch, a missing asset, a missing combined attestation bundle, a
+  distribution outside this run's build, or any asset left in the ``starter``
+  upload state (including one outside the required distributions) is a
+  confirmed incomplete release: `publish-release` rebuilds and a published
+  release is returned to draft even when a bundle download or verifier is
+  unavailable. Reconciliation still refuses a listing with a ``starter`` asset
+  until it is deleted. Once the digests agree, bundles are downloaded and
+  checked for coverage; an uncovered distribution is likewise a confirmed gap.
+  Only when the metadata agrees is a covering bundle verified with
+  `gh attestation verify --bundle` against each released distribution; an older
+  partial bundle is ignored rather than blocking a complete replacement. A
+  transient verifier failure is retried; a failure that persists, an
+  unavailable index, or an unavailable download is inconclusive, so the run
+  fails without editing the release or deleting an asset. A published release
+  whose metadata complete passes but whose covering bundle fails signature
+  verification therefore stays visible while the run fails; the redraft step
+  needs a confirmed `complete=false`, and an inconclusive verdict is not one.
 - A rerun that finds every name published and a covering bundle attached
   stages and uploads nothing, does not download attestations, and edits nothing
   because the release is already visible with the right pre-release flag. It

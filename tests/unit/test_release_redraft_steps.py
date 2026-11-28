@@ -448,6 +448,26 @@ def test_a_missing_combined_bundle_redrafts_despite_a_download_failure(
     assert _redraft_fires(written), "the release must be returned to draft"
 
 
+def test_an_extra_release_distribution_redrafts_before_downloads(
+    tmp_path: pth.Path,
+) -> None:
+    """An asset outside this run's build is a confirmed gap."""
+    fake, env = _published_release(tmp_path, complete=True)
+    (fake.github / "old.whl").write_bytes(b"old")
+
+    fetch, report, written = _run_redraft_steps(
+        tmp_path, {**env, "FAKE_DOWNLOAD_FAIL": "*.attestations.jsonl"}
+    )
+
+    assert fetch.returncode == 0, fetch.stderr
+    assert report is not None, "the completeness step must run"
+    assert report.returncode == 0, (
+        "the extra distribution is confirmed by metadata alone"
+    )
+    assert written["complete"] == "false", "the release is confirmed incomplete"
+    assert _redraft_fires(written), "the release must be returned to draft"
+
+
 def test_an_empty_published_release_is_incomplete(tmp_path: pth.Path) -> None:
     """A published release with no assets or bundle is incomplete."""
     fake = fake_release(tmp_path)

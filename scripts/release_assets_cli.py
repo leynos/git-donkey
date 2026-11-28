@@ -35,6 +35,7 @@ from scripts.release_assets import (
     expected_bundle_problems,
     has_bundle,
     incomplete_github_assets,
+    is_bundle,
     local_names,
     mismatches,
     stage_pypi,
@@ -167,8 +168,14 @@ def _verify(state: State, args: argparse.Namespace) -> None:
 def _destinations_complete(state: State, args: argparse.Namespace) -> None:
     """Report whether PyPI and the GitHub Release hold the same digests."""
     _path(args, "index")
+    local = local_names(state.publish)
     pypi = {name: file.sha256 for name, file in state.pypi.items()}
-    problems = mismatches(local_names(state.publish), pypi, state.github)
+    problems = mismatches(local, pypi, state.github)
+    problems.extend(
+        f"{name} is on the GitHub Release but not part of this run's build"
+        for name in sorted(set(state.github) - set(local))
+        if not is_bundle(name)
+    )
     if not has_bundle(state.github):
         # A single-run bundle cannot substitute for the combined one, and its
         # absence is certain from the listing alone: confirm the gap before a
