@@ -12,7 +12,7 @@ import itertools
 import tempfile
 from pathlib import Path
 
-from hypothesis import given, settings
+from hypothesis import example, given, settings
 from hypothesis import strategies as st
 
 from scripts.release_assets import Source, plan
@@ -31,6 +31,10 @@ _TRIPLES = st.tuples(
     st.integers(min_value=0, max_value=30),
     st.integers(min_value=0, max_value=30),
     st.integers(min_value=0, max_value=30),
+)
+_BOUNDARY_TRIPLES = st.one_of(
+    st.tuples(st.just(2), st.just(102), st.integers(min_value=0, max_value=2)),
+    _TRIPLES,
 )
 
 
@@ -166,7 +170,10 @@ def test_parse_version_round_trips_the_release(
 
 
 @settings(max_examples=100)
-@given(version=_TRIPLES)
+@given(version=_BOUNDARY_TRIPLES)
+@example(version=(2, 101, 9))
+@example(version=(2, 102, 0))
+@example(version=(2, 102, 1))
 def test_the_minimum_boundary_accepts_exactly_the_supported_releases(
     version: tuple[int, int, int],
 ) -> None:
