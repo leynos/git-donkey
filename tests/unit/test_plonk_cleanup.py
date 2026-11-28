@@ -145,6 +145,25 @@ def test_locked_candidate_is_skipped_in_both_modes(*, dry_run: bool) -> None:
     assert not adapter.removed, "the adapter is never asked to remove it"
 
 
+def test_two_worktrees_on_one_branch_report_one_deletion() -> None:
+    """Hard mode deletes a shared branch once and records it once."""
+    first = candidate("issue-123-shared", 123)
+    second = dataclasses.replace(
+        first,
+        worktree_path=Path("/repo.worktrees/issue-123-second"),
+    )
+    adapter = RecordingGitAdapter([marker_for(first)])
+
+    result = run_cleanup([first, second], adapter, mode=plonk._PlonkMode.HARD)
+
+    assert result.removed_branches == ("issue-123-shared",), (
+        "expected the shared branch to be listed once"
+    )
+    assert adapter.deleted == ["issue-123-shared"], (
+        "expected the second worktree not to repeat the deletion"
+    )
+
+
 def test_failed_removal_is_skipped_and_the_batch_continues() -> None:
     """A removal Git refuses should report a skip, not abandon the sweep."""
     stubborn = candidate("issue-456-stubborn", 456)

@@ -119,6 +119,9 @@ def test_upstream_state_rejects_an_empty_first_merge_value(tmp_path: Path) -> No
         pytest.param("refs/heads/topic?", id="question-wildcard"),
         pytest.param("refs/heads/topic[0]", id="class-wildcard"),
         pytest.param("refs/tags/v1.0.0", id="not-a-branch"),
+        pytest.param("refs/heads/.draft", id="dot-leading-component"),
+        pytest.param("refs/heads/topic.lock", id="lock-suffix"),
+        pytest.param("refs/heads/a//b", id="empty-component"),
     ],
 )
 def test_upstream_state_rejects_a_non_exact_merge_ref(

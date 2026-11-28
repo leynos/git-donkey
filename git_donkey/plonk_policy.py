@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import dataclasses
 import re
+import string
 import typing as typ
 
 from git_donkey.plonk_records import _CompletionEvidence, _HistoryMessage
@@ -46,9 +47,14 @@ _CLOSING_KEYWORD_PATTERN = (
     r"#{issue_number}(?!\d)"
 )
 # A branch name is a complete token only when the characters around it cannot
-# continue a ref. Git forbids these characters in ref names; whitespace and the
-# prose quoting characters below are also accepted as token boundaries.
+# continue a ref. Git forbids these characters in ref names, and ASCII
+# whitespace cannot appear in one either. Unicode spaces are deliberately not
+# boundaries: Git permits them inside a ref, so U+00A0 could continue the ref.
 _FORBIDDEN_REF_CHARS = frozenset("~^:?*[\\")
+_BOUNDARY_WHITESPACE = frozenset(string.whitespace)
+# ASCII whitespace as a regex character class, for the merge-subject lookahead.
+# A merge subject ends after the source branch, so nothing else is a boundary.
+_BOUNDARY_CLASS = re.escape(string.whitespace)
 _PROSE_QUOTES = frozenset("`\"'")
 
 
@@ -189,11 +195,33 @@ class _OfflineMatchers:
     marker_pattern: re.Pattern[str] | None
     closing_keyword: re.Pattern[str] | None
     merge_commit: re.Pattern[str] | None
+    marker_token: str | None = None
+    issue_token: str | None = None
 
     @property
     def has_matchers(self) -> bool:
         """Whether any history matcher can resolve the candidate."""
         return self.marker_pattern is not None or self.closing_keyword is not None
+
+    def may_match(self, message: str) -> bool:
+        """Return whether ``message`` can contain evidence for this candidate.
+
+        Every matcher needs one of three literal substrings: the marker's
+        opening text, the issue reference, or the branch name. Checking those
+        first keeps a large history from running several regular expressions
+        per candidate over messages that cannot match.
+
+        Returns
+        -------
+        bool
+            ``True`` when the message contains a substring some matcher needs.
+
+        """
+        return (
+            (self.marker_token is not None and self.marker_token in message)
+            or (self.issue_token is not None and self.issue_token in message)
+            or self.candidate.branch_name in message
+        )
 
     def evidence_in(self, message: _HistoryMessage) -> _CompletionEvidence | None:
         """Return the strongest evidence ``message`` supplies, if any."""
@@ -247,7 +275,7 @@ def _merge_commit_pattern(branch_name: str) -> re.Pattern[str]:
     """
     return re.compile(
         rf"\AMerge pull request #\d+ from (?P<owner>[^\s/]+)/"
-        rf"{re.escape(branch_name)}(?=\s|$)"
+        rf"{re.escape(branch_name)}(?=[{_BOUNDARY_CLASS}]|$)"
     )
 
 
@@ -255,7 +283,7 @@ def _is_branch_boundary(character: str) -> bool:
     """Return whether ``character`` can end a branch-name token by itself."""
     if not character:
         return True
-    return character.isspace() or character in _FORBIDDEN_REF_CHARS
+    return character in _BOUNDARY_WHITESPACE or character in _FORBIDDEN_REF_CHARS
 
 
 def _is_quoted_pair(before: str, after: str) -> bool:
@@ -297,18 +325,24 @@ def _offline_matchers(candidate: CompletionCandidate) -> _OfflineMatchers:
     marker_pattern = (
         _marker_pattern(candidate.marker) if candidate.marker is not None else None
     )
+    marker_token = (
+        f"({_marker_body(candidate.marker)}" if candidate.marker is not None else None
+    )
     if candidate.issue_number is None:
         return _OfflineMatchers(
             candidate=candidate,
             marker_pattern=marker_pattern,
             closing_keyword=None,
             merge_commit=None,
+            marker_token=marker_token,
         )
     return _OfflineMatchers(
         candidate=candidate,
         marker_pattern=marker_pattern,
         closing_keyword=_closing_keyword_pattern(candidate.issue_number),
         merge_commit=_merge_commit_pattern(candidate.branch_name),
+        marker_token=marker_token,
+        issue_token=f"#{candidate.issue_number}",
     )
 
 
@@ -381,7 +415,10 @@ def _resolve_messages(
     for entry in messages:
         message = _as_history_message(entry)
         for index in tuple(pending):
-            evidence = matcher_list[index].evidence_in(message)
+            matchers = matcher_list[index]
+            if not matchers.may_match(message.text):
+                continue
+            evidence = matchers.evidence_in(message)
             if evidence is not None:
                 found[index] = evidence
                 pending.remove(index)

@@ -47,6 +47,8 @@ _GIT_TERMINAL_PROMPT_ENV = "GIT_TERMINAL_PROMPT"
 # Characters Git forbids in ref names, plus the ones `ls-remote` treats as a
 # pattern. A merge ref containing any of them cannot be queried literally.
 _INVALID_REF_CHARS = frozenset(" ~^:?*[\\")
+# Multi-character sequences Git also forbids in a ref name.
+_FORBIDDEN_REF_SEQUENCES = ("..", "//", "@{")
 _FIRST_PRINTABLE_CODE_POINT = 0x20
 _DELETE_CODE_POINT = 0x7F
 # GitPython reads these from the process environment when it constructs a
@@ -206,11 +208,14 @@ class _GitWorktreeAdapter:
     @staticmethod
     def _has_git_ref_structure_error(ref: str) -> bool:
         """Return whether ``ref`` uses structure Git forbids in ref names."""
-        return (
-            not ref.startswith("refs/heads/")
-            or ref.endswith(("/", ".", ".lock"))
-            or ".." in ref
-            or "@{" in ref
+        if not ref.startswith("refs/heads/") or ref.endswith(("/", ".")):
+            return True
+        if any(pattern in ref for pattern in _FORBIDDEN_REF_SEQUENCES):
+            return True
+        # Git rejects a component that starts with a dot or ends in ``.lock``.
+        return any(
+            component.startswith(".") or component.endswith(".lock")
+            for component in ref.split("/")
         )
 
     @classmethod
@@ -434,6 +439,28 @@ class _GitWorktreeAdapter:
             return False
         return True
 
+    def _branch_checked_out_elsewhere(self, branch_name: str) -> bool:
+        """Return whether a registered worktree still has the branch checked out.
+
+        ``git branch -D`` refuses this case itself, but a conditional
+        ``update-ref -d`` does not, so the guard is repeated for that path. A
+        listing failure is treated as "still in use": the branch is worth
+        keeping when its usage cannot be proven absent.
+
+        Returns
+        -------
+        bool
+            ``True`` when a registered worktree still has the branch checked
+            out, or when that cannot be determined.
+
+        """
+        try:
+            listing = self.repo.git.worktree("list", "--porcelain")
+        except GitCommandError:
+            return True
+        expected = f"branch refs/heads/{branch_name}"
+        return any(line == expected for line in listing.splitlines())
+
     def delete_branch(
         self,
         branch_name: str,
@@ -449,9 +476,13 @@ class _GitWorktreeAdapter:
         included, because the subprocess runs either way.
 
         When ``expected_commit`` is supplied, the deletion is conditional: Git
-        deletes the ref only while it still points at that commit. A commit made
-        to the branch after the sweep recorded it therefore leaves the branch in
-        place instead of losing its only reference.
+        deletes the ref only while it still points at that commit, and only
+        when no other worktree still has the branch checked out. A commit made
+        to the branch after the sweep recorded it therefore leaves the branch
+        in place instead of losing its only reference, and a branch another
+        worktree still uses survives. Because the ref deletion bypasses
+        ``git branch -D``, the branch's stale tracking configuration is removed
+        explicitly after a successful delete.
 
         Parameters
         ----------
@@ -472,11 +503,21 @@ class _GitWorktreeAdapter:
                 if expected_commit is None:
                     self.repo.git.branch("-D", branch_name)
                 else:
+                    if self._branch_checked_out_elsewhere(branch_name):
+                        helpers._eprint(
+                            f"{GIT_PLONK_PREFIX}: branch '{branch_name}' is still "
+                            "checked out in another worktree; leaving it in place"
+                        )
+                        return False
                     self.repo.git.update_ref(
                         "-d",
                         f"refs/heads/{branch_name}",
                         expected_commit,
                     )
+                    with contextlib.suppress(GitCommandError):
+                        self.repo.git.config(
+                            "--remove-section", f"branch.{branch_name}"
+                        )
         except GitCommandError as exc:
             _LOGGER.exception(
                 "Failed to delete git-plonk branch",

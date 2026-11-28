@@ -145,17 +145,22 @@ def _delete_candidate_branch(
     """Delete or plan the branch of a removed candidate in hard mode.
 
     The deletion is conditional on the branch still pointing at the commit the
-    sweep recorded, so work committed during the sweep keeps its branch.
+    sweep recorded, so work committed during the sweep keeps its branch. Only
+    the first worktree that accounts for a branch plans or deletes it, so two
+    worktrees on one branch produce one summary entry.
 
     Returns
     -------
     _CandidateOutcome
-        A branch-deletion failure when Git refused, otherwise neither a skip
-        nor a failure.
+        A branch-deletion failure when Git refused, ``branch_removed`` when
+        this candidate owns the removal entry, otherwise neither.
 
     """
     candidate = removable.candidate
     adapter: _GitWorktreeAdapter = state.adapter
+    branch_name = candidate.branch_name
+    if branch_name in state.handled_branches:
+        return _CandidateOutcome()
     _log_planned_action(
         removable,
         state.mode,
@@ -163,14 +168,14 @@ def _delete_candidate_branch(
         dry_run=state.options.dry_run,
     )
     if state.options.dry_run:
-        return _CandidateOutcome()
-    if not adapter.delete_branch(
-        candidate.branch_name, expected_commit=candidate.commit_id
-    ):
+        state.handled_branches.add(branch_name)
+        return _CandidateOutcome(branch_removed=True)
+    if not adapter.delete_branch(branch_name, expected_commit=candidate.commit_id):
         _record_failure("branch_deletion", state.mode)
         return _CandidateOutcome(branch_deletion_failed=True)
+    state.handled_branches.add(branch_name)
     _record_step("branch_deletion", "success", state.mode)
-    return _CandidateOutcome()
+    return _CandidateOutcome(branch_removed=True)
 
 
 def _clean_completed_candidate(
@@ -241,6 +246,12 @@ def _clean_removable(
         )
         if outcome.branch_deletion_failed:
             tally.failed_branch_deletions.append(pair.candidate.branch_name)
-        elif state.mode is _PlonkMode.HARD:
+        elif outcome.branch_removed:
             tally.removed_branches.append(pair.candidate.branch_name)
+    # A branch refused for one worktree may have been deleted by a later
+    # candidate once its last checkout was removed; the final state is removed.
+    removed = set(tally.removed_branches)
+    tally.failed_branch_deletions = [
+        branch for branch in tally.failed_branch_deletions if branch not in removed
+    ]
     return tally

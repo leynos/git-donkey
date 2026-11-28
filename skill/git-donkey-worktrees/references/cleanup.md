@@ -72,10 +72,12 @@ The check protects only what Git itself would refuse to discard:
 Hard mode deletes a branch only after its worktree was removed, using a
 conditional ref deletion. It performs no merged or ancestry check, so a branch
 carrying commits after the matching marker is deleted with them, provided the
-branch has not moved since the sweep recorded it. A commit made during the
-sweep keeps the branch. A branch Git refuses to delete is listed under
-`Failed branch deletions:`; its worktree is already gone, the sweep continues,
-and the run exits with status `1`.
+branch has not moved since the sweep recorded it and no other worktree still
+checks it out. A commit made during the sweep keeps the branch, and the deleted
+branch's tracking configuration is removed so a later branch of the same name
+does not inherit a stale upstream. A branch Git refuses to delete is listed
+under `Failed branch deletions:`; its worktree is already gone, the sweep
+continues, and the run exits with status `1`.
 
 ## Resolve completion history before default or hard cleanup
 

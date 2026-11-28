@@ -65,6 +65,9 @@ class _SweepState:
     upstream_states : dict[str, UpstreamState]
         Upstream verdicts already obtained, so every worktree on a branch sees
         the same answer.
+    handled_branches : set[str]
+        Branches this sweep already deleted or planned for deletion, so a
+        second worktree on the same branch contributes one summary entry.
 
     """
 
@@ -79,6 +82,7 @@ class _SweepState:
         dataclasses.field(default_factory=dict)
     )
     upstream_states: dict[str, UpstreamState] = dataclasses.field(default_factory=dict)
+    handled_branches: set[str] = dataclasses.field(default_factory=set)
 
 
 @dataclasses.dataclass(frozen=True, slots=True)

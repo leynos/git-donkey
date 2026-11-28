@@ -3,49 +3,45 @@ git-plonk
 Clean up git-donkey worktrees
 -----------------------------
 
-:Manual section: 1
-:Manual group: Git-donkey manual
+:Manual section: 1 :Manual group: Git-donkey manual
 
 SYNOPSIS
 ========
 
-**git plonk** [**--soft** | **--hard**] [**--dry-run**]
-[**--no-github**] [**--upstream-gone**]
+**git plonk** [**--soft** | **--hard**] [**--dry-run**] [**--no-github**]
+[**--upstream-gone**]
 
-**git-plonk** [**--soft** | **--hard**] [**--dry-run**]
-[**--no-github**] [**--upstream-gone**]
+**git-plonk** [**--soft** | **--hard**] [**--dry-run**] [**--no-github**]
+[**--upstream-gone**]
 
 DESCRIPTION
 ===========
 
-Clean up linked worktrees listed by Git under the worktree root
-**git-donkey** uses: the main repository's ``../{repo}.worktrees`` directory,
-the ``{name}.worktrees`` sibling of a bare repository, or the directory named
-by the ``donkey.worktreesRoot`` Git configuration value.
-A bare repository's trailing ``.git`` is dropped before ``.worktrees`` is
-added, so ``/container/bare.git`` is scanned as
-``/container/bare.worktrees``.
-Run the command inside a Git repository, including a linked topic worktree or
-a bare repository directory.
+Clean up linked worktrees listed by Git under the worktree root **git-donkey**
+uses: the main repository's ``../{repo}.worktrees`` directory, the
+``{name}.worktrees`` sibling of a bare repository, or the directory named by the
+``donkey.worktreesRoot`` Git configuration value. A bare repository's trailing
+``.git`` is dropped before ``.worktrees`` is added, so ``/container/bare.git``
+is scanned as ``/container/bare.worktrees``. Run the command inside a Git
+repository, including a linked topic worktree or a bare repository directory.
 Worktrees outside that directory remain untouched.
 
 Default mode removes worktrees whose completion a tier resolves and which Git
 would discard unprompted. Completion is resolved in three tiers.
 
 Offline branch names are recognized first. An issue branch such as
-``issue-123-short-title`` completes on ``(#123)`` in canonical trunk history.
-A df12-build roadmap branch such as ``roadmap-2-2-1`` or
+``issue-123-short-title`` completes on ``(#123)`` in canonical trunk history. A
+df12-build roadmap branch such as ``roadmap-2-2-1`` or
 ``roadmap-2-2-1-addendum`` completes on its un-namespaced dotted id
 ``(2.2.1)``; the id may have two to four numeric components. A legacy roadmap
-branch such as ``road-1-2-3a-4-short-title`` completes on
-``(road.1.2.3a.4)``, and a task id may end the name, so ``road-1-2-3a-4`` also
-works.
+branch such as ``road-1-2-3a-4-short-title`` completes on ``(road.1.2.3a.4)``,
+and a task id may end the name, so ``road-1-2-3a-4`` also works.
 
 An issue branch additionally accepts the signals GitHub writes into commit
 messages: a closing keyword such as ``Closes #123``, with ``Fixes`` and
 ``Resolves`` and their inflections, a required separator (whitespace, or a
-colon with optional surrounding whitespace), and no owner or repository
-prefix; a classic merge commit
+colon with optional surrounding whitespace), and no owner or repository prefix;
+a classic merge commit
 ``Merge pull request #45 from owner/issue-123-short-title`` in the subject of a
 real merge commit, whose branch segment matches exactly, whatever its
 pull-request number; and the branch name appearing verbatim in a bounded
@@ -53,11 +49,11 @@ context.
 
 When no offline signal resolves a branch, the GitHub merged-pull-request
 fallback asks whether a merged pull request exists for it. The fallback is
-enabled by default when the principal remote is GitHub and ``gh`` is
-installed. The query is read-only, and a result is accepted only when its head
-branch, base branch (the advertised trunk), head owner, and head commit match
-the request. The commit check keeps a reused branch name from completing new
-work on the strength of an earlier merge. A failed, timed-out, malformed, or
+enabled by default when the principal remote is GitHub and ``gh`` is installed.
+The query is read-only, and a result is accepted only when its head branch,
+base branch (the advertised trunk), head owner, and head commit match the
+request. The commit check keeps a reused branch name from completing new work
+on the strength of an earlier merge. A failed, timed-out, malformed, or
 mismatched response counts as unknown, never merged. A missing ``gh`` is
 reported once as a notice and disables the fallback. Pass **--no-github** to
 disable it explicitly.
@@ -82,20 +78,17 @@ fallback to local ``main``.
 
 A completed worktree holding modified, staged, or untracked files is skipped
 and reported, and the sweep continues with the remaining worktrees, so one
-dirty candidate cannot leave clean siblings behind.
-Files ignored by ``.gitignore`` do not protect a worktree, matching the rule
-``git worktree remove`` itself applies.
-A worktree with a locked registration is skipped as ``worktree is locked``,
-including in a dry run, because Git refuses to remove it.
-Nothing in this command forces a removal, so a skipped worktree stays on disk
-with its branch intact.
-The summary annotates each removal with the signal that justified it, lists
-every skipped worktree with the reason it was skipped, and lists every
-unverified worktree with its fixed reason.
-A branch Git refuses to delete is reported in a ``Failed branch deletions:``
-section.
-The sweep continues with the remaining candidates, and the command exits with
-status ``1``.
+dirty candidate cannot leave clean siblings behind. Files ignored by
+``.gitignore`` do not protect a worktree, matching the rule
+``git worktree remove`` itself applies. A worktree with a locked registration
+is skipped as ``worktree is locked``, including in a dry run, because Git
+refuses to remove it. Nothing in this command forces a removal, so a skipped
+worktree stays on disk with its branch intact. The summary annotates each
+removal with the signal that justified it, lists every skipped worktree with
+the reason it was skipped, and lists every unverified worktree with its fixed
+reason. A branch Git refuses to delete is reported in a
+``Failed branch deletions:`` section. The sweep continues with the remaining
+candidates, and the command exits with status ``1``.
 
 The command exits with one of the following statuses:
 
@@ -130,7 +123,9 @@ OPTIONS
     because the branch is deleted only after its worktree is removed; a
     refused branch deletion is reported rather than fatal.
     The branch is force-deleted, but only while it still points at the commit
-    the sweep recorded, so a commit made during the sweep keeps the branch.
+    the sweep recorded and no other worktree still checks it out, so a commit
+    made during the sweep keeps the branch, and the deleted branch's tracking
+    configuration is removed.
     A merged pull request matched by name does not prove that every local
     commit on the branch was merged, so inspect each branch tip before running
     it.
@@ -183,8 +178,8 @@ Remove completed worktrees after reviewing the preview::
 
     git plonk
 
-Disable the GitHub merged-pull-request lookup (the advertised trunk is
-still fetched)::
+Disable the GitHub merged-pull-request lookup (the advertised trunk is still
+fetched)::
 
     git plonk --no-github
 
@@ -192,8 +187,8 @@ Treat a deleted upstream branch as completion evidence::
 
     git plonk --upstream-gone --dry-run
 
-A run that leaves work behind names each skipped or unverified worktree and
-the reason, and each removal names its completion signal::
+A run that leaves work behind names each skipped or unverified worktree and the
+reason, and each removal names its completion signal::
 
     git-plonk: mode=hard
     Removed worktrees:

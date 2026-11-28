@@ -86,6 +86,18 @@ _EXPECTED_ARGUMENTS = [
             id="ssh-url-port-443-host",
         ),
         pytest.param(
+            "ssh+git://git@github.com/leynos/git-donkey.git",
+            "leynos",
+            "git-donkey",
+            id="ssh-plus-git-scheme",
+        ),
+        pytest.param(
+            "git+ssh://git@github.com/leynos/git-donkey.git",
+            "leynos",
+            "git-donkey",
+            id="git-plus-ssh-scheme",
+        ),
+        pytest.param(
             "git://github.com/leynos/git-donkey.git",
             "leynos",
             "git-donkey",

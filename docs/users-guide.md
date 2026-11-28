@@ -515,12 +515,13 @@ skipped worktree keeps its branch. It deletes local branches only; it never
 forces a removal and never deletes remote branches.
 
 Hard mode force-deletes each matching branch, but only while it still points at
-the commit the sweep recorded. A commit made to the branch during the sweep
-keeps the branch and is reported as a failed deletion. A merged pull request
-matched by name does not prove that every local commit on the branch was
-merged, and a commit made after the merge can lose its branch reference when
-the branch goes. Inspect each branch tip with `git log` before running
-`git plonk --hard`.
+the commit the sweep recorded and no other worktree still checks it out. A
+commit made to the branch during the sweep keeps the branch and is reported as
+a failed deletion, and the deleted branch's tracking configuration is removed.
+A merged pull request matched by name does not prove that every local commit on
+the branch was merged, and a commit made after the merge can lose its branch
+reference when the branch goes. Inspect each branch tip with `git log` before
+running `git plonk --hard`.
 
 Dry-run mode prints the actions `git plonk` would take and exits without
 removing generated paths, worktrees, or branches. Skips and unverified

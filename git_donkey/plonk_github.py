@@ -48,16 +48,19 @@ _INVALID_PATH_COMPONENTS = frozenset({".", ".."})
 _VALID_PATH_COMPONENT = re.compile(r"^[A-Za-z0-9_.-]+$")
 _REPOSITORY_NAME = r"(?P<name>[^/]+?)(?:\.git)?"
 _OWNER = r"(?P<owner>[^/]+)"
+# Git treats `git+ssh` and `ssh+git` as SSH, so a remote written that way still
+# names the same GitHub repository.
+_SSH_SCHEME = r"(?:ssh(?:\+git)?|git\+ssh)"
 _GITHUB_URL_PATTERNS = tuple(
     re.compile(pattern, re.IGNORECASE)
     for pattern in (
         rf"^git@{re.escape(_GITHUB_HOST)}:{_OWNER}/{_REPOSITORY_NAME}$",
         (
-            rf"^ssh://git@{re.escape(_GITHUB_HOST)}(?::\d+)?/"
+            rf"^{_SSH_SCHEME}://git@{re.escape(_GITHUB_HOST)}(?::\d+)?/"
             rf"{_OWNER}/{_REPOSITORY_NAME}$"
         ),
         (
-            rf"^ssh://git@{re.escape(_GITHUB_SSH_HOST)}(?::\d+)?/"
+            rf"^{_SSH_SCHEME}://git@{re.escape(_GITHUB_SSH_HOST)}(?::\d+)?/"
             rf"{_OWNER}/{_REPOSITORY_NAME}$"
         ),
         rf"^git://{re.escape(_GITHUB_HOST)}/{_OWNER}/{_REPOSITORY_NAME}$",
@@ -162,9 +165,10 @@ def parse_github_remote_url(url: str) -> _GitHubRepository | None:
 
     The accepted forms are the ones Git itself supports for GitHub: the scp-like
     ``git@github.com:owner/repo.git`` syntax, ``ssh://`` URLs including the
-    port-443 ``ssh.github.com`` host, ``git://`` URLs, and ``http(s)://`` URLs
-    with or without credentials. Enterprise hosts and any other URL shape are
-    rejected rather than guessed at.
+    port-443 ``ssh.github.com`` host and Git's ``git+ssh``/``ssh+git`` scheme
+    aliases, ``git://`` URLs, and ``http(s)://`` URLs with or without
+    credentials. Enterprise hosts and any other URL shape are rejected rather
+    than guessed at.
 
     Parameters
     ----------

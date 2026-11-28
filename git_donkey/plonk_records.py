@@ -229,11 +229,14 @@ class _CandidateOutcome:
 
     A candidate can be skipped, removed, or removed with its branch left
     behind. The failure fields are mutually exclusive: a branch is only ever
-    deleted once its worktree is gone.
+    deleted once its worktree is gone. ``branch_removed`` marks the candidate
+    that owns a branch's removal entry, so two worktrees on one branch report
+    it once.
     """
 
     skip_reason: _SkipReason | None = None
     branch_deletion_failed: bool = False
+    branch_removed: bool = False
 
 
 @dataclasses.dataclass(frozen=True, slots=True)

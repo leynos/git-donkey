@@ -340,6 +340,31 @@ def test_merge_syntax_in_a_merge_body_does_not_complete() -> None:
     assert not completed, "expected merge evidence to come only from the commit subject"
 
 
+def test_merge_subject_does_not_end_at_a_unicode_space() -> None:
+    """U+00A0 is a valid ref character, so it cannot end the source branch."""
+    message = plonk_records._HistoryMessage(
+        f"Merge pull request #63 from leynos/{_ISSUE_BRANCH}\u00a0extra",
+        is_merge_commit=True,
+    )
+
+    completed = plonk_policy.completed_candidates([_issue_candidate()], [message])
+
+    assert not completed, (
+        "expected a longer valid ref to defeat the classic merge matcher"
+    )
+
+
+def test_verbatim_branch_does_not_end_at_a_unicode_space() -> None:
+    """U+00A0 continues a ref, so the shorter name is not a complete token."""
+    message = f"Squash merge of {_ISSUE_BRANCH}\u00a0extra"
+
+    completed = plonk_policy.completed_candidates([_issue_candidate()], [message])
+
+    assert not completed, (
+        "expected a branch followed by U+00A0 to remain one longer token"
+    )
+
+
 def test_verbatim_issue_branch_in_a_commit_message_completes_it() -> None:
     """A squash message naming the issue branch verbatim should complete it."""
     candidate = _issue_candidate()
@@ -492,11 +517,13 @@ def test_completion_marker_has_a_history_matcher_still() -> None:
 
 
 _NUMERIC_COMPONENT = st.integers(min_value=0, max_value=999).map(str)
+# ``issue-`` is the issue-branch prefix, which is deliberately recognised
+# before the legacy grammar; a legacy namespace must never look like it.
 _NAMESPACE = st.none() | st.text(
     alphabet="abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_",
     min_size=1,
     max_size=6,
-)
+).filter(lambda name: name.casefold() != "issue")
 _SUFFIX = st.none() | st.text(
     alphabet="abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
     min_size=1,

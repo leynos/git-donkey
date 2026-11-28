@@ -140,10 +140,13 @@ it is not valid with `--soft`, which does not judge completion.
 
 Hard mode still force-deletes the branch, so a squash merge leaves the branch
 commits reachable only through that branch. The deletion is conditional: it
-succeeds only while the branch still points at the commit the sweep recorded. A
-commit made to the branch during the sweep therefore keeps both the branch and
-its later commit, and is reported as a failed deletion. Inspect each branch tip
-before running hard mode.
+succeeds only while the branch still points at the commit the sweep recorded
+and no other worktree still checks it out. A commit made to the branch during
+the sweep therefore keeps both the branch and its later commit, and is reported
+as a failed deletion. A branch another worktree still uses is kept for the same
+reason. The conditional deletion also removes the branch's tracking
+configuration, so a later branch of the same name does not inherit a stale
+upstream. Inspect each branch tip before running hard mode.
 
 ### Opt-in upstream-gone check
 
@@ -197,7 +200,10 @@ vocabulary:
 - `worktree changed during the sweep`: the worktree no longer has the branch
   or commit the sweep recorded when it selected the candidate. Completion
   evidence describes the candidate as it was selected, so a commit made during
-  the sweep invalidates it.
+  the sweep invalidates it. The check runs immediately before removal. It
+  cannot be atomic with Git's removal, which checks the working tree rather
+  than the branch or commit, so a change made in the instant between the check
+  and the removal is outside the sweep's control.
 - `worktree is locked`: the registration is locked, which Git records in
   `git worktree list --porcelain`. The planning phase reads that state, so a
   dry run previews the same skip a real run reports instead of promising a

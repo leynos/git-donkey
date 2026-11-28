@@ -230,6 +230,61 @@ def test_conditional_deletion_refuses_a_moved_branch(tmp_path: Path) -> None:
     )
 
 
+def test_conditional_deletion_keeps_a_branch_in_use_elsewhere(
+    tmp_path: Path,
+) -> None:
+    """A branch another worktree checks out must survive the conditional delete."""
+    repo, worktree_path = _worktree_with_dirt(tmp_path, "clean")
+    recorded_commit = repo.commit(_WORKTREE_BRANCH).hexsha
+    second_worktree = tmp_path / "repo.worktrees" / "second"
+    repo.git.worktree(
+        "add",
+        "-q",
+        "--force",  # the branch is already checked out in the first worktree
+        second_worktree.as_posix(),
+        _WORKTREE_BRANCH,
+    )
+    assert plonk._GitWorktreeAdapter(repo).remove_worktree(worktree_path) is True, (
+        "the completed worktree is removed before the branch is considered"
+    )
+
+    deleted = plonk._GitWorktreeAdapter(repo).delete_branch(
+        _WORKTREE_BRANCH, expected_commit=recorded_commit
+    )
+
+    assert deleted is False, (
+        "expected the branch still checked out elsewhere to be kept"
+    )
+    assert _WORKTREE_BRANCH in repo.heads, (
+        "the other worktree must not be left on a missing branch"
+    )
+
+
+def test_conditional_deletion_removes_the_stale_tracking_config(
+    tmp_path: Path,
+) -> None:
+    """The conditional delete must not leave the deleted branch's config behind."""
+    repo, worktree_path = _worktree_with_dirt(tmp_path, "clean")
+    recorded_commit = repo.commit(_WORKTREE_BRANCH).hexsha
+    repo.git.config(f"branch.{_WORKTREE_BRANCH}.remote", "origin")
+    repo.git.config(
+        f"branch.{_WORKTREE_BRANCH}.merge", f"refs/heads/{_WORKTREE_BRANCH}"
+    )
+    assert plonk._GitWorktreeAdapter(repo).remove_worktree(worktree_path) is True, (
+        "the completed worktree is removed before its branch is deleted"
+    )
+
+    deleted = plonk._GitWorktreeAdapter(repo).delete_branch(
+        _WORKTREE_BRANCH, expected_commit=recorded_commit
+    )
+
+    assert deleted is True, "expected the unchanged branch to be deleted"
+    assert _WORKTREE_BRANCH not in repo.heads, "the branch ref is gone"
+    # A recreated branch must not inherit the deleted branch's upstream.
+    with pytest.raises(GitCommandError):
+        repo.git.config("--get", f"branch.{_WORKTREE_BRANCH}.remote")
+
+
 def test_conditional_deletion_removes_an_unchanged_branch(tmp_path: Path) -> None:
     """Conditional deletion removes the branch while it still matches."""
     repo, worktree_path = _worktree_with_dirt(tmp_path, "clean")
