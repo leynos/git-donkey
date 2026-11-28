@@ -155,7 +155,6 @@ def test_an_incomplete_published_release_returns_to_draft(
     expected = {
         "attempts": "1",
         "status": "200",
-        "covered": "true",
         "published": "true",
         "complete": "false",
     }
@@ -270,6 +269,36 @@ def test_a_persistently_unverifiable_bundle_is_preserved(
     assert not any(
         call[:2] == ["release", "delete-asset"] for call in fake.calls("gh")
     ), "the workflow must not delete release assets"
+
+
+@pytest.mark.parametrize("failure", ["FAKE_BUNDLE_FAIL", "FAKE_ATTEST_FAIL"])
+def test_a_digest_mismatch_redrafts_even_when_verification_fails(
+    tmp_path: pth.Path, failure: str
+) -> None:
+    """Destination metadata proves the release incomplete before verification."""
+    fake, env = _published_release(tmp_path, complete=True)
+    (fake.github / _CARRIED_ASSET).write_bytes(b"clobbered by an earlier workflow")
+
+    fetch, report, written = _run_redraft_steps(
+        tmp_path, {**env, failure: "controlled verifier failure"}
+    )
+
+    assert fetch.returncode == 0, fetch.stderr
+    assert report is not None, "the completeness step must run"
+    assert report.returncode == 0, (
+        "a metadata-confirmed mismatch must not stop at bundle verification"
+    )
+    assert written["complete"] == "false", "the digest mismatch is confirmed"
+    assert _redraft_fires(written), "the incomplete release must be redrafted"
+    completed = run_bash(
+        step_script("draft-release", "Return an incomplete published release to draft"),
+        tmp_path,
+        env,
+    )
+    assert completed.returncode == 0, completed.stderr
+    assert fake.release_state()["isDraft"] is True, (
+        "the confirmed incomplete release must be hidden"
+    )
 
 
 def test_a_bundle_that_fails_verification_does_not_redraft(

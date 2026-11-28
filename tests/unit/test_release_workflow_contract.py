@@ -509,8 +509,8 @@ def test_an_incomplete_published_release_returns_to_draft() -> None:
         "gh release download",
         "--bundle",
         "bundle-coverage",
-        'covered="$(grep',
-        'if [ "${covered}" = true ]',
+        'complete="$(grep',
+        'if [ "${complete}" = true ]',
         "covering+=(",
         'for bundle in "${covering[@]}"',
         "verified_bundle",
@@ -548,6 +548,9 @@ def test_an_incomplete_published_release_returns_to_draft() -> None:
     assert step("draft-release", "Verify published release provenance")["id"] == (
         "provenance"
     ), "the guard reads the provenance output"
+    assert script.index("release-complete") < script.index("gh attestation verify"), (
+        "destination metadata must be checked before bundle verification"
+    )
     edit_step = step("draft-release", "Return an incomplete published release to draft")
     assert edit_step["if"] == (
         "always() && steps.create.outcome == 'success' "

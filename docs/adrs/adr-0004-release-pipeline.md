@@ -180,10 +180,12 @@ reconciliation PyPI already requires:
   attestation store, verifies every distribution against that assembled bundle
   before uploading it, and only then attaches it. The `attest` job's bundle
   remains in the run artefact and the attestation store.
-- Subject coverage is checked first. A bundle that does not name every
-  released distribution is a confirmed gap: `publish-release` rebuilds it, and
-  a published release is returned to draft for repair. Only a bundle that
-  covers every distribution is then verified with
+- Destination metadata is checked first: the PyPI index and GitHub asset
+  digests, plus whether an attached bundle names every distribution. A digest
+  mismatch, a missing asset, or an uncovered distribution is a confirmed
+  incomplete release, so `publish-release` rebuilds the bundle and a published
+  release is returned to draft even when a bundle cannot be verified. Only when
+  the metadata agrees is a covering bundle verified with
   `gh attestation verify --bundle` against each released distribution; an older
   partial bundle is ignored rather than blocking a complete replacement. A
   transient verifier failure is retried; a failure that persists, an

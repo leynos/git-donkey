@@ -248,10 +248,17 @@ jobs:
           if jq -e '.assets[] | select(.name | endswith(".sigstore.json"))' draft-assets.json > /dev/null; then
             gh release download "${GITHUB_REF_NAME}" --pattern '*.sigstore.json' --dir release-bundles
           fi
-          python3 -m scripts.release_assets_cli bundle-coverage --publish dist/publish \
-            --assets draft-assets.json --bundles release-bundles
-          covered="$(grep '^covered=' "${GITHUB_OUTPUT}" | tail -1 | cut -d= -f2)"
-          if [ "${covered}" = true ]; then
+          # Destination metadata decides first: a digest mismatch, missing
+          # asset or uncovered distribution is a confirmed incomplete release
+          # even when a bundle cannot be verified.
+          python3 -m scripts.release_assets_cli release-complete --publish dist/publish \
+            --index pypi-index.json --assets draft-assets.json --output github-state/files \
+            --bundles release-bundles
+          complete="$(grep '^complete=' "${GITHUB_OUTPUT}" | tail -1 | cut -d= -f2)"
+          if [ "${complete}" = true ]; then
+            # Select the bundles that cover the release and verify one of them
+            # for every distribution. A failure here is inconclusive, not proof
+            # that the release is incomplete, so it must not edit the release.
             covering=()
             for candidate in release-bundles/*.attestations.jsonl; do
               [ -e "${candidate}" ] || continue
@@ -308,9 +315,6 @@ jobs:
               exit 1
             fi
           fi
-          python3 -m scripts.release_assets_cli release-complete --publish dist/publish \
-            --index pypi-index.json --assets draft-assets.json --output github-state/files \
-            --bundles release-bundles
       # An inconclusive check must not change a published release: the edit
       # runs only for a confirmed incomplete verdict. A visible release must
       # also carry provenance for this tag and commit.
