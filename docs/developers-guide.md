@@ -94,9 +94,11 @@ The job graph is:
 1. `check-version` compares the tag with the manifest and checks that the
    runner's GitHub CLI is 2.102.0 or newer.
 2. `build` runs the same `.github/actions/pure-python-wheel` action as the
-   `build-dist` pull-request job. Plain `uv build` produces the sdist and then
-   the wheel from it, and `scripts/check_dist.py` requires exactly one sdist
-   and at least one wheel with the complete manual-page inventory.
+   `build-dist` pull-request job. `uv build` runs with the hash-pinned
+   `build-constraints.txt` and `--require-hashes`, so the build backend and its
+   dependencies are fixed before anything is attested. It produces the sdist
+   and then the wheel from it, and `scripts/check_dist.py` requires exactly one
+   sdist and at least one wheel with the complete manual-page inventory.
 3. `attest` collects every wheel and the one sdist, records build provenance,
    and hands them and a run-unique Sigstore bundle to later jobs.
 4. `draft-release` creates or reuses the tag's draft release, returns an
@@ -110,14 +112,20 @@ The job graph is:
    attestation store that covers every published distribution. The assembled
    bundle is verified against each distribution before it is attached. On a
    complete rerun the assembly is skipped and the release's provenance is
-   verified read-only, without downloading attestations. It then re-fetches the
-   PyPI index, verifies that both destinations hold the same digests and that
-   the exact bundle it verified is still attached, and makes the release
-   visible.
+   verified read-only through `gh attestation verify`, which reads the GitHub
+   attestation store; such a rerun fails if that API is unavailable. It then
+   re-fetches the PyPI index, verifies that both destinations hold the same
+   digests, that the exact bundle it verified is still attached, and that the
+   bundle covers the current digest of every distribution, and makes the
+   release visible.
 
-`make build-release` runs the same `uv build` locally, so a contributor can
-inspect both distributions. Only the workflow publishes; never upload a
-hand-built artefact to PyPI or to a release.
+`make build-release` runs the same hash-pinned `uv build` locally, so a
+contributor can inspect both distributions. Only the workflow publishes; never
+upload a hand-built artefact to PyPI or to a release.
+
+`build-constraints.txt` is generated with `uv pip compile --generate-hashes`
+from the `[build-system] requires` in `pyproject.toml`. Regenerate and commit
+it whenever those requirements change.
 
 ### Safe re-runs
 
@@ -947,10 +955,10 @@ man -l docs/man/git-donkey.1
 ```
 
 Build both distributions to check the source boundary; the `build-release`
-target runs the same `uv build` command as the release workflow's build action:
+target runs the same command as the release workflow's build action:
 
 ```shell
-uv build
+uv build --build-constraints build-constraints.txt --require-hashes
 ```
 
 Run the focused manual tests:

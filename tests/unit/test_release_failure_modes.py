@@ -260,7 +260,10 @@ def test_the_final_check_accepts_the_bundle_it_verified(fake: FakeRelease) -> No
     ("bundle", "message"),
     [
         (_ASSEMBLED_BUNDLE, f"{_ASSEMBLED_BUNDLE} differs"),
-        ("older.attestations.jsonl", "older.attestations.jsonl is missing"),
+        (
+            "older.attestations.jsonl",
+            "The verified bundle older.attestations.jsonl is not available",
+        ),
     ],
     ids=["replaced-bundle", "older-bundle-only"],
 )
@@ -283,6 +286,39 @@ def test_the_final_check_rejects_another_bundle(
 
     assert completed.returncode != 0, "the final check must reject another bundle"
     assert message in completed.stderr, "the failure must name the bundle"
+
+
+def test_the_final_check_requires_coverage_of_the_current_digests(
+    fake: FakeRelease,
+) -> None:
+    """A distribution replaced after coverage must not pass on an old bundle."""
+    _draft_and_publish_pypi(fake)
+    cwd = _publish_release(fake, verify=False)
+    digest = sha256_hex((cwd / _ASSEMBLED_BUNDLE).read_bytes())
+    (fake.pypi / _PYPI_ONLY).write_bytes(b"replaced after coverage")
+    (fake.github / _PYPI_ONLY).write_bytes(b"replaced after coverage")
+    env = fake.env(
+        GITHUB_OUTPUT=str(cwd / "output"),
+        EXPECTED_BUNDLE=_ASSEMBLED_BUNDLE,
+        EXPECTED_DIGEST=digest,
+    )
+    _step(
+        "publish-release",
+        "Refresh the PyPI index before the final check",
+        cwd,
+        env,
+    )
+
+    completed = run_bash(
+        step_script("publish-release", "Check both destinations hold the same bytes"),
+        cwd,
+        env,
+    )
+
+    assert completed.returncode != 0, "the old bundle must not cover the new digest"
+    assert f"{_PYPI_ONLY} is not covered by the verified bundle" in (
+        completed.stderr
+    ), "the failure must name the distribution the bundle no longer covers"
 
 
 def test_staging_stops_before_an_irreversible_upload(fake: FakeRelease) -> None:

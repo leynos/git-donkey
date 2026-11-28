@@ -66,6 +66,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--output", type=Path)
     parser.add_argument("--expected-bundle")
     parser.add_argument("--expected-digest")
+    parser.add_argument("--verified-bundle", type=Path)
     return parser
 
 
@@ -162,6 +163,13 @@ def _verify(state: State, args: argparse.Namespace) -> None:
             expected_bundle_problems(
                 state.github, args.expected_bundle, args.expected_digest
             )
+        )
+    if args.verified_bundle is not None:
+        # The assets can change after the earlier coverage check; the bundle
+        # this run verified must still cover every digest now on the release.
+        problems.extend(
+            f"{name} is not covered by the verified bundle"
+            for name in combined_coverage(state.github, [args.verified_bundle])
         )
     if problems:
         raise ReleaseAssetError("; ".join(problems))

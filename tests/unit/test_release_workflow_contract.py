@@ -19,6 +19,7 @@ from tests.release_contract import (
     run_scripts,
 )
 from tests.release_workflow import (
+    ROOT,
     WORKFLOW,
     jobs,
     step,
@@ -100,6 +101,43 @@ def test_every_checkout_disables_persisted_credentials() -> None:
     ), "every checkout must disable persisted credentials"
 
 
+def test_each_bundle_check_gates_its_own_cli() -> None:
+    """A verifier call must follow a version gate on its own runner."""
+    for job, name in (
+        (
+            "draft-release",
+            "Check whether an already published release is complete",
+        ),
+        ("publish-release", "Check the attached bundle coverage"),
+    ):
+        script = step_script(job, name)
+        assert _GH_VERSION_COMMAND in script, f"{job} must gate its first verifier"
+        assert script.index(_GH_VERSION_COMMAND) < script.index(
+            "gh attestation verify"
+        ), f"{job} must gate the CLI before it verifies provenance"
+
+
+def test_the_build_uses_hash_pinned_constraints() -> None:
+    """The build backend must be fixed before a release build is attested."""
+    action = (
+        ROOT / ".github" / "actions" / "pure-python-wheel" / "action.yml"
+    ).read_text(encoding="utf-8")
+    assert "--build-constraints build-constraints.txt" in action, (
+        "the build action must constrain the build environment"
+    )
+    assert "--require-hashes" in action, (
+        "the build action must require the pinned hashes"
+    )
+    constraints = (ROOT / "build-constraints.txt").read_text(encoding="utf-8")
+    for requirement in ("hatchling==", "hatch-build-scripts==", "docutils=="):
+        assert requirement in constraints, (
+            f"build-constraints.txt must pin {requirement[:-2]}"
+        )
+    assert "--hash=sha256:" in constraints, (
+        "build-constraints.txt must carry hashes for every requirement"
+    )
+
+
 def test_every_remote_action_is_pinned_to_a_commit() -> None:
     """A floating tag could change what a release run executes."""
     steps = [
@@ -108,7 +146,7 @@ def test_every_remote_action_is_pinned_to_a_commit() -> None:
     remote = [
         str(item["uses"])
         for item in steps
-        if "uses" in item and not str(item["uses"]).startswith("./")
+        if "uses" in item and not str(item["uses"]).startswith(("./", "$/"))
     ]
     assert remote, "the scan must reach the repository's remote actions"
     assert all(PINNED.search(action) for action in remote), (

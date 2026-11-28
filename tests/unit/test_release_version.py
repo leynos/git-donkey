@@ -113,9 +113,10 @@ def test_a_missing_environment_variable_is_reported(
     status = release_version.main({"TAG_VERSION": "v1.2.3"}, tmp_path)
 
     assert status == 1, "a missing output path must fail the check"
-    assert "::error title=release-version::missing environment variable(s)" in (
-        capsys.readouterr().err
-    ), "the failure must name the missing environment"
+    assert capsys.readouterr().err == (
+        "::error title=release-version::missing environment variable(s): "
+        "GITHUB_OUTPUT\n"
+    ), "the failure must name every missing environment variable exactly"
 
 
 @pytest.mark.parametrize(
@@ -156,7 +157,7 @@ def test_an_old_github_cli_names_the_minimum_and_the_found_release(
     status = release_gh_version.main(["gh version 2.101.9 (fake)"])
 
     assert status == 1, "an old CLI must fail the gate"
-    assert (
-        "GitHub CLI 2.102.0 or newer is required; found 2.101.9."
-        in capsys.readouterr().err
-    ), "the diagnostic must name both releases"
+    assert capsys.readouterr().err == (
+        "::error title=gh-version::GitHub CLI 2.102.0 or newer is required; "
+        "found 2.101.9.\n"
+    ), "the diagnostic must name both releases exactly"

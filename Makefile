@@ -81,7 +81,7 @@ build: uv .venv ## Build virtual-env and install deps
 	$(UV_ENV) uv sync --group dev
 
 build-release: uv ## Build artefacts (sdist & wheel)
-	$(UV_ENV) uv build
+	$(UV_ENV) uv build --build-constraints build-constraints.txt --require-hashes
 
 clean: ## Remove build artifacts
 	rm -rf build dist *.egg-info \

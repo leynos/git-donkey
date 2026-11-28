@@ -210,7 +210,7 @@ def test_both_coverage_checks_apply_the_same_identity_policy() -> None:
         assert publish.count(flag) == 1, f"the publish check must pass {flag!r}"
 
 
-def test_the_final_check_pins_the_bundle_it_verified() -> None:
+def test_the_final_check_pins_the_bundle_identity() -> None:
     """Only the bundle this run approved may stand in at publication."""
     found = step("publish-release", "Check both destinations hold the same bytes")
     env = typ.cast("dict[str, str]", found["env"])
@@ -232,6 +232,33 @@ def test_the_final_check_pins_the_bundle_it_verified() -> None:
     assert "--expected-digest" in script, (
         "the check must pass the pinned digest to the verifier"
     )
+
+
+def test_the_final_check_requires_the_verified_bundle_coverage() -> None:
+    """The verified bundle must cover the digests in the fresh listing."""
+    script = step_script(
+        "publish-release", "Check both destinations hold the same bytes"
+    )
+    assert "--verified-bundle" in script, (
+        "the check must require the bundle to cover the current digests"
+    )
+
+
+def test_the_final_check_locates_the_verified_bundle() -> None:
+    """The local bundle is found whether assembled or downloaded earlier."""
+    script = step_script(
+        "publish-release", "Check both destinations hold the same bytes"
+    )
+    assert 'if [ -f "${EXPECTED_BUNDLE}" ]' in script, (
+        "the check must locate the verified bundle in the workspace"
+    )
+    assert "release-bundles/${EXPECTED_BUNDLE}" in script, (
+        "a complete re-run must find the bundle the coverage step downloaded"
+    )
+
+
+def test_the_bundle_steps_report_the_bundle_they_verified() -> None:
+    """Both producers pass the bundle and digest on to the final check."""
     assembly = step_script("publish-release", _ASSEMBLY_STEP)
     assert "printf 'bundle=%s" in assembly, (
         "the assembly must report the bundle it uploaded"

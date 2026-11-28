@@ -101,9 +101,11 @@ def test_a_mismatched_tag_fails_before_anything_is_published(
     completed, written = run_version_check(tmp_path, declared, tag_version)
 
     assert completed.returncode != 0, "a mismatched tag must fail the release"
-    assert "::error file=pyproject.toml,title=Tag/pyproject.toml mismatch::" in (
-        completed.stdout
-    ), "the failure must identify the manifest and the mismatch"
+    assert completed.stdout == (
+        "::error file=pyproject.toml,title=Tag/pyproject.toml mismatch::"
+        f"Tag version {tag_version} does not match pyproject.toml version "
+        f"{declared}\n"
+    ), "the failure must identify the manifest and both versions"
     assert not written, "a failed check must not report a prerelease status"
 
 
@@ -162,7 +164,10 @@ def test_the_tag_check_accepts_the_live_commit_and_rejects_a_moved_tag(
     )
 
     assert moved.returncode != 0, "a moved tag must stop the run"
-    assert "points to" in moved.stderr, "the failure must name the moved tag"
+    assert moved.stderr == (
+        f"::error title=tag-moved::Tag v1.0.0 points to {second}, "
+        f"not this run's {first}.\n"
+    ), "the failure must name both the tag's commit and the run's commit"
     assert current.returncode == 0, current.stderr
 
 
@@ -194,9 +199,9 @@ def test_collection_fails_without_exactly_one_sdist(
     completed = run_bash(step_script(*_COLLECT_STEP), tmp_path)
 
     assert completed.returncode != 0, "the release needs exactly one sdist"
-    assert "Expected exactly one source distribution." in completed.stderr, (
-        "the failure must explain the missing or duplicated sdist"
-    )
+    assert completed.stderr.splitlines()[0] == (
+        "Expected exactly one source distribution."
+    ), "the failure must explain the missing or duplicated sdist"
 
 
 def test_collection_fails_when_no_wheel_was_built(tmp_path: pth.Path) -> None:
@@ -206,7 +211,7 @@ def test_collection_fails_when_no_wheel_was_built(tmp_path: pth.Path) -> None:
     completed = run_bash(step_script(*_COLLECT_STEP), tmp_path)
 
     assert completed.returncode != 0, "the release needs at least one wheel"
-    assert "Expected at least one wheel." in completed.stderr, (
+    assert completed.stderr.splitlines()[0] == "Expected at least one wheel.", (
         "the failure must explain the missing wheel"
     )
 
@@ -253,8 +258,8 @@ def test_artefacts_already_on_pypi_are_skipped_by_name(
     assert completed.returncode == 0, completed.stderr
     assert _remaining(tmp_path) == remaining, "published names must be dropped"
     assert (
-        "::notice::Skipping git_donkey-1.tar.gz: already on PyPI" in completed.stdout
-    ), "a published name must be reported as skipped"
+        "::notice::Skipping git_donkey-1.tar.gz: already on PyPI\n" in completed.stdout
+    ), "a published name must be reported as a complete skipped line"
     assert written == {"attempts": "1", "status": "200", "remaining": has_remaining}, (
         "the step must report the index result and whether anything remains"
     )
@@ -282,6 +287,7 @@ def test_stage_pypi_requires_the_provenance_directory(tmp_path: pth.Path) -> Non
     link_scripts(tmp_path)
     _touch(tmp_path / "dist" / "publish", *_ARTEFACTS, _SDIST)
     (tmp_path / "assets.json").write_text('{"assets": []}', encoding="utf-8")
+    (tmp_path / "pypi-index.json").write_text('{"files": []}', encoding="utf-8")
     completed = run_bash(
         _cli(
             "stage-pypi",
@@ -291,14 +297,16 @@ def test_stage_pypi_requires_the_provenance_directory(tmp_path: pth.Path) -> Non
             "assets.json",
             "--github-files",
             "github-files",
+            "--index",
+            "pypi-index.json",
         ),
         tmp_path,
     )
 
     assert completed.returncode == 1, "stage-pypi must reject a missing provenance path"
-    assert "::error title=release-assets::--provenance is required for stage-pypi" in (
-        completed.stderr
-    ), "the CLI must explain that stage-pypi requires provenance records"
+    assert completed.stderr == (
+        "::error title=release-assets::--provenance is required for stage-pypi\n"
+    ), "the CLI must report exactly that provenance records are required"
 
 
 @pytest.mark.parametrize(
@@ -339,9 +347,9 @@ def test_the_index_dependent_commands_require_the_index(
     )
 
     assert completed.returncode == 1, f"{command} must reject a missing index"
-    assert f"--index is required for {command}" in completed.stderr, (
-        "the CLI must explain that the command needs the PyPI index"
-    )
+    assert completed.stderr == (
+        f"::error title=release-assets::--index is required for {command}\n"
+    ), "the CLI must report exactly that the command needs the PyPI index"
 
 
 def test_bundle_coverage_requires_the_bundle_directory(tmp_path: pth.Path) -> None:
@@ -361,9 +369,9 @@ def test_bundle_coverage_requires_the_bundle_directory(tmp_path: pth.Path) -> No
     )
 
     assert completed.returncode == 1, "bundle-coverage must reject a missing path"
-    assert "--bundles is required for bundle-coverage" in completed.stderr, (
-        "the CLI must explain that the bundle directory is required"
-    )
+    assert completed.stderr == (
+        "::error title=release-assets::--bundles is required for bundle-coverage\n"
+    ), "the CLI must report exactly that the bundle directory is required"
 
 
 def test_a_transient_failure_is_retried_and_counted(tmp_path: pth.Path) -> None:
@@ -390,8 +398,8 @@ def test_a_failed_index_lookup_stops_the_upload(
     fake, completed, written = _fetch_and_skip(tmp_path, statuses)
 
     assert completed.returncode != 0, f"HTTP {statuses} must fail the lookup"
-    assert f"PyPI simple index returned HTTP {statuses}." in completed.stderr, (
-        "the failure must name the index response"
+    assert completed.stderr == (f"PyPI simple index returned HTTP {statuses}.\n"), (
+        "the failure must name the index response exactly"
     )
     assert written == {"attempts": attempts, "status": statuses}, (
         "the step must report the bounded attempt count and final status"

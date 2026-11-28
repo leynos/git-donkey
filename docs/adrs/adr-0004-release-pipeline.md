@@ -89,11 +89,13 @@ releases waits on the version check instead.
 
 ### Building and attesting
 
-The shared `.github/actions/pure-python-wheel` action runs plain `uv build`,
-which builds the source distribution first and then the wheel from that source
-distribution. Every build therefore proves the sdist is buildable. The same
-action runs in the `build-dist` pull-request job, so a missing or incomplete
-sdist fails continuous integration rather than the tag.
+The shared `.github/actions/pure-python-wheel` action runs `uv build` with
+`build-constraints.txt` and `--require-hashes`, which fixes the build backend
+and its dependencies before anything is attested and builds the source
+distribution first, then the wheel from that source distribution. Every build
+therefore proves the sdist is buildable. The same action runs in the
+`build-dist` pull-request job, so a missing or incomplete sdist fails
+continuous integration rather than the tag.
 
 `scripts/check_dist.py` requires exactly one sdist and at least one wheel,
 requires the sdist to carry the manual-page sources and Docutils configuration,
@@ -162,13 +164,15 @@ index and the release's asset list and confirms every artefact name has an
 identical SHA-256 digest on both sides. It also confirms the release holds the
 exact combined attestation bundle this run verified — the run-unique bundle it
 assembled, or the covering bundle the coverage check approved — by name and by
-digest, so an older or replaced bundle cannot stand in for it. That bundle is
-assembled from the store for the exact bytes the release holds, and every
-distribution is verified against this repository, `release.yml`, the tag, and
-the triggering commit before it is assembled. A name that already differs
-between the destinations, PyPI bytes that no run attested for this tag and
-commit, or a release asset with no attestation fails the job and leaves the
-release a draft.
+digest, so an older or replaced bundle cannot stand in for it. It also checks
+that bundle's subjects against the digests in that same fresh listing, so a
+distribution replaced after the earlier coverage check cannot pass on the old
+bundle. That bundle is assembled from the store for the exact bytes the release
+holds, and every distribution is verified against this repository,
+`release.yml`, the tag, and the triggering commit before it is assembled. A
+name that already differs between the destinations, PyPI bytes that no run
+attested for this tag and commit, or a release asset with no attestation fails
+the job and leaves the release a draft.
 
 Recovery for a disagreeing GitHub asset is deliberately manual: an
 administrator deletes the offending asset from the GitHub Release, and a later
@@ -215,9 +219,12 @@ reconciliation PyPI already requires:
   verification therefore stays visible while the run fails; the redraft step
   needs a confirmed `complete=false`, and an inconclusive verdict is not one.
 - A rerun that finds every name published and a covering bundle attached
-  stages and uploads nothing, does not download attestations, and edits nothing
-  because the release is already visible with the right pre-release flag. It
-  still verifies every distribution's provenance read-only.
+  stages and uploads nothing, does not run `gh attestation download` or
+  assemble a bundle, and edits nothing because the release is already visible
+  with the right pre-release flag. It still verifies every distribution's
+  provenance read-only through `gh attestation verify`, which fetches records
+  from the GitHub attestation store, so such a rerun depends on that API and
+  fails if the store is unavailable.
 
 ### Least privilege and the `pypi` environment
 

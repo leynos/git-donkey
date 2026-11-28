@@ -237,6 +237,9 @@ jobs:
         id: redraft
         run: |
           set -euo pipefail
+          # This job's first verifier call must run on a CLI that enforces the
+          # identity flags, whatever version the runner image carries.
+          gh --version | python3 scripts/release_gh_version.py
           gh release view "${GITHUB_REF_NAME}" --json isDraft,assets > draft-state.json
           if [ "$(jq -r '.isDraft' draft-state.json)" = true ]; then
             echo "published=false" >> "${GITHUB_OUTPUT}"
@@ -521,6 +524,9 @@ jobs:
         id: coverage
         run: |
           set -euo pipefail
+          # This job's first verifier call must run on a CLI that enforces the
+          # identity flags, whatever version the runner image carries.
+          gh --version | python3 scripts/release_gh_version.py
           mkdir -p release-bundles
           # Coverage reads only the combined bundle; a legacy single-run
           # bundle cannot contribute and must not block the check by failing
@@ -771,6 +777,15 @@ jobs:
             extra+=(--expected-bundle "${EXPECTED_BUNDLE}")
             if [ -n "${EXPECTED_DIGEST:-}" ]; then
               extra+=(--expected-digest "${EXPECTED_DIGEST}")
+            fi
+            if [ -f "${EXPECTED_BUNDLE}" ]; then
+              extra+=(--verified-bundle "${EXPECTED_BUNDLE}")
+            elif [ -f "release-bundles/${EXPECTED_BUNDLE}" ]; then
+              extra+=(--verified-bundle "release-bundles/${EXPECTED_BUNDLE}")
+            else
+              echo "::error title=bundle-verification::The verified bundle" \
+                "${EXPECTED_BUNDLE} is not available." >&2
+              exit 1
             fi
           fi
           python3 -m scripts.release_assets_cli verify --publish dist/publish \

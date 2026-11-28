@@ -39,10 +39,13 @@ def test_make_typecheck_pins_ty_and_omits_script_search_path(
         f"typecheck must run the pinned Ty check exactly once: {result.stdout}"
     )
     arguments = commands[0]
-    assert "--python" in arguments, (
-        f"typecheck must name the project environment: {arguments}"
+    assert arguments.count("--python") == 1, (
+        f"typecheck must name the project environment exactly once: {arguments}"
     )
     position = arguments.index("--python")
+    assert position + 1 < len(arguments), (
+        f"typecheck must give --python a value: {arguments}"
+    )
     assert arguments[position + 1] == ".venv", (
         f"typecheck must use exactly the project venv, not {arguments[position + 1]!r}"
     )
