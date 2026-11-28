@@ -216,6 +216,18 @@ def test_an_sdist_with_a_top_level_file_fails(tmp_path: Path) -> None:
     ], "a loose root file must be reported"
 
 
+def test_a_wheel_with_a_duplicate_page_fails(tmp_path: Path) -> None:
+    """A duplicate ZIP entry makes the installed page ambiguous."""
+    root, dist = _build(tmp_path)
+    page = f"{_REPOSITORY}.data/data/share/man/man1/{_COMMANDS[0]}.1"
+    with zipfile.ZipFile(dist / _WHEEL, "a") as archive:
+        archive.writestr(page, b"")
+
+    assert f"{_WHEEL} carries duplicate manual page {page}" in check_dist(dist, root), (
+        "a duplicate page entry must be reported"
+    )
+
+
 def test_a_sdist_carrying_generated_pages_fails(tmp_path: Path) -> None:
     """Generated roff pages must never be reused as build inputs."""
     members = _sdist_members()
@@ -242,11 +254,14 @@ def test_a_wheel_page_outside_the_data_directory_fails(tmp_path: Path) -> None:
     """A page outside the wheel's data root would not install as documented."""
     members = _wheel_members()
     page = members.pop(f"{_REPOSITORY}.data/data/share/man/man1/git-track.1")
-    members[f"backup/{_REPOSITORY}.data/data/share/man/man1/git-track.1"] = page
+    outside = f"backup/{_REPOSITORY}.data/data/share/man/man1/git-track.1"
+    members[outside] = page
     root, dist = _build(tmp_path, _Build(wheel_members=members))
+    prefix = f"{_REPOSITORY}.data/data/share/man/man1/"
 
     assert check_dist(dist, root) == [
-        f"{_WHEEL} is missing the git-track manual page"
+        f"{_WHEEL} is missing the git-track manual page",
+        f"{_WHEEL} carries manual page outside {prefix}: {outside}",
     ], "a page outside the data directory must not count as installed"
 
 

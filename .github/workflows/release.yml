@@ -253,11 +253,11 @@ jobs:
           if [ "${digests_complete}" != true ]; then
             exit 0
           fi
+          # Coverage reads only the combined bundle; a legacy single-run
+          # bundle cannot contribute and must not block the check by failing
+          # to download.
           if jq -e '.assets[] | select(.name | endswith(".attestations.jsonl"))' draft-assets.json > /dev/null; then
             gh release download "${GITHUB_REF_NAME}" --pattern '*.attestations.jsonl' --dir release-bundles
-          fi
-          if jq -e '.assets[] | select(.name | endswith(".sigstore.json"))' draft-assets.json > /dev/null; then
-            gh release download "${GITHUB_REF_NAME}" --pattern '*.sigstore.json' --dir release-bundles
           fi
           # Destination metadata decides first: a digest mismatch, missing
           # asset or uncovered distribution is a confirmed incomplete release
@@ -522,11 +522,11 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p release-bundles
+          # Coverage reads only the combined bundle; a legacy single-run
+          # bundle cannot contribute and must not block the check by failing
+          # to download.
           if jq -e '.assets[] | select(.name | endswith(".attestations.jsonl"))' release-assets.json > /dev/null; then
             gh release download "${GITHUB_REF_NAME}" --pattern '*.attestations.jsonl' --dir release-bundles
-          fi
-          if jq -e '.assets[] | select(.name | endswith(".sigstore.json"))' release-assets.json > /dev/null; then
-            gh release download "${GITHUB_REF_NAME}" --pattern '*.sigstore.json' --dir release-bundles
           fi
           python3 -m scripts.release_assets_cli bundle-coverage --publish dist/publish \
             --assets release-assets.json --bundles release-bundles

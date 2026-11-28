@@ -22,6 +22,7 @@ Examples
 from __future__ import annotations
 
 import argparse
+import collections
 import sys
 import tarfile
 import tomllib
@@ -112,10 +113,11 @@ def _wheel_problems(wheel: Path, commands: tuple[str, ...]) -> list[str]:
     with zipfile.ZipFile(wheel) as archive:
         members = archive.namelist()
     prefix = _wheel_data_prefix(wheel)
+    pages = [member for member in members if member.endswith(".1")]
     installed = {
         member.removeprefix(prefix).removesuffix(".1")
-        for member in members
-        if member.startswith(prefix) and member.endswith(".1")
+        for member in pages
+        if member.startswith(prefix)
     }
     expected = set(commands)
     problems = [
@@ -126,6 +128,15 @@ def _wheel_problems(wheel: Path, commands: tuple[str, ...]) -> list[str]:
     problems.extend(
         f"{wheel.name} carries unexpected manual page {name}.1"
         for name in sorted(installed - expected)
+    )
+    problems.extend(
+        f"{wheel.name} carries manual page outside {prefix}: {page}"
+        for page in sorted(page for page in pages if not page.startswith(prefix))
+    )
+    problems.extend(
+        f"{wheel.name} carries duplicate manual page {page}"
+        for page, count in sorted(collections.Counter(pages).items())
+        if count > 1
     )
     return problems
 

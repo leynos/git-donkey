@@ -99,7 +99,8 @@ sdist fails continuous integration rather than the tag.
 requires the sdist to carry the manual-page sources and Docutils configuration,
 refuses generated `.1` (roff-format) pages in the sdist, and requires every
 wheel to carry exactly one generated page per console script declared in
-`pyproject.toml`, at the wheel's data-directory path and nowhere else.
+`pyproject.toml`, under the wheel's data-directory path. A page outside that
+directory or a duplicate entry at it fails the check.
 
 `attest` collects every wheel and exactly one sdist from the downloaded build
 artefacts, attests them with `actions/attest-build-provenance`, and hands the
@@ -208,7 +209,11 @@ reconciliation PyPI already requires:
   distribution; an older partial bundle is ignored rather than blocking a
   complete replacement. A transient verifier failure is retried; a failure that
   persists, an unavailable index, or an unavailable download is inconclusive,
-  so the run fails without editing the release or deleting an asset.
+  so the run fails without editing the release or deleting an asset. A
+  published release whose metadata complete passes but whose covering bundle
+  fails signature verification therefore stays visible while the run fails; the
+  redraft step needs a confirmed `complete=false`, and an inconclusive verdict
+  is not one.
 - A rerun that finds every name published and a covering bundle attached
   stages and uploads nothing, does not download attestations, and edits nothing
   because the release is already visible with the right pre-release flag. It

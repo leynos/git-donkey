@@ -125,8 +125,9 @@ A re-pushed tag queues behind a running release instead of cancelling it.
 Re-running the workflow for the same tag is safe: each filename's bytes are
 taken from PyPI first, then from the GitHub Release, then from the new build,
 and each destination receives only the names it lacks. When every name is
-already published and the release carries a bundle, the run stages, uploads,
-and edits nothing.
+already published with matching digests, the release holds a verified combined
+bundle covering every distribution, and its pre-release flag already matches
+the tag, the run stages, uploads, and edits nothing.
 
 A release stays a draft until both destinations hold identical digests. When
 the release already holds a differing asset, or PyPI holds bytes that no run
@@ -157,6 +158,7 @@ Download the release's files and verify their provenance. Verification needs
 GitHub CLI 2.102.0 or newer.
 
 ```shell
+set -e
 gh release download v1.2.3 --repo leynos/git-donkey --pattern 'git_donkey-*'
 for file in git_donkey-*.whl git_donkey-*.tar.gz; do
   gh attestation verify "${file}" \
@@ -165,8 +167,9 @@ for file in git_donkey-*.whl git_donkey-*.tar.gz; do
 done
 ```
 
-The loop verifies the sdist as well as the wheel. To reproduce the workflow's
-tag-and-commit pin, add `--source-ref refs/tags/v1.2.3` and
+The loop verifies the sdist as well as the wheel, and `set -e` stops it, and
+fails the script, on the first failed download or verification. To reproduce
+the workflow's tag-and-commit pin, add `--source-ref refs/tags/v1.2.3` and
 `--source-digest <commit>`, where `<commit>` is the commit the tag names.
 
 ### Release settings

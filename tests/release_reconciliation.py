@@ -96,6 +96,17 @@ def _draft_and_publish_pypi(fake: FakeRelease) -> None:
             fake.attest_approved(fake.pypi / staged.name)
 
 
+def _pinned_bundle_env(env: dict[str, str], output: pth.Path) -> dict[str, str]:
+    """Return the environment the workflow gives the final destination check."""
+    pinned = outputs(output)
+    return {
+        **env,
+        "EXPECTED_BUNDLE": pinned.get("bundle") or pinned.get("verified_bundle", ""),
+        "EXPECTED_DIGEST": pinned.get("bundle_digest")
+        or pinned.get("verified_digest", ""),
+    }
+
+
 def _publish_release(
     fake: FakeRelease,
     *,
@@ -115,6 +126,9 @@ def _publish_release(
     else:
         _step("publish-release", "Verify release distributions", cwd, env)
     if verify:
+        # Mirror the workflow's env: the assembler's bundle wins, and a
+        # complete re-run pins the covering bundle the coverage step verified.
+        expected = _pinned_bundle_env(env, cwd / "output")
         _step(
             "publish-release",
             "Refresh the PyPI index before the final check",
@@ -122,7 +136,10 @@ def _publish_release(
             env,
         )
         _step(
-            "publish-release", "Check both destinations hold the same bytes", cwd, env
+            "publish-release",
+            "Check both destinations hold the same bytes",
+            cwd,
+            expected,
         )
         _step("publish-release", "Publish the GitHub Release", cwd, env)
     return cwd
