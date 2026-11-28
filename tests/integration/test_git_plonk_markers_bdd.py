@@ -29,6 +29,8 @@ from tests.integration.plonk_helpers import (
     commit_in_worktree,
     commit_message_on_branch,
     create_git_donkey_worktree,
+    marker_removal_entry,
+    merge_commit_on_trunk,
     record_plonk_run,
 )
 from tests.output_assertions import require_stream, stream
@@ -65,6 +67,52 @@ def _repository_with_issue_worktree(
     monkeypatch.chdir(local_path)
     create_git_donkey_worktree(local_path, _ISSUE_BRANCH)
     return PlonkScenario(local_path=local_path, completed_branch=_ISSUE_BRANCH)
+
+
+@given(
+    parsers.parse('a repository with a git donkey worktree on branch "{branch_name}"'),
+    target_fixture="scenario",
+)
+def repository_with_a_named_worktree(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    branch_name: str,
+) -> PlonkScenario:
+    """Create one git-donkey worktree on ``branch_name`` with clean trunk.
+
+    Returns
+    -------
+    PlonkScenario
+        The repository and the branch under test.
+
+    """
+    local_path, _remote_path = _setup_repo(tmp_path)
+    monkeypatch.chdir(local_path)
+    create_git_donkey_worktree(local_path, branch_name)
+    return PlonkScenario(local_path=local_path, completed_branch=branch_name)
+
+
+@given(parsers.parse('a trunk commit message "{message}"'))
+def repository_trunk_commit_message(
+    scenario: PlonkScenario,
+    message: str,
+) -> None:
+    r"""Commit ``message`` on trunk beside the worktree under test.
+
+    A Gherkin step is a single line, so ``\\n`` in the feature file stands for
+    a real newline here, letting one step place a marker in a subject or body.
+    """
+    commit_message_on_branch(
+        scenario.local_path,
+        "main",
+        message.replace("\\n", "\n"),
+    )
+
+
+@given(parsers.parse('a trunk merge commit with message "{message}"'))
+def trunk_merge_commit(scenario: PlonkScenario, message: str) -> None:
+    """Create a real two-parent merge commit carrying ``message``."""
+    merge_commit_on_trunk(scenario.local_path, message)
 
 
 @given(
@@ -227,7 +275,7 @@ def git_plonk_reports_both_worktrees_as_removed(scenario: PlonkScenario) -> None
         stream(
             f"git-plonk: mode={scenario.mode}",
             "Removed worktrees:",
-            *(f"- {path}" for path in removed),
+            *(marker_removal_entry(path, path.name) for path in removed),
         ),
         context="git plonk stdout",
     )

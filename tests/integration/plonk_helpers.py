@@ -12,12 +12,13 @@ repositories.
 from __future__ import annotations
 
 import dataclasses
+import os
 import typing as typ
 from pathlib import Path
 
 from git import Repo
 
-from git_donkey import donkey
+from git_donkey import donkey, plonk_policy
 from tests.git_repo_helpers import configure_repo
 from tests.output_assertions import require_stream
 
@@ -170,10 +171,43 @@ def capture_plonk_run(
     scenario.stderr = result.stderr
 
 
+def github_cli_calls() -> list[str]:
+    """Return the GitHub CLI invocations the recording ``gh`` stub has seen."""
+    log_path = os.environ.get("GH_STUB_LOG")
+    if not log_path:
+        return []
+    path = Path(log_path)
+    if not path.is_file():
+        return []
+    return path.read_text(encoding="utf-8").splitlines()
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class ReportMode:
+    """How a recorded plonk invocation's report should be interpreted.
+
+    Attributes
+    ----------
+    label : str
+        Mode as the summary header spells it, such as ``"hard dry-run"``.
+    expect_github_lookup : bool
+        Whether the scenario expects the GitHub fallback to run.
+
+    """
+
+    label: str
+    expect_github_lookup: bool = False
+
+
+def _report_mode(mode: str | ReportMode) -> ReportMode:
+    """Return ``mode`` as a ReportMode."""
+    return mode if isinstance(mode, ReportMode) else ReportMode(mode)
+
+
 def record_plonk_run(
     scenario: PlonkScenario,
     capsys: pytest.CaptureFixture[str],
-    mode: str,
+    mode: str | ReportMode,
     call: cabc.Callable[[], int | None],
 ) -> None:
     """Run a ``git plonk`` invocation that must succeed and record its report.
@@ -182,7 +216,9 @@ def record_plonk_run(
     can build the exact expected report without repeating how the header is
     punctuated. A successful sweep reports through its summary alone, so any
     standard error or non-zero exit code fails here rather than being absorbed
-    by a looser assertion.
+    by a looser assertion. A local-remote scenario must not reach the GitHub
+    fallback at all, so the recording ``gh`` stub is asserted untouched unless
+    the scenario opts in through :class:`ReportMode`.
 
     Parameters
     ----------
@@ -190,37 +226,46 @@ def record_plonk_run(
         Scenario collecting the result.
     capsys : pytest.CaptureFixture[str]
         Capture fixture the run's output is read from.
-    mode : str
-        Mode as the summary header spells it, such as ``"hard dry-run"``.
+    mode : str | ReportMode
+        Mode as the summary header spells it, such as ``"hard dry-run"``, or a
+        :class:`ReportMode` that also states whether the GitHub fallback is
+        expected.
     call : cabc.Callable[[], int | None]
         Invocation to run, such as ``plonk.run_git_plonk(hard=True)``.
 
     Raises
     ------
     AssertionError
-        If the sweep exits non-zero or writes to standard error.
+        If the sweep exits non-zero, writes to standard error, or invokes the
+        GitHub CLI when the scenario did not expect it.
 
     """
-    scenario.mode = mode
+    report_mode = _report_mode(mode)
+    scenario.mode = report_mode.label
     capture_plonk_run(scenario, capsys, call)
     require_stream(scenario.stderr, "", context="git plonk stderr")
     if scenario.exit_code != 0:
         msg = (
-            f"expected {mode} git plonk to succeed, "
+            f"expected {report_mode.label} git plonk to succeed, "
             f"got exit code {scenario.exit_code!r}"
+        )
+        raise AssertionError(msg)
+    if not report_mode.expect_github_lookup and github_cli_calls():
+        msg = (
+            "expected a local-remote scenario not to invoke the GitHub CLI, but it did"
         )
         raise AssertionError(msg)
 
 
-def skipped_entry(worktree_path: Path, reason: str) -> str:
-    """Build the report line naming ``worktree_path`` as skipped.
+def removal_entry(worktree_path: Path, label: str) -> str:
+    """Build the report line naming ``worktree_path`` and its evidence.
 
     Parameters
     ----------
     worktree_path : Path
-        Worktree the sweep left alone.
-    reason : str
-        Skip reason the report appends in parentheses.
+        Worktree the sweep removed or plans to remove.
+    label : str
+        Evidence phrase the report appends in parentheses.
 
     Returns
     -------
@@ -228,7 +273,42 @@ def skipped_entry(worktree_path: Path, reason: str) -> str:
         The report line, without its trailing newline.
 
     """
-    return f"- {worktree_path} ({reason})"
+    return f"- {worktree_path} ({label})"
+
+
+def marker_for_branch(branch_name: str) -> str:
+    """Return the completion marker ``branch_name`` implies.
+
+    Returns
+    -------
+    str
+        The parenthesised marker the branch name encodes.
+
+    Raises
+    ------
+    AssertionError
+        If the branch follows no recognized marker convention.
+
+    """
+    marker = plonk_policy.completion_marker_for_branch(branch_name)
+    if marker is None:
+        msg = f"expected {branch_name} to imply a completion marker"
+        raise AssertionError(msg)
+    return marker
+
+
+def marker_removal_entry(worktree_path: Path, branch_name: str) -> str:
+    """Build the report line for a removal completed by a history marker."""
+    return removal_entry(
+        worktree_path,
+        f"completed by marker {marker_for_branch(branch_name)}",
+    )
+
+
+# A skipped or unverified worktree line has the same shape as a removal
+# line: the path followed by its parenthesised reason.
+skipped_entry = removal_entry
+unverified_entry = removal_entry
 
 
 def worktree_order(local_path: Path) -> list[Path]:
@@ -372,6 +452,35 @@ def stage_tracked_change(
     """
     readme = edit_tracked_file(scenario, branch_name, content)
     Repo(readme.parent).index.add([readme.as_posix()])
+
+
+def merge_commit_on_trunk(local_path: Path, subject: str) -> None:
+    """Create a real two-parent merge on ``main`` and push it to ``origin``.
+
+    The scenario needs an actual merge commit, not a one-parent commit whose
+    subject merely looks like one, because merge evidence requires two parents.
+
+    Parameters
+    ----------
+    local_path : Path
+        Working repository to merge in and push from.
+    subject : str
+        Subject line of the merge commit, such as the classic GitHub merge
+        syntax naming a branch.
+
+    """
+    repo = Repo(local_path)
+    repo.git.checkout("main")
+    repo.git.checkout("-b", "merge-source", "main")
+    sequence = sum(1 for _ in repo.iter_commits("main"))
+    source_path = local_path / f"merge-source-{sequence}.txt"
+    source_path.write_text(subject)
+    repo.index.add([source_path.as_posix()])
+    repo.index.commit("Side work for merge")
+    repo.git.checkout("main")
+    repo.git.merge("merge-source", "--no-ff", "-m", subject)
+    repo.git.branch("-D", "merge-source")
+    repo.remote("origin").push("main")
 
 
 def commit_message_on_branch(

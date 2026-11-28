@@ -3,7 +3,7 @@
   '''
   git-plonk: mode=hard dry-run
   Planned worktree removals:
-  - <worktrees>/issue-123-fix
+  - <worktrees>/issue-123-fix (completed by marker (#123))
   Planned branch deletions:
   - issue-123-fix
   Skipped worktrees:
@@ -14,7 +14,7 @@
   '''
   git-plonk: mode=hard dry-run
   Planned worktree removals:
-  - <worktrees>/issue-123-fix
+  - <worktrees>/issue-123-fix (completed by marker (#123))
   Planned branch deletions:
   - issue-123-fix
   '''
@@ -23,7 +23,7 @@
   '''
   git-plonk: mode=hard
   Removed worktrees:
-  - <worktrees>/issue-123-fix
+  - <worktrees>/issue-123-fix (completed by marker (#123))
   Removed branches:
   - issue-123-fix
   Skipped worktrees:
@@ -35,11 +35,11 @@
   '''
   git-plonk: mode=hard
   Removed worktrees:
-  - <worktrees>/issue-123-fix
-  - <worktrees>/road-1-2-3a-4-task
+  - <worktrees>/issue-123-fix (completed by marker (#123))
+  - <worktrees>/fix-markdown-gates (completed by merged pull request #61)
   Removed branches:
   - issue-123-fix
-  - road-1-2-3a-4-task
+  - fix-markdown-gates
   Removed generated paths:
   - <worktrees>/issue-123-fix/target
   '''

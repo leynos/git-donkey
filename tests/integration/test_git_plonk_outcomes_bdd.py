@@ -32,6 +32,7 @@ from tests.integration.plonk_helpers import (
     capture_plonk_run,
     commit_completion_marker,
     create_git_donkey_worktree,
+    marker_removal_entry,
     record_plonk_run,
     skipped_entry,
 )
@@ -322,7 +323,10 @@ def git_plonk_previews_removing_clean_worktree(scenario: PlonkScenario) -> None:
     lines = [
         f"git-plonk: mode={scenario.mode}",
         "Planned worktree removals:",
-        f"- {scenario.worktree_path(scenario.completed_branch)}",
+        marker_removal_entry(
+            scenario.worktree_path(scenario.completed_branch),
+            scenario.completed_branch,
+        ),
     ]
     if scenario.mode == "hard dry-run":
         lines.extend((
@@ -356,7 +360,10 @@ def git_plonk_reports_failed_branch_deletion(scenario: PlonkScenario) -> None:
         scenario,
         f"git-plonk: mode={scenario.mode}",
         "Removed worktrees:",
-        f"- {scenario.worktree_path(scenario.completed_branch)}",
+        marker_removal_entry(
+            scenario.worktree_path(scenario.completed_branch),
+            scenario.completed_branch,
+        ),
         "Failed branch deletions:",
         f"- {scenario.completed_branch} (branch deletion failed)",
     )

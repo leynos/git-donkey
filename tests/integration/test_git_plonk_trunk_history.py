@@ -21,6 +21,7 @@ from tests.integration.plonk_helpers import (
     PlonkScenario,
     commit_completion_marker,
     create_git_donkey_worktree,
+    github_cli_calls,
 )
 
 
@@ -50,6 +51,9 @@ def test_git_plonk_uses_main_history_when_run_from_topic_worktree(
     topic_repo.index.commit("Topic-only completion marker (#789)")
     exit_code = plonk.run_git_plonk()
 
+    assert not github_cli_calls(), (
+        "expected a local-remote repository not to invoke the GitHub CLI"
+    )
     assert exit_code == 0, "expected default git plonk to succeed from topic worktree"
     assert scenario.worktree_path(completed_branch).exists(), (
         "expected trunk history to ignore topic-only completion marker"
@@ -84,6 +88,9 @@ def test_git_plonk_removes_main_completed_worktree_from_topic_worktree(
     monkeypatch.chdir(scenario.worktree_path(topic_branch))
     exit_code = plonk.run_git_plonk()
 
+    assert not github_cli_calls(), (
+        "expected a local-remote repository not to invoke the GitHub CLI"
+    )
     assert exit_code == 0, "expected default git plonk to succeed from topic worktree"
     assert not scenario.worktree_path(completed_branch).exists(), (
         "expected main-history completion marker to remove completed worktree"
@@ -118,6 +125,9 @@ def test_git_plonk_keeps_invoking_completed_worktree(
     monkeypatch.chdir(scenario.worktree_path(completed_branch))
     exit_code = plonk.run_git_plonk(hard=hard)
 
+    assert not github_cli_calls(), (
+        "expected a local-remote repository not to invoke the GitHub CLI"
+    )
     assert exit_code == 0, "expected git plonk to succeed from completed worktree"
     assert scenario.worktree_path(completed_branch).exists(), (
         "expected invoking completed worktree to remain"
@@ -154,6 +164,9 @@ def test_git_plonk_ignores_a_stale_remote_head_alias(
 
     exit_code = plonk.run_git_plonk()
 
+    assert not github_cli_calls(), (
+        "expected a local-remote repository not to invoke the GitHub CLI"
+    )
     assert repo.git.symbolic_ref("refs/remotes/origin/HEAD") == (
         "refs/remotes/origin/legacy"
     ), "expected the fixture to leave a stale local alias for the run"

@@ -12,6 +12,8 @@ definitions placed in a conftest module.
 from __future__ import annotations
 
 import dataclasses
+import json
+import os
 import typing as typ
 from pathlib import Path
 
@@ -22,10 +24,13 @@ from pytest_bdd import parsers, then, when
 
 from git_donkey import templates
 from tests.git_repo_helpers import configure_repo
+from tests.integration.plonk_helpers import removal_entry, unverified_entry
 from tests.output_assertions import (
     GIT_ERROR_PLACEHOLDER,
     require_line,
+    require_stream,
     require_terminal,
+    stream,
 )
 
 if typ.TYPE_CHECKING:
@@ -34,6 +39,7 @@ if typ.TYPE_CHECKING:
     from vcr.cassette import Cassette
 
     from tests.integration.donkey_helpers import DonkeyScenario
+    from tests.integration.plonk_helpers import PlonkScenario
 
 # Recorded GitHub API exchanges replayed by ``github_api_cassette``. The
 # worktree commands under test talk to their remote over the Git protocol, which
@@ -49,6 +55,132 @@ class StubCommands:
 
     bin_dir: Path
     log_path: Path
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class StubbedPullRequest:
+    """The merged pull request a scenario's ``gh`` stub reports.
+
+    Attributes
+    ----------
+    number : int
+        Pull-request number the stub reports.
+    head_branch : str
+        Head branch the pull request must have.
+    base_branch : str
+        Base branch the pull request targets.
+    owner : str
+        Login of the head repository's owner.
+    head_sha : str
+        Commit the pull request's head branch had, which must equal the local
+        branch tip for the fallback to accept it.
+
+    """
+
+    number: int
+    head_branch: str
+    base_branch: str
+    owner: str
+    head_sha: str
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class GitHubCliStub:
+    """A recording, failing ``gh`` executable placed first on ``PATH``.
+
+    The stub records every invocation and exits non-zero unless a payload file
+    has been written for the scenario. That default makes an accidental GitHub
+    lookup in a local-remote scenario fail closed; a scenario that expects the
+    fallback writes a payload describing the merged pull request it wants.
+    """
+
+    bin_dir: Path
+    log_path: Path
+    payload_path: Path
+
+    def calls(self) -> list[str]:
+        """Return the argument lines recorded so far."""
+        if not self.log_path.is_file():
+            return []
+        return self.log_path.read_text(encoding="utf-8").splitlines()
+
+    def clear(self) -> None:
+        """Remove the invocation log and any payload."""
+        self.log_path.unlink(missing_ok=True)
+        self.payload_path.unlink(missing_ok=True)
+
+    def stub_merged_pull_request(self, pull_request: StubbedPullRequest) -> None:
+        """Make the stub answer with one matching merged pull request."""
+        payload = [
+            {
+                "number": pull_request.number,
+                "headRefName": pull_request.head_branch,
+                "baseRefName": pull_request.base_branch,
+                "headRepositoryOwner": {"login": pull_request.owner},
+                "headRefOid": pull_request.head_sha,
+            }
+        ]
+        self.payload_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    def stub_failure(self) -> None:
+        """Make the stub exit non-zero without output."""
+        self.payload_path.unlink(missing_ok=True)
+
+
+_GH_STUB_TEMPLATE = """#!/usr/bin/env python3
+from __future__ import annotations
+import os
+import sys
+from pathlib import Path
+
+log_path = Path(os.environ["GH_STUB_LOG"])
+with log_path.open("a", encoding="utf-8") as handle:
+    handle.write(" ".join(sys.argv[1:]) + "\\n")
+payload_path = Path(os.environ["GH_STUB_PAYLOAD"])
+if not payload_path.is_file():
+    sys.exit(1)
+sys.stdout.write(payload_path.read_text(encoding="utf-8"))
+"""
+
+
+@pytest.fixture(autouse=True)
+def github_cli_stub(
+    request: pytest.FixtureRequest,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> GitHubCliStub | None:
+    """Install a recording, failing ``gh`` stub for every plonk BDD module.
+
+    Local-remote scenarios must never reach the fallback, so their helper
+    asserts the log stays empty. The GitHub feature opts in explicitly and
+    writes the payload its scenario expects.
+
+    Returns
+    -------
+    GitHubCliStub | None
+        The installed stub, or ``None`` for modules that do not run git-plonk.
+
+    """
+    module_name = request.module.__name__.rsplit(".", 1)[-1]
+    if not module_name.startswith("test_git_plonk"):
+        return None
+    bin_dir = tmp_path / "github-cli-bin"
+    bin_dir.mkdir()
+    stub_path = bin_dir / "gh"
+    stub_path.write_text(_GH_STUB_TEMPLATE)
+    stub_path.chmod(0o755)
+    stub = GitHubCliStub(
+        bin_dir=bin_dir,
+        log_path=tmp_path / "gh-calls.log",
+        payload_path=tmp_path / "gh-payload.json",
+    )
+    monkeypatch.setenv(
+        "PATH",
+        f"{bin_dir}{os.pathsep}{os.environ.get('PATH', '')}",
+    )
+    monkeypatch.setenv("GH_STUB_LOG", str(stub.log_path))
+    monkeypatch.setenv("GH_STUB_PAYLOAD", str(stub.payload_path))
+    return stub
 
 
 @pytest.fixture
@@ -216,3 +348,55 @@ def _require_stderr_message(scenario: DonkeyScenario, message: str) -> None:
         require_terminal(scenario.stderr, expected, context="git donkey stderr")
         return
     require_line(scenario.stderr, expected, context="git donkey stderr")
+
+
+def _require_plonk_entry(
+    scenario: PlonkScenario,
+    heading: str,
+    entry: str,
+) -> None:
+    """Assert the report is exactly the header, heading, and one entry."""
+    require_stream(
+        scenario.stdout,
+        stream(f"git-plonk: mode={scenario.mode}", heading, entry),
+        context="git plonk stdout",
+    )
+
+
+_PLONK_ENTRY_STEP = (
+    r"^git plonk reports the (?:"
+    r'removal as "(?P<removal>[^"]+)"'
+    r"|completed worktree as unverified with "
+    r'"(?P<unverified>[^"]+)"'
+    r")$"
+)
+
+
+@then(parsers.re(_PLONK_ENTRY_STEP))
+def git_plonk_reports_entry(
+    scenario: PlonkScenario,
+    removal: str | None = None,
+    unverified: str | None = None,
+) -> None:
+    """Assert the one removal or unverified entry the report names."""
+    if removal is not None:
+        _require_plonk_entry(
+            scenario,
+            "Removed worktrees:",
+            removal_entry(
+                scenario.worktree_path(scenario.completed_branch),
+                removal,
+            ),
+        )
+        return
+    if unverified is None:
+        msg = "expected a removal or unverified label"
+        raise AssertionError(msg)
+    _require_plonk_entry(
+        scenario,
+        "Unverified worktrees:",
+        unverified_entry(
+            scenario.worktree_path(scenario.completed_branch),
+            unverified,
+        ),
+    )

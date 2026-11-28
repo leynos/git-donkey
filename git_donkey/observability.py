@@ -25,10 +25,16 @@ becomes an ``extra`` field::
     )
 
 The timed operations are remote default discovery, default-branch fetch, pull
-execution, worktree creation, comparison fetch, comparison, and the cleanup
-boundaries: worktree preflight, worktree removal, and branch deletion. A span
-reports the operation name and its duration only; outcomes are reported by
+execution, worktree creation, comparison fetch, comparison, the cleanup
+boundaries (worktree preflight, worktree removal, and branch deletion), and the
+completion fallback boundaries (the GitHub query and the upstream query). A
+span reports the operation name and its duration only; outcomes are reported by
 :meth:`Recorder.record`.
+
+Completion resolution has its own operation. When a fallback tier completes or
+fails to complete a candidate, the record carries a :data:`SignalLabel` or an
+:data:`UnverifiedReasonLabel`; neither ever carries a branch name, path, commit
+message, or tool output.
 """
 
 from __future__ import annotations
@@ -55,6 +61,9 @@ type Operation = typ.Literal[
     "worktree_preflight",
     "worktree_removal",
     "branch_deletion",
+    "completion_resolution",
+    "github_lookup",
+    "upstream_lookup",
 ]
 """Fixed operation names a workflow step can report."""
 
@@ -71,6 +80,7 @@ type Outcome = typ.Literal[
     "found",
     "empty",
     "skipped",
+    "unverified",
 ]
 """Fixed outcomes an operation can report."""
 
@@ -93,8 +103,29 @@ type ErrorKind = typ.Literal[
 type CleanupModeLabel = typ.Literal["default", "soft", "hard"]
 """Fixed labels for the git-plonk mode a cleanup step ran in."""
 
-type SkipReasonLabel = typ.Literal["dirty", "unavailable", "removal_failed"]
+type SkipReasonLabel = typ.Literal[
+    "dirty", "unavailable", "unreadable", "changed", "locked", "removal_failed"
+]
 """Fixed labels for why a cleanup step left a worktree in place."""
+
+type SignalLabel = typ.Literal[
+    "marker",
+    "closing_keyword",
+    "merge_commit",
+    "branch_name",
+    "github_merged_pr",
+    "upstream_gone",
+]
+"""Fixed labels for the evidence that completed a git-plonk candidate."""
+
+type UnverifiedReasonLabel = typ.Literal[
+    "no_signal",
+    "github_unknown",
+    "upstream_unset",
+    "upstream_present",
+    "upstream_unknown",
+]
+"""Fixed labels for why no completion tier resolved a candidate."""
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -108,6 +139,8 @@ class Observation:
     error_kind: ErrorKind | None = None
     mode: CleanupModeLabel | None = None
     skip_reason: SkipReasonLabel | None = None
+    signal: SignalLabel | None = None
+    unverified_reason: UnverifiedReasonLabel | None = None
 
     def attributes(self) -> dict[str, str]:
         """Return the record's bounded attributes, omitting unset labels.
@@ -128,6 +161,8 @@ class Observation:
                 ("error_kind", self.error_kind),
                 ("mode", self.mode),
                 ("skip_reason", self.skip_reason),
+                ("signal", self.signal),
+                ("unverified_reason", self.unverified_reason),
             )
             if value is not None
         }

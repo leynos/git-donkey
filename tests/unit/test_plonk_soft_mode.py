@@ -50,7 +50,7 @@ def test_soft_mode_loads_only_worktree_context(
     )
     monkeypatch.setattr(
         plonk,
-        "_fetch_canonical_trunk_ref",
+        "_resolve_trunk",
         lambda _repo: pytest.fail("soft mode should not resolve trunk history"),
     )
     monkeypatch.setattr(

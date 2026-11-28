@@ -271,10 +271,15 @@ _plonk_app = App(
         "worktrees, --soft removes generated directories, and --hard also "
         "deletes completed local branches. Completion is judged against the "
         "default branch the principal remote advertises, fetched before the "
-        "sweep. A completed worktree with uncommitted or untracked files is "
-        "skipped and reported rather than forced, and its branch is kept. "
-        "--dry-run previews planned actions without removing generated paths, "
-        "worktrees, or branches."
+        "sweep: offline branch markers and issue-history signals first, then a "
+        "read-only GitHub merged-pull-request lookup when the remote is GitHub "
+        "and gh is installed, then an opt-in gone-upstream check (a remote "
+        "that hides refs cannot prove an upstream is gone). A candidate "
+        "no tier resolves is reported as unverified and left in place. A "
+        "completed worktree with uncommitted or untracked files is skipped and "
+        "reported rather than forced, and its branch is kept. --dry-run "
+        "previews planned actions without removing generated paths, worktrees, "
+        "or branches."
     ),
 )
 
@@ -285,9 +290,20 @@ def _plonk_cli(
     soft: bool = False,
     hard: bool = False,
     dry_run: bool = False,
+    options: typ.Annotated[
+        plonk._PlonkRunOptions,
+        Parameter(name="*"),
+    ] = plonk._DEFAULT_RUN_OPTIONS,
 ) -> None:
     """CLI wrapper for git-plonk."""
-    raise SystemExit(plonk.run_git_plonk(soft=soft, hard=hard, dry_run=dry_run))
+    raise SystemExit(
+        plonk.run_git_plonk(
+            soft=soft,
+            hard=hard,
+            dry_run=dry_run,
+            options=options,
+        )
+    )
 
 
 def git_plonk() -> None:

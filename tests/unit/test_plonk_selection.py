@@ -227,10 +227,10 @@ def test_donkey_worktree_paths_keep_only_worktrees_under_the_root(
     )
 
 
-def test_donkey_worktree_candidates_filter_unrecognized_branches(
+def test_donkey_worktree_candidates_retain_every_branched_worktree(
     tmp_path: Path,
 ) -> None:
-    """Candidate selection should keep recognized branches inside the root."""
+    """Candidate selection should keep every in-root branch, recognized or not."""
     worktrees_root = tmp_path / _WORKTREES_ROOT_NAME
     stanzas = [
         _stanza(tmp_path, "main"),
@@ -245,13 +245,48 @@ def test_donkey_worktree_candidates_filter_unrecognized_branches(
     )
 
     assert [candidate.branch_name for candidate in candidates] == [
+        "feature/unstructured",
         "road-1-2-3a-4-task",
         "issue-123-fix",
-    ], "unrecognized branches and worktrees outside the root are not candidates"
+    ], "worktrees outside the root are excluded; unrecognized branches are kept"
     assert [candidate.marker for candidate in candidates] == [
+        None,
         "(road.1.2.3a.4)",
         "(#123)",
-    ], "each candidate carries the marker its branch encodes"
+    ], "each candidate carries the marker its branch encodes, if any"
+    assert [candidate.issue_number for candidate in candidates] == [
+        None,
+        None,
+        123,
+    ], "only an issue branch exposes an issue number for the history matchers"
+
+
+def test_candidates_carry_the_checked_out_commit_and_lock_state(
+    tmp_path: Path,
+) -> None:
+    """Selection should preserve the details the later tiers rely on."""
+    worktrees_root = tmp_path / _WORKTREES_ROOT_NAME
+    commit_id = "a" * 40
+    stanzas: list[dict[str, object]] = [
+        {
+            "worktree": (worktrees_root / "issue-123-fix").as_posix(),
+            "HEAD": commit_id,
+            "branch": "refs/heads/issue-123-fix",
+            "locked": True,
+        },
+        _stanza(worktrees_root / "issue-456-fix", "issue-456-fix"),
+    ]
+
+    candidates = plonk_selection._donkey_worktree_candidates(
+        stanzas, worktrees_root, tmp_path
+    )
+
+    assert [candidate.commit_id for candidate in candidates] == [commit_id, None], (
+        "each candidate carries the checked-out commit, when Git reported one"
+    )
+    assert [candidate.is_locked for candidate in candidates] == [True, False], (
+        "each candidate carries the registration's lock state"
+    )
 
 
 def test_anchor_stanza_is_never_a_cleanup_target(tmp_path: Path) -> None:
@@ -329,6 +364,7 @@ def test_completed_candidates_use_history_markers() -> None:
             branch_name="issue-123-fix",
             worktree_path=Path("/repo.worktrees/issue-123-fix"),
             marker="(#123)",
+            issue_number=123,
         ),
         plonk_records._PlonkCandidate(
             branch_name="road-1-2-3a-4-task",
@@ -339,6 +375,7 @@ def test_completed_candidates_use_history_markers() -> None:
             branch_name="issue-456-open",
             worktree_path=Path("/repo.worktrees/issue-456-open"),
             marker="(#456)",
+            issue_number=456,
         ),
     ]
 
@@ -347,10 +384,14 @@ def test_completed_candidates_use_history_markers() -> None:
         ["Merge pull request (#123)", "Roadmap complete (road.1.2.3a.4.)"],
     )
 
-    assert [candidate.branch_name for candidate in completed] == [
+    assert [candidate.branch_name for candidate, _ in completed] == [
         "issue-123-fix",
         "road-1-2-3a-4-task",
     ], "expected only candidates with matching history markers"
+    assert [evidence.signal for _, evidence in completed] == [
+        "marker",
+        "marker",
+    ], "expected the marker tier to supply the evidence"
 
 
 def test_completed_candidates_streams_history_until_markers_match() -> None:
@@ -360,11 +401,13 @@ def test_completed_candidates_streams_history_until_markers_match() -> None:
             branch_name="issue-123-fix",
             worktree_path=Path("/repo.worktrees/issue-123-fix"),
             marker="(#123)",
+            issue_number=123,
         ),
         plonk_records._PlonkCandidate(
             branch_name="issue-456-fix",
             worktree_path=Path("/repo.worktrees/issue-456-fix"),
             marker="(#456)",
+            issue_number=456,
         ),
     ]
 
@@ -382,7 +425,7 @@ def test_completed_candidates_streams_history_until_markers_match() -> None:
 
     completed = plonk_policy.completed_candidates(candidates, messages())
 
-    assert [candidate.branch_name for candidate in completed] == [
+    assert [candidate.branch_name for candidate, _ in completed] == [
         "issue-123-fix",
         "issue-456-fix",
     ], "expected streaming scan to stop after all markers match"
@@ -402,7 +445,7 @@ def test_fetched_trunk_ref_ignores_a_stale_remote_head_alias(
     repo.remote("origin").fetch()
     repo.git.symbolic_ref("refs/remotes/origin/HEAD", "refs/remotes/origin/legacy")
 
-    trunk_ref = plonk._fetch_canonical_trunk_ref(repo)
+    trunk_ref = plonk._resolve_trunk(repo)[2]
 
     assert (
         repo.git.symbolic_ref("refs/remotes/origin/HEAD")
@@ -410,6 +453,30 @@ def test_fetched_trunk_ref_ignores_a_stale_remote_head_alias(
     ), "the fixture leaves a local alias naming a branch the remote does not default to"
     assert trunk_ref == "refs/remotes/origin/main", (
         "the advertised default wins over the stale local alias"
+    )
+
+
+def test_configured_remote_url_uses_the_first_fetch_url(tmp_path: Path) -> None:
+    """Git fetches from the first configured URL, so the fallback parses it."""
+    repo = git_repo_helpers.seed_repo(tmp_path / "repo")
+    repo.create_remote("origin", "git@github.com:leynos/first.git")
+    repo.git.config(
+        "--add",
+        "remote.origin.url",
+        "git@github.com:leynos/second.git",
+    )
+
+    assert plonk._configured_remote_url(repo, "origin") == (
+        "git@github.com:leynos/first.git"
+    ), "expected the first raw URL, matching Git's fetch behaviour"
+
+
+def test_configured_remote_url_is_empty_when_unset(tmp_path: Path) -> None:
+    """A repository without the remote URL should not guess a fallback."""
+    repo = git_repo_helpers.seed_repo(tmp_path / "repo")
+
+    assert not plonk._configured_remote_url(repo, "origin"), (
+        "expected an unset remote URL to disable the GitHub fallback"
     )
 
 
@@ -439,7 +506,7 @@ def test_fetched_trunk_ref_follows_the_advertised_default_name(
         tmp_path / "local", tmp_path / "remote.git", default_branch="trunk"
     )
 
-    trunk_ref = plonk._fetch_canonical_trunk_ref(repo)
+    trunk_ref = plonk._resolve_trunk(repo)[2]
 
     assert repo.active_branch.name == "main", (
         "the fixture keeps the local branch discovery must ignore"

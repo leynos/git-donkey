@@ -2,8 +2,11 @@
 
 ``git worktree list --porcelain`` output is parsed into stanzas by
 :mod:`git_donkey.helpers`; this module turns those stanzas into the linked
-worktrees `git donkey` created, and into the completed candidates whose branch
-encodes a completion marker the repository's policy recognises.
+worktrees `git donkey` created. Every branched worktree strictly below the
+worktrees root becomes a candidate, carrying the completion marker and issue
+number its branch name implies, if any. Recognized branches can be resolved
+from trunk history offline; unrecognized ones are retained for the GitHub
+fallback and, if no tier resolves them, reported as unverified.
 
 Selection is pure. It reads stanza values and path objects, never Git state or
 the filesystem, and nothing here removes or mutates anything.
@@ -34,6 +37,17 @@ def _worktree_path_from_stanza(stanza: dict[str, object]) -> Path | None:
     if worktree is None:
         return None
     return Path(str(worktree)).expanduser().resolve()
+
+
+def _commit_id_from_stanza(stanza: dict[str, object]) -> str | None:
+    """Return the checked-out commit ``HEAD`` names in a worktree stanza."""
+    commit_id = stanza.get("HEAD")
+    return str(commit_id) if commit_id is not None else None
+
+
+def _is_locked_stanza(stanza: dict[str, object]) -> bool:
+    """Return whether a worktree stanza reports a locked registration."""
+    return "locked" in stanza
 
 
 def _is_git_donkey_worktree(worktree_path: Path, worktrees_root: Path) -> bool:
@@ -89,7 +103,20 @@ def _donkey_worktree_candidates(
     worktrees_root: Path,
     anchor_dir: Path,
 ) -> list[_PlonkCandidate]:
-    """Return recognized git-donkey worktrees with completion markers."""
+    """Return every branched git-donkey worktree, recognized or not.
+
+    A branch whose name implies no offline matcher is retained with
+    ``marker=None`` and ``issue_number=None``: the GitHub fallback may still
+    prove it complete, and a candidate no tier resolves must be reported as
+    unverified rather than silently dropped.
+
+    Returns
+    -------
+    list[_PlonkCandidate]
+        One candidate per branched worktree strictly below the root, in the
+        order Git listed them.
+
+    """
     candidates: list[_PlonkCandidate] = []
     for stanza in stanzas:
         branch_name = _branch_name_from_stanza(stanza)
@@ -98,14 +125,14 @@ def _donkey_worktree_candidates(
             continue
         if not _is_cleanup_target(worktree_path, worktrees_root, anchor_dir):
             continue
-        marker = plonk_policy.completion_marker_for_branch(branch_name)
-        if marker is None:
-            continue
         candidates.append(
             _PlonkCandidate(
                 branch_name=branch_name,
                 worktree_path=worktree_path,
-                marker=marker,
+                marker=plonk_policy.completion_marker_for_branch(branch_name),
+                issue_number=plonk_policy.issue_number_for_branch(branch_name),
+                commit_id=_commit_id_from_stanza(stanza),
+                is_locked=_is_locked_stanza(stanza),
             )
         )
     return candidates

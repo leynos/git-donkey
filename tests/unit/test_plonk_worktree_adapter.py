@@ -13,15 +13,17 @@ included, because the subprocess that reports the refusal ran too.
 
 from __future__ import annotations
 
+import os
 import shutil
+import subprocess  # ruff: ignore[suspicious-subprocess-import]  # asserts runner seams
 import typing as typ
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from git import Repo
+from git import GitCommandError, Repo
 
-from git_donkey import plonk
+from git_donkey import plonk, plonk_adapters, plonk_records
 from tests import git_repo_helpers
 
 if typ.TYPE_CHECKING:
@@ -106,16 +108,18 @@ def _apply_dirt(worktree_path: Path, dirt: str) -> None:
     ("dirt", "expected_reason"),
     [
         pytest.param("clean", None, id="clean"),
-        pytest.param("modified", plonk._SkipReason.DIRTY, id="modified-tracked-file"),
-        pytest.param("staged", plonk._SkipReason.DIRTY, id="staged-change"),
-        pytest.param("untracked", plonk._SkipReason.DIRTY, id="untracked-file"),
+        pytest.param(
+            "modified", plonk_records._SkipReason.DIRTY, id="modified-tracked-file"
+        ),
+        pytest.param("staged", plonk_records._SkipReason.DIRTY, id="staged-change"),
+        pytest.param("untracked", plonk_records._SkipReason.DIRTY, id="untracked-file"),
         pytest.param("ignored", None, id="ignored-build-output"),
     ],
 )
 def test_cleanliness_preflight_matches_git_removal(
     tmp_path: Path,
     dirt: str,
-    expected_reason: plonk._SkipReason | None,
+    expected_reason: plonk_records._SkipReason | None,
     recording_recorder: RecordingRecorder,
 ) -> None:
     """The preflight should clear exactly the worktrees Git removes unprompted.
@@ -149,8 +153,198 @@ def test_skip_reason_reports_a_missing_worktree_directory(tmp_path: Path) -> Non
 
     reason = plonk._GitWorktreeAdapter(repo).skip_reason(worktree_path)
 
-    assert reason is plonk._SkipReason.UNAVAILABLE, (
+    assert reason is plonk_records._SkipReason.UNAVAILABLE, (
         "a worktree whose directory is gone is unavailable, not dirty"
+    )
+
+
+def test_preflight_skips_a_worktree_whose_commit_changed(tmp_path: Path) -> None:
+    """A commit made after selection invalidates the completion evidence."""
+    repo, worktree_path = _worktree_with_dirt(tmp_path, "clean")
+    recorded_commit = repo.commit(_WORKTREE_BRANCH).hexsha
+    worktree_repo = Repo(worktree_path)
+    (worktree_path / "later.txt").write_text("later")
+    worktree_repo.index.add(["later.txt"])
+    worktree_repo.index.commit("Later work")
+
+    reason = plonk._GitWorktreeAdapter(repo).skip_reason(
+        worktree_path,
+        expected_branch=_WORKTREE_BRANCH,
+        expected_commit=recorded_commit,
+    )
+
+    assert reason is plonk_records._SkipReason.CHANGED, (
+        "expected a worktree that advanced past its recorded commit to be kept"
+    )
+
+
+def test_preflight_accepts_a_worktree_matching_its_recorded_identity(
+    tmp_path: Path,
+) -> None:
+    """A worktree still on its recorded branch and commit stays removable."""
+    repo, worktree_path = _worktree_with_dirt(tmp_path, "clean")
+
+    reason = plonk._GitWorktreeAdapter(repo).skip_reason(
+        worktree_path,
+        expected_branch=_WORKTREE_BRANCH,
+        expected_commit=repo.commit(_WORKTREE_BRANCH).hexsha,
+    )
+
+    assert reason is None, "expected the unchanged worktree to remain removable"
+
+
+def test_preflight_skips_a_worktree_on_another_branch(tmp_path: Path) -> None:
+    """A worktree checked out on a different branch is not the recorded one."""
+    repo, worktree_path = _worktree_with_dirt(tmp_path, "clean")
+
+    reason = plonk._GitWorktreeAdapter(repo).skip_reason(
+        worktree_path,
+        expected_branch="issue-999-other",
+        expected_commit=repo.commit(_WORKTREE_BRANCH).hexsha,
+    )
+
+    assert reason is plonk_records._SkipReason.CHANGED, (
+        "expected a different checked-out branch to be kept"
+    )
+
+
+def test_conditional_deletion_refuses_a_moved_branch(tmp_path: Path) -> None:
+    """A branch that advanced past the recorded commit keeps its reference."""
+    repo, worktree_path = _worktree_with_dirt(tmp_path, "clean")
+    recorded_commit = repo.commit(_WORKTREE_BRANCH).hexsha
+    repo.git.worktree("remove", worktree_path.as_posix())
+    # Advance the branch from the main checkout, as a concurrent agent would.
+    repo.git.checkout(_WORKTREE_BRANCH)
+    (Path(repo.working_tree_dir or ".") / "later.txt").write_text("later")
+    repo.index.add(["later.txt"])
+    repo.index.commit("Later work")
+    repo.git.checkout("main")
+
+    deleted = plonk._GitWorktreeAdapter(repo).delete_branch(
+        _WORKTREE_BRANCH, expected_commit=recorded_commit
+    )
+
+    assert deleted is False, (
+        "expected the conditional deletion to refuse a branch that moved"
+    )
+    assert _WORKTREE_BRANCH in repo.heads, (
+        "the branch and its later commit must survive the refusal"
+    )
+
+
+def test_conditional_deletion_keeps_a_branch_in_use_elsewhere(
+    tmp_path: Path,
+) -> None:
+    """A branch another worktree checks out must survive the conditional delete."""
+    repo, worktree_path = _worktree_with_dirt(tmp_path, "clean")
+    recorded_commit = repo.commit(_WORKTREE_BRANCH).hexsha
+    second_worktree = tmp_path / "repo.worktrees" / "second"
+    repo.git.worktree(
+        "add",
+        "-q",
+        "--force",  # the branch is already checked out in the first worktree
+        second_worktree.as_posix(),
+        _WORKTREE_BRANCH,
+    )
+    assert plonk._GitWorktreeAdapter(repo).remove_worktree(worktree_path) is True, (
+        "the completed worktree is removed before the branch is considered"
+    )
+
+    deleted = plonk._GitWorktreeAdapter(repo).delete_branch(
+        _WORKTREE_BRANCH, expected_commit=recorded_commit
+    )
+
+    assert deleted is False, (
+        "expected the branch still checked out elsewhere to be kept"
+    )
+    assert _WORKTREE_BRANCH in repo.heads, (
+        "the other worktree must not be left on a missing branch"
+    )
+
+
+def test_conditional_deletion_keeps_a_branch_used_by_a_detached_worktree(
+    tmp_path: Path,
+) -> None:
+    """A detached worktree may be rebasing or bisecting, so the branch stays."""
+    repo, worktree_path = _worktree_with_dirt(tmp_path, "clean")
+    recorded_commit = repo.commit(_WORKTREE_BRANCH).hexsha
+    assert plonk._GitWorktreeAdapter(repo).remove_worktree(worktree_path) is True, (
+        "the completed worktree is removed before the branch is considered"
+    )
+    detached_path = tmp_path / "repo.worktrees" / "detached"
+    repo.git.worktree(
+        "add", "-q", "--detach", detached_path.as_posix(), recorded_commit
+    )
+
+    deleted = plonk._GitWorktreeAdapter(repo).delete_branch(
+        _WORKTREE_BRANCH, expected_commit=recorded_commit
+    )
+
+    assert deleted is False, "expected a detached worktree to keep the branch in place"
+    assert _WORKTREE_BRANCH in repo.heads, "the branch must survive the refusal"
+
+
+def test_preflight_reports_an_unborn_branch_as_changed(tmp_path: Path) -> None:
+    """An unborn HEAD has no commit, so it cannot match a recorded one."""
+    repo, _worktree_path = _worktree_with_dirt(tmp_path, "clean")
+    recorded_commit = repo.commit(_WORKTREE_BRANCH).hexsha
+    unborn_path = tmp_path / "repo.worktrees" / "unborn"
+    repo.git.worktree(
+        "add", "-q", "--orphan", "-b", "unborn-branch", unborn_path.as_posix()
+    )
+
+    reason = plonk._GitWorktreeAdapter(repo).skip_reason(
+        unborn_path,
+        expected_branch="unborn-branch",
+        expected_commit=recorded_commit,
+    )
+
+    assert reason is plonk_records._SkipReason.CHANGED, (
+        "expected an unborn branch to be reported as changed, not to raise"
+    )
+
+
+def test_conditional_deletion_removes_the_stale_tracking_config(
+    tmp_path: Path,
+) -> None:
+    """The conditional delete must not leave the deleted branch's config behind."""
+    repo, worktree_path = _worktree_with_dirt(tmp_path, "clean")
+    recorded_commit = repo.commit(_WORKTREE_BRANCH).hexsha
+    repo.git.config(f"branch.{_WORKTREE_BRANCH}.remote", "origin")
+    repo.git.config(
+        f"branch.{_WORKTREE_BRANCH}.merge", f"refs/heads/{_WORKTREE_BRANCH}"
+    )
+    assert plonk._GitWorktreeAdapter(repo).remove_worktree(worktree_path) is True, (
+        "the completed worktree is removed before its branch is deleted"
+    )
+
+    deleted = plonk._GitWorktreeAdapter(repo).delete_branch(
+        _WORKTREE_BRANCH, expected_commit=recorded_commit
+    )
+
+    assert deleted is True, "expected the unchanged branch to be deleted"
+    assert _WORKTREE_BRANCH not in repo.heads, "the branch ref is gone"
+    # A recreated branch must not inherit the deleted branch's upstream.
+    with pytest.raises(GitCommandError):
+        repo.git.config("--get", f"branch.{_WORKTREE_BRANCH}.remote")
+
+
+def test_conditional_deletion_removes_an_unchanged_branch(tmp_path: Path) -> None:
+    """Conditional deletion removes the branch while it still matches."""
+    repo, worktree_path = _worktree_with_dirt(tmp_path, "clean")
+    recorded_commit = repo.commit(_WORKTREE_BRANCH).hexsha
+    # The real sweep removes the worktree before it deletes the branch.
+    assert plonk._GitWorktreeAdapter(repo).remove_worktree(worktree_path) is True, (
+        "the unchanged worktree must be removed before its branch is deleted"
+    )
+
+    deleted = plonk._GitWorktreeAdapter(repo).delete_branch(
+        _WORKTREE_BRANCH, expected_commit=recorded_commit
+    )
+
+    assert deleted is True, "expected the unchanged branch to be deleted"
+    assert _WORKTREE_BRANCH not in repo.heads, (
+        "expected the deleted branch to be gone from the repository"
     )
 
 
@@ -207,6 +401,142 @@ def test_removal_leaves_a_dirty_worktree_on_disk(
     )
     assert "failed to remove worktree" in capsys.readouterr().err, (
         "the refusal is reported to the user"
+    )
+
+
+def test_preflight_ignores_inherited_repository_location(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A hook's repository variables must not redirect the preflight."""
+    repo, clean_worktree = _worktree_with_dirt(tmp_path, "clean")
+    dirty_worktree = tmp_path / "repo.worktrees" / "dirty"
+    repo.git.worktree(
+        "add",
+        "-q",
+        dirty_worktree.as_posix(),
+        "-b",
+        "dirty",
+    )
+    (dirty_worktree / "README.md").write_text("changed")
+    dirty_repo = Repo(dirty_worktree)
+    monkeypatch.setenv("GIT_DIR", str(dirty_repo.git_dir))
+    monkeypatch.setenv("GIT_WORK_TREE", dirty_worktree.as_posix())
+
+    reason = plonk._GitWorktreeAdapter(repo).skip_reason(clean_worktree)
+
+    assert reason is None, (
+        "expected the preflight to inspect the clean candidate, not the "
+        "repository location inherited from the invoking hook"
+    )
+
+
+type _UnreadableFailure = typ.Literal[
+    "directory", "unreadable-status", "missing-tool", "timeout"
+]
+
+
+def _unreadable_runner(
+    failure: _UnreadableFailure,
+) -> plonk_adapters._LocalGitRunner:
+    """Return a runner, or a working default, for one unreadable failure."""
+
+    def run(
+        arguments: typ.Sequence[str],
+        cwd: Path,
+    ) -> subprocess.CompletedProcess[str]:
+        """Simulate the configured failure of the status query."""
+        match failure:
+            case "unreadable-status":
+                return subprocess.CompletedProcess(
+                    arguments, 128, "", "fatal: unable to read index"
+                )
+            case "missing-tool":
+                msg = "git is not installed"
+                raise FileNotFoundError(msg)
+            case "timeout":
+                raise subprocess.TimeoutExpired(list(arguments), 10)
+            case _:
+                return subprocess.CompletedProcess(arguments, 0, "", "")
+
+    return run
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [
+        pytest.param("directory", id="unreadable-directory"),
+        pytest.param("unreadable-status", id="unreadable-status"),
+        pytest.param("missing-tool", id="missing-tool"),
+        pytest.param("timeout", id="status-timeout"),
+    ],
+)
+def test_preflight_reports_unreadable_state_as_a_skip(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure: _UnreadableFailure,
+) -> None:
+    """Any unreadable worktree state is a skip, never a batch abort."""
+    repo, worktree_path = _worktree_with_dirt(tmp_path, "clean")
+    if failure == "directory":
+
+        def fail_is_dir(self: Path) -> bool:
+            """Simulate a path the process is not allowed to stat."""
+            raise PermissionError(self)
+
+        monkeypatch.setattr(Path, "is_dir", fail_is_dir)
+        adapter = plonk_adapters._GitWorktreeAdapter(repo)
+    else:
+        adapter = plonk_adapters._GitWorktreeAdapter(
+            repo, local_git=_unreadable_runner(failure)
+        )
+
+    reason = adapter.skip_reason(worktree_path)
+
+    assert reason is plonk_records._SkipReason.UNREADABLE, (
+        "expected an unreadable worktree state to be reported as a skip"
+    )
+
+
+def test_preflight_leaves_the_process_environment_unchanged(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The preflight must not mutate the process environment."""
+    repo, worktree_path = _worktree_with_dirt(tmp_path, "clean")
+    monkeypatch.setenv("GIT_DIR", "/nonexistent")
+    monkeypatch.setenv("GIT_WORK_TREE", "/nonexistent")
+    before = dict(os.environ)
+
+    reason = plonk._GitWorktreeAdapter(repo).skip_reason(worktree_path)
+
+    assert reason is None, "expected the clean worktree to remain removable"
+    assert dict(os.environ) == before, (
+        "expected the preflight to leave the process environment untouched"
+    )
+
+
+def test_history_messages_carry_the_merge_status(tmp_path: Path) -> None:
+    """Only a real merge commit may supply classic merge evidence."""
+    repo = git_repo_helpers.seed_repo(tmp_path / "repo")
+    working_tree = Path(repo.working_tree_dir or ".")
+    repo.git.checkout("-b", "feature")
+    (working_tree / "feature.txt").write_text("feature")
+    repo.index.add(["feature.txt"])
+    repo.index.commit("Feature work")
+    repo.git.checkout("main")
+    repo.git.merge("feature", "--no-ff", "-m", "Merge feature")
+
+    history = list(plonk_adapters._GitWorktreeAdapter(repo).history_messages("HEAD"))
+    merge_status = {
+        entry.text.splitlines()[0]: entry.is_merge_commit for entry in history
+    }
+
+    assert merge_status["Merge feature"] is True, (
+        "expected the two-parent commit to be reported as a merge"
+    )
+    assert merge_status["Feature work"] is False, (
+        "expected the one-parent commit to be reported as an ordinary commit"
     )
 
 

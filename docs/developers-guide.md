@@ -1,7 +1,7 @@
 # Developer guide
 
-This guide records internal module boundaries and local tooling conventions for
-contributors working on `git-donkey`.
+This guide records local tooling and test conventions for contributors working
+on `git-donkey`.
 
 ## Spelling policy
 
@@ -309,11 +309,12 @@ the named branch into `refs/remotes/{remote}/{branch}`.
 fetch for base selection. For completion history, `git_donkey.plonk` splits the
 same resolution into a query and a command, because a query must not fetch:
 `_advertised_trunk()` selects the principal remote and reads the default name
-it advertises, while `_fetch_canonical_trunk_ref()` composes that query with
-`fetch_default_branch_ref()` and returns the remote-tracking ref. The two
-commands therefore cannot disagree about which branch is trunk. Fetching
-explicitly matters because a narrow fetch configuration may omit the default
-branch, and a stale local `remote/HEAD` alias is not trusted.
+it advertises, while `_resolve_trunk()` composes that query with
+`fetch_default_branch_ref()` and returns the remote, the branch, and the
+remote-tracking ref. The two commands therefore cannot disagree about which
+branch is trunk. Fetching explicitly matters because a narrow fetch
+configuration may omit the default branch, and a stale local `remote/HEAD`
+alias is not trusted.
 
 ### Adding a pull mode
 
@@ -393,154 +394,11 @@ protocol and receives the bounded `operation` and `outcome` vocabulary plus
 span durations; `comparison_fetch` and `comparison` can then be counted and
 timed without changing the workflow.
 
-## git-fafo module boundaries
+## Module boundaries
 
-`git-fafo` is split across three modules, so infrastructure details stay out of
-the orchestration path:
-
-- `git_donkey.fafo` owns input validation, scaffold selection, local Git
-  initialization, and push orchestration.
-- `git_donkey.fafo_github` owns GitHub token discovery, OAuth device-flow
-  fallback, repository creation, duplicate-repository detection, and adoption
-  confirmation.
-- `git_donkey.fafo_adoption` owns existing-remote classification. It accepts
-  only remotes with no refs or one branch containing a single empty initial
-  commit.
-
-The command-line interface obtains the GitHub token before calling
-`run_git_fafo()`. The workflow function therefore receives an explicit `token`
-argument and can focus on validated workflow inputs rather than environment
-variables, credential files, or OAuth prompts.
-
-## git-plonk module boundaries
-
-`git-plonk` is split across pure policy and selection, shared records, summary
-rendering, CLI parsing, and infrastructure mutation:
-
-- `git_donkey.cli` exposes the `git-plonk` console script and maps `--soft`,
-  `--hard`, and `--dry-run` to `git_donkey.plonk.run_git_plonk()`.
-- `git_donkey.plonk_policy` owns branch-name and commit-message policy. It maps
-  issue branches such as `issue-123-title` to `(#123)`, maps roadmap branches
-  such as `road-1-2-3a-4-title` to `(road.1.2.3a.4)`, and selects candidates
-  whose markers appear in history. It must stay free of GitPython, filesystem,
-  and process mutation.
-- `git_donkey.plonk_records` owns the records and vocabulary the workflow
-  speaks: the cleanup modes, the skip reasons, the candidate and result records
-  (`_PlonkCandidate`, `_SkippedWorktree`, `_PlonkResult`, `_PlonkContext`,
-  `_SoftPlonkContext`), and the maps that translate modes and skip reasons into
-  the bounded observability labels. It holds values only: no Git access and no
-  filesystem access.
-- `git_donkey.plonk_selection` turns parsed `git worktree list --porcelain`
-  stanzas into the git-donkey worktrees `git plonk` may clean, and into
-  completed candidates. It is pure: it reads stanza values and path objects,
-  never Git state or the filesystem, and it contains the only
-  branch-name-to-candidate selection rule.
-- `git_donkey.plonk_summary` holds the summary rendering: `_render_summary()`
-  and its section helpers take a finished `_PlonkResult` and return text,
-  reading no Git state and touching no filesystem. `_render_summary()` is what
-  `run_git_plonk()` prints.
-- `git_donkey.plonk` keeps orchestration (`run_git_plonk()`), the GitPython
-  adapter, worktree removal and branch deletion, and dry-run planning.
-- `git_donkey.remote_default` owns the principal-remote and default-branch
-  discovery both commands use, so completion history and base selection cannot
-  diverge.
-
-`git_donkey.plonk_policy.completed_candidates` is generic over its candidate
-type: it accepts any iterable whose items expose a read-only `marker` property
-returning `str`, returns the matching candidates unchanged, and never mutates
-the candidates it receives. `git_donkey.plonk` therefore passes its worktree
-candidates directly.
-
-The plonk workflow deliberately reads completion history from the canonical
-trunk ref resolved by `remote_default`. This allows `git plonk` to be invoked
-from a linked topic worktree while still using the trunk history that contains
-issue or roadmap merge markers.
-
-Default and hard modes only consider linked worktrees under
-`../{repo}.worktrees` and only remove worktrees whose branch-derived completion
-marker is present in canonical trunk history. Before removing one, they ask
-`_GitWorktreeAdapter.skip_reason()` whether Git would discard it unprompted:
-worktrees with modified, staged, or untracked files, and worktrees whose
-directory is gone, are skipped and reported as `_SkippedWorktree` entries while
-the sweep continues. Removal never passes `--force`. Hard mode deletes local
-branches after a successful unforced removal, so a skipped worktree keeps its
-branch; it does not delete remote branches. Soft mode uses the same git-donkey
-worktree discovery but only removes conventional generated directories such as
-`target`, `node_modules`, `.venv`, and cache directories.
-
-A local branch Git refuses to delete is reported rather than fatal. The
-worktree counts as removed, the branch is neither reported as removed nor
-reported as skipped, and the failure gets its own `Failed branch deletions:`
-summary section. The sweep continues with later candidates, and
-`run_git_plonk()` returns exit status 1 for a run whose branch deletion failed;
-a run that only skipped worktrees still returns 0.
-
-The decision table, the skip vocabulary, and the reasoning behind reporting
-skips rather than forcing removal are recorded in the
-[plonk cleanup policy](plonk-cleanup-policy.md).
-
-`pytest-bdd` and `syrupy` are development dependencies for this command.
-`pytest-bdd` covers user workflows against real temporary Git repositories, and
-`syrupy` pins the exact summary rendering. Hypothesis checks marker-shape
-invariants in the pure policy layer.
-
-## git-incoming and git-outgoing module boundaries
-
-`git-incoming` and `git-outgoing` answer the two questions a developer asks
-before syncing with a shared branch: which commits would arrive on a pull, and
-which would leave on a push. The implementation is split between pure
-comparison policy, a Git-facing workflow, and CLI delegation, so comparison
-rules stay testable without GitPython while the workflow owns Git work and
-user-visible behaviour:
-
-- `git_donkey.incoming_outgoing_policy` owns the pure comparison decisions.
-  `remote_name_for_ref()` returns the configured remote that owns a comparison
-  ref, handling both `origin/main` and canonical `refs/remotes/origin/main`
-  forms, and `comparison_range()` returns the include/exclude ref pair for a
-  direction. It contains no GitPython, filesystem, or process mutation and
-  mirrors the `plonk_policy` precedent.
-- `git_donkey.incoming_outgoing` owns Git work and user-visible behaviour.
-  Ref resolution (`_resolve_comparison_ref`) and commit lookup
-  (`_commits_unique_to`) are queries: they return data, a ref string or
-  `git log` output, without printing, fetching, or otherwise changing state.
-  `_run_comparison` is the command boundary: it owns repository discovery,
-  comparison-ref resolution, rendering to stdout or stderr, and exit-code
-  mapping. Its `_fetch_comparison_remote` helper owns the optional fetch: it
-  honours `--no-fetch`, fetches the remote owning the comparison ref, and
-  reports whether the comparison may proceed.
-
-`_run_comparison` accepts a frozen `_ComparisonRequest` value object carrying
-the prefix, direction, optional ref, and fetch flag, plus an optional injected
-adapter. The `_ComparisonAdapter` protocol describes the Git surface the
-queries need: `upstream_ref() -> str | None`, `remote_names()`,
-`fetch_remote(remote)`, and the inherited `log(*args) -> str`.
-`_GitPythonComparison` implements it over GitPython and delegates fetching to
-the shared `helpers._fetch_remote`. Tests drive the workflow with fakes that
-satisfy this protocol, so comparison behaviour is exercised without a real
-repository.
-
-`git_donkey.cli` is the console-script boundary. It defines Cyclopts `App`
-instances for `git incoming` and `git outgoing`, and delegates through a
-`_ComparisonRunner` protocol and the shared `_run_incoming_outgoing_cli` helper
-to the public runners `run_git_incoming(ref=None, *, fetch=True)` and
-`run_git_outgoing(ref=None, *, fetch=True)`. `pyproject.toml` registers four
-console scripts pointing at `git_donkey.cli`: `git-incoming`, the `git-in`
-alias, `git-outgoing`, and the `git-out` alias. Git discovers subcommands by
-executable name, so the aliases need their own scripts rather than argument
-aliases on the primary commands.
-
-Both runners return standard process exit codes:
-
-- `0` means matching commits were found and printed.
-- `1` means the comparison succeeded but found no matching commits; both
-  codes are the ones Mercurial documents.
-- `2` is git-donkey's own code for a command that could not run: no upstream
-  configured and no explicit ref, a configured upstream cannot be resolved, a
-  failed fetch, or a failed comparison.
-
-The shared `helpers._fetch_remote` exits `1` on failure, so the workflow
-catches that `SystemExit` and remaps it to `2`; otherwise a fetch failure would
-masquerade as "no changes" rather than as a failed command.
+Module responsibilities and the repository's path layout are documented in the
+[repository layout guide](repository-layout.md), which is the canonical
+location for the git-fafo, git-plonk, and git-incoming/git-outgoing module maps.
 
 ## Operational logging
 
@@ -817,9 +675,23 @@ empty cassette (`interactions: []`) from `tests/integration/cassettes/` through
 request raises inside the code under test instead of reaching the network. The
 worktree commands reach their remote over the Git protocol, which the temporary
 bare repositories stand in for, so a scenario run under the fixture proves that
-`git donkey` and `git plonk` never consult the GitHub API. Record a real
+`git donkey` never consults the GitHub REST API, and that `git plonk` does not
+reach it either: its GitHub tier runs the `gh` CLI, which the suite stubs
+separately. `git plonk` consults that tier only when the principal remote is
+GitHub, `gh` is installed, and `--no-github` is not set; local-remote plonk
+scenarios record the stub and assert it was never invoked. Record a real
 cassette only for a command that is meant to call the API, and never edit a
 recording by hand.
+
+The `github_cli_stub` autouse fixture in `tests/integration/conftest.py`
+installs a recording `gh` executable first on `PATH` for every
+`test_git_plonk*` module. The stub appends each argument line to `gh-calls.log`
+and exits non-zero unless a payload file exists, so an accidental lookup in a
+local-remote scenario fails closed and leaves evidence. A scenario that expects
+the fallback calls `GitHubCliStub.stub_merged_pull_request()` with a
+`StubbedPullRequest`, which writes the matching `gh pr list --json` payload, or
+`stub_failure()` to remove it. `GitHubCliStub.calls()` returns the recorded
+invocations, and `clear()` removes both the log and the payload.
 
 The behaviours the
 [worktree-management skill](../skill/git-donkey-worktrees/SKILL.md) documents
@@ -842,6 +714,18 @@ the absence of GitHub API calls) and completion-marker semantics.
 `test_git_plonk_outcomes_bdd.py` cover the path-based worktree scope, remote
 branches surviving hard mode, soft mode's reach, missing directories, skipped
 previews, refused branch deletions, and exit statuses.
+`tests/integration/test_git_plonk_github_bdd.py` binds
+`features/git_plonk_github.feature`: a matching merged pull request, a failed
+lookup, a base mismatch, and a reused branch name whose recorded head commit
+differs. `tests/integration/test_git_plonk_upstream_bdd.py` binds
+`features/git_plonk_upstream.feature`: gone, present, and never-configured
+upstreams. The matching unit suites are `tests/unit/test_plonk_github.py` for
+URL parsing, payload interpretation, and the lookup boundary;
+`tests/unit/test_plonk_policy.py` for the branch grammars, history matchers,
+evidence priority, and generated properties;
+`tests/unit/test_plonk_fallbacks.py` for tier ordering, caching, and unverified
+reporting; and `tests/unit/test_plonk_upstream_adapter.py` for the upstream
+query's configuration rules, deadline, and observations.
 
 `tests/integration/_fafo_adoption_stubs.py` builds local bare remotes with
 specific histories for adoption tests. Use these helpers when adding new
