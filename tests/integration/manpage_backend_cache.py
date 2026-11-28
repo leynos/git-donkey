@@ -203,6 +203,44 @@ class CacheWarmUpTools:
 CACHE_WARM_UP_TOOLS = CacheWarmUpTools()
 
 
+def _cache_from_environment(environment: dict[str, str]) -> Path:
+    """Return the single cache directory named by the environment."""
+    try:
+        return Path(environment["UV_CACHE_DIR"])
+    except KeyError as error:
+        message = "the warm-up environment must set UV_CACHE_DIR"
+        raise BuildCacheError(message, str(error)) from error
+
+
+def _resolve_backends(
+    probe: Path,
+    environment: dict[str, str],
+    tools: CacheWarmUpTools,
+) -> None:
+    """Probe offline, warm a reported cache miss once, then re-probe."""
+    build = ("build", "--python", sys.executable, "--wheel")
+    failed = tools.run_uv(build, probe, environment)
+    if failed.returncode == 0:
+        return
+    if not reports_cache_miss(failed):
+        message = (
+            "the build-backend probe failed for a reason other than a "
+            "missing cache entry"
+        )
+        raise BuildCacheError(message, failed.output)
+    warmed = tools.run_uv(build, probe, environment, offline=False)
+    if warmed.returncode != 0:
+        message = (
+            "the build backends must be cached before the offline "
+            "builds run; warming them failed"
+        )
+        raise BuildCacheError(message, warmed.output)
+    cached = tools.run_uv(build, probe, environment)
+    if cached.returncode != 0:
+        message = "the warmed cache must resolve the build backends offline"
+        raise BuildCacheError(message, cached.output)
+
+
 def warm_backend_cache(
     work: Path,
     environment: dict[str, str],
@@ -226,36 +264,12 @@ def warm_backend_cache(
         warmed cache still cannot resolve the build backends offline.
 
     """
-    try:
-        cache = Path(environment["UV_CACHE_DIR"])
-    except KeyError as error:
-        message = "the warm-up environment must set UV_CACHE_DIR"
-        raise BuildCacheError(message, str(error)) from error
+    cache = _cache_from_environment(environment)
     probe = write_backend_probe(work, build_requirements(pyproject))
-    build = ("build", "--python", sys.executable, "--wheel")
     cache.mkdir(parents=True, exist_ok=True)
     with (cache / "manpage-build-backends.lock").open("a", encoding="utf-8") as lock:
         tools.file_lock(lock, LOCK_EX)
         try:
-            failed = tools.run_uv(build, probe, environment)
-            if failed.returncode == 0:
-                return
-            if not reports_cache_miss(failed):
-                message = (
-                    "the build-backend probe failed for a reason other than a "
-                    "missing cache entry"
-                )
-                raise BuildCacheError(message, failed.output)
-            warmed = tools.run_uv(build, probe, environment, offline=False)
-            if warmed.returncode != 0:
-                message = (
-                    "the build backends must be cached before the offline "
-                    "builds run; warming them failed"
-                )
-                raise BuildCacheError(message, warmed.output)
-            cached = tools.run_uv(build, probe, environment)
-            if cached.returncode != 0:
-                message = "the warmed cache must resolve the build backends offline"
-                raise BuildCacheError(message, cached.output)
+            _resolve_backends(probe, environment, tools)
         finally:
             tools.file_lock(lock, LOCK_UN)
