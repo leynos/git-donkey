@@ -242,6 +242,14 @@ jobs:
           echo "published=true" >> "${GITHUB_OUTPUT}"
           jq '{assets: .assets}' draft-state.json > draft-assets.json
           mkdir -p github-state/files release-bundles
+          # Destination digests decide before any bundle download: a confirmed
+          # mismatch redrafts even when a download or verifier is unavailable.
+          python3 -m scripts.release_assets_cli destinations-complete --publish dist/publish \
+            --index pypi-index.json --assets draft-assets.json
+          digests_complete="$(grep '^complete=' "${GITHUB_OUTPUT}" | tail -1 | cut -d= -f2)"
+          if [ "${digests_complete}" != true ]; then
+            exit 0
+          fi
           if jq -e '.assets[] | select(.name | endswith(".attestations.jsonl"))' draft-assets.json > /dev/null; then
             gh release download "${GITHUB_REF_NAME}" --pattern '*.attestations.jsonl' --dir release-bundles
           fi

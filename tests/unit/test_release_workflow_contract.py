@@ -506,6 +506,8 @@ def test_an_incomplete_published_release_returns_to_draft() -> None:
     )
     for fragment in (
         "--json isDraft,assets",
+        "destinations-complete",
+        'digests_complete="$(grep',
         "gh release download",
         "--bundle",
         "bundle-coverage",
@@ -548,6 +550,9 @@ def test_an_incomplete_published_release_returns_to_draft() -> None:
     assert step("draft-release", "Verify published release provenance")["id"] == (
         "provenance"
     ), "the guard reads the provenance output"
+    assert script.index("destinations-complete") < script.index(
+        "gh release download"
+    ), "destination digests must be checked before any bundle download"
     assert script.index("release-complete") < script.index("gh attestation verify"), (
         "destination metadata must be checked before bundle verification"
     )

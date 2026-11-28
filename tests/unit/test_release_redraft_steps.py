@@ -301,6 +301,35 @@ def test_a_digest_mismatch_redrafts_even_when_verification_fails(
     )
 
 
+def test_a_digest_mismatch_redrafts_when_the_bundle_download_fails(
+    tmp_path: pth.Path,
+) -> None:
+    """A confirmed mismatch redrafts before any bundle download is attempted."""
+    fake, env = _published_release(tmp_path, complete=True)
+    (fake.github / _CARRIED_ASSET).write_bytes(b"clobbered by an earlier workflow")
+
+    fetch, report, written = _run_redraft_steps(
+        tmp_path, {**env, "FAKE_DOWNLOAD_FAIL": "*.attestations.jsonl"}
+    )
+
+    assert fetch.returncode == 0, fetch.stderr
+    assert report is not None, "the completeness step must run"
+    assert report.returncode == 0, (
+        "the digest check must redraft before the failed download"
+    )
+    assert written["complete"] == "false", "the mismatch is confirmed"
+    assert _redraft_fires(written), "the incomplete release must be redrafted"
+    completed = run_bash(
+        step_script("draft-release", "Return an incomplete published release to draft"),
+        tmp_path,
+        env,
+    )
+    assert completed.returncode == 0, completed.stderr
+    assert fake.release_state()["isDraft"] is True, (
+        "the confirmed incomplete release must be hidden"
+    )
+
+
 def test_a_bundle_that_fails_verification_does_not_redraft(
     tmp_path: pth.Path,
 ) -> None:

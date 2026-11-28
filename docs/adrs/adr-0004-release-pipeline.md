@@ -180,17 +180,17 @@ reconciliation PyPI already requires:
   attestation store, verifies every distribution against that assembled bundle
   before uploading it, and only then attaches it. The `attest` job's bundle
   remains in the run artefact and the attestation store.
-- Destination metadata is checked first: the PyPI index and GitHub asset
-  digests, plus whether an attached bundle names every distribution. A digest
-  mismatch, a missing asset, or an uncovered distribution is a confirmed
-  incomplete release, so `publish-release` rebuilds the bundle and a published
-  release is returned to draft even when a bundle cannot be verified. Only when
-  the metadata agrees is a covering bundle verified with
-  `gh attestation verify --bundle` against each released distribution; an older
-  partial bundle is ignored rather than blocking a complete replacement. A
-  transient verifier failure is retried; a failure that persists, an
-  unavailable index, or an unavailable download is inconclusive, so the run
-  fails without editing the release or deleting an asset.
+- Destination digests are compared before any bundle download. A digest
+  mismatch or missing asset is a confirmed incomplete release:
+  `publish-release` rebuilds and a published release is returned to draft even
+  when a bundle download or verifier is unavailable. Once the digests agree,
+  bundles are downloaded and checked for coverage; an uncovered distribution is
+  likewise a confirmed gap. Only when the metadata agrees is a covering bundle
+  verified with `gh attestation verify --bundle` against each released
+  distribution; an older partial bundle is ignored rather than blocking a
+  complete replacement. A transient verifier failure is retried; a failure that
+  persists, an unavailable index, or an unavailable download is inconclusive,
+  so the run fails without editing the release or deleting an asset.
 - A rerun that finds every name published and a covering bundle attached
   stages and uploads nothing, does not download attestations, and edits nothing
   because the release is already visible with the right pre-release flag. It

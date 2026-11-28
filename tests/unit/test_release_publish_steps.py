@@ -292,7 +292,13 @@ def test_stage_pypi_requires_the_provenance_directory(tmp_path: pth.Path) -> Non
 
 @pytest.mark.parametrize(
     "command",
-    ["stage-github", "check-fetched", "check-provenance", "release-complete"],
+    [
+        "stage-github",
+        "check-fetched",
+        "check-provenance",
+        "destinations-complete",
+        "release-complete",
+    ],
 )
 def test_the_index_dependent_commands_require_the_index(
     tmp_path: pth.Path, command: str

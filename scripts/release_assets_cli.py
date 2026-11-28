@@ -33,6 +33,8 @@ from scripts.release_assets import (
     State,
     carryover,
     has_bundle,
+    local_names,
+    mismatches,
     stage_pypi,
     verify,
     write_output,
@@ -130,6 +132,16 @@ def _verify(state: State, args: argparse.Namespace) -> None:
     print("PyPI and the GitHub Release hold the same bytes for every artefact.")
 
 
+def _destinations_complete(state: State, args: argparse.Namespace) -> None:
+    """Report whether PyPI and the GitHub Release hold the same digests."""
+    _path(args, "index")
+    pypi = {name: file.sha256 for name, file in state.pypi.items()}
+    problems = mismatches(local_names(state.publish), pypi, state.github)
+    for problem in problems:
+        print(f"::notice::{problem}")
+    write_output("complete", value=not problems)
+
+
 def _release_complete(state: State, args: argparse.Namespace) -> None:
     """Report whether a published release already holds every canonical byte."""
     _path(args, "index")
@@ -167,6 +179,7 @@ _COMMANDS: dict[str, cabc.Callable[[State, argparse.Namespace], None]] = {
     "check-fetched": _check_fetched,
     "check-provenance": _check_provenance,
     "verify": _verify,
+    "destinations-complete": _destinations_complete,
     "release-complete": _release_complete,
     "bundle-coverage": _bundle_coverage,
 }
