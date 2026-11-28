@@ -134,9 +134,12 @@ offending GitHub Release asset and rerun; a PyPI file cannot be replaced or
 re-uploaded under the same filename, so untraceable PyPI bytes require a new
 version.
 
-An already published release that no longer matches the canonical bytes is
-returned to draft before reconciliation, so it is never visible while a repair
-fails. A complete published release is left visible and is not edited.
+An already published release that a positive check finds incomplete is returned
+to draft before reconciliation, so it is never visible while a repair fails. An
+inconclusive check, such as an unavailable index, a failed download, or a
+verifier that cannot reach a verdict after retries, fails the run without
+editing the release or deleting an asset. A complete published release is left
+visible and is not edited.
 
 The release helpers in `scripts/` are checked by `interrogate` and both Pylint
 passes along with the package and tests. They use only the standard library so

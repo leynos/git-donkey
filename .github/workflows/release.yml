@@ -242,15 +242,23 @@ jobs:
           echo "published=true" >> "${GITHUB_OUTPUT}"
           jq '{assets: .assets}' draft-state.json > draft-assets.json
           mkdir -p github-state/files release-bundles
-          if jq -e '.assets[] | select(.name | endswith(".attestations.jsonl") or endswith(".sigstore.json"))' draft-assets.json > /dev/null; then
-            gh release download "${GITHUB_REF_NAME}" --pattern '*.attestations.jsonl' --dir release-bundles || true
-            gh release download "${GITHUB_REF_NAME}" --pattern '*.sigstore.json' --dir release-bundles || true
+          if jq -e '.assets[] | select(.name | endswith(".attestations.jsonl"))' draft-assets.json > /dev/null; then
+            gh release download "${GITHUB_REF_NAME}" --pattern '*.attestations.jsonl' --dir release-bundles
           fi
+          if jq -e '.assets[] | select(.name | endswith(".sigstore.json"))' draft-assets.json > /dev/null; then
+            gh release download "${GITHUB_REF_NAME}" --pattern '*.sigstore.json' --dir release-bundles
+          fi
+          python3 -m scripts.release_assets_cli bundle-coverage --publish dist/publish \
+            --assets draft-assets.json --bundles release-bundles
+          covered="$(grep '^covered=' "${GITHUB_OUTPUT}" | tail -1 | cut -d= -f2)"
           # A bundle must verify for every released distribution before its
-          # subjects count. Retry a transient failure; never delete an asset whose
-          # verdict is unknown, and rebuild an unverifiable bundle.
+          # subjects count. Retry a transient failure; a bundle that still
+          # cannot be verified stops the run without changing the release.
           while IFS= read -r name; do
             [ -n "${name}" ] || continue
+            if [ "${covered}" != true ]; then
+              break
+            fi
             for bundle in release-bundles/*.attestations.jsonl; do
               [ -e "${bundle}" ] || continue
               work="$(mktemp -d)"
@@ -272,8 +280,8 @@ jobs:
                 fi
               done
               if [ "${verified}" != true ]; then
-                echo "::notice::Bundle $(basename "${bundle}") could not be verified; it will not count."
-                rm -f "${bundle}"
+                echo "::error title=bundle-verification::Bundle $(basename "${bundle}") could not be verified; refusing to change the release." >&2
+                exit 1
               fi
               rm -rf "${work}"
             done
@@ -281,16 +289,14 @@ jobs:
           python3 -m scripts.release_assets_cli release-complete --publish dist/publish \
             --index pypi-index.json --assets draft-assets.json --output github-state/files \
             --bundles release-bundles
-      # `always()` makes the edit fail closed: a check that fails before it can
-      # report a verdict still hides the release rather than leaving it visible.
-      # A visible release must also carry provenance for this tag and commit;
-      # digests and bundle coverage alone cannot detect a moved tag.
+      # An inconclusive check must not change a published release: the edit
+      # runs only for a confirmed incomplete verdict. A visible release must
+      # also carry provenance for this tag and commit.
       - name: Verify published release provenance
         id: provenance
         if: steps.redraft.outputs.published == 'true'
         run: |
           set -euo pipefail
-          ok=true
           while IFS= read -r name; do
             [ -n "${name}" ] || continue
             work="$(mktemp -d)"
@@ -303,18 +309,17 @@ jobs:
               --predicate-type https://slsa.dev/provenance/v1 \
               --deny-self-hosted-runners \
               --format json > "${work}/${name}.json"; then
-              ok=false
-              echo "::notice::${name} has no provenance for this tag and commit."
+              echo "::error title=release-provenance::${name} has no provenance for this tag and commit." >&2
+              exit 1
             fi
             rm -rf "${work}"
           done <<< "$(jq -r '.assets[] | select((.name | endswith(".attestations.jsonl") or endswith(".sigstore.json")) | not) | .name' draft-assets.json)"
-          echo "ok=${ok}" >> "${GITHUB_OUTPUT}"
       - name: Return an incomplete published release to draft
         if: >-
           always()
           && steps.create.outcome == 'success'
-          && steps.redraft.outputs.published != 'false'
-          && (steps.redraft.outputs.complete != 'true' || steps.provenance.outputs.ok != 'true')
+          && steps.redraft.outputs.published == 'true'
+          && steps.redraft.outputs.complete == 'false'
         run: |
           set -euo pipefail
           gh release edit "${GITHUB_REF_NAME}" --draft=true
@@ -478,11 +483,17 @@ jobs:
             gh release download "${GITHUB_REF_NAME}" --pattern '*.attestations.jsonl' --dir release-bundles || true
             gh release download "${GITHUB_REF_NAME}" --pattern '*.sigstore.json' --dir release-bundles || true
           fi
+          python3 -m scripts.release_assets_cli bundle-coverage --publish dist/publish \
+            --assets release-assets.json --bundles release-bundles
+          covered="$(grep '^covered=' "${GITHUB_OUTPUT}" | tail -1 | cut -d= -f2)"
           # A bundle must verify for every released distribution before its
-          # subjects count. Retry a transient failure; never delete an asset whose
-          # verdict is unknown, and rebuild an unverifiable bundle.
+          # subjects count. Retry a transient failure; a bundle that still
+          # cannot be verified stops the run without changing the release.
           while IFS= read -r name; do
             [ -n "${name}" ] || continue
+            if [ "${covered}" != true ]; then
+              break
+            fi
             for bundle in release-bundles/*.attestations.jsonl; do
               [ -e "${bundle}" ] || continue
               work="$(mktemp -d)"
@@ -510,8 +521,6 @@ jobs:
               rm -rf "${work}"
             done
           done <<< "$(jq -r '.assets[].name | select((. | endswith(".attestations.jsonl") or endswith(".sigstore.json")) | not)' release-assets.json)"
-          python3 -m scripts.release_assets_cli bundle-coverage --publish dist/publish \
-            --assets release-assets.json --bundles release-bundles
       # Every missing name is fetched from PyPI, whose bytes are canonical. A
       # fully published re-run stages nothing, so the upload steps below are
       # skipped and the release is unchanged.

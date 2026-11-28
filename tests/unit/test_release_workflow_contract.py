@@ -412,8 +412,10 @@ def test_the_attached_bundle_is_verified_before_coverage() -> None:
         "gh release download",
         "--bundle",
         '--source-digest "${GITHUB_SHA}"',
-        "for attempt in 1 2 3",
         "bundle-coverage",
+        'covered="$(grep',
+        'if [ "${covered}" != true ]',
+        "for attempt in 1 2 3",
         "--bundles release-bundles",
     ):
         assert fragment in script, f"the coverage check must include {fragment!r}"
@@ -502,7 +504,11 @@ def test_an_incomplete_published_release_returns_to_draft() -> None:
         "--json isDraft,assets",
         "gh release download",
         "--bundle",
+        "bundle-coverage",
+        'covered="$(grep',
+        'if [ "${covered}" != true ]',
         "for attempt in 1 2 3",
+        "::error title=bundle-verification::",
         "release-complete",
         "--index pypi-index.json",
         "--bundles release-bundles",
@@ -516,7 +522,8 @@ def test_an_incomplete_published_release_returns_to_draft() -> None:
         '--source-ref "${GITHUB_REF}"',
         '--source-digest "${GITHUB_SHA}"',
         '--signer-workflow "${GH_REPO}/.github/workflows/release.yml"',
-        'echo "ok=${ok}" >> "${GITHUB_OUTPUT}"',
+        "::error title=release-provenance::",
+        "exit 1",
     ):
         assert fragment in provenance_script, (
             f"the published provenance check must include {fragment!r}"
@@ -536,10 +543,9 @@ def test_an_incomplete_published_release_returns_to_draft() -> None:
     edit_step = step("draft-release", "Return an incomplete published release to draft")
     assert edit_step["if"] == (
         "always() && steps.create.outcome == 'success' "
-        "&& steps.redraft.outputs.published != 'false' "
-        "&& (steps.redraft.outputs.complete != 'true' "
-        "|| steps.provenance.outputs.ok != 'true')"
-    ), "the edit must fail closed for a published, incomplete release"
+        "&& steps.redraft.outputs.published == 'true' "
+        "&& steps.redraft.outputs.complete == 'false'"
+    ), "the edit must run only for a confirmed incomplete release"
     assert "--draft=true" in step_script(
         "draft-release", "Return an incomplete published release to draft"
     ), "the release must be returned to draft"

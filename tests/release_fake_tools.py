@@ -119,6 +119,10 @@ def _gh_download(args: list[str]) -> int:
     """Copy the assets ``--pattern`` matches into ``--dir``."""
     pattern = args[args.index("--pattern") + 1]
     target = Path(args[args.index("--dir") + 1])
+    failed = os.environ.get("FAKE_DOWNLOAD_FAIL", "")
+    if failed and fnmatch(pattern, failed):
+        print(f"controlled download failure for {pattern}", file=sys.stderr)
+        return 1
     assets = _directory("FAKE_GITHUB_ASSETS")
     matches = sorted(path for path in assets.iterdir() if fnmatch(path.name, pattern))
     if not matches:

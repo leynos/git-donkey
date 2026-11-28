@@ -163,10 +163,14 @@ reconciliation PyPI already requires:
   attestation store, verifies every distribution against that assembled bundle
   before uploading it, and only then attaches it. The `attest` job's bundle
   remains in the run artefact and the attestation store.
-- Every attached bundle is verified with `gh attestation verify --bundle`
-  against each released distribution before its subjects can count. A transient
-  verifier failure is retried; a bundle that still cannot be verified is not
-  counted and is never deleted, and the assembly uploads a valid replacement.
+- Subject coverage is checked first. A bundle that does not name every
+  released distribution is a confirmed gap: `publish-release` rebuilds it, and
+  a published release is returned to draft for repair. A bundle that does cover
+  every distribution is then verified with `gh attestation verify --bundle`
+  against each released distribution. A transient verifier failure is retried;
+  a failure that persists, an unavailable index, or an unavailable download is
+  inconclusive, so the run fails without editing the release or deleting an
+  asset.
 - A rerun that finds every name published and a covering bundle attached
   stages and uploads nothing, does not download attestations, and edits nothing
   because the release is already visible with the right pre-release flag. It
