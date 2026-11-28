@@ -37,7 +37,7 @@ if typ.TYPE_CHECKING:
 #: The oldest GitHub CLI whose attestation verification enforces the release
 #: policy's identity flags as documented.
 MINIMUM_VERSION = (2, 102, 0)
-_VERSION = re.compile(r"\bgh version (\d+)\.(\d+)\.(\d+)\b")
+_VERSION = re.compile(r"\bgh version (\d+)\.(\d+)\.(\d+)([^\s]*)")
 
 
 def parse_version(line: str) -> tuple[int, int, int] | None:
@@ -60,11 +60,18 @@ def parse_version(line: str) -> tuple[int, int, int] | None:
     (2, 97, 0)
     >>> parse_version("gh version 3.0.0-beta1 (2027-01-01)")
     (3, 0, 0)
+    >>> parse_version("gh version 2.102.0-rc.1 (2026-01-15)") is None
+    True
     """
     match = _VERSION.search(line)
     if match is None:
         return None
-    major, minor, patch = (int(part) for part in match.groups())
+    major, minor, patch = (int(part) for part in match.groups()[:3])
+    qualifier = match.group(4)
+    if qualifier.startswith("-") and (major, minor, patch) == MINIMUM_VERSION:
+        # A pre-release is below its corresponding normal release, so
+        # ``2.102.0-rc.1`` does not satisfy a 2.102.0 minimum.
+        return None
     return major, minor, patch
 
 

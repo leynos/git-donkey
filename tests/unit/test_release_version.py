@@ -125,6 +125,8 @@ def test_a_missing_environment_variable_is_reported(
         ("gh version 2.102.0 (2026-01-15)", (2, 102, 0)),
         ("gh version 2.97.0 (2026-07-31)", (2, 97, 0)),
         ("gh version 3.0.0-beta1 (2027-01-01)", (3, 0, 0)),
+        ("gh version 2.102.0-rc.1 (2026-01-15)", None),
+        ("gh version 2.102.1-rc.1 (2026-01-15)", (2, 102, 1)),
         ("release notes unavailable", None),
     ],
 )

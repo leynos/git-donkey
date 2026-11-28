@@ -118,28 +118,40 @@ def test_each_bundle_check_gates_its_own_cli() -> None:
 
 
 def test_the_build_uses_a_hash_installed_environment() -> None:
-    """The build action must install and use only the pinned environment."""
-    action = (
-        ROOT / ".github" / "actions" / "pure-python-wheel" / "action.yml"
-    ).read_text(encoding="utf-8")
-    assert "uv pip install" in action, (
-        "the build action must install its environment explicitly"
+    """The install step itself must use the checked-in hashes."""
+    action = document(ROOT / ".github" / "actions" / "pure-python-wheel" / "action.yml")
+    install = next(
+        (
+            item
+            for item in declared_steps(action)
+            if "uv pip install" in str(item.get("run", ""))
+        ),
+        None,
     )
-    assert "--require-hashes" in action, (
-        "the build action must verify every installed hash"
+    assert install is not None, "the action must install its build environment"
+    script = str(install["run"])
+    assert "--require-hashes" in script, (
+        "the install step must verify every installed hash"
+    )
+    assert "-r build-constraints.txt" in script, (
+        "the install step must use the checked-in constraints"
     )
 
 
 def test_the_build_runs_without_isolation() -> None:
     """An unlisted build dependency must fail rather than resolve."""
-    action = (
-        ROOT / ".github" / "actions" / "pure-python-wheel" / "action.yml"
-    ).read_text(encoding="utf-8")
-    assert "--no-build-isolation" in action, (
-        "the build must use only the installed environment"
+    action = document(ROOT / ".github" / "actions" / "pure-python-wheel" / "action.yml")
+    build = next(
+        (
+            item
+            for item in declared_steps(action)
+            if "uv build" in str(item.get("run", ""))
+        ),
+        None,
     )
-    assert "-r build-constraints.txt" in action, (
-        "the build action must install the checked-in constraints"
+    assert build is not None, "the action must build the distributions"
+    assert "--no-build-isolation" in str(build["run"]), (
+        "the build must use only the installed environment"
     )
     constraints = (ROOT / "build-constraints.txt").read_text(encoding="utf-8")
     for requirement in ("hatchling==", "hatch-build-scripts==", "docutils=="):
