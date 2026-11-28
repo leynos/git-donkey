@@ -11,6 +11,9 @@ are skipped by name, with nothing left meaning no upload at all.
 from __future__ import annotations
 
 import json
+import shlex
+import shutil
+import subprocess  # ruff: ignore[suspicious-subprocess-import] - fixed git commands exercise the tag check.
 import sys
 import typing as typ
 
@@ -28,7 +31,6 @@ from tests.release_workflow import (
 
 if typ.TYPE_CHECKING:
     import pathlib as pth
-    import subprocess
 
 _COLLECT_STEP = ("attest", "Collect release artefacts")
 _INDEX_STEP = ("publish-pypi", "Fetch the PyPI index")
@@ -42,6 +44,16 @@ pytestmark = pytest.mark.skipif(
     sys.platform == "win32",
     reason="The release workflow's steps run under Bash on Linux.",
 )
+
+
+def _cli(*arguments: str) -> str:
+    """Build a direct CLI invocation using the pytest interpreter."""
+    return " ".join((
+        shlex.quote(sys.executable),
+        "-m",
+        "scripts.release_assets_cli",
+        *arguments,
+    ))
 
 
 def _touch(directory: pth.Path, *names: str) -> None:
@@ -93,6 +105,53 @@ def test_a_mismatched_tag_fails_before_anything_is_published(
         completed.stdout
     ), "the failure must identify the manifest and the mismatch"
     assert not written, "a failed check must not report a prerelease status"
+
+
+def _git(cwd: pth.Path, *arguments: str) -> str:
+    """Run one fixed git command in ``cwd`` and return its stripped output."""
+    git = shutil.which("git")
+    assert git is not None, "the tag check test requires git"
+    completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] - fixed argv
+        [git, *arguments], cwd=cwd, check=True, capture_output=True, text=True
+    )
+    return completed.stdout.strip()
+
+
+def test_the_tag_check_accepts_the_live_commit_and_rejects_a_moved_tag(
+    tmp_path: pth.Path,
+) -> None:
+    """A run is bound to the commit the tag currently names."""
+    remote = tmp_path / "remote.git"
+    clone = tmp_path / "clone"
+    _git(tmp_path, "init", "--bare", str(remote))
+    _git(tmp_path, "init", str(clone))
+    _git(clone, "config", "user.name", "Test")
+    _git(clone, "config", "user.email", "test@example.test")
+    (clone / "file.txt").write_text("one", encoding="utf-8")
+    _git(clone, "add", "file.txt")
+    _git(clone, "commit", "-m", "first")
+    first = _git(clone, "rev-parse", "HEAD")
+    _git(clone, "tag", "v1.0.0")
+    _git(clone, "remote", "add", "origin", str(remote))
+    _git(clone, "push", "origin", "HEAD:main", "--tags")
+
+    (clone / "file.txt").write_text("two", encoding="utf-8")
+    _git(clone, "commit", "-am", "second")
+    second = _git(clone, "rev-parse", "HEAD")
+    _git(clone, "tag", "-f", "v1.0.0")
+    _git(clone, "push", "--force", "origin", "HEAD:main", "v1.0.0")
+
+    script = step_script(
+        "publish-pypi", "Check the tag still points to this run's commit"
+    )
+    moved = run_bash(script, clone, {"GITHUB_REF_NAME": "v1.0.0", "GITHUB_SHA": first})
+    current = run_bash(
+        script, clone, {"GITHUB_REF_NAME": "v1.0.0", "GITHUB_SHA": second}
+    )
+
+    assert moved.returncode != 0, "a moved tag must stop the run"
+    assert "points to" in moved.stderr, "the failure must name the moved tag"
+    assert current.returncode == 0, current.stderr
 
 
 def test_collection_gathers_the_sdist_with_every_wheel(tmp_path: pth.Path) -> None:
@@ -212,8 +271,15 @@ def test_stage_pypi_requires_the_provenance_directory(tmp_path: pth.Path) -> Non
     _touch(tmp_path / "dist" / "publish", *_ARTEFACTS, _SDIST)
     (tmp_path / "assets.json").write_text('{"assets": []}', encoding="utf-8")
     completed = run_bash(
-        "python3 -m scripts.release_assets_cli stage-pypi "
-        "--publish dist/publish --assets assets.json --github-files github-files",
+        _cli(
+            "stage-pypi",
+            "--publish",
+            "dist/publish",
+            "--assets",
+            "assets.json",
+            "--github-files",
+            "github-files",
+        ),
         tmp_path,
     )
 
@@ -235,9 +301,19 @@ def test_the_index_dependent_commands_require_the_index(
     _touch(tmp_path / "dist" / "publish", *_ARTEFACTS, _SDIST)
     (tmp_path / "assets.json").write_text('{"assets": []}', encoding="utf-8")
     completed = run_bash(
-        f"python3 -m scripts.release_assets_cli {command} "
-        "--publish dist/publish --assets assets.json --output github-upload "
-        "--provenance pypi-provenance --bundles dist/attestations",
+        _cli(
+            command,
+            "--publish",
+            "dist/publish",
+            "--assets",
+            "assets.json",
+            "--output",
+            "github-upload",
+            "--provenance",
+            "pypi-provenance",
+            "--bundles",
+            "dist/attestations",
+        ),
         tmp_path,
     )
 
@@ -253,8 +329,13 @@ def test_bundle_coverage_requires_the_bundle_directory(tmp_path: pth.Path) -> No
     _touch(tmp_path / "dist" / "publish", *_ARTEFACTS, _SDIST)
     (tmp_path / "assets.json").write_text('{"assets": []}', encoding="utf-8")
     completed = run_bash(
-        "python3 -m scripts.release_assets_cli bundle-coverage "
-        "--publish dist/publish --assets assets.json",
+        _cli(
+            "bundle-coverage",
+            "--publish",
+            "dist/publish",
+            "--assets",
+            "assets.json",
+        ),
         tmp_path,
     )
 

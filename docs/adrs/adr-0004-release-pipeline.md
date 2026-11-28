@@ -249,3 +249,10 @@ carry a version above 0.2.0.
   provenance gates establish that for carried bytes, and `attest` establishes
   it for this run's build, so a missing record fails the release rather than
   producing a partial bundle.
+- The coverage check matches a bundle's `(filename, sha256)` subjects; it does
+  not verify the attached bundle's signatures. A replaced or corrupted release
+  asset with matching subjects could satisfy completion. Verifying bundle
+  signatures before accepting coverage is tracked in
+  [issue #206][bundle-signatures].
+
+[bundle-signatures]: https://github.com/leynos/git-donkey/issues/206

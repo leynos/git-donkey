@@ -76,9 +76,13 @@ def _bundle_subjects(bundle: dict[str, object]) -> set[tuple[str, str]]:
 
 def _subjects_from_bundle(document: object) -> set[tuple[str, str]]:
     """Return the subjects of one Sigstore bundle or verifier result."""
-    if isinstance(document, dict):
-        return _bundle_subjects(document)
-    return set()
+    match document:
+        case list() as results:
+            return set().union(*(_subjects_from_bundle(item) for item in results))
+        case dict() as bundle:
+            return _bundle_subjects(bundle)
+        case _:
+            return set()
 
 
 def _subjects_from_line(line: str) -> set[tuple[str, str]]:

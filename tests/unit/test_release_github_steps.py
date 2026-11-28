@@ -38,10 +38,15 @@ _VERIFY_ATTEMPTS = 3
 _TRANSIENT_ATTEMPTS = 2
 _UNSUPPORTED_STATUS = 2
 
-pytestmark = pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="The release workflow's steps run under Bash on Linux.",
-)
+pytestmark = [
+    pytest.mark.skipif(
+        sys.platform == "win32",
+        reason="The release workflow's steps run under Bash on Linux.",
+    ),
+    # These tests execute checked-in shell steps, which start their own
+    # processes; allow for a loaded xdist worker.
+    pytest.mark.timeout(120),
+]
 
 
 def test_an_existing_release_is_reused(tmp_path: pth.Path) -> None:

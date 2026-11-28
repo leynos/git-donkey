@@ -28,7 +28,6 @@ second upload of an existing asset name fails, as ``gh`` does without
 
 from __future__ import annotations
 
-import base64
 import json
 import os
 import shutil
@@ -37,7 +36,7 @@ import typing as typ
 from fnmatch import fnmatch
 from pathlib import Path
 
-from tests.release_asset_provenance import sha256_hex
+from tests.release_asset_provenance import bundle_line, sha256_hex
 
 #: Where the fake PyPI index says each file can be downloaded from.
 FILES_URL = "https://files.example.test/packages/"
@@ -226,20 +225,6 @@ def _verification_output(records: list[dict[str, object]]) -> str:
     return json.dumps(result)
 
 
-def _bundle_line(record: dict[str, object]) -> str:
-    """Render one attestation as a Sigstore-shaped JSON-lines bundle."""
-    statement = {
-        "subject": [
-            {
-                "name": record.get("subject_name"),
-                "digest": {"sha256": record["sha256"]},
-            }
-        ]
-    }
-    payload = base64.b64encode(json.dumps(statement).encode()).decode()
-    return json.dumps({"dsseEnvelope": {"payload": payload}})
-
-
 def _gh_attestation_download(args: list[str]) -> int:
     """Write the fake attestation records for one artefact as a JSONL bundle."""
     asset = Path(args[2])
@@ -250,7 +235,11 @@ def _gh_attestation_download(args: list[str]) -> int:
         return 1
     target = Path(f"sha256-{digest}.jsonl")
     target.write_text(
-        "\n".join(_bundle_line(record) for record in records) + "\n",
+        "\n".join(
+            bundle_line(str(record.get("subject_name")), str(record["sha256"]))
+            for record in records
+        )
+        + "\n",
         encoding="utf-8",
     )
     return 0

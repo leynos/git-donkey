@@ -37,6 +37,7 @@ produced:
 
 ```shell
 gh release download v1.2.3 --repo leynos/git-donkey --pattern 'git_donkey-*'
+gh release download v1.2.3 --repo leynos/git-donkey --pattern '*.attestations.jsonl'
 gh attestation verify git_donkey-1.2.3-py3-none-any.whl \
   --repo leynos/git-donkey \
   --signer-workflow leynos/git-donkey/.github/workflows/release.yml
@@ -49,10 +50,11 @@ transfer them with the bundle, and pass both to the verifier:
 
 ```shell
 gh attestation trusted-root > trusted_root.jsonl
+bundle="$(ls git-donkey-v1.2.3-*.attestations.jsonl)"
 gh attestation verify git_donkey-1.2.3-py3-none-any.whl \
   --repo leynos/git-donkey \
   --signer-workflow leynos/git-donkey/.github/workflows/release.yml \
-  --bundle git-donkey-v1.2.3-run7-1.attestations.jsonl \
+  --bundle "${bundle}" \
   --custom-trusted-root trusted_root.jsonl
 ```
 

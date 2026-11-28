@@ -8,15 +8,16 @@ executed behaviour of the same steps lives in ``test_release_publish_steps.py``,
 
 from __future__ import annotations
 
-import pathlib as pth
-import re
 import typing as typ
 
-import pytest
-import yaml
-from hypothesis import given
-from hypothesis import strategies as st
-
+from tests.release_contract import (
+    PINNED,
+    ci_documents,
+    declared_steps,
+    document,
+    document_paths,
+    run_scripts,
+)
 from tests.release_workflow import (
     WORKFLOW,
     jobs,
@@ -25,10 +26,6 @@ from tests.release_workflow import (
     workflow_document,
 )
 
-if typ.TYPE_CHECKING:
-    import collections.abc as cabc
-
-_PINNED = re.compile(r"@[0-9a-f]{40}$")
 _PYPROJECT_CHECK = "Check the pyproject.toml version against the tag"
 _GH_VERSION_CHECK = "Check the GitHub CLI version"
 _GH_VERSION_COMMAND = "gh --version | python3 scripts/release_gh_version.py"
@@ -36,8 +33,6 @@ _FETCH_INDEX = "Fetch the PyPI index"
 _PROVENANCE_STEP = "Verify provenance of PyPI bytes"
 _PROVENANCE_DIR = "pypi-provenance"
 _ASSEMBLY_STEP = "Assemble the release attestations"
-#: A floor, not the exact count, so adding a step does not require an edit.
-_MIN_SCANNED_SCRIPTS = 20
 
 #: Each job's exact token scopes. Only the GitHub Release jobs may write
 #: repository contents, and only the attesting and uploading jobs may mint an
@@ -51,16 +46,6 @@ _EXPECTED_PERMISSIONS: typ.Final = {
     "publish-pypi": {"contents": "read", "id-token": "write"},
     "publish-release": {"contents": "write", "attestations": "read"},
 }
-
-#: The one reviewed template expansion inside a shell script. It renders only
-#: `true` or `false`, and the shared CV-005 contract (`token.check-step`)
-#: requires the secret to be read there rather than through an `env` value.
-_CREDENTIAL_CHECK_COMMAND: typ.Final = (
-    'echo "available=${{ secrets.CS_ACCESS_TOKEN != \'\' }}" >> "$GITHUB_OUTPUT"'
-)
-_ALLOWED_EXPANSIONS: typ.Final = frozenset({
-    ("coverage-main.yml", "codescene-token", _CREDENTIAL_CHECK_COMMAND)
-})
 
 
 def _job(name: str) -> dict[str, typ.Any]:
@@ -83,7 +68,7 @@ def _uses(job_name: str, prefix: str) -> dict[str, typ.Any]:
         if str(item.get("uses", "")).startswith(f"{prefix}@")
     ]
     assert len(found) == 1, f"{job_name} must use {prefix} exactly once"
-    assert _PINNED.search(found[0]["uses"]), f"{prefix} must be pinned by commit SHA"
+    assert PINNED.search(found[0]["uses"]), f"{prefix} must be pinned by commit SHA"
     return typ.cast("dict[str, typ.Any]", found[0])
 
 
@@ -100,11 +85,11 @@ def test_every_job_holds_only_the_scopes_it_needs() -> None:
 
 def test_every_checkout_disables_persisted_credentials() -> None:
     """No checkout leaves a usable token on disk, in any workflow or action."""
-    documents = _ci_documents()
+    documents = ci_documents()
     checkouts = [
         item
-        for document in documents.values()
-        for item in _declared_steps(typ.cast("dict[str, typ.Any]", document))
+        for parsed in documents.values()
+        for item in declared_steps(typ.cast("dict[str, typ.Any]", parsed))
         if str(item.get("uses", "")).startswith("actions/checkout@")
     ]
     assert checkouts, "the scan must reach the repository's checkouts"
@@ -117,46 +102,37 @@ def test_every_checkout_disables_persisted_credentials() -> None:
 
 def test_every_remote_action_is_pinned_to_a_commit() -> None:
     """A floating tag could change what a release run executes."""
-    root = pth.Path(__file__).resolve().parents[2]
-    paths = [
-        *sorted((root / ".github" / "workflows").glob("*.yml")),
-        *sorted((root / ".github" / "actions").glob("*/action.yml")),
+    steps = [
+        item for path in document_paths() for item in declared_steps(document(path))
     ]
-    steps = [item for path in paths for item in _declared_steps(_document(path))]
     remote = [
         str(item["uses"])
         for item in steps
         if "uses" in item and not str(item["uses"]).startswith("./")
     ]
     assert remote, "the scan must reach the repository's remote actions"
-    assert all(_PINNED.search(action) for action in remote), (
+    assert all(PINNED.search(action) for action in remote), (
         "every remote action must be pinned by commit SHA"
     )
 
 
-def _document(path: pth.Path) -> dict[str, typ.Any]:
-    """Parse one workflow or composite action file for the pin scan."""
-    return typ.cast(
-        "dict[str, typ.Any]", yaml.safe_load(path.read_text(encoding="utf-8"))
-    )
-
-
-def _declared_steps(document: dict[str, typ.Any]) -> list[dict[str, typ.Any]]:
-    """Return every step a workflow or composite action declares."""
-    jobs = typ.cast("dict[str, typ.Any]", document.get("jobs", {}))
-    runs = typ.cast("dict[str, typ.Any]", document.get("runs", {}))
-    step_lists = [
-        *(
-            typ.cast("dict[str, typ.Any]", job).get("steps", [])
-            for job in jobs.values()
-        ),
-        runs.get("steps", []),
-    ]
-    return [
-        typ.cast("dict[str, typ.Any]", item)
-        for steps in step_lists
-        for item in typ.cast("list[object]", steps)
-    ]
+def test_every_publishing_job_checks_the_live_tag_commit() -> None:
+    """A run must stop if the tag has moved to another commit."""
+    for job_name in ("draft-release", "publish-pypi", "publish-release"):
+        names = [item.get("name") for item in _job(job_name)["steps"]]
+        assert "Check the tag still points to this run's commit" in names, (
+            f"{job_name} must resolve the live tag commit"
+        )
+        script = step_script(
+            job_name, "Check the tag still points to this run's commit"
+        )
+        for fragment in (
+            "git ls-remote origin",
+            "refs/tags/${GITHUB_REF_NAME}^{}",
+            '!= "${GITHUB_SHA}"',
+            "::error title=tag-moved::",
+        ):
+            assert fragment in script, f"{job_name} must include {fragment!r}"
 
 
 def test_the_pypi_upload_runs_in_the_pypi_environment() -> None:
@@ -514,6 +490,18 @@ def test_an_incomplete_published_release_returns_to_draft() -> None:
         assert fragment in provenance_script, (
             f"the published provenance check must include {fragment!r}"
         )
+    assert (
+        step("draft-release", "Create or reuse the draft release")["id"] == "create"
+    ), "the guard reads the create step outcome"
+    assert (
+        step("draft-release", "Check whether an already published release is complete")[
+            "id"
+        ]
+        == "redraft"
+    ), "the guard reads the completeness output"
+    assert step("draft-release", "Verify published release provenance")["id"] == (
+        "provenance"
+    ), "the guard reads the provenance output"
     edit_step = step("draft-release", "Return an incomplete published release to draft")
     assert edit_step["if"] == (
         "always() && steps.create.outcome == 'success' "
@@ -528,7 +516,10 @@ def test_an_incomplete_published_release_returns_to_draft() -> None:
 
 def test_nothing_is_ever_overwritten_and_pypi_holds_no_github_token() -> None:
     """No script clobbers an asset, and the PyPI job cannot touch GitHub."""
-    scripts = [holder["run"] for _, holder in _run_scripts(jobs(WORKFLOW), WORKFLOW)]
+    scripts = [
+        holder["run"]
+        for _, holder in run_scripts(workflow_document(WORKFLOW), WORKFLOW)
+    ]
     assert scripts, "the scan must reach the release scripts"
     assert not any("--clobber" in script for script in scripts), (
         "no release step may overwrite an existing asset"
@@ -552,150 +543,10 @@ def test_every_release_script_starts_with_strict_shell_mode() -> None:
     """A failing command must stop the step that runs it."""
     scripts = [
         (where, holder["run"])
-        for where, holder in _run_scripts(jobs(WORKFLOW), WORKFLOW)
+        for where, holder in run_scripts(workflow_document(WORKFLOW), WORKFLOW)
     ]
     assert scripts, "the scan must reach the release scripts"
     for where, script in scripts:
         assert script.startswith("set -euo pipefail\n"), (
             f"{where} must start with set -euo pipefail"
         )
-
-
-def _run_scripts(
-    document: object, where: str
-) -> cabc.Iterator[tuple[str, dict[str, typ.Any]]]:
-    """Yield every mapping that declares a ``run`` script, with its location."""
-    match document:
-        case dict() as mapping:
-            if isinstance(mapping.get("run"), str):
-                yield where, typ.cast("dict[str, typ.Any]", mapping)
-            for key, value in mapping.items():
-                yield from _run_scripts(value, f"{where}.{key}")
-        case list() as items:
-            for index, value in enumerate(items):
-                yield from _run_scripts(value, f"{where}[{index}]")
-
-
-def _expansions_in(name: str, document: object) -> list[str]:
-    """Return each ``run`` script location in ``document`` that expands ``${{``."""
-    return [
-        where
-        for where, holder in _run_scripts(document, name)
-        if "${{" in holder["run"]
-        and (name, holder.get("id"), holder["run"].strip()) not in _ALLOWED_EXPANSIONS
-    ]
-
-
-def _document_name(path: pth.Path) -> str:
-    """Name a workflow by file name and a composite action by its path."""
-    if path.parent.name == "workflows":
-        return path.name
-    return path.relative_to(pth.Path(__file__).resolve().parents[2]).as_posix()
-
-
-def _ci_documents() -> dict[str, object]:
-    """Parse every workflow and composite action in the repository."""
-    root = pth.Path(__file__).resolve().parents[2]
-    paths = [
-        *sorted((root / ".github" / "workflows").glob("*.yml")),
-        *sorted((root / ".github" / "actions").glob("*/action.yml")),
-    ]
-    return {_document_name(path): _document(path) for path in paths}
-
-
-def test_no_run_script_expands_a_template_expression() -> None:
-    """Values reach a shell through ``env``, never by pasting into the script."""
-    documents = _ci_documents()
-    scanned = sum(
-        len(list(_run_scripts(document, name))) for name, document in documents.items()
-    )
-    assert scanned > _MIN_SCANNED_SCRIPTS, (
-        "the scan must reach the repository's run scripts"
-    )
-    assert ".github/actions/pure-python-wheel/action.yml" in documents, (
-        "the scan must reach the distribution build action"
-    )
-    findings = [
-        where
-        for name, document in documents.items()
-        for where in _expansions_in(name, document)
-    ]
-    assert not findings, f"route these values through env: {findings}"
-
-
-@pytest.mark.parametrize(
-    ("name", "document", "is_flagged"),
-    [
-        ("x.yml", {"steps": [{"run": 'echo "${{ inputs.target }}"'}]}, True),
-        ("x.yml", {"runs": {"steps": [{"run": "make ${{ matrix.check }}"}]}}, True),
-        (
-            "x.yml",
-            {"steps": [{"env": {"T": "${{ inputs.t }}"}, "run": 'echo "$T"'}]},
-            False,
-        ),
-        (
-            "x.yml",
-            {"steps": [{"id": "codescene-token", "run": _CREDENTIAL_CHECK_COMMAND}]},
-            True,
-        ),
-        (
-            "coverage-main.yml",
-            {"steps": [{"id": "codescene-token", "run": _CREDENTIAL_CHECK_COMMAND}]},
-            False,
-        ),
-    ],
-    ids=[
-        "input",
-        "composite-matrix",
-        "through-env",
-        "exception-elsewhere",
-        "exception",
-    ],
-)
-def test_the_expansion_scan_discriminates(
-    name: str, document: object, *, is_flagged: bool
-) -> None:
-    """The scan flags pasted values and admits only the one reviewed exception."""
-    assert bool(_expansions_in(name, document)) is is_flagged, (
-        "the expansion scan must flag pasted values and admit the exception"
-    )
-
-
-_LEAVES = st.one_of(st.none(), st.booleans(), st.integers(), st.text(max_size=4))
-#: `run` often enough that holders, and non-string `run` values, both appear.
-_KEYS = st.sampled_from(["run", "run", "steps", "with", "id"])
-_DOCUMENTS = st.recursive(
-    _LEAVES,
-    lambda children: st.one_of(
-        st.lists(children, max_size=4), st.dictionaries(_KEYS, children, max_size=4)
-    ),
-    max_leaves=30,
-)
-
-
-def _run_holders(document: object) -> list[int]:
-    """Return the identity of every mapping with a string ``run``, iteratively."""
-    found: list[int] = []
-    pending = [document]
-    while pending:
-        node = pending.pop()
-        match node:
-            case dict() as mapping:
-                if isinstance(mapping.get("run"), str):
-                    found.append(id(mapping))
-                pending.extend(mapping.values())
-            case list() as items:
-                pending.extend(items)
-    return found
-
-
-@given(document=_DOCUMENTS)
-def test_the_run_script_scan_finds_exactly_the_run_holders(document: object) -> None:
-    """The scan yields every mapping with a string ``run`` and nothing else."""
-    scanned = list(_run_scripts(document, "doc"))
-
-    assert sorted(id(holder) for _, holder in scanned) == sorted(
-        _run_holders(document)
-    ), "a missed holder is a script the expansion scan never reads"
-    locations = [where for where, _ in scanned]
-    assert len(set(locations)) == len(locations), "each holder has one location"

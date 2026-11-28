@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shlex
 import subprocess  # ruff: ignore[suspicious-subprocess-import] - regression test executes make without a shell
 import typing as typ
 
@@ -29,9 +30,21 @@ def test_make_typecheck_pins_ty_and_omits_script_search_path(
     assert "uv tool run ty@0.0.79 --version" in result.stdout, (
         f"typecheck must verify the pinned Ty release: {result.stdout}"
     )
-    assert "uv tool run ty@0.0.79 check --python .venv" in result.stdout, (
-        f"typecheck must run the pinned Ty release against the project venv: "
-        f"{result.stdout}"
+    commands = [
+        shlex.split(line)
+        for line in result.stdout.splitlines()
+        if "ty@0.0.79 check" in line
+    ]
+    assert len(commands) == 1, (
+        f"typecheck must run the pinned Ty check exactly once: {result.stdout}"
+    )
+    arguments = commands[0]
+    assert "--python" in arguments, (
+        f"typecheck must name the project environment: {arguments}"
+    )
+    position = arguments.index("--python")
+    assert arguments[position + 1] == ".venv", (
+        f"typecheck must use exactly the project venv, not {arguments[position + 1]!r}"
     )
     assert "--extra-search-path" not in result.stdout, (
         f"typecheck must not reference a separate scripts module path: {result.stdout}"

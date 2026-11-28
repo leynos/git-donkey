@@ -60,6 +60,28 @@ def test_a_pretty_printed_single_bundle_names_its_subject(tmp_path: Path) -> Non
     )
 
 
+def test_a_verification_result_array_names_its_subjects(tmp_path: Path) -> None:
+    """The verifier emits an array of results, not a single object."""
+    record = [
+        {
+            "verificationResult": {
+                "statement": {
+                    "subject": [
+                        {"name": _NAME, "digest": {"sha256": _DIGEST}},
+                        {"name": _SDIST, "digest": {"sha256": "b" * 64}},
+                    ]
+                }
+            }
+        }
+    ]
+    bundle = _write(tmp_path / "record.json", json.dumps(record))
+
+    assert read_bundle_subjects([bundle]) == {
+        (_NAME, _DIGEST),
+        (_SDIST, "b" * 64),
+    }, "an array of verifier results must contribute every subject"
+
+
 def test_a_verification_result_names_its_subject(tmp_path: Path) -> None:
     """The verifier's JSON shape is also understood, case-insensitively."""
     record = {

@@ -22,7 +22,7 @@ import typing as typ
 import pytest
 
 from scripts.release_assets import BUNDLE_SUFFIX
-from tests.release_asset_provenance import provenance_record, sha256_hex
+from tests.release_asset_provenance import bundle_line, provenance_record, sha256_hex
 from tests.release_workflow import (
     AttestationOverrides,
     FakeRelease,
@@ -40,6 +40,7 @@ if typ.TYPE_CHECKING:
 _TAG = "v1.2.3"
 _BUNDLE = f"git-donkey-v1.2.3-run7-1{BUNDLE_SUFFIX}"
 _ASSEMBLED_BUNDLE = "git-donkey-v1.2.3-run7-1.attestations.jsonl"
+_EXISTING_BUNDLE = "git-donkey-v1.2.3-run6-1.attestations.jsonl"
 #: One name per reconciliation case: PyPI only, GitHub only, neither, both.
 _PYPI_ONLY, _GITHUB_ONLY, _NEITHER, _BOTH = (
     "git_donkey-1-cp313-linux.whl",
@@ -63,10 +64,15 @@ _PRE_PROVENANCE = (
 _PUBLISH_STEPS = (*_PRE_PROVENANCE, _PROVENANCE_STEP)
 _PREDICATE_TYPE = "https://slsa.dev/provenance/v1"
 
-pytestmark = pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="The release workflow's steps run under Bash on Linux.",
-)
+pytestmark = [
+    pytest.mark.skipif(
+        sys.platform == "win32",
+        reason="The release workflow's steps run under Bash on Linux.",
+    ),
+    # Each test executes many checked-in shell steps, each of which starts its
+    # own process; the module timeout must allow for a loaded xdist worker.
+    pytest.mark.timeout(120),
+]
 
 
 def _local(name: str) -> bytes:
@@ -426,13 +432,22 @@ def test_a_pypi_only_name_uploads_when_the_bundle_is_already_attached(
         if name != _PYPI_ONLY:
             shutil.copyfile(fake.pypi / name, fake.github / name)
     fake.attest_pypi_holdings()
-    (fake.github / _BUNDLE).write_bytes(b"bundle")
+    existing = [name for name in _ARTEFACTS if name != _PYPI_ONLY]
+    lines = [
+        bundle_line(name, sha256_hex(f"published {name}".encode())) for name in existing
+    ]
+    (fake.github / _EXISTING_BUNDLE).write_text(
+        "\n".join(lines) + "\n", encoding="utf-8"
+    )
 
     cwd = _publish_release(fake)
 
     written = outputs(cwd / "output")
     assert written["files"] == "true", "the missing release name must be staged"
-    assert written["pending"] == "true", "the missing name needs a bundle"
+    assert written["pending"] == "true", "the missing name needs an upload"
+    assert written["covered"] == "true", (
+        "the existing bundle must cover the assets already on the release"
+    )
     assert (
         fake.github / _PYPI_ONLY
     ).read_bytes() == f"published {_PYPI_ONLY}".encode(), (
