@@ -216,37 +216,56 @@ def read_pypi_index(path: Path) -> dict[str, PypiFile]:
     }
 
 
+def _github_asset_documents(path: Path) -> list[dict[str, object]]:
+    """Return the asset objects in a ``gh release view --json assets`` listing."""
+    document = json.loads(path.read_text(encoding="utf-8"))
+    return [asset for asset in document.get("assets", []) if isinstance(asset, dict)]
+
+
+def incomplete_github_assets(path: Path) -> list[str]:
+    """Return the names of assets whose upload state is not ``uploaded``.
+
+    Parameters
+    ----------
+    path : pathlib.Path
+        File holding ``gh release view --json assets`` output.
+
+    Returns
+    -------
+    list[str]
+        The names GitHub reports as incomplete, sorted.
+
+    Examples
+    --------
+    >>> incomplete_github_assets(Path("assets.json"))
+    []
+    """
+    return sorted(
+        str(asset.get("name"))
+        for asset in _github_asset_documents(path)
+        if asset.get("state", "uploaded") != "uploaded"
+    )
+
+
 def read_github_assets(path: Path) -> dict[str, str | None]:
     """Map each uploaded asset in ``gh release view --json assets`` to its digest.
+
+    An asset whose upload state is not ``uploaded`` is omitted, so a ``starter``
+    left behind by a failed transfer is treated as missing. Reconciliation
+    commands refuse such a listing through :func:`incomplete_github_assets`;
+    the destination metadata check treats it as a confirmed incomplete release.
 
     Returns
     -------
     dict[str, str | None]
         Each uploaded asset's SHA-256 hex digest, or ``None`` when GitHub
         reports no ``sha256:`` digest.
-
-    Raises
-    ------
-    ReleaseAssetError
-        If the listing holds an asset whose upload state is not ``uploaded``.
-        GitHub can leave a ``starter`` asset behind after a failed transfer;
-        treating it as present would let a later run skip the real upload, so
-        the named asset must be deleted before reconciliation continues.
     """
-    document = json.loads(path.read_text(encoding="utf-8"))
-    assets = document.get("assets", [])
-    incomplete = sorted(
-        asset["name"]
-        for asset in assets
-        if asset.get("state", "uploaded") != "uploaded"
-    )
-    if incomplete:
-        msg = (
-            "GitHub Release holds incomplete upload(s): "
-            f"{', '.join(incomplete)}; delete the named asset(s) and rerun"
-        )
-        raise ReleaseAssetError(msg)
-    return {asset["name"]: _digest_hex(asset.get("digest")) for asset in assets}
+    return {
+        str(asset["name"]): _digest_hex(asset.get("digest"))
+        for asset in _github_asset_documents(path)
+        if asset.get("state", "uploaded") == "uploaded"
+    }
 
 
 def _digest_hex(digest: object) -> str | None:

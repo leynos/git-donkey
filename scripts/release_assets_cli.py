@@ -33,6 +33,7 @@ from scripts.release_assets import (
     State,
     carryover,
     has_bundle,
+    incomplete_github_assets,
     local_names,
     mismatches,
     stage_pypi,
@@ -71,6 +72,28 @@ def _path(args: argparse.Namespace, option: str) -> Path:
         msg = f"--{option.replace('_', '-')} is required for {args.command}"
         raise ReleaseAssetError(msg)
     return value
+
+
+def _require_complete_uploads(args: argparse.Namespace) -> None:
+    """Refuse reconciliation while the release holds an incomplete upload.
+
+    The destination metadata check is the exception: it treats the incomplete
+    asset as a confirmed incompleteness so a published release can be redrafted.
+
+    Raises
+    ------
+    ReleaseAssetError
+        If the release listing holds an incomplete upload.
+    """
+    if args.command == "destinations-complete":
+        return
+    incomplete = incomplete_github_assets(args.assets)
+    if incomplete:
+        msg = (
+            "GitHub Release holds incomplete upload(s): "
+            f"{', '.join(incomplete)}; delete the named asset(s) and rerun"
+        )
+        raise ReleaseAssetError(msg)
 
 
 def _carryover(state: State, args: argparse.Namespace) -> None:
@@ -190,6 +213,7 @@ def main(argv: cabc.Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     try:
         state = State.load(args.publish, args.index, args.assets)
+        _require_complete_uploads(args)
         _COMMANDS[args.command](state, args)
     except (ReleaseAssetError, OSError, KeyError, ValueError) as error:
         print(f"::error title=release-assets::{error}", file=sys.stderr)

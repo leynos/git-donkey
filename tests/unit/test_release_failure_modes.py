@@ -179,6 +179,39 @@ def test_reported_digest_mismatch_stops_before_pypi_upload(fake: FakeRelease) ->
     )
 
 
+def test_a_starter_asset_refuses_reconciliation(tmp_path: pth.Path) -> None:
+    """Reconciliation stops until an incomplete upload is removed."""
+    fake = fake_release(tmp_path)
+    digest = sha256_hex(b"published")
+    for name in _ARTEFACTS:
+        (fake.pypi / name).write_bytes(b"published")
+        (fake.github / name).write_bytes(b"published")
+        fake.add_attestation(fake.github / name)
+    (fake.github / _ASSEMBLED_BUNDLE).write_text(
+        "\n".join(bundle_line(name, digest) for name in _ARTEFACTS) + "\n",
+        encoding="utf-8",
+    )
+    fake.asset_states[_ARTEFACTS[0]] = "starter"
+    link_scripts(tmp_path)
+    (tmp_path / "dist" / "publish").mkdir(parents=True)
+    env = fake.env()
+    listed = run_bash(
+        step_script("publish-release", "List the release assets"), tmp_path, env
+    )
+    assert listed.returncode == 0, listed.stderr
+
+    completed = run_bash(
+        step_script("publish-release", "Check the attached bundle coverage"),
+        tmp_path,
+        env,
+    )
+
+    assert completed.returncode != 0, "a starter asset must stop reconciliation"
+    assert "incomplete upload" in completed.stderr, (
+        "the failure must identify the incomplete upload"
+    )
+
+
 def test_the_check_fails_when_the_destinations_disagree(fake: FakeRelease) -> None:
     """Differing bytes under one name stop the release before it is visible."""
     (fake.github / _BOTH).write_bytes(b"clobbered by an earlier workflow")

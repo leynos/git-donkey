@@ -24,6 +24,7 @@ from scripts.release_assets import (
     State,
     carryover,
     has_bundle,
+    incomplete_github_assets,
     is_bundle,
     local_names,
     mismatches,
@@ -190,12 +191,12 @@ def test_read_github_assets_parses_only_sha256_digests(
 
 
 @pytest.mark.parametrize(
-    ("state", "is_accepted"),
+    ("state", "is_included"),
     [("uploaded", True), (None, True), ("starter", False)],
     ids=["uploaded", "state-absent", "starter"],
 )
-def test_read_github_assets_requires_completed_uploads(
-    tmp_path: Path, state: str | None, *, is_accepted: bool
+def test_read_github_assets_lists_only_completed_uploads(
+    tmp_path: Path, state: str | None, *, is_included: bool
 ) -> None:
     """A failed transfer left as ``starter`` must not count as held."""
     assets = tmp_path / "assets.json"
@@ -204,13 +205,36 @@ def test_read_github_assets_requires_completed_uploads(
         asset["state"] = state
     assets.write_text(json.dumps({"assets": [asset]}), encoding="utf-8")
 
-    if is_accepted:
-        assert read_github_assets(assets) == {_NAME: "aa"}, (
-            "a completed upload must be read as held"
-        )
-    else:
-        with pytest.raises(ReleaseAssetError, match="incomplete upload"):
-            read_github_assets(assets)
+    expected = {_NAME: "aa"} if is_included else {}
+    assert read_github_assets(assets) == expected, (
+        "only a completed upload may be read as held"
+    )
+
+
+def test_incomplete_github_assets_names_a_starter_upload(tmp_path: Path) -> None:
+    """An incomplete upload is reported by name for the refusal path."""
+    assets = tmp_path / "assets.json"
+    assets.write_text(
+        json.dumps({"assets": [{"name": _NAME, "state": "starter"}]}),
+        encoding="utf-8",
+    )
+
+    assert incomplete_github_assets(assets) == [_NAME], (
+        "the incomplete upload must be named"
+    )
+
+
+def test_incomplete_github_assets_ignores_completed_uploads(tmp_path: Path) -> None:
+    """A completed upload is not an incomplete upload."""
+    assets = tmp_path / "assets.json"
+    assets.write_text(
+        json.dumps({"assets": [{"name": _NAME, "state": "uploaded"}]}),
+        encoding="utf-8",
+    )
+
+    assert incomplete_github_assets(assets) == [], (
+        "a completed upload must not be reported"
+    )
 
 
 def test_unsafe_artefact_names_are_refused(tmp_path: Path) -> None:
