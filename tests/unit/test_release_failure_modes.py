@@ -237,6 +237,54 @@ def test_a_file_removed_from_pypi_fails_the_final_check(fake: FakeRelease) -> No
     )
 
 
+def test_the_final_check_accepts_the_bundle_it_verified(fake: FakeRelease) -> None:
+    """The run-unique bundle this run attached satisfies the pin."""
+    _draft_and_publish_pypi(fake)
+    cwd = _publish_release(fake, verify=False)
+    digest = sha256_hex((fake.github / _ASSEMBLED_BUNDLE).read_bytes())
+
+    completed = run_bash(
+        step_script("publish-release", "Check both destinations hold the same bytes"),
+        cwd,
+        fake.env(
+            GITHUB_OUTPUT=str(cwd / "output"),
+            EXPECTED_BUNDLE=_ASSEMBLED_BUNDLE,
+            EXPECTED_DIGEST=digest,
+        ),
+    )
+
+    assert completed.returncode == 0, completed.stderr
+
+
+@pytest.mark.parametrize(
+    ("bundle", "message"),
+    [
+        (_ASSEMBLED_BUNDLE, f"{_ASSEMBLED_BUNDLE} differs"),
+        ("older.attestations.jsonl", "older.attestations.jsonl is missing"),
+    ],
+    ids=["replaced-bundle", "older-bundle-only"],
+)
+def test_the_final_check_rejects_another_bundle(
+    fake: FakeRelease, bundle: str, message: str
+) -> None:
+    """A replaced or older bundle must not stand in for the verified one."""
+    _draft_and_publish_pypi(fake)
+    cwd = _publish_release(fake, verify=False)
+
+    completed = run_bash(
+        step_script("publish-release", "Check both destinations hold the same bytes"),
+        cwd,
+        fake.env(
+            GITHUB_OUTPUT=str(cwd / "output"),
+            EXPECTED_BUNDLE=bundle,
+            EXPECTED_DIGEST="0" * 64,
+        ),
+    )
+
+    assert completed.returncode != 0, "the final check must reject another bundle"
+    assert message in completed.stderr, "the failure must name the bundle"
+
+
 def test_the_check_fails_when_the_destinations_disagree(fake: FakeRelease) -> None:
     """Differing bytes under one name stop the release before it is visible."""
     (fake.github / _BOTH).write_bytes(b"clobbered by an earlier workflow")

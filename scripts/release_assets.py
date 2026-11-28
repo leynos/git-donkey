@@ -440,6 +440,43 @@ def stage_pypi(state: State, github_files: Path, provenance: Path) -> bool:
     return bool(decided.pypi_uploads)
 
 
+def expected_bundle_problems(
+    github_digests: cabc.Mapping[str, str | None],
+    name: str,
+    digest: str | None,
+) -> list[str]:
+    """Describe why the verified bundle is not the release's current asset.
+
+    Parameters
+    ----------
+    github_digests : collections.abc.Mapping[str, str | None]
+        The release's assets and their SHA-256 hex digests.
+    name : str
+        The bundle this run verified and expects to find attached.
+    digest : str | None
+        The SHA-256 hex digest recorded when the bundle was verified.
+
+    Returns
+    -------
+    list[str]
+        One message when the bundle is missing, has no reported digest, or
+        differs; empty when the release holds exactly the verified bundle.
+
+    Examples
+    --------
+    >>> expected_bundle_problems({"bundle": "ab"}, "bundle", "ab")
+    []
+    """
+    if digest is None:
+        return [f"no digest was recorded for the verified bundle {name}"]
+    actual = github_digests.get(name)
+    if actual is None:
+        return [f"{name} is missing from the GitHub Release or has no digest"]
+    if actual != digest:
+        return [f"{name} differs: expected sha256 {digest}, GitHub sha256 {actual}"]
+    return []
+
+
 def verify(state: State, staged: Path) -> list[str]:
     """Describe every artefact or bundle the two destinations disagree on.
 

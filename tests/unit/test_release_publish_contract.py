@@ -193,6 +193,44 @@ def test_the_final_check_reads_a_refreshed_index() -> None:
     ), "the check must read the file the refresh writes"
 
 
+def test_the_final_check_pins_the_bundle_it_verified() -> None:
+    """Only the bundle this run approved may stand in at publication."""
+    found = step("publish-release", "Check both destinations hold the same bytes")
+    env = typ.cast("dict[str, str]", found["env"])
+    assert "steps.attestations.outputs.bundle" in env["EXPECTED_BUNDLE"], (
+        "the assembled bundle must take precedence"
+    )
+    assert "steps.coverage.outputs.verified_bundle" in env["EXPECTED_BUNDLE"], (
+        "a complete re-run must pin the covering bundle it verified"
+    )
+    assert "steps.attestations.outputs.bundle_digest" in env["EXPECTED_DIGEST"], (
+        "the pinned bundle must also be pinned to its digest"
+    )
+    script = step_script(
+        "publish-release", "Check both destinations hold the same bytes"
+    )
+    assert "--expected-bundle" in script, (
+        "the check must pass the pinned bundle to the verifier"
+    )
+    assert "--expected-digest" in script, (
+        "the check must pass the pinned digest to the verifier"
+    )
+    assembly = step_script("publish-release", _ASSEMBLY_STEP)
+    assert "printf 'bundle=%s" in assembly, (
+        "the assembly must report the bundle it uploaded"
+    )
+    assert "printf 'bundle_digest=%s" in assembly, (
+        "the assembly must report the uploaded bundle's digest"
+    )
+    coverage = step_script("publish-release", "Check the attached bundle coverage")
+    assert "printf 'verified_bundle=%s" in coverage, (
+        "the coverage step must report the bundle it verified"
+    )
+    assert "printf 'verified_digest=%s" in coverage, (
+        "the coverage step must report the verified bundle's digest"
+    )
+
+
 def test_a_complete_rerun_verifies_the_release_read_only() -> None:
     """A complete rerun skips the assembly and downloads no attestations."""
     verify = step("publish-release", "Verify release distributions")

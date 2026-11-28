@@ -137,6 +137,9 @@ jobs:
           path: |
             dist/publish
             dist/attestations
+          # A re-run replaces the previous attempt's artefact; the run-unique
+          # bundle name already keeps attempts distinguishable.
+          overwrite: true
           if-no-files-found: error
 
   # Creates or reuses the draft and snapshots its assets, so the PyPI job can
@@ -473,7 +476,7 @@ jobs:
       - name: Publish to PyPI
         id: upload
         if: steps.pending.outputs.remaining == 'true'
-        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33  # v1.14.2
+        uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086  # v1.14.3
         with:
           packages-dir: dist/publish/
           skip-existing: true
@@ -578,6 +581,11 @@ jobs:
               echo "::error title=bundle-verification::No covering bundle verified for the release." >&2
               exit 1
             fi
+            printf 'verified_bundle=%s\n' "$(basename "${verified_bundle}")" \
+              >> "${GITHUB_OUTPUT}"
+            printf 'verified_digest=%s\n' \
+              "$(sha256sum "${verified_bundle}" | cut -d' ' -f1)" \
+              >> "${GITHUB_OUTPUT}"
           fi
       # Every missing name is fetched from PyPI, whose bytes are canonical. A
       # fully published re-run stages nothing, so the upload steps below are
@@ -705,6 +713,11 @@ jobs:
           bundle="git-donkey-${GITHUB_REF_NAME}-run${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.attestations.jsonl"
           cp assembled-attestations/bundles.jsonl "${bundle}"
           gh release upload "${GITHUB_REF_NAME}" "${bundle}"
+          # The final check pins this exact bundle and its bytes, so an asset
+          # deleted or replaced before publication cannot pass on another one.
+          printf 'bundle=%s\n' "${bundle}" >> "${GITHUB_OUTPUT}"
+          printf 'bundle_digest=%s\n' \
+            "$(sha256sum "${bundle}" | cut -d' ' -f1)" >> "${GITHUB_OUTPUT}"
       # A complete re-run skips the assembly, so verify the existing release's
       # provenance read-only rather than downloading attestations again.
       - name: Verify release distributions
@@ -739,12 +752,24 @@ jobs:
         run: *fetch-index
       - name: Check both destinations hold the same bytes
         id: verify
+        env:
+          # The bundle this run verified: the one it assembled, or on a
+          # complete re-run the covering bundle the coverage step approved.
+          EXPECTED_BUNDLE: ${{ steps.attestations.outputs.bundle || steps.coverage.outputs.verified_bundle }}
+          EXPECTED_DIGEST: ${{ steps.attestations.outputs.bundle_digest || steps.coverage.outputs.verified_digest }}
         run: |
           set -euo pipefail
           gh release view "${GITHUB_REF_NAME}" --json assets > release-assets.json
+          extra=()
+          if [ -n "${EXPECTED_BUNDLE:-}" ]; then
+            extra+=(--expected-bundle "${EXPECTED_BUNDLE}")
+            if [ -n "${EXPECTED_DIGEST:-}" ]; then
+              extra+=(--expected-digest "${EXPECTED_DIGEST}")
+            fi
+          fi
           python3 -m scripts.release_assets_cli verify --publish dist/publish \
             --index pypi-index.json --assets release-assets.json \
-            --output github-upload
+            --output github-upload "${extra[@]}"
       # Editing is skipped when the release is already visible with the right
       # pre-release flag, so a fully published re-run changes nothing.
       - name: Publish the GitHub Release

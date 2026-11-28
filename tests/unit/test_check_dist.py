@@ -111,8 +111,12 @@ def _build(tmp_path: Path, build: _Build | None = None) -> tuple[Path, Path]:
     _write_pyproject(root)
     dist = root / "dist"
     dist.mkdir()
-    sdist_members = build.sdist_members or _sdist_members()
-    wheel_members = build.wheel_members or _wheel_members()
+    sdist_members = (
+        _sdist_members() if build.sdist_members is None else build.sdist_members
+    )
+    wheel_members = (
+        _wheel_members() if build.wheel_members is None else build.wheel_members
+    )
     for name in _sdist_names(build.sdists):
         _write_sdist(dist / name, sdist_members)
     for name in _wheel_names(build.wheels):
@@ -172,6 +176,20 @@ def test_a_sdist_without_a_required_member_fails(tmp_path: Path, member: str) ->
     assert check_dist(dist, root) == [
         f"{_SDIST} is missing {member.split('/', 1)[1]}"
     ], "the missing manual build input must be named"
+
+
+@pytest.mark.parametrize(
+    "override",
+    [_Build(wheel_members={}), _Build(sdist_members={})],
+    ids=["empty-wheel", "empty-sdist"],
+)
+def test_an_empty_member_map_is_not_replaced_by_the_default(
+    tmp_path: Path, override: _Build
+) -> None:
+    """An explicitly empty archive stays empty and is rejected."""
+    root, dist = _build(tmp_path, override)
+
+    assert check_dist(dist, root), "an empty archive must not gain the defaults"
 
 
 def test_a_sdist_carrying_generated_pages_fails(tmp_path: Path) -> None:

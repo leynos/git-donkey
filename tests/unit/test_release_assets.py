@@ -23,6 +23,7 @@ from scripts.release_assets import (
     Source,
     State,
     carryover,
+    expected_bundle_problems,
     has_bundle,
     incomplete_github_assets,
     is_bundle,
@@ -422,6 +423,37 @@ def test_verify_accepts_agreeing_destinations_with_a_bundle(tmp_path: Path) -> N
     staged.mkdir()
 
     assert not verify(state, staged), "agreeing destinations with a bundle must pass"
+
+
+@pytest.mark.parametrize(
+    ("github", "digest", "expected"),
+    [
+        ({"bundle": "ab"}, "ab", []),
+        (
+            {"bundle": "cd"},
+            "ab",
+            ["bundle differs: expected sha256 ab, GitHub sha256 cd"],
+        ),
+        (
+            {},
+            "ab",
+            ["bundle is missing from the GitHub Release or has no digest"],
+        ),
+        (
+            {"bundle": "ab"},
+            None,
+            ["no digest was recorded for the verified bundle bundle"],
+        ),
+    ],
+    ids=["agreeing", "differing", "missing", "digest-not-recorded"],
+)
+def test_expected_bundle_problems_pin_the_verified_bundle(
+    github: dict[str, str | None], digest: str | None, expected: list[str]
+) -> None:
+    """Only the bundle this run verified may stand in at publication."""
+    assert expected_bundle_problems(github, "bundle", digest) == expected, (
+        "the verified bundle's name and digest must still match the release"
+    )
 
 
 def test_verify_requires_a_staged_bundle_to_be_attached(tmp_path: Path) -> None:

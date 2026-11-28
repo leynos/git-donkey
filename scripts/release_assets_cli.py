@@ -32,6 +32,7 @@ from scripts.release_assets import (
     ReleaseAssetError,
     State,
     carryover,
+    expected_bundle_problems,
     has_bundle,
     incomplete_github_assets,
     local_names,
@@ -62,6 +63,8 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--provenance", type=Path)
     parser.add_argument("--bundles", type=Path)
     parser.add_argument("--output", type=Path)
+    parser.add_argument("--expected-bundle")
+    parser.add_argument("--expected-digest")
     return parser
 
 
@@ -148,6 +151,14 @@ def _check_provenance(state: State, args: argparse.Namespace) -> None:
 def _verify(state: State, args: argparse.Namespace) -> None:
     """Fail on any artefact or bundle the two destinations disagree on."""
     problems = verify(state, _path(args, "output"))
+    if args.expected_bundle is not None:
+        # The release may hold an older bundle that covers nothing this run
+        # verified, so the check pins the exact bundle this run approved.
+        problems.extend(
+            expected_bundle_problems(
+                state.github, args.expected_bundle, args.expected_digest
+            )
+        )
     if problems:
         raise ReleaseAssetError("; ".join(problems))
     print("PyPI and the GitHub Release hold the same bytes for every artefact.")

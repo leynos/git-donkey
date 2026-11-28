@@ -54,3 +54,10 @@ runs:
         path: |
           ${{ inputs.out-dir }}/*.whl
           ${{ inputs.out-dir }}/*.tar.gz
+        # A re-run of the same build replaces its previous attempt's artefact
+        # instead of failing on the duplicate name.
+        overwrite: true
+        # An out-dir whose name starts with a dot is hidden from the upload
+        # glob, and an empty match must fail rather than publish no build.
+        include-hidden-files: true
+        if-no-files-found: error

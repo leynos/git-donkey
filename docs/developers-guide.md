@@ -112,7 +112,8 @@ The job graph is:
    complete rerun the assembly is skipped and the release's provenance is
    verified read-only, without downloading attestations. It then re-fetches the
    PyPI index, verifies that both destinations hold the same digests and that
-   the bundle is attached, and makes the release visible.
+   the exact bundle it verified is still attached, and makes the release
+   visible.
 
 `make build-release` runs the same `uv build` locally, so a contributor can
 inspect both distributions. Only the workflow publishes; never upload a
@@ -152,10 +153,16 @@ GitHub CLI 2.102.0 or newer.
 
 ```shell
 gh release download v1.2.3 --repo leynos/git-donkey --pattern 'git_donkey-*'
-gh attestation verify git_donkey-1.2.3-py3-none-any.whl \
-  --repo leynos/git-donkey \
-  --signer-workflow leynos/git-donkey/.github/workflows/release.yml
+for file in git_donkey-*.whl git_donkey-*.tar.gz; do
+  gh attestation verify "${file}" \
+    --repo leynos/git-donkey \
+    --signer-workflow leynos/git-donkey/.github/workflows/release.yml
+done
 ```
+
+The loop verifies the sdist as well as the wheel. To reproduce the workflow's
+tag-and-commit pin, add `--source-ref refs/tags/v1.2.3` and
+`--source-digest <commit>`, where `<commit>` is the commit the tag names.
 
 ### Release settings
 

@@ -317,6 +317,8 @@ class FakeRelease:
             "IS_PRERELEASE": "false",
             "PENDING": "false",
             "COVERED": "false",
+            "EXPECTED_BUNDLE": "",
+            "EXPECTED_DIGEST": "",
             "GH_REPO": DEFAULT_REPOSITORY,
             **extra,
         }
