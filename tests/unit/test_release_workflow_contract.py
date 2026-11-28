@@ -117,26 +117,29 @@ def test_each_bundle_check_gates_its_own_cli() -> None:
         ), f"{job} must gate the CLI before it verifies provenance"
 
 
-def test_the_build_uses_hash_pinned_constraints() -> None:
-    """The build action must constrain the build environment by hash."""
+def test_the_build_uses_a_hash_installed_environment() -> None:
+    """The build action must install and use only the pinned environment."""
     action = (
         ROOT / ".github" / "actions" / "pure-python-wheel" / "action.yml"
     ).read_text(encoding="utf-8")
-    assert "--build-constraints build-constraints.txt" in action, (
-        "the build action must constrain the build environment"
+    assert "uv pip install" in action, (
+        "the build action must install its environment explicitly"
     )
     assert "--require-hashes" in action, (
-        "the build action must require the pinned hashes"
+        "the build action must verify every installed hash"
     )
 
 
-def test_the_build_requires_a_hash_for_every_dependency() -> None:
+def test_the_build_runs_without_isolation() -> None:
     """An unlisted build dependency must fail rather than resolve."""
     action = (
         ROOT / ".github" / "actions" / "pure-python-wheel" / "action.yml"
     ).read_text(encoding="utf-8")
-    assert "--require-build-hashes" in action, (
-        "the build action must require a hash for every build dependency"
+    assert "--no-build-isolation" in action, (
+        "the build must use only the installed environment"
+    )
+    assert "-r build-constraints.txt" in action, (
+        "the build action must install the checked-in constraints"
     )
     constraints = (ROOT / "build-constraints.txt").read_text(encoding="utf-8")
     for requirement in ("hatchling==", "hatch-build-scripts==", "docutils=="):

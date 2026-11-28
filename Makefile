@@ -81,8 +81,12 @@ build: uv .venv ## Build virtual-env and install deps
 	$(UV_ENV) uv sync --group dev
 
 build-release: uv ## Build artefacts (sdist & wheel)
-	$(UV_ENV) uv build --build-constraints build-constraints.txt \
-	  --require-hashes --require-build-hashes
+	rm -rf .uv-cache/build-venv
+	$(UV_ENV) uv venv --python 3.13 .uv-cache/build-venv
+	$(UV_ENV) uv pip install --python .uv-cache/build-venv/bin/python \
+	  --require-hashes -r build-constraints.txt
+	$(UV_ENV) uv build --no-build-isolation \
+	  --python .uv-cache/build-venv/bin/python
 
 clean: ## Remove build artifacts
 	rm -rf build dist *.egg-info \

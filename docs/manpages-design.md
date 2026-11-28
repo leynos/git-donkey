@@ -58,14 +58,13 @@ man -l docs/man/git-donkey.1
 Build a source distribution and a wheel using the normal release workflow:
 
 ```shell
-uv build --build-constraints build-constraints.txt \
-  --require-hashes --require-build-hashes
+make build-release
 ```
 
-The `make build-release` target runs the same hash-pinned command as the
-release workflow's build action. Docutils generates roff directly; neither
-Pandoc nor a system roff formatter is a build dependency.[^2] The preview
-command alone requires a manual-page viewer.
+The `make build-release` target installs the same hash-pinned build environment
+as the release workflow's build action and builds without isolation. Docutils
+generates roff directly; neither Pandoc nor a system roff formatter is a build
+dependency.[^2] The preview command alone requires a manual-page viewer.
 
 ## Validation
 

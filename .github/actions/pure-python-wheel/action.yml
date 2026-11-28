@@ -29,20 +29,30 @@ runs:
       uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d  # v10.4.0
       with:
         enable-cache: false
+    # The build runs third-party code from `[build-system] requires` before
+    # anything is attested, so its environment is installed from hashes and
+    # the build runs without isolation; an unlisted dependency cannot resolve.
+    - name: Prepare the hash-pinned build environment
+      shell: bash
+      env:
+        PYTHON_VERSION: ${{ inputs.python-version }}
+        BUILD_VENV: ${{ runner.temp }}/build-venv
+      run: |
+        set -euo pipefail
+        uv venv --python "${PYTHON_VERSION}" "${BUILD_VENV}"
+        uv pip install --python "${BUILD_VENV}/bin/python" --require-hashes \
+          -r build-constraints.txt
     # Without --sdist or --wheel, uv builds the sdist first and then the wheel
     # from that sdist, so every run also proves the sdist is buildable.
     - name: Build sdist and wheel
       shell: bash
       env:
         OUT_DIR: ${{ inputs.out-dir }}
+        BUILD_PYTHON: ${{ runner.temp }}/build-venv/bin/python
       run: |
         set -euo pipefail
-        # The build runs third-party code from `[build-system] requires`
-        # before anything is attested, so every build dependency is pinned by
-        # version and hash rather than resolved from the index.
-        uv build --out-dir "${OUT_DIR}" \
-          --build-constraints build-constraints.txt \
-          --require-hashes --require-build-hashes
+        uv build --out-dir "${OUT_DIR}" --no-build-isolation \
+          --python "${BUILD_PYTHON}"
     # The release publishes this build, so a missing or incomplete sdist fails
     # here rather than at tag time.
     - name: Check the distribution contents

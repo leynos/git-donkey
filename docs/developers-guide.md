@@ -94,11 +94,13 @@ The job graph is:
 1. `check-version` compares the tag with the manifest and checks that the
    runner's GitHub CLI is 2.102.0 or newer.
 2. `build` runs the same `.github/actions/pure-python-wheel` action as the
-   `build-dist` pull-request job. `uv build` runs with the hash-pinned
-   `build-constraints.txt` and `--require-hashes`, so the build backend and its
-   dependencies are fixed before anything is attested. It produces the sdist
-   and then the wheel from it, and `scripts/check_dist.py` requires exactly one
-   sdist and at least one wheel with the complete manual-page inventory.
+   `build-dist` pull-request job. The action installs its build environment
+   from the hash-pinned `build-constraints.txt` with `--require-hashes` and runs
+   `uv build --no-build-isolation`, so the backend and its dependencies are
+   fixed before anything is attested and an unlisted dependency cannot resolve.
+   It produces the sdist and then the wheel from it, and
+   `scripts/check_dist.py` requires exactly one sdist and at least one wheel
+   with the complete manual-page inventory.
 3. `attest` collects every wheel and the one sdist, records build provenance,
    and hands them and a run-unique Sigstore bundle to later jobs.
 4. `draft-release` creates or reuses the tag's draft release, returns an
@@ -119,9 +121,10 @@ The job graph is:
    bundle covers the current digest of every distribution, and makes the
    release visible.
 
-`make build-release` runs the same hash-pinned `uv build` locally, so a
-contributor can inspect both distributions. Only the workflow publishes; never
-upload a hand-built artefact to PyPI or to a release.
+`make build-release` prepares the same hash-pinned environment and builds
+without isolation locally, so a contributor can inspect both distributions.
+Only the workflow publishes; never upload a hand-built artefact to PyPI or to a
+release.
 
 `build-constraints.txt` is generated with `uv pip compile --generate-hashes`
 from the `[build-system] requires` in `pyproject.toml`. Regenerate and commit
@@ -954,12 +957,11 @@ uv build --wheel
 man -l docs/man/git-donkey.1
 ```
 
-Build both distributions to check the source boundary; the `build-release`
-target runs the same command as the release workflow's build action:
+Build both distributions to check the source boundary with the same hash-pinned
+environment as the release workflow's build action:
 
 ```shell
-uv build --build-constraints build-constraints.txt \
-  --require-hashes --require-build-hashes
+make build-release
 ```
 
 Run the focused manual tests:

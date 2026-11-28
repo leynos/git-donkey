@@ -15,7 +15,7 @@ pytestmark = pytest.mark.timeout(180)
 
 
 def _write_project(root: Path) -> None:
-    """Write a minimal project whose build requirement is left unconstrained."""
+    """Write a minimal project whose build requirement is left uninstalled."""
     (root / "src" / "demo").mkdir(parents=True)
     (root / "pyproject.toml").write_text(
         "[build-system]\n"
@@ -28,33 +28,40 @@ def _write_project(root: Path) -> None:
         encoding="utf-8",
     )
     (root / "src" / "demo" / "__init__.py").write_text("", encoding="utf-8")
-    (root / "constraints.txt").write_text("", encoding="utf-8")
 
 
-def test_an_unpinned_build_dependency_is_rejected(tmp_path: Path) -> None:
-    """A build dependency absent from the hashes fails rather than resolving."""
-    uv = shutil.which("uv")
-    assert uv is not None, "the build-constraint test requires uv"
-    _write_project(tmp_path)
-
-    completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] - fixed argv
-        [
-            uv,
-            "build",
-            "--out-dir",
-            "out",
-            "--build-constraints",
-            "constraints.txt",
-            "--require-hashes",
-            "--require-build-hashes",
-        ],
-        cwd=tmp_path,
+def _run(uv: str, *arguments: str, cwd: Path) -> subprocess.CompletedProcess[str]:
+    """Run one fixed ``uv`` command and capture its output."""
+    return subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] - fixed argv
+        [uv, *arguments],
+        cwd=cwd,
         capture_output=True,
         check=False,
         text=True,
     )
 
-    assert completed.returncode != 0, "an unpinned build dependency must fail"
-    assert "no trusted hash was provided for: `setuptools`" in completed.stderr, (
-        "the failure must name the unpinned build dependency"
+
+def test_a_missing_build_dependency_is_not_resolved(tmp_path: Path) -> None:
+    """A backend absent from the pinned environment fails without isolation."""
+    uv = shutil.which("uv")
+    assert uv is not None, "the build-constraint test requires uv"
+    _write_project(tmp_path)
+    venv = tmp_path / "venv"
+    created = _run(uv, "venv", "--python", "3.13", str(venv), cwd=tmp_path)
+    assert created.returncode == 0, created.stderr
+
+    completed = _run(
+        uv,
+        "build",
+        "--out-dir",
+        "out",
+        "--no-build-isolation",
+        "--python",
+        str(venv / "bin" / "python"),
+        cwd=tmp_path,
+    )
+
+    assert completed.returncode != 0, "an uninstalled backend must fail the build"
+    assert "No module named 'setuptools'" in completed.stderr, (
+        "the failure must name the missing build dependency"
     )
